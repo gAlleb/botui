@@ -1,32 +1,31 @@
 //! Device-local anchors for scans refer to physical pages, never to a text CFI.
 use botui_core::Anchor;
-use botui_store::LocalState;
+use botui_store::{LocalState, Saved};
 use std::{io, path::Path};
 pub(super) fn open(
     term: &mut crate::AppTerminal,
     which: usize,
     store: &LocalState,
     path: &Path,
-    page: u32,
-    marks: &mut Vec<Anchor>,
+    reading: &mut Saved,
 ) -> io::Result<(Option<u32>, String)> {
-    let at = Anchor {
-        block: page.saturating_sub(1) as usize,
-        byte: 0,
-    };
+    let at = reading.anchor;
     let choices: Vec<(Anchor, String)> = match which {
         18 => {
-            let message = if let Ok(i) = marks.binary_search(&at) {
-                marks.remove(i);
-                "Bookmark removed"
-            } else {
-                marks.push(at);
-                marks.sort();
+            let add = !reading.marks.contains(&at);
+            reading.marks = store.set_bookmark(reading, at, add)?;
+            let message = if add {
                 "Page bookmarked"
+            } else {
+                "Bookmark removed"
             };
             return Ok((None, message.into()));
         }
         19 => {
+            if let Some(current) = store.load()? {
+                reading.marks = current.marks;
+            }
+            let marks = &reading.marks;
             let labels: Vec<_> = marks
                 .iter()
                 .map(|a| format!(" Page {}", a.block + 1))
@@ -35,7 +34,7 @@ pub(super) fn open(
             let choice = crate::prompt::choose_removable(term, "Page bookmarks", &labels, initial)?;
             return match choice {
                 Some((i, true)) => {
-                    marks.remove(i);
+                    reading.marks = store.set_bookmark(reading, marks[i], false)?;
                     Ok((None, "Bookmark removed".into()))
                 }
                 Some((i, false)) => Ok((Some(marks[i].block as u32 + 1), String::new())),

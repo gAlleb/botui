@@ -842,18 +842,6 @@ impl Reader {
                 self.dirty = true;
                 self.menu = None;
             }
-            Action::Mark => {
-                let a = self.pager.anchor();
-                match self.marks.binary_search(&a) {
-                    Ok(i) => {
-                        self.marks.remove(i);
-                    }
-                    Err(i) if self.marks.len() < 2048 => self.marks.insert(i, a),
-                    _ => (),
-                }
-                self.dirty = true;
-                self.menu = None;
-            }
             Action::Menu => {
                 self.menu = if self.menu.is_some() {
                     None
@@ -937,6 +925,7 @@ impl Reader {
             | Action::VisibleLinks
             | Action::Follow(_)
             | Action::Bookmarks
+            | Action::Mark
             | Action::Settings
             | Action::Help
             | Action::Statistics
@@ -953,6 +942,7 @@ impl Reader {
             spread: self.mode == LayoutMode::Spread,
             scrolling: self.mode == LayoutMode::Scroll,
             scan_offset: 0,
+            scan_appearance: Default::default(),
             finished: self.finished,
             theme: self.theme.id(),
             marks: self.marks.clone(),
@@ -965,7 +955,7 @@ impl Reader {
             return;
         }
         if let Some(store) = state
-            && let Err(e) = store.save(&self.snapshot())
+            && let Err(e) = store.save_position(&self.snapshot())
         {
             notices.push(format!("Could not save reading position: {e}"));
             *state = None;
@@ -1292,16 +1282,17 @@ pub fn read_server(
                 reader.manage_marks(term, remote.as_deref_mut(), state.as_ref())?;
                 continue;
             }
-            if action == Action::Mark
-                && !reader.marks.contains(&reader.pager.anchor())
-                && let Some(m) = remote.as_deref_mut()
-            {
-                match m.toggle(&reader.doc, reader.pager.anchor()) {
-                    Ok(()) => reader.menu = None,
-                    Err(e) => {
-                        notices.push(format!("Could not update bookmark: {e}"));
-                        reader.menu = Some(TableState::default().with_selected(Some(0)));
-                    }
+            if action == Action::Mark {
+                let at = reader.pager.anchor();
+                let add = !reader.marks.contains(&at);
+                let result = if add && let Some(m) = remote.as_deref_mut() {
+                    m.toggle(&reader.doc, at).map_err(io::Error::other)
+                } else {
+                    reader.set_local_bookmark(state.as_ref(), at, add)
+                };
+                reader.menu = None;
+                if let Err(error) = result {
+                    crate::prompt::message(term, "Could not update bookmark", &error.to_string())?;
                 }
                 continue;
             }

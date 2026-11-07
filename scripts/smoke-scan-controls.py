@@ -5,6 +5,7 @@ import re
 import shutil
 import subprocess
 import tempfile
+import time
 from pathlib import Path
 
 here = Path(__file__).resolve().parent
@@ -52,6 +53,25 @@ with tempfile.TemporaryDirectory(prefix="botui-width-") as tmp:
         term.see("[W 90%]")
         term.keys("0")
         term.see("[W 100%]")
+        term.keys("r", "v")
+        term.see("90° · Inverted colors")
+        term.keys("b")
+        term.see("Page bookmarked")
+        def checkpoint_saved():
+            state = scroll.saved(root) or {}
+            return (state.get("block") == 1 and state.get("marks") == [[1, 0]]
+                    and state.get("scan_appearance") == {"quarter_turns": 1, "inverted": True})
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline and not checkpoint_saved():
+            time.sleep(.05)
+        assert checkpoint_saved(), scroll.saved(root)
+        term.run("kill-server", required=False)
+        term = scroll.start(root, book)
+        term.see("2 / 3")
+        term.keys("R")
+        term.see("0° · Inverted colors")
+        term.keys("v")
+        term.see("0° · Original colors")
         scroll.stop(term)
     finally:
         term.run("kill-server", required=False)

@@ -4,21 +4,30 @@ use crate::{
     shelf::background::{Ticket, Worker},
 };
 use botui_formats::FileKind;
+use botui_store::ScanAppearance;
+use image::DynamicImage;
 use lru::LruCache;
 use std::{io, num::NonZeroUsize, path::Path, sync::mpsc::TryRecvError};
 type Key = (u32, u16);
 pub(super) struct Pages {
+    appearance: ScanAppearance,
     worker: Worker,
     job: Option<(Key, Ticket<io::Result<Picture>>)>,
     cache: LruCache<Key, Result<Picture, String>>,
 }
 impl Pages {
-    pub fn new() -> Self {
+    pub fn new(appearance: ScanAppearance) -> Self {
         Self {
+            appearance,
             worker: Worker::new(),
             job: None,
             cache: LruCache::new(NonZeroUsize::new(4).unwrap()),
         }
+    }
+    pub fn set_appearance(&mut self, appearance: ScanAppearance) {
+        self.appearance = appearance;
+        self.job = None;
+        self.cache.clear();
     }
     pub fn busy(&self) -> bool {
         self.job.is_some()
@@ -72,16 +81,29 @@ impl Pages {
             && let Some(i) = (first..=end).find(|i| !self.cache.contains(&(*i, side)))
         {
             let path = path.to_owned();
+            let appearance = self.appearance;
             self.job = Some((
                 (i, side),
                 self.worker.start(move |cancel| {
-                    Ok(Picture::new(botui_fixed::page(
-                        &path, kind, i, side, cancel,
-                    )?))
+                    let image = botui_fixed::page(&path, kind, i, side, cancel)?;
+                    Ok(Picture::new(apply_appearance(image, appearance)))
                 }),
             ));
         }
     }
+}
+
+fn apply_appearance(image: DynamicImage, appearance: ScanAppearance) -> DynamicImage {
+    let mut image = match appearance.quarter_turns % 4 {
+        1 => image.rotate90(),
+        2 => image.rotate180(),
+        3 => image.rotate270(),
+        _ => image,
+    };
+    if appearance.inverted {
+        image.invert();
+    }
+    image
 }
 
 /// Draw inside the failed page's own slot. A damaged sheet must not close the book
@@ -100,4 +122,26 @@ pub(super) fn draw_error(
             .wrap(Wrap { trim: true }),
         block,
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use image::{ImageBuffer, Luma};
+
+    #[test]
+    fn rotation_moves_pixels_before_inversion() {
+        let pixels =
+            ImageBuffer::<Luma<u8>, _>::from_raw(2, 3, vec![0, 1, 20, 21, 40, 41]).unwrap();
+        let image = apply_appearance(
+            DynamicImage::ImageLuma8(pixels),
+            ScanAppearance {
+                quarter_turns: 1,
+                inverted: true,
+            },
+        )
+        .to_luma8();
+        assert_eq!(image.dimensions(), (3, 2));
+        assert_eq!(image.into_raw(), [215, 235, 255, 214, 234, 254]);
+    }
 }

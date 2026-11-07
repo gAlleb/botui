@@ -5,7 +5,7 @@ use botui_store::LocalState;
 use std::io;
 
 enum Origin {
-    Local(usize),
+    Local(Anchor),
     BookOrbit(u64),
 }
 struct Mark {
@@ -19,8 +19,7 @@ impl Reader {
         let mut rows: Vec<_> = self
             .marks
             .iter()
-            .enumerate()
-            .map(|(i, &at)| {
+            .map(|&at| {
                 let text = self
                     .doc
                     .blocks
@@ -32,7 +31,7 @@ impl Reader {
                     .unwrap_or_else(|| format!("Passage {}", at.block.saturating_add(1)));
                 Mark {
                     at: text.map(|_| at),
-                    origin: Origin::Local(i),
+                    origin: Origin::Local(at),
                     label: format!("Local · {title}"),
                 }
             })
@@ -53,6 +52,17 @@ impl Reader {
         rows.sort_by_key(|row| (row.at.is_none(), row.at));
         rows
     }
+    pub(super) fn set_local_bookmark(
+        &mut self,
+        store: Option<&LocalState>,
+        at: Anchor,
+        present: bool,
+    ) -> io::Result<()> {
+        let store = store.ok_or_else(|| io::Error::other("Local storage is unavailable"))?;
+        self.marks = store.set_bookmark(&self.snapshot(), at, present)?;
+        Ok(())
+    }
+
     pub(super) fn manage_marks(
         &mut self,
         term: &mut AppTerminal,
@@ -60,6 +70,11 @@ impl Reader {
         store: Option<&LocalState>,
     ) -> io::Result<()> {
         let mut selected = None;
+        if let Some(store) = store
+            && let Some(current) = store.load()?
+        {
+            self.marks = current.marks;
+        }
         loop {
             let rows = self.listed_marks(remote.as_deref());
             let initial = *selected.get_or_insert_with(|| {
@@ -106,18 +121,7 @@ impl Reader {
                     .as_deref_mut()
                     .ok_or_else(|| io::Error::other("BookOrbit is unavailable"))
                     .and_then(|r| r.remove(id).map_err(io::Error::other)),
-                Origin::Local(i) => {
-                    // Commit the updated list before acknowledging a local deletion.
-                    let mut snapshot = self.snapshot();
-                    snapshot.marks.remove(i);
-                    store
-                        .ok_or_else(|| io::Error::other("Local storage is unavailable"))
-                        .and_then(|s| s.save(&snapshot))
-                        .map(|()| {
-                            self.marks = snapshot.marks;
-                            self.dirty = false;
-                        })
-                }
+                Origin::Local(at) => self.set_local_bookmark(store, at, false),
             };
             if let Err(e) = result {
                 prompt::message(term, "Could not delete bookmark", &e.to_string())?;

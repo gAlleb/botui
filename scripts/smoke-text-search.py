@@ -4,6 +4,7 @@ from pathlib import Path
 import importlib.util
 import re
 import tempfile
+import time
 
 spec = importlib.util.spec_from_file_location("shelf", Path(__file__).with_name("smoke-shelf.py"))
 shelf = importlib.util.module_from_spec(spec)
@@ -60,8 +61,14 @@ with tempfile.TemporaryDirectory() as name:
         t.click("[×]", t.see("[×]")); t.click("[ Delete bookmark ]", t.see("Delete bookmark?"))
         remaining = t.see("Bookmarks: 1")
         assert "088" in remaining and "055" not in remaining, remaining
-        t.keys("Escape", "q")
-        t.run("kill-server", required=False)
+        t.keys("Escape")
+        t.see("At lighthouse 088")
+        t.keys("q")
+        deadline = time.monotonic() + 5
+        while t.run("has-session", "-t", "shelf", required=False).returncode == 0:
+            if time.monotonic() >= deadline:
+                raise AssertionError("Reader did not exit after saving the position")
+            time.sleep(.04)
         t = shelf.Terminal(tmp, shelf.ROOT / "target/debug/botui", args=[str(path)])
         t.see("lighthouse 088"); t.keys("g")
         assert "088" in t.see("Bookmarks: 1")

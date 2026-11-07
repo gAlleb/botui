@@ -14,11 +14,19 @@ use std::{
 };
 use tempfile::NamedTempFile;
 
+#[derive(Clone, Copy, Default, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ScanAppearance {
+    pub quarter_turns: u8,
+    pub inverted: bool,
+}
+
+#[derive(Clone, Default)]
 pub struct Saved {
     pub anchor: Anchor,
     pub spread: bool,
     pub scrolling: bool,
     pub scan_offset: u16,
+    pub scan_appearance: ScanAppearance,
     pub finished: bool,
     pub theme: String,
     pub marks: Vec<Anchor>,
@@ -35,6 +43,8 @@ struct Record {
     scrolling: bool,
     #[serde(default)]
     scan_offset: u16,
+    #[serde(default)]
+    scan_appearance: ScanAppearance,
     #[serde(default)]
     finished: bool,
     theme: String,
@@ -186,6 +196,7 @@ impl LocalState {
             spread: record.spread,
             scrolling: record.scrolling,
             scan_offset: record.scan_offset,
+            scan_appearance: record.scan_appearance,
             finished: record.finished,
             margin: record.margin.clamp(-2, 4),
             theme: record.theme,
@@ -197,9 +208,52 @@ impl LocalState {
         }))
     }
 
-    pub fn save(&self, saved: &Saved) -> io::Result<()> {
+    fn lock(&self) -> io::Result<fs::File> {
         let dir = self.path.parent().expect("state path includes directory");
         fs::create_dir_all(dir)?;
+        let lock = fs::OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .write(true)
+            .open(self.path.with_extension("position.lock"))?;
+        lock.lock()?;
+        Ok(lock)
+    }
+
+    /// A position checkpoint from another window may carry an older bookmark list.
+    pub fn save_position(&self, saved: &Saved) -> io::Result<()> {
+        let _lock = self.lock()?;
+        let current = self.load()?;
+        let marks = current
+            .as_ref()
+            .map_or(saved.marks.as_slice(), |s| &s.marks);
+        self.write(saved, marks)
+    }
+
+    pub fn set_bookmark(
+        &self,
+        initial: &Saved,
+        at: Anchor,
+        present: bool,
+    ) -> io::Result<Vec<Anchor>> {
+        let _lock = self.lock()?;
+        let mut saved = self.load()?.unwrap_or_else(|| initial.clone());
+        saved.marks.sort_unstable();
+        saved.marks.dedup();
+        match (saved.marks.binary_search(&at), present) {
+            (Err(i), true) if saved.marks.len() < 2048 => saved.marks.insert(i, at),
+            (Err(_), true) => return Err(io::Error::other("Bookmark limit reached (2048)")),
+            (Ok(i), false) => {
+                saved.marks.remove(i);
+            }
+            _ => return Ok(saved.marks),
+        }
+        self.write(&saved, &saved.marks)?;
+        Ok(saved.marks)
+    }
+
+    fn write(&self, saved: &Saved, marks: &[Anchor]) -> io::Result<()> {
+        let dir = self.path.parent().expect("state path includes directory");
         let mut tmp = NamedTempFile::new_in(dir)?;
         serde_json::to_writer(
             tmp.as_file_mut(),
@@ -210,10 +264,11 @@ impl LocalState {
                 spread: saved.spread,
                 scrolling: saved.scrolling,
                 scan_offset: saved.scan_offset,
+                scan_appearance: saved.scan_appearance,
                 finished: saved.finished,
                 margin: saved.margin,
                 theme: saved.theme.clone(),
-                marks: saved.marks.iter().map(|a| (a.block, a.byte)).collect(),
+                marks: marks.iter().map(|a| (a.block, a.byte)).collect(),
             },
         )?;
         tmp.persist(&self.path)?;
@@ -226,17 +281,41 @@ mod tests {
     use super::*;
 
     #[test]
+    fn stale_positions_preserve_bookmark_edits_from_both_readers() -> io::Result<()> {
+        let directory = tempfile::tempdir()?;
+        let state = LocalState {
+            path: directory.path().join("edition.json"),
+        };
+        fs::write(
+            &state.path,
+            r#"{"version":1,"block":0,"byte":0,"spread":false,"theme":"sepia","marks":[[1,9]]}"#,
+        )?;
+        let old = state.load()?.unwrap();
+        let a = Anchor { block: 1, byte: 9 };
+        let b = Anchor { block: 3, byte: 1 };
+        let c = Anchor { block: 5, byte: 2 };
+        assert_eq!(old.scan_appearance, ScanAppearance::default());
+        state.set_bookmark(&old, b, true)?;
+        state.set_bookmark(&old, c, true)?;
+        state.set_bookmark(&old, a, false)?;
+        state.save_position(&old)?;
+        assert_eq!(state.load()?.unwrap().marks, vec![b, c]);
+        Ok(())
+    }
+
+    #[test]
     fn matches_bytes_across_moves_but_never_another_edition() -> io::Result<()> {
         let tmp = tempfile::tempdir()?;
         let path = tmp.path().join("книга.epub");
         let dir = tmp.path().join("state");
         fs::write(&path, b"first edition")?;
         let first = LocalState::in_directory(&path, &dir, None)?;
-        first.save(&Saved {
+        first.save_position(&Saved {
             anchor: Anchor { block: 5, byte: 14 },
             spread: true,
             scrolling: false,
             scan_offset: 0,
+            scan_appearance: ScanAppearance::default(),
             finished: false,
             margin: 0,
             theme: "sepia".into(),

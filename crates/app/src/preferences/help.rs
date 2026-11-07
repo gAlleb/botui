@@ -98,6 +98,11 @@ pub(super) fn entries(ctx: Context, p: &Settings) -> Vec<Entry> {
                     ("W / 0", "Page width controls / reset to fit"),
                     ("+ / −", "Widen / narrow the page, including below 100%"),
                     ("P / Ctrl+G", "Go directly to a page number"),
+                    (
+                        "r / Shift+R",
+                        "Rotate the document clockwise / counterclockwise",
+                    ),
+                    ("V", "Switch between original and inverted page colors"),
                     ("Home / End", "First / last page"),
                     ("/", "Find in the text layer"),
                     (

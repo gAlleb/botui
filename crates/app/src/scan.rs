@@ -59,7 +59,6 @@ pub fn read_server(
     let mut outline_job =
         Some(worker.start(move |cancel| botui_fixed::outline(&outline_path, kind, cancel)));
     let mut total = None;
-    let mut pages = pages::Pages::new();
     let mut crop = Crop {
         percent: prefs.scan_zoom.unwrap_or(100).clamp(25, 400),
         ..Crop::default()
@@ -85,7 +84,6 @@ pub fn read_server(
         n = 1;
     }
     let opened = std::time::Instant::now();
-    let mut marks = saved.as_ref().map(|s| s.marks.clone()).unwrap_or_default();
     let start = n;
     let mut spread = saved
         .as_ref()
@@ -109,6 +107,13 @@ pub fn read_server(
     let mut finished = !fresh && saved.as_ref().is_some_and(|s| s.finished);
     let initial_finished = finished;
     let initial_offset = offset;
+    let mut checkpoint = saved.unwrap_or_else(|| Saved {
+        theme: "terminal".into(),
+        ..Saved::default()
+    });
+    let mut pages = pages::Pages::new(checkpoint.scan_appearance);
+    let mut last_save = opened;
+    let mut save_failed = false;
     let mut end_visible;
     let mut finish_on_arrival = None;
     let mut search = search::Search::default();
@@ -219,6 +224,28 @@ pub fn read_server(
             finished = true;
             dirty = true;
             finish_on_arrival = None;
+        }
+        checkpoint.anchor = Anchor {
+            block: n.saturating_sub(1) as usize,
+            byte: 0,
+        };
+        checkpoint.spread = spread;
+        checkpoint.scrolling = scrolling;
+        checkpoint.scan_offset = offset;
+        checkpoint.finished = finished;
+        let interval = Duration::from_millis(600);
+        if dirty && last_save.elapsed() >= interval {
+            if let Some(store) = &store {
+                match store.save_position(&checkpoint) {
+                    Ok(()) => save_failed = false,
+                    Err(e) => {
+                        save_failed = true;
+                        message = format!("Could not save reading position: {e}");
+                    }
+                }
+            }
+            dirty = false;
+            last_save = std::time::Instant::now();
         }
         let mut hits = vec![];
         let mut dialog_hits = Vec::new();
@@ -353,7 +380,13 @@ pub fn read_server(
             crate::settings::paint_interface(f);
         })?;
         let busy = search.busy() || outline_job.is_some() || total.is_none() || pages.busy();
-        let timeout = busy.then(|| Duration::from_millis(60));
+        let timeout = if busy {
+            Some(Duration::from_millis(60))
+        } else if dirty {
+            Some(interval.saturating_sub(last_save.elapsed()))
+        } else {
+            None
+        };
         let event = crate::settings::read_event_for(timeout)?;
         let Some(e) = event else {
             continue;
@@ -462,6 +495,9 @@ pub fn read_server(
                 KeyCode::Char('-' | '−') => 9,
                 KeyCode::Char('w' | 'W') => 39,
                 KeyCode::Char('0') => 40,
+                KeyCode::Char('r') => 41,
+                KeyCode::Char('R') => 42,
+                KeyCode::Char('v' | 'V') => 43,
                 KeyCode::Down | KeyCode::Char('j') if scrolling => 30,
                 KeyCode::Up | KeyCode::Char('k') if scrolling => 29,
                 KeyCode::PageUp | KeyCode::Left if scrolling && crop.percent <= 100 => 31,
@@ -578,20 +614,40 @@ pub fn read_server(
             8 | 9 => crop.step(action == 8),
             39 => dialog = Some(controls::Dialog::Width),
             40 => crop = Crop::default(),
+            41..=43 => {
+                let appearance = &mut checkpoint.scan_appearance;
+                if action == 43 {
+                    appearance.inverted = !appearance.inverted;
+                } else {
+                    let step = if action == 41 { 1 } else { 3 };
+                    appearance.quarter_turns = (appearance.quarter_turns % 4 + step) % 4;
+                    crop.x = 128;
+                    crop.y = 0;
+                }
+                pages.set_appearance(*appearance);
+                message = format!(
+                    "{}° · {} colors",
+                    u16::from(appearance.quarter_turns) * 90,
+                    if appearance.inverted {
+                        "Inverted"
+                    } else {
+                        "Original"
+                    }
+                );
+                dirty = true;
+            }
             10 => crop.x = crop.x.saturating_sub(64),
             11 => crop.x = crop.x.saturating_add(64),
             12 => crop.y = crop.y.saturating_sub(64),
             13 => crop.y = crop.y.saturating_add(64),
             18..=22 => {
                 if let Some(store) = store.as_ref() {
-                    let before = marks.len();
-                    match annotations::open(term, action, store, path, n, &mut marks) {
+                    match annotations::open(term, action, store, path, &mut checkpoint) {
                         Ok((page, msg)) => {
                             if let Some(page) = page {
                                 n = page.min(total.unwrap_or(page)).max(1);
                             }
                             message = msg;
-                            dirty |= before != marks.len();
                         }
                         Err(e) => message = e.to_string(),
                     }
@@ -717,21 +773,9 @@ pub fn read_server(
         notices.push(e.to_string());
     }
     crate::stats::finish(store.as_ref(), opened, notices);
-    if dirty
+    if (dirty || save_failed)
         && let Some(store) = store
-        && let Err(e) = store.save(&Saved {
-            anchor: Anchor {
-                block: n.saturating_sub(1) as usize,
-                byte: 0,
-            },
-            spread,
-            scrolling,
-            scan_offset: offset,
-            finished,
-            theme: "terminal".into(),
-            margin: 0,
-            marks,
-        })
+        && let Err(e) = store.save_position(&checkpoint)
     {
         notices.push(e.to_string());
     }
