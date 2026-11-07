@@ -12,7 +12,6 @@ use ratatui::{
 pub(super) enum Kind {
     Contents,
     Search,
-    Marks,
     Notes,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -30,13 +29,12 @@ pub(super) struct Navigation {
     kind: Kind,
     pub(super) query: String,
     items: Vec<(Anchor, String)>,
-    unavailable: Vec<String>,
     state: ListState,
     rows: Rect,
     back: Rect,
 }
 impl Navigation {
-    pub fn new(kind: Kind, doc: &Document, place: Anchor, marks: &[Anchor]) -> Self {
+    pub fn new(kind: Kind, doc: &Document, place: Anchor) -> Self {
         let items: Vec<_> = match kind {
             Kind::Contents if !doc.contents.is_empty() => doc.contents.clone(),
             Kind::Contents => doc
@@ -46,10 +44,6 @@ impl Navigation {
                 .filter(|(_, b)| b.heading)
                 .map(|(i, b)| (Anchor { block: i, byte: 0 }, b.text.clone()))
                 .collect(),
-            Kind::Marks => marks
-                .iter()
-                .filter_map(|&a| Some((a, doc.blocks.get(a.block)?.text.get(a.byte..)?.to_owned())))
-                .collect(),
             Kind::Notes | Kind::Search => vec![],
         };
         let i = current(&items, place);
@@ -58,7 +52,6 @@ impl Navigation {
             kind,
             index: None,
             hits: vec![],
-            unavailable: vec![],
             items,
             state,
             rows: Rect::default(),
@@ -69,20 +62,6 @@ impl Navigation {
     pub fn add_notes(&mut self, notes: &[botui_store::Note]) {
         self.items = notes.iter().map(|n| (n.anchor(), n.body.clone())).collect();
         self.state.select((!self.items.is_empty()).then_some(0));
-    }
-    pub fn add_server_marks(&mut self, marks: Vec<(Option<Anchor>, String)>) {
-        for (place, label) in marks {
-            let label = label.replace(char::is_control, " ");
-            if let Some(place) = place {
-                self.items.push((place, label));
-            } else {
-                self.unavailable
-                    .push(format!("{label} · unavailable in this file"));
-            }
-        }
-        if !self.items.is_empty() || !self.unavailable.is_empty() {
-            self.state.select(Some(0));
-        }
     }
     pub fn draw(&mut self, f: &mut Frame, style: Style) {
         let area = centered(f.area(), 72, 22);
@@ -96,7 +75,6 @@ impl Navigation {
     pub fn draw_at(&mut self, f: &mut Frame, style: Style, area: Rect, popup: bool) {
         let title = match self.kind {
             Kind::Contents => " Contents ",
-            Kind::Marks => " Bookmarks ",
             Kind::Notes => " Reading notes ",
             Kind::Search => " Find in book ",
         };
@@ -120,12 +98,10 @@ impl Navigation {
                 " {}: {}",
                 if self.kind == Kind::Contents {
                     "Chapters"
-                } else if self.kind == Kind::Notes {
-                    "Notes"
                 } else {
-                    "Bookmarks"
+                    "Notes"
                 },
-                self.items.len() + self.unavailable.len()
+                self.items.len()
             )
         };
         f.render_widget(
@@ -138,11 +114,10 @@ impl Navigation {
             inner.width,
             inner.height.saturating_sub(2),
         );
-        if self.items.is_empty() && self.unavailable.is_empty() {
+        if self.items.is_empty() {
             let help = match self.kind {
                 Kind::Contents => "No chapter headings in this text.",
                 Kind::Notes => "Press N on a passage to write a note.",
-                Kind::Marks => "Press B on a page to bookmark it.",
                 Kind::Search if self.query.is_empty() => "Type a word or phrase.",
                 Kind::Search => "No matches.",
             };
@@ -152,8 +127,7 @@ impl Navigation {
                 .items
                 .iter()
                 .enumerate()
-                .map(|(i, (_, label))| format!(" {:>2}  {}", i + 1, label))
-                .chain(self.unavailable.iter().map(|s| format!("  –  {s}")));
+                .map(|(i, (_, label))| format!(" {:>2}  {}", i + 1, label));
             f.render_stateful_widget(
                 List::new(entries)
                     .style(style)
@@ -233,10 +207,8 @@ impl Navigation {
             Edit::Choose(i) => return self.items.get(i).map(|v| v.0),
             Edit::Move(d) => {
                 if let Some(i) = self.state.selected() {
-                    self.state.select(Some(
-                        i.saturating_add_signed(d)
-                            .min(self.items.len() + self.unavailable.len() - 1),
-                    ));
+                    self.state
+                        .select(Some(i.saturating_add_signed(d).min(self.items.len() - 1)));
                 }
                 return None;
             }

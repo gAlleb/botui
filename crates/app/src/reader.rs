@@ -1,5 +1,6 @@
 pub(crate) mod bookmarks;
 mod layout;
+mod mark_list;
 mod navigation;
 pub(crate) mod notes;
 mod resources;
@@ -57,6 +58,7 @@ enum Action {
     Navigate(Kind),
     NavEdit(Edit),
     Mark,
+    Bookmarks,
     Margin(i8),
     Gap(i8),
     Layout,
@@ -80,7 +82,7 @@ const COMMANDS: [Action; 28] = [
     Action::FindAgain(false),
     Action::SearchResults,
     Action::Mark,
-    Action::Navigate(Kind::Marks),
+    Action::Bookmarks,
     Action::Layout,
     Action::Zen,
     Action::Background,
@@ -148,7 +150,7 @@ impl Reader {
             .unwrap_or_else(|| 78u16.saturating_add_signed(-6 * i16::from(margin)))
             .clamp(32, 240);
         let gap = settings.column_gap.unwrap_or(4).min(32);
-        let (text, mode_for_size, _) = layout::geometry(area, mode, page_width, gap);
+        let (text, mode_for_size, _) = layout::geometry(area, mode, page_width, gap, settings.zen);
         let mut pager = Pager::with_options(
             &doc,
             text.width,
@@ -169,7 +171,7 @@ impl Reader {
             .as_deref()
             .or_else(|| saved.as_ref().map(|s| s.theme.as_str()))
             .map_or(Theme::TERMINAL, Theme::from_id);
-        let sidebar = navigation::Navigation::new(Kind::Contents, &doc, pager.anchor(), &[]);
+        let sidebar = navigation::Navigation::new(Kind::Contents, &doc, pager.anchor());
         Self {
             zen: settings.zen,
             opaque: settings.opaque_background,
@@ -217,7 +219,8 @@ impl Reader {
                 self.sidebar_focus = false;
             }
         }
-        let (text, actual, gap) = layout::geometry(page, self.mode, self.page_width, self.gap);
+        let (text, actual, gap) =
+            layout::geometry(page, self.mode, self.page_width, self.gap, self.zen);
         self.pager
             .relayout_with_gap(&self.doc, text.width, text.height, actual, gap);
         let mut style = self
@@ -438,7 +441,7 @@ impl Reader {
                     .into(),
                     "B",
                 ),
-                Action::Navigate(Kind::Marks) => ("Bookmarks".into(), "G"),
+                Action::Bookmarks => ("Bookmarks".into(), "G"),
                 Action::Layout => ("Page width & column gap".into(), "W"),
                 Action::Zen => (
                     (if self.zen {
@@ -585,7 +588,7 @@ impl Reader {
                 KeyCode::Char(']') => Some(Action::Margin(1)),
                 KeyCode::Char('o' | 'O') => Some(Action::Navigate(Kind::Contents)),
                 KeyCode::Char('/') => Some(Action::Navigate(Kind::Search)),
-                KeyCode::Char('g' | 'G') => Some(Action::Navigate(Kind::Marks)),
+                KeyCode::Char('g' | 'G') => Some(Action::Bookmarks),
                 KeyCode::Char('b' | 'B') => Some(Action::Mark),
                 KeyCode::Char('q' | 'Q') => Some(Action::Close),
                 KeyCode::Char('m' | 'M') | KeyCode::Esc => Some(Action::Menu),
@@ -726,8 +729,7 @@ impl Reader {
             }
             Action::Navigate(kind) => {
                 self.menu = None;
-                let mut nav =
-                    navigation::Navigation::new(kind, &self.doc, self.pager.anchor(), &self.marks);
+                let mut nav = navigation::Navigation::new(kind, &self.doc, self.pager.anchor());
                 if kind == Kind::Search {
                     nav.index = Some(self.search.index(&self.pager, &self.doc));
                 }
@@ -880,6 +882,7 @@ impl Reader {
                 }
             }
             Action::Resources
+            | Action::Bookmarks
             | Action::Settings
             | Action::Help
             | Action::Statistics
@@ -890,25 +893,28 @@ impl Reader {
         }
     }
 
+    fn snapshot(&self) -> Saved {
+        Saved {
+            anchor: self.pager.anchor(),
+            spread: self.mode == LayoutMode::Spread,
+            scrolling: self.mode == LayoutMode::Scroll,
+            scan_offset: 0,
+            finished: self.finished,
+            theme: self.theme.id(),
+            marks: self.marks.clone(),
+            margin: self.margin,
+        }
+    }
+
     fn flush(&mut self, state: &mut Option<LocalState>, notices: &mut Vec<String>) {
         if !self.dirty {
             return;
         }
-        if let Some(store) = state {
-            let snapshot = Saved {
-                anchor: self.pager.anchor(),
-                spread: self.mode == LayoutMode::Spread,
-                scrolling: self.mode == LayoutMode::Scroll,
-                scan_offset: 0,
-                finished: self.finished,
-                theme: self.theme.id(),
-                marks: self.marks.clone(),
-                margin: self.margin,
-            };
-            if let Err(e) = store.save(&snapshot) {
-                notices.push(format!("Could not save reading position: {e}"));
-                *state = None;
-            }
+        if let Some(store) = state
+            && let Err(e) = store.save(&self.snapshot())
+        {
+            notices.push(format!("Could not save reading position: {e}"));
+            *state = None;
         }
         self.dirty = false;
     }
@@ -939,7 +945,7 @@ fn bindings() -> io::Result<std::collections::HashMap<char, Action>> {
                 "next-match" => Action::FindAgain(true),
                 "previous-match" => Action::FindAgain(false),
                 "bookmark" => Action::Mark,
-                "bookmarks" => Action::Navigate(Kind::Marks),
+                "bookmarks" => Action::Bookmarks,
                 "single" => Action::Single,
                 "spread" => Action::Spread,
                 "scroll" => Action::Scroll,
@@ -1193,6 +1199,11 @@ pub fn read_server(
             if action == Action::Close {
                 break;
             }
+            if action == Action::Bookmarks {
+                reader.menu = None;
+                reader.manage_marks(term, remote.as_deref_mut(), state.as_ref())?;
+                continue;
+            }
             if action == Action::Mark
                 && !reader.marks.contains(&reader.pager.anchor())
                 && let Some(m) = remote.as_deref_mut()
@@ -1210,7 +1221,7 @@ pub fn read_server(
                 reader.remote_marked = remote.as_ref().is_some_and(|m| {
                     m.entries(&reader.doc)
                         .iter()
-                        .any(|(a, _)| *a == Some(reader.pager.anchor()))
+                        .any(|(_, a, _)| *a == Some(reader.pager.anchor()))
                 });
             }
             if action == Action::Borders
@@ -1219,11 +1230,6 @@ pub fn read_server(
                 notices.push(e.to_string());
             }
             reader.apply(action);
-            if action == Action::Navigate(Kind::Marks)
-                && let (Some(m), Some(nav)) = (remote.as_deref(), reader.nav.as_mut())
-            {
-                nav.add_server_marks(m.entries(&reader.doc));
-            }
             if matches!(
                 action,
                 Action::Zen
