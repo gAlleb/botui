@@ -2,13 +2,24 @@
 
 **English** · [Русский](README.ru.md)
 
-A terminal book reader for BookOrbit, OPDS catalogs and local folders. Read reflowable EPUB and FB2 or the original PDF and DjVu pages. All four formats support a single page, a facing spread and continuous scrolling, with keyboard and mouse controls.
+A standalone terminal book reader for local folders, OPDS catalogs and BookOrbit libraries. Read reflowable EPUB and FB2 or the original PDF and DjVu pages. All four formats support a single page, a facing spread and continuous scrolling, with keyboard and mouse controls.
 
 ![BookOrbit dashboard with reading progress, recent additions and book covers in Kitty](docs/images/dashboard.png)
 
 [Installation](#installation) · [First run](#first-run) · [BookOrbit](#bookorbit) · [Reading](#reading) · [Configuration](#configuration) · [Development](#development)
 
 ## Installation
+
+### Linux binaries
+
+Branch builds publish an Actions artifact containing static `botui-x86_64` and `botui-aarch64` executables. Tags such as `v0.1.0` publish both files and `SHA256SUMS` on the release page. Download the file matching `uname -m` and the checksum file into the same directory, then run
+
+```sh
+sha256sum --ignore-missing -c SHA256SUMS &&
+  install -Dm755 "botui-$(uname -m)" "$HOME/.local/bin/botui"
+```
+
+PDF and DjVu use the runtime helpers listed below. To reproduce the release binaries locally, run `mise install` and `mise run dist`. Release notes come from the matching version heading in [CHANGELOG.md](CHANGELOG.md). [GitHub builds](https://github.com/gAlleb/botui/actions/workflows/build.yml) · [Releases](https://github.com/gAlleb/botui/releases)
 
 Build from the repository root on Linux. You need Rust 1.99.1, a C compiler and a linker. The release build produces one executable for the host architecture at `target/release/botui`. The helpers for scanned documents are listed below.
 
@@ -18,7 +29,7 @@ The project includes a pinned Rust toolchain and build tasks. From a fresh check
 
 ```sh
 mise trust
-mise install
+mise install rust
 mise run build
 ./target/release/botui --help
 mise run install
@@ -59,11 +70,11 @@ botui --opds https://books.example.org/opds
 botui --config-path                        # create or locate the config file
 ```
 
-On the start screen, move the selection to see the description and controls for that source. Press **B** for BookOrbit, **L** for the local library, **P** for OPDS or **D** for offline downloads. Enter and a click also open the selection.
+On the start screen, move the selection to see the description and controls for that source. Press **B** for BookOrbit, **L** for the local library, **P** for OPDS **D** for BookOrbit offline downloads or **O** for OPDS downloads. Enter and a click also open the selection.
 
 ![Source chooser with its keyboard guide](docs/images/start.png)
 
-**F2** opens Settings: Appearance, Reader, Library, BookOrbit, Keys and About. **?** or **F1** opens the shortcut guide for the current screen. Use **[ / ]** to switch groups or type **/** to find a key or command. The footer shortcuts are clickable. **Q** closes the book, **Q** on the shelf returns to the source chooser, and **Q** there exits. **Esc** goes up one catalog level. When launched with a single file path, closing that file ends the command.
+**F2** opens Settings: Appearance, Reader, Library, BookOrbit, Keys, About and Legal. **?** or **F1** opens the shortcut guide for the current screen. Use **[ / ]** to switch groups or type **/** to find a key or command. The footer shortcuts are clickable. **Q** closes the book, **Q** on the shelf returns to the source chooser, and **Q** there exits. **Esc** goes up one catalog level. When launched with a single file path, closing that file ends the command.
 
 **Local library** uses your saved root, then `~/Books`, then the current directory. Click **P Folder…** to paste a path. **R Set library here** remembers the folder currently on screen. **/** searches subfolders in the background. It matches the path, plus the embedded title, author and series of EPUB and FB2 files; the filename may be just a number. **2** opens reading history with percentages and **3** shows recent files by creation time, falling back to modification time.
 
@@ -84,7 +95,9 @@ Choose **Connect to BookOrbit** to sign in. The dashboard shows continue reading
 
 **V** switches between cover grid and list. **Tab / Shift+Tab** change sections in display order. Arrows, the wheel and Page Up / Page Down navigate a shelf. More items load as you scroll. Enter or a click opens the selection. **Esc** goes back.
 
-To keep an edition on this device, choose **D Save offline** on its file list. Open it again through **Offline downloads**. The next sign-in to the same account can send offline progress if the server position still matches. Text bookmarks come from the selected BookOrbit file. A bookmark whose location cannot be resolved stays visible by name.
+**Read** downloads a BookOrbit edition on first use and keeps it on this device. Open it from its card again to read the saved file and load the account’s reading position and text bookmarks. **D Save offline** downloads ahead of time or checks a saved copy for updates. If BookOrbit reports a changed edition, BOTUI checks the server version before replacing the file.
+
+Without a connection, select **BookOrbit offline downloads** on the start screen. If you left an EPUB at chapter 5 online and read to chapter 7 offline, closing it queues chapter 7 for the same account and edition. BOTUI retries while running with an active session or a configured password or password command. Pending progress survives a restart. If you enter your password manually, signing in sends queued progress. A conflicting change on another device is reported and the offline position is kept. Offline bookmarks are local. **OPDS downloads** has its own shelf and uses device-local progress.
 
 Wide screens have a separately framed navigation tree. Click **Libraries** or **Collections** to fold them, or press **F6**, move with **↑/↓** and fold or expand with **←/→**. **4 / 5** open the full directories. Folded groups are remembered.
 
@@ -119,7 +132,7 @@ Width and spacing are in terminal cells. Extra room sits outside the spread. A n
 
 In EPUB and FB2, click an underlined reference or press **F6** to follow a link on the visible page. If several are visible, choose one. When you visit a note or glossary entry at the end of the book, **Esc** or **Back** restores your reading position; **Enter · Read here** makes an in-book destination your new reading position. Supplementary notes open over the current page. **I** still lists resources from the whole book.
 
-For **PDF and DjVu**, press **Enter** or click the edition to start reading. **1 / 2 / 3** select single page, spread or continuous scroll. At **100%**, a scrolling sheet fits the reading pane. Press **−** once for **90%**, again for **80%**, or **+** to enlarge it. **0** restores fit. **W** opens the same controls for the mouse; the chosen zoom is saved when you close the book. **Z** hides the contents and footer. **P** or **Ctrl+G** opens a small page-number dialog over the document. **/** searches the text layer; **F3 / F4 / F5** open the next match, previous match, or results. **B / G** manage bookmarks; **I / A / E** manage and export notes. Local resume remembers your position within a sheet; BookOrbit syncs the page number. Image-only scans have no searchable text without OCR. [PDF in Kitty](docs/images/pdf-scroll.png).
+For **PDF and DjVu**, press **Enter** or click the edition to start reading. **1 / 2 / 3** select single page, spread or continuous scroll. At **100%**, a scrolling sheet fits the reading pane. Press **−** once for **90%**, again for **80%**, or **+** to enlarge it. **0** restores fit. **W** opens the same controls for the mouse; the chosen zoom is saved when you close the book. **Z** hides the contents and footer. **P** or **Ctrl+G** opens a small page-number dialog over the document. **/** searches the text layer; **F3 / F4 / F5** open the next match, previous match, or results. **B / G** manage bookmarks; **I / A / E** manage and export notes. Use **R / Shift+R** to rotate a scan clockwise or counterclockwise and **V** to invert its colors. BOTUI remembers the view for each edition and checkpoints your place while reading. Local resume remembers your position within a sheet; BookOrbit syncs the page number. Image-only scans have no searchable text without OCR. [PDF in Kitty](docs/images/pdf-scroll.png).
 
 Embedded raster illustrations appear in the text; **I** also opens the separate viewer. Tables adapt to the available width. Set **F2 → Reader → Illustrations** to viewer only if desired. **S** displays book statistics; **F2 → Library → Reading statistics** shows totals on this device.
 
@@ -184,4 +197,4 @@ The Rust workspace separates the BookOrbit and OPDS adapters, ebook parsing, tex
 
 ## License
 
-Original BOTUI code is [GPL-3.0-or-later](LICENSE). The adapted BookOrbit cover artwork retains its [own license and notices](licenses/NOTICE.md). Open **F2 → About** in the app, or run **botui --license** for the full texts.
+Original BOTUI code is [GPL-3.0-or-later](LICENSE). The adapted BookOrbit cover artwork retains its [own license and notices](licenses/NOTICE.md). Open **F2 → Legal** in the app, or run **botui --license** for the full texts.

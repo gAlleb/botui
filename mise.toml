@@ -1,9 +1,28 @@
 [tools]
 rust = "1.99.1"
+# Cross-compilation tools for the Linux distribution binaries.
+zig = "0.15.2"
+"github:rust-cross/cargo-zigbuild" = "0.23.4"
+cmake = "3.31.10"
 
 [tasks.build]
 description = "Build the release executable in target/release"
 run = "cargo build --release --locked -p botui"
+
+[tasks.dist]
+description = "Build static Linux x86_64 and aarch64 executables and their SHA-256 checksums"
+run = """
+set -eu
+rustup target add x86_64-unknown-linux-musl aarch64-unknown-linux-musl
+cargo zigbuild --locked --release -p botui --target x86_64-unknown-linux-musl --target aarch64-unknown-linux-musl
+mkdir -p dist
+for arch in x86_64 aarch64; do
+  install -m 755 "target/${arch}-unknown-linux-musl/release/botui" "dist/botui-${arch}"
+done
+cd dist
+sha256sum botui-x86_64 botui-aarch64 > SHA256SUMS
+sha256sum -c SHA256SUMS
+"""
 
 [tasks.install]
 description = "Install botui in ~/.local/bin (override with PREFIX)"

@@ -1,0 +1,101 @@
+name: Build artifacts
+
+"on":
+  push:
+    branches: ["**"]
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref_type == 'branch' }}
+
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: jdx/mise-action@v5
+        with:
+          install_args: rust zig cmake github:rust-cross/cargo-zigbuild
+
+      - uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: linux-dist-${{ runner.arch }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml', 'mise.toml') }}
+
+      - name: Build static Linux binaries
+        run: mise run dist
+
+      - name: Check and package binaries
+        run: |
+          dist/botui-x86_64 --help
+          readelf -h dist/botui-aarch64 | grep -w AArch64
+          for bin in dist/botui-{x86_64,aarch64}; do
+            if readelf -lW "$bin" | grep -q INTERP; then
+              echo "Expected a statically linked executable at $bin" >&2
+              exit 1
+            fi
+          done
+          dist/botui-x86_64 --license > dist/LICENSES.txt
+          tar -czf botui-linux.tar.gz -C dist botui-x86_64 botui-aarch64 SHA256SUMS LICENSES.txt
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: botui-linux-${{ github.sha }}
+          path: botui-linux.tar.gz
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    needs: linux
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/download-artifact@v7
+        with:
+          name: botui-linux-${{ github.sha }}
+
+      - name: Publish tagged binaries and release notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          version="${TAG#v}"
+          awk -v v="$version" '
+            /^## / { if (found) exit; found = ($2 == v); next }
+            found
+          ' CHANGELOG.md > notes.md
+          if ! grep -q '[^[:space:]]' notes.md; then
+            echo "CHANGELOG.md needs release notes under ## $version" >&2
+            exit 1
+          fi
+          mkdir -p dist
+          tar -C dist -xzf botui-linux.tar.gz
+          (cd dist && sha256sum -c SHA256SUMS)
+          files=(dist/botui-x86_64 dist/botui-aarch64 dist/SHA256SUMS dist/LICENSES.txt)
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "${files[@]}" --clobber
+            gh release edit "$TAG" --title "botui $version" --notes-file notes.md
+          else
+            gh release create "$TAG" "${files[@]}" --verify-tag --title "botui $version" --notes-file notes.md
+          fi
