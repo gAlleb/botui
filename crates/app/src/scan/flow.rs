@@ -23,7 +23,13 @@ impl Strip<'_> {
             .max(1)
     }
     fn row(&self, n: u32, f: u16) -> u32 {
-        ((u64::from(self.rows(n)) * u64::from(f) + 32767) / 65535) as u32
+        let rows = self.rows(n);
+        let row = ((u64::from(rows) * u64::from(f) + 32767) / 65535) as u32;
+        if n == self.count {
+            row.min(rows.saturating_sub(self.height.into()))
+        } else {
+            row
+        }
     }
     fn frac(&self, n: u32, r: u32) -> u16 {
         ((u64::from(r) * 65535 + u64::from(self.rows(n)) / 2) / u64::from(self.rows(n))).min(65535)
@@ -64,16 +70,22 @@ impl Strip<'_> {
         })
     }
     pub fn end(&self, n: u32, f: u16) -> bool {
-        self.parts(n, f)
-            .any(|(p, skip, rows, _, take)| p == self.count && skip + u32::from(take) >= rows)
+        self.parts(n, f).any(|(p, skip, rows, _, take)| {
+            p == self.count
+                && self.pages.get(p, self.side).is_some()
+                && skip + u32::from(take) >= rows
+        })
     }
     pub fn draw(&self, f: &mut Frame, r: Rect, n: u32, offset: u16) {
         for (n, skip, rows, y, take) in self.parts(n, offset) {
-            if let Some(p) = self.pages.get(n, self.side)
-                && take > 0
-            {
-                let area = Rect::new(r.x, r.y + y, r.width, take);
+            if take == 0 {
+                continue;
+            }
+            let area = Rect::new(r.x, r.y + y, r.width, take);
+            if let Some(p) = self.pages.get(n, self.side) {
                 p.draw_strip(f, area, self.picker, self.crop, skip, rows);
+            } else if let Some(error) = self.pages.error(n, self.side) {
+                super::pages::draw_error(f, area, n, error);
             }
         }
     }

@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Check overlapping text during a one-line move and two distinct raster pages in one viewport."""
 from pathlib import Path
-import importlib.util,tempfile,re,json,shutil,subprocess,time
+import importlib.util,tempfile,re,json,shutil,subprocess,time,os
 root=Path(__file__).resolve().parents[1]
 spec=importlib.util.spec_from_file_location('sources',root/'scripts/smoke-sources.py');s=importlib.util.module_from_spec(spec);spec.loader.exec_module(s)
-def start(d,path):
-    t=s.shelf.Terminal(d,Path('/usr/bin/env'),args=['NO_COLOR=1',str(root/'target/debug/botui'),str(path)])
+def start(d,path,*env):
+    t=s.shelf.Terminal(d,Path('/usr/bin/env'),args=['NO_COLOR=1',*env,str(root/'target/debug/botui'),str(path)])
     return t
 def stop(t):
     t.keys('q')
@@ -49,13 +49,56 @@ def scan_scroll(d,file):
             if '::::::::' in a and '########' in a:
                 both=True;break
         assert both,('No sheet transition',file.suffix,samples)
+        # Jump away and back to the exact same slice spanning the two sheets.
+        t.keys('p');t.see('Go to page');t.keys('3','Enter');t.see('3 / 3')
+        t.keys(',');t.wait('Jump restores scroll offset',lambda a:'::::::::' in a and '########' in a)
+        t.keys('.');t.see('3 / 3');t.keys(',');t.see('1 / 3')
         stop(t);state=saved(d);assert state['scrolling'] and state['scan_offset']>0
         t=start(d,file);t.see('P Read');t.keys('p');t.wait('Restored within the same physical sheet',lambda a:'::::::::' in a and '########' in a)
         t.keys('2');t.wait('Spread leaves the scroll view',lambda a:'Scroll' not in a and '########' in a);stop(t)
     finally:t.run('kill-server',required=False)
+def damaged_sheet_and_search(d):
+    # Force a real renderer subprocess failure on page 2, and count text extractions.
+    d.mkdir()
+    path=d/'mixed.pdf'
+    path.write_bytes(s.pdf())
+    bin_dir=d/'bin'
+    bin_dir.mkdir()
+    program=bin_dir/'pdftoppm'
+    program.write_text("""#!/usr/bin/env python3
+import sys
+page=int(sys.argv[sys.argv.index('-f')+1])
+if page==2: sys.exit(1)
+sys.stdout.buffer.write(b'P6\\n20 30\\n255\\n'+bytes([76])*1800)
+""")
+    program.chmod(0o755)
+    program=bin_dir/'pdftotext'
+    program.write_text("""#!/usr/bin/env python3
+import sys
+from pathlib import Path
+with (Path(__file__).parent / 'reads').open('a') as log: log.write('x')
+sys.stdout.write('Lighthouse on the north shore\\f\\fLighthouse by the southern bay\\f')
+""")
+    program.chmod(0o755)
+    t=start(d,path,'PATH='+str(bin_dir)+os.pathsep+os.environ['PATH'])
+    try:
+        t.see('P Read'); t.keys('p'); t.see('1 / 3')
+        t.keys('2'); t.see('Page 2 unavailable')
+        t.keys('1','/'); t.see('Find in text layer'); t.type('lighthouse'); t.keys('Enter')
+        t.see('2 matching pages'); t.keys('F5'); frame=t.see('Matching pages')
+        assert 'north shore' in frame and 'southern bay' in frame
+        t.click('southern bay',frame); t.see('3 / 3')
+        t.keys('F4'); t.see('1 / 3'); t.keys('F3'); t.see('3 / 3')
+        t.keys('/'); t.see('Find in text layer'); t.keys('C-u'); t.type('north shore')
+        t.keys('Enter'); t.see('1 matching page'); t.see('1 / 3')
+        assert (bin_dir/'reads').read_text()=='x', 'A second query re-ran the document extractor'
+        t.keys('p');t.see('Go to page');t.keys('2','Enter');t.see('Page 2 unavailable')
+        t.keys('Right');t.see('3 / 3');stop(t)
+        assert saved(d)['block']==2, 'The damaged page prevented saving the next readable page'
+    finally: t.run('kill-server',required=False)
 if __name__=='__main__':
     with tempfile.TemporaryDirectory(prefix='botui-flow-') as tmp:
-        d=Path(tmp);text_scroll(d/'text');pdf=d/'pages.pdf';pdf.write_bytes(s.pdf(True));scan_scroll(d/'pdf',pdf)
+        d=Path(tmp);damaged_sheet_and_search(d/'mixed');text_scroll(d/'text');pdf=d/'pages.pdf';pdf.write_bytes(s.pdf(True));scan_scroll(d/'pdf',pdf)
         if shutil.which('c44') and shutil.which('djvm'):
             sheets=[]
             for i,color in enumerate((76,204,128)):

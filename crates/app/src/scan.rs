@@ -2,8 +2,10 @@
 mod annotations;
 mod contents;
 mod flow;
+mod history;
 mod menu;
 mod pages;
+mod search;
 use crate::{
     AppTerminal, centered,
     cover::{Crop, graphics},
@@ -15,6 +17,7 @@ use botui_store::{LocalState, Saved};
 use crossterm::event::{
     self, Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind,
 };
+use history::Location;
 use ratatui::{
     layout::{Position, Rect},
     style::Stylize,
@@ -100,9 +103,9 @@ pub fn read_server(
     let initial_finished = finished;
     let initial_offset = offset;
     let mut end_visible;
-    let mut search_job: Option<crate::shelf::background::Ticket<io::Result<Vec<u32>>>> = None;
-    let mut found: Vec<u32> = vec![];
-    let mut query = String::new();
+    let mut finish_on_arrival = None;
+    let mut search = search::Search::default();
+    let mut history = history::History::default();
     let mut message = String::new();
     let mut menu = false;
     let mut focus: usize = 0;
@@ -132,33 +135,31 @@ pub fn read_server(
                 Err(TryRecvError::Empty) => (),
             }
         }
-        if let Some(job) = &search_job {
-            let result = match job.receiver.try_recv() {
-                Ok(r) => Some(r),
-                Err(TryRecvError::Empty) => None,
-                Err(_) => Some(Err(io::Error::other("Search interrupted"))),
-            };
-            if let Some(r) = result {
-                search_job = None;
-                match r {
-                    Ok(v) => {
-                        found = v;
-                        if found.is_empty() {
-                            message = "No matches in the embedded text".into();
-                        } else {
-                            n = found.iter().copied().find(|p| *p >= n).unwrap_or(found[0]);
-                            offset = 0;
-                            dirty = true;
-                            crop = Crop::default();
-                            message = if found.len() == 1 {
-                                "1 matching page".to_owned()
-                            } else {
-                                format!("{} matching pages · N next", found.len())
-                            };
-                        }
+        if let Some(result) = search.poll(n) {
+            match result {
+                Ok(page) => {
+                    if let Some(page) = page {
+                        let previous = Location {
+                            page: n,
+                            offset,
+                            crop,
+                        };
+                        n = page;
+                        offset = 0;
+                        crop = Crop::default();
+                        history.record(
+                            previous,
+                            Location {
+                                page: n,
+                                offset,
+                                crop,
+                            },
+                        );
+                        dirty = true;
                     }
-                    Err(e) => message = e.to_string(),
+                    message = search.status();
                 }
+                Err(e) => message = e.to_string(),
             }
         }
         let screen = term.size()?;
@@ -180,7 +181,7 @@ pub fn read_server(
             .clamp(240, 1600);
         let side = side.saturating_mul(1 << crop.level).min(1920);
         if let Some(count) = total {
-            pages.update(path, kind, n, count, if scrolling { 2 } else { cols }, side)?;
+            pages.update(path, kind, n, count, if scrolling { 2 } else { cols }, side);
         }
         let strip = flow::Strip {
             pages: &pages,
@@ -194,8 +195,16 @@ pub fn read_server(
         end_visible = if scrolling {
             strip.end(n, offset)
         } else {
-            total.is_some_and(|t| n.saturating_add(u32::from(cols)) > t)
+            total.is_some_and(|t| {
+                n.saturating_add(u32::from(cols)) > t
+                    && (n..=t).all(|p| pages.get(p, side).is_some())
+            })
         };
+        if finish_on_arrival == Some(n) && end_visible {
+            finished = true;
+            dirty = true;
+            finish_on_arrival = None;
+        }
         let mut hits = vec![];
         let mut go_button = Rect::default();
         let mut footer_buttons = crate::preferences::Buttons::default();
@@ -246,23 +255,22 @@ pub fn read_server(
                 strip.draw(f, area, n, offset);
             } else {
                 for i in 0..cols {
-                    let Some(page) = pages.get(n.saturating_add(u32::from(i)), side) else {
-                        continue;
-                    };
+                    let page_number = n.saturating_add(u32::from(i));
                     let w = if cols == 2 {
                         area.width.saturating_sub(2) / 2
                     } else {
                         area.width
                     };
-                    page.draw_region(
-                        f,
-                        Rect::new(area.x + (w + 2).saturating_mul(i), area.y, w, area.height),
-                        &picker,
-                        crop,
-                    );
+                    let slot =
+                        Rect::new(area.x + (w + 2).saturating_mul(i), area.y, w, area.height);
+                    if let Some(page) = pages.get(page_number, side) {
+                        page.draw_region(f, slot, &picker, crop);
+                    } else if let Some(error) = pages.error(page_number, side) {
+                        pages::draw_error(f, slot, page_number, error);
+                    }
                 }
             }
-            if pages.get(n, side).is_none() {
+            if pages.get(n, side).is_none() && pages.error(n, side).is_none() {
                 f.render_widget(
                     Paragraph::new("Rendering page…").centered(),
                     centered(area, 36, 1),
@@ -300,7 +308,7 @@ pub fn read_server(
                     } else {
                         Default::default()
                     };
-                    let key_width = r.width.min(5);
+                    let key_width = r.width.min(10);
                     f.render_widget(
                         Paragraph::new(*label).style(style),
                         Rect::new(r.x, r.y, r.width - key_width, 1),
@@ -314,12 +322,17 @@ pub fn read_server(
             }
             crate::settings::paint_interface(f);
         })?;
-        if (search_job.is_some() || outline_job.is_some() || total.is_none() || pages.busy())
+        if (search.busy() || outline_job.is_some() || total.is_none() || pages.busy())
             && !event::poll(Duration::from_millis(60))?
         {
             continue;
         }
         let e = crate::settings::read_event()?;
+        let previous = Location {
+            page: n,
+            offset,
+            crop,
+        };
         if !menu && let Some(target) = sidebar.input(&e, total.unwrap_or(0)) {
             if let Some(target) = target
                 && let Some(count) = total
@@ -327,6 +340,14 @@ pub fn read_server(
                 n = target.clamp(1, count);
                 offset = 0;
                 crop = Crop::default();
+                history.record(
+                    previous,
+                    Location {
+                        page: n,
+                        offset,
+                        crop,
+                    },
+                );
                 dirty = true;
             }
             continue;
@@ -353,7 +374,11 @@ pub fn read_server(
                 KeyCode::Char('s' | 'S') => 23,
                 KeyCode::Char('p' | 'P' | 'o' | 'O') => 24,
                 KeyCode::Char('/') => 16,
-                KeyCode::Char('n' | 'N') => 17,
+                KeyCode::Char('[') | KeyCode::F(4) => 37,
+                KeyCode::Char('n' | 'N' | ']') | KeyCode::F(3) => 17,
+                KeyCode::F(5) => 38,
+                KeyCode::Char(',') => 35,
+                KeyCode::Char('.') => 36,
                 KeyCode::Char('z' | 'Z') => 14,
                 KeyCode::Char('f' | 'F') => 15,
                 KeyCode::Char('q' | 'Q') => 5,
@@ -466,7 +491,10 @@ pub fn read_server(
                 }
             }
             5 => break,
-            6 => n = 1,
+            6 => {
+                n = 1;
+                offset = 0;
+            }
             7 => n = total.unwrap_or(n),
             8 => crop.level = crop.level.saturating_add(1).min(2),
             9 => crop.level = crop.level.saturating_sub(1),
@@ -547,28 +575,48 @@ pub fn read_server(
                 }
             }
             16 => {
-                if let Some(text) =
-                    crate::prompt::edit(term, "Find in text layer", "[ Search ↵ ]", &query, |_| {})?
-                    && !text.is_empty()
+                if let Some(text) = crate::prompt::edit(
+                    term,
+                    "Find in text layer",
+                    "[ Search ↵ ]",
+                    &search.query,
+                    |_| {},
+                )? && !text.is_empty()
                 {
-                    query = text.clone();
-                    let path = path.to_owned();
-                    found.clear();
+                    search.start(&worker, path, kind, text);
                     message = "Searching…".into();
-                    search_job = Some(
-                        worker.start(move |cancel| botui_fixed::search(&path, kind, &text, cancel)),
-                    );
                 }
             }
-            17 => {
-                if let Some(first) = found.first() {
-                    n = found.iter().copied().find(|p| *p > n).unwrap_or(*first);
+            17 | 37 => {
+                if let Some(page) = search.step(n, action == 17) {
+                    n = page;
                     offset = 0;
-                    message = if found.len() == 1 {
-                        "1 matching page".to_owned()
+                    message = search.status();
+                }
+            }
+            38 => {
+                if let Some(page) = search.choose(term, n)? {
+                    n = page;
+                    offset = 0;
+                }
+            }
+            35 | 36 => {
+                let target = if action == 35 {
+                    history.back(previous)
+                } else {
+                    history.forward(previous)
+                };
+                if let Some(target) = target {
+                    n = target.page;
+                    offset = target.offset;
+                    crop = target.crop;
+                } else {
+                    message = if action == 35 {
+                        "No earlier jump"
                     } else {
-                        format!("{} matching pages · N next", found.len())
-                    };
+                        "No later jump"
+                    }
+                    .into();
                 }
             }
             14 => {
@@ -580,17 +628,31 @@ pub fn read_server(
             }
             _ => (),
         }
-        if old.0 != n {
+        if old.0 != n && !(29..=36).contains(&action) {
             crop.x = 0;
             crop.y = 0;
-        }
-        menu = false;
-        if old.0 != n && !(29..=34).contains(&action) {
             offset = 0;
         }
+        menu = false;
+        if action == 7 && scrolling {
+            // The last raster might still be rendering. Its final viewport is
+            // resolved from its actual dimensions when it becomes available.
+            offset = u16::MAX;
+        }
+        if matches!(action, 6 | 7 | 17 | 19 | 21 | 24 | 37 | 38) {
+            history.record(
+                previous,
+                Location {
+                    page: n,
+                    offset,
+                    crop,
+                },
+            );
+        }
         if action == 2 && total.is_some_and(|t| n.saturating_add(u32::from(cols)) > t) {
-            finished = true;
-            dirty = true;
+            finish_on_arrival = Some(n);
+        } else if old != (n, spread, scrolling, offset) {
+            finish_on_arrival = None;
         }
         dirty |= old != (n, spread, scrolling, offset);
     }
