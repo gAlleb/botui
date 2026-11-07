@@ -10,11 +10,13 @@ use ratatui::{
 pub(super) enum Dialog {
     Page { value: String, invalid: bool },
     Width,
+    Search(crate::prompt::LineInput),
 }
 #[derive(Clone, Copy)]
 pub(super) enum Command {
     None,
     Close,
+    Find,
     Go(u32),
     Zoom(bool),
     Fit,
@@ -37,7 +39,21 @@ impl Dialog {
         hits: &mut Hits,
     ) {
         let fit = if scrolling { "Fit width" } else { "Fit page" };
+        let width = match self {
+            Self::Page { .. } => 34,
+            Self::Width => 40,
+            Self::Search(_) => 54,
+        };
+        let outer = crate::centered(pane, width, 5);
         let (title, line, buttons) = match self {
+            Self::Search(input) => (
+                " Find in text layer ".into(),
+                input.display(outer.width.saturating_sub(4), false),
+                vec![
+                    ("[ Search ↵ ]", Command::Find),
+                    ("[ Cancel ]", Command::Close),
+                ],
+            ),
             Self::Page { value, invalid } => (
                 format!(" Go to page · 1–{total} "),
                 if *invalid {
@@ -65,7 +81,6 @@ impl Dialog {
                 ],
             ),
         };
-        let outer = crate::centered(pane, if matches!(self, Self::Width) { 40 } else { 34 }, 5);
         let block = crate::appearance::block().title(title);
         let inner = block.inner(outer);
         super::overlay::paint(f, outer, |f| {
@@ -93,6 +108,9 @@ impl Dialog {
         });
     }
     pub fn input(&mut self, e: &Event, hits: &Hits, total: u32) -> Command {
+        if let Self::Search(input) = self {
+            input.edit(e);
+        }
         let action = match e {
             Event::Mouse(m) if m.kind == MouseEventKind::Down(MouseButton::Left) => hits
                 .iter()
@@ -102,6 +120,8 @@ impl Dialog {
                 KeyCode::Esc => Command::Close,
                 KeyCode::Char('c') if k.modifiers.contains(KeyModifiers::CONTROL) => Command::Close,
                 _ => match self {
+                    Self::Search(_) if k.code == KeyCode::Enter => Command::Find,
+                    Self::Search(_) => Command::None,
                     Self::Width => match k.code {
                         KeyCode::Char('+' | '=') | KeyCode::Right => Command::Zoom(true),
                         KeyCode::Char('-' | '−') | KeyCode::Left => Command::Zoom(false),

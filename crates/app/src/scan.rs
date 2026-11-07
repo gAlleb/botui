@@ -368,6 +368,15 @@ pub fn read_server(
             match d.input(&e, &dialog_hits, total.unwrap_or(0)) {
                 controls::Command::None => (),
                 controls::Command::Close => dialog = None,
+                controls::Command::Find => {
+                    if let Some(controls::Dialog::Search(input)) = dialog.take() {
+                        let text = input.finish(false);
+                        if !text.is_empty() {
+                            search.start(&worker, path, kind, text);
+                            message = "Searching…".into();
+                        }
+                    }
+                }
                 controls::Command::Fit => crop = Crop::default(),
                 controls::Command::Zoom(more) => crop.step(more),
                 controls::Command::Go(page) => {
@@ -630,17 +639,9 @@ pub fn read_server(
             }
             24 => dialog = Some(controls::Dialog::page()),
             16 => {
-                if let Some(text) = crate::prompt::edit(
-                    term,
-                    "Find in text layer",
-                    "[ Search ↵ ]",
+                dialog = Some(controls::Dialog::Search(crate::prompt::LineInput::new(
                     &search.query,
-                    |_| {},
-                )? && !text.is_empty()
-                {
-                    search.start(&worker, path, kind, text);
-                    message = "Searching…".into();
-                }
+                )))
             }
             17 | 37 => {
                 if let Some(page) = search.step(n, action == 17) {

@@ -1,5 +1,7 @@
+mod line;
 use crate::{AppTerminal, centered};
 use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind};
+pub(crate) use line::LineInput;
 use ratatui::{
     layout::{Position, Rect},
     style::Stylize,
@@ -25,8 +27,7 @@ pub fn field(
     secret: bool,
     mut underneath: impl FnMut(&mut ratatui::Frame),
 ) -> io::Result<Option<String>> {
-    let mut value = initial.to_owned();
-    let mut cursor = value.len();
+    let mut value = LineInput::new(initial);
     loop {
         let mut accept = Rect::default();
         let mut cancel = Rect::default();
@@ -38,28 +39,8 @@ pub fn field(
             f.render_widget(Clear, area);
             f.render_widget(border, area);
             if !inner.is_empty() {
-                let masked = if secret {
-                    "•".repeat(value[..cursor].chars().count())
-                } else {
-                    value[..cursor].to_string()
-                };
-                let mut visible = masked.as_str();
-                use ratatui::text::Line;
-                while Line::from(visible).width() + 2 > inner.width as usize && !visible.is_empty()
-                {
-                    visible = &visible[visible.chars().next().unwrap().len_utf8()..];
-                }
-                f.render_widget(
-                    Paragraph::new(format!(
-                        " {visible}▏{}",
-                        if secret {
-                            "•".repeat(value[cursor..].chars().count())
-                        } else {
-                            value[cursor..].to_string()
-                        }
-                    )),
-                    inner,
-                );
+                let label = value.display(inner.width.saturating_sub(1), secret);
+                f.render_widget(Paragraph::new(format!(" {label}")), inner);
                 accept = Rect::new(inner.x, inner.bottom() - 1, inner.width.min(12), 1);
                 cancel = Rect::new(
                     accept.right(),
@@ -72,61 +53,21 @@ pub fn field(
             }
             crate::settings::paint_interface(f);
         })?;
-        match crate::settings::read_event()? {
+        let event = crate::settings::read_event()?;
+        match &event {
             Event::Key(k) if k.kind != KeyEventKind::Release => match k.code {
                 KeyCode::Esc => return Ok(None),
                 KeyCode::Char('c') if k.modifiers.contains(KeyModifiers::CONTROL) => {
                     return Ok(None);
                 }
-                KeyCode::Enter => {
-                    return Ok(Some(if secret { value } else { value.trim().into() }));
-                }
-                KeyCode::Home => cursor = 0,
-                KeyCode::End => cursor = value.len(),
-                KeyCode::Left => {
-                    cursor = value[..cursor]
-                        .char_indices()
-                        .next_back()
-                        .map_or(0, |(i, _)| i)
-                }
-                KeyCode::Right => {
-                    cursor += value[cursor..].chars().next().map_or(0, char::len_utf8)
-                }
-                KeyCode::Backspace if cursor > 0 => {
-                    let i = value[..cursor].char_indices().next_back().unwrap().0;
-                    value.drain(i..cursor);
-                    cursor = i;
-                }
-                KeyCode::Delete if cursor < value.len() => {
-                    value.remove(cursor);
-                }
-                KeyCode::Char('u') if k.modifiers.contains(KeyModifiers::CONTROL) => {
-                    value.clear();
-                    cursor = 0;
-                }
-                KeyCode::Char(c)
-                    if !c.is_control()
-                        && !k.modifiers.contains(KeyModifiers::CONTROL)
-                        && value.chars().count() < 2048 =>
-                {
-                    value.insert(cursor, c);
-                    cursor += c.len_utf8();
-                }
-                _ => (),
+                KeyCode::Enter => return Ok(Some(value.finish(secret))),
+                _ => value.edit(&event),
             },
-            Event::Paste(s) => {
-                let s: String = s
-                    .chars()
-                    .filter(|c| !c.is_control())
-                    .take(2048usize.saturating_sub(value.chars().count()))
-                    .collect();
-                value.insert_str(cursor, &s);
-                cursor += s.len();
-            }
+            Event::Paste(_) => value.edit(&event),
             Event::Mouse(m) if m.kind == MouseEventKind::Down(MouseButton::Left) => {
                 let p = Position::new(m.column, m.row);
                 if accept.contains(p) {
-                    return Ok(Some(if secret { value } else { value.trim().into() }));
+                    return Ok(Some(value.finish(secret)));
                 }
                 if cancel.contains(p) {
                     return Ok(None);

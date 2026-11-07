@@ -2,6 +2,8 @@
 """Measure the rendered page, not only the zoom value reported by the footer."""
 import importlib.util
 import re
+import shutil
+import subprocess
 import tempfile
 from pathlib import Path
 
@@ -66,4 +68,60 @@ with tempfile.TemporaryDirectory(prefix="botui-small-sheets-") as tmp:
         scroll.stop(term)
     finally:
         term.run("kill-server",required=False)
-print("Passed: physical PDF width, symmetric margins, mouse controls, zoom persistence and page dialog over the sheet.")
+def check_search(root, book, page_count):
+    term = scroll.start(root, book)
+    try:
+        term.keys("3")
+        pixels = re.compile(r"([.:%#*=+@-])\1{14,}")
+        paper = term.wait("Rendered first sheet", lambda f:
+                          f"1 / {page_count}" in f and pixels.search(f))
+        rows = [line for line in paper.splitlines() if pixels.search(line)]
+        term.keys("/")
+        overlay = term.wait("Search over visible paper and contents", lambda f:
+                            "Find in text layer" in f and "Page 1" in f
+                            and any(row in f for row in rows))
+        assert "[ Search ↵ ]" in overlay and "[ Cancel ]" in overlay
+
+        term.type("исправить")
+        term.keys("C-u")
+        paste = "\x1b[200~Lightouse atlas\x1b[201~"
+        term.keys("-H", *[f"{b:02x}" for b in paste.encode()])
+        term.keys("Home", *["Right"] * 5, "h", "Home", "Delete", "L", "End", "x", "BSpace")
+        term.click("[ Search ↵ ]", term.see("Lighthouse atlas▏"))
+        term.wait("Search reaches the matching sheet", lambda f:
+                  f"2 / {page_count}" in f and "1 matching page" in f)
+
+        term.keys("/")
+        term.see("Lighthouse atlas▏")
+        term.keys("C-u")
+        term.type("discard this")
+        term.click("[ Cancel ]", term.see("discard this▏"))
+        term.keys("F5")
+        term.see("Lighthouse atlas")
+        term.keys("Escape")
+        term.see(f"2 / {page_count}")
+        scroll.stop(term)
+    finally:
+        term.run("kill-server", required=False)
+
+
+with tempfile.TemporaryDirectory(prefix="botui-scan-search-") as tmp:
+    root = Path(tmp)
+    pdf = root / "search.pdf"
+    pdf.write_bytes(scroll.s.pdf())
+    check_search(root, pdf, 3)
+    if all(shutil.which(tool) for tool in ("c44", "djvm", "djvused")):
+        pages = []
+        for i, color in enumerate((76, 204)):
+            ppm = root / f"page{i}.ppm"
+            ppm.write_bytes(b"P6\n120 175\n255\n" + bytes([color]) * (3 * 120 * 175))
+            page = ppm.with_suffix(".djvu")
+            subprocess.run(["c44", ppm, page], check=True)
+            pages.append(page)
+        djvu = root / "search.djvu"
+        subprocess.run(["djvm", "-c", djvu, *pages], check=True)
+        (root / "text").write_text('(page 0 0 120 175 (line 0 0 110 40 "Lighthouse atlas"))')
+        subprocess.run(["djvused", "-s", "-e", "select 2; set-txt text", djvu], cwd=root, check=True)
+        check_search(root, djvu, 2)
+
+print("Passed physical zoom, page jump and editable text search over rendered sheets.")
