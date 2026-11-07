@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check notices in the installed-style executable, including the About link offline."""
+"""Check notices in the installed-style executable, including the Legal link offline."""
 import importlib.util
 import os
 import subprocess
@@ -11,7 +11,7 @@ root = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location("shelf", root / "scripts/smoke-shelf.py")
 shelf = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(shelf)
-exe = root / "target/debug/botui"
+exe = Path(os.environ.get("BOTUI_TEST_BIN", root / "target/debug/botui"))
 notice = subprocess.check_output([exe, "--license"], text=True)
 assert (root / "LICENSE").read_text() in notice
 assert (root / "licenses/bookorbit/ADDITIONAL_TERMS.md").read_text() in notice
@@ -27,6 +27,11 @@ with tempfile.TemporaryDirectory(prefix="botui-about-") as tmp:
         t.see("Your TUI book reader.")
         t.keys("?")
         t.click("About", t.see("Keyboard shortcuts"))
+        frame = t.see("Terminal book reader")
+        assert "local folder" in frame and "OPDS" in frame and "Powered by" not in frame
+        t.keys("Enter")
+        assert not (d / "opened-url").exists()
+        t.click(" Legal ", frame)
         frame = t.see("Powered by BookOrbit")
         assert "BOTUI" in frame and "Copyright (C) 2025-2026 neon" in frame
         t.click("Powered by BookOrbit", frame)

@@ -65,13 +65,14 @@ impl Buttons {
         }
     }
 }
-const TABS: [&str; 6] = [
+const TABS: [&str; 7] = [
     "Appearance",
     "Reader",
     "Library",
     "BookOrbit",
     "Keys",
     "About",
+    "Legal",
 ];
 fn rows(tab: usize, s: &Settings) -> Vec<String> {
     let pair = |k: &str, v: &str| format!(" {k:<23} {v}");
@@ -228,12 +229,12 @@ pub fn show(term: &mut AppTerminal, start: Open, ctx: Context) -> io::Result<()>
         term.draw(|f| {
             let area = match tab {
                 4 => crate::centered(f.area(), 106, 34),
-                5 => crate::centered(f.area(), 82, 24),
+                5 | 6 => crate::centered(f.area(), 82, 24),
                 _ => crate::centered(f.area(), 82, (labels.len() as u16+12).max(16)),
             };
             let block = appearance::block().title(if tab == 4 {
                 " Keyboard shortcuts "
-            } else if tab==5 {" About / Legal notices "} else {
+            } else if tab == 5 { " About BOTUI " } else if tab == 6 { " Legal notices " } else {
                 " Settings "
             });
             let inner = block.inner(area);
@@ -242,16 +243,19 @@ pub fn show(term: &mut AppTerminal, start: Open, ctx: Context) -> io::Result<()>
                 crate::settings::paint_interface(f);
                 return;
             }
-            let compact = inner.width < 52;
+            let compact = inner.width < 63;
             let mut x = inner.x;
+            let mut y = inner.y;
             for (i, label) in TABS.iter().enumerate() {
                 let s = if compact {
-                    ["Style", "Read", "Lib", "Orbit", "Keys", "About"][i]
+                    ["Style", "Read", "Lib", "Orbit", "Keys", "About", "Legal"][i]
                 } else {
                     label
                 };
-                let w = (s.len() as u16 + 2).min(inner.right().saturating_sub(x));
-                let r = Rect::new(x, inner.y, w, 1);
+                let w = (s.len() as u16 + 2).min(inner.width);
+                if x + w > inner.right() { x = inner.x; y += 1; }
+                if y >= inner.bottom().saturating_sub(1) { break; }
+                let r = Rect::new(x, y, w, 1);
                 tabs[i] = r;
                 let style = if i == tab {
                     Style::new().cyan().reversed().bold()
@@ -264,13 +268,13 @@ pub fn show(term: &mut AppTerminal, start: Open, ctx: Context) -> io::Result<()>
             let gap = u16::from(inner.height >= 8);
             body = Rect::new(
                 inner.x,
-                inner.y + 1 + gap,
+                y + 1 + gap,
                 inner.width,
                 inner
                     .height
-                    .saturating_sub(2 + gap + u16::from(!status.is_empty())),
+                    .saturating_sub(y - inner.y + 2 + gap + u16::from(!status.is_empty())),
             );
-            if tab==5 { (about_max,website)=about::draw(f,body,&mut about_offset); } else if tab==4 { guide_view.draw(f,body,&guide); } else {
+            if tab == 6 { (about_max, website) = about::legal(f, body, &mut about_offset); } else if tab == 5 { about_max = about::draw(f, body, &mut about_offset); } else if tab==4 { guide_view.draw(f,body,&guide); } else {
             f.render_stateful_widget(
                 List::new(labels.iter().map(String::as_str))
                     .highlight_style(Style::new().reversed()),
@@ -318,7 +322,7 @@ pub fn show(term: &mut AppTerminal, start: Open, ctx: Context) -> io::Result<()>
             back = Rect::new(inner.x, inner.bottom() - 1, inner.width.min(back_label.len() as u16), 1);
             f.render_widget(Paragraph::new(back_label).cyan(), back);
             f.render_widget(
-                Paragraph::new(if tab == 5 {"  Enter Website   ↑↓ Scroll"} else if tab == 4 {
+                Paragraph::new(if tab == 6 {"  Enter Website   ↑↓ Scroll"} else if tab == 5 {"  Tab Sections   ↑↓ Scroll"} else if tab == 4 {
                     if inner.width >= 58 { "  ↑↓ Scroll   [ / ] Section   Tab Switch tab" } else { "  ↑↓ Scroll  [ ] Section" }
                 } else {
                     "  Tab Sections   ↑↓ Choose   Enter Edit"
@@ -380,7 +384,7 @@ pub fn show(term: &mut AppTerminal, start: Open, ctx: Context) -> io::Result<()>
                             continue;
                         }
                         select = tabs.iter().position(|r| r.contains(pos));
-                        if body.contains(pos) && (tab != 5 || website.contains(pos)) {
+                        if body.contains(pos) && (tab < 5 || website.contains(pos)) {
                             opened = Some(state.offset() + usize::from(m.row - body.y));
                         }
                         0
@@ -401,13 +405,13 @@ pub fn show(term: &mut AppTerminal, start: Open, ctx: Context) -> io::Result<()>
             continue;
         }
         if tab >= 4 {
-            if tab == 5 && opened.is_some() {
+            if tab == 6 && opened.is_some() {
                 status = about::open()
                     .err()
                     .map(|e| e.to_string())
                     .unwrap_or_default();
             }
-            if tab == 5 {
+            if tab >= 5 {
                 about_offset = about_offset.saturating_add_signed(delta).min(about_max);
             } else {
                 guide_view.scroll(delta);

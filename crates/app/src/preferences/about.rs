@@ -10,7 +10,36 @@ use std::{
     process::{Command, Stdio},
 };
 const URL: &str = "https://github.com/bookorbit/bookorbit";
-pub fn draw(f: &mut Frame, area: Rect, offset: &mut usize) -> (usize, Rect) {
+pub fn draw(f: &mut Frame, area: Rect, offset: &mut usize) -> usize {
+    use ratatui::text::Line;
+    let text = vec![
+        Line::from(concat!("BOTUI ", env!("CARGO_PKG_VERSION")))
+            .cyan()
+            .bold(),
+        Line::from("Terminal book reader"),
+        Line::default(),
+        Line::from(
+            "Open a book from a local folder, browse an OPDS catalog or connect your BookOrbit library.",
+        ),
+        Line::default(),
+        Line::from(
+            "Read EPUB, FB2, PDF and DjVu on a single page, in a two-page spread or with continuous scrolling.",
+        ),
+        Line::default(),
+        Line::from(
+            "Jump to a chapter, search the text or bookmark your place with the keyboard or mouse.",
+        ),
+    ];
+    let p = Paragraph::new(text).wrap(Wrap { trim: true });
+    let max = p
+        .line_count(area.width)
+        .saturating_sub(usize::from(area.height));
+    *offset = (*offset).min(max);
+    f.render_widget(p.scroll((*offset as u16, 0)), area);
+    max
+}
+
+pub fn legal(f: &mut Frame, area: Rect, offset: &mut usize) -> (usize, Rect) {
     let text = concat!(
         "BOTUI ",
         env!("CARGO_PKG_VERSION"),
