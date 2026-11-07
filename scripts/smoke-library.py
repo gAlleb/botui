@@ -18,9 +18,22 @@ def check(tmp):
     binary = ROOT / "target/debug/botui"
     home = shelf.Terminal(tmp, binary, args=[])
     try:
-        home.see("Connect to BookOrbit")
-        home.run("resize-window","-t","shelf","-x","42","-y","14")
-        home.wait("Download shelves fit the compact home",lambda f:"BOTUI" in f and "BookOrbit offline downloads" in f and "Your TUI book reader." in f)
+        for width, height in [(120, 38), (80, 24), (42, 14)]:
+            home.run("resize-window", "-t", "shelf", "-x", str(width), "-y", str(height))
+            home.keys("Home")
+            # Wait for the resize to repaint before measuring text rows.
+            frame = home.wait("local first at new size", lambda f: len(f.splitlines()) == height
+                              and "Browse a folder on this device" in f and "/  Search" in f)
+            assert frame.index("Browse local library") < frame.index("Connect to BookOrbit")
+            hint_row = next(i for i, line in enumerate(frame.splitlines()) if "/  Search" in line)
+            for desc in ["Sign in to a BookOrbit", "Connect to an OPDS", "Continue your BookOrbit", "Read books you saved"]:
+                home.keys("Down")
+                frame = home.see(desc)
+                assert "/  Search" in frame.splitlines()[hint_row], (width, height, frame)
+        home.keys("Home", "Enter")
+        home.see("Local library")
+        home.keys("q")
+        home.see("Choose a library")
         home.keys("End")
         home.see("Read books you saved from OPDS")
         home.keys("Enter")

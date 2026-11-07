@@ -1,5 +1,5 @@
 //! Geometry is shared by drawing, keyboard navigation and mouse hit testing.
-pub(super) mod bauhaus;
+pub(crate) mod binding;
 mod jacket_edge;
 use super::{Book, Command, Scope, Shelf, single_line};
 use crate::centered;
@@ -111,32 +111,14 @@ pub(super) fn caption(text: &str, width: u16, max_lines: usize) -> String {
 /// A cloth binding and foil ornament drawn as terminal cells. The same title
 /// and author always get the same jacket, independent of sorting and resizing.
 fn jacket(frame: &mut Frame, slot: Rect, book: &Book, graphics: &ratatui_image::picker::Picker) {
-    if let crate::catalog::Jacket::Bauhaus { series, index } = &book.jacket {
-        bauhaus::draw(
-            frame,
-            slot,
-            graphics,
-            book,
-            series.as_deref(),
-            index.as_deref(),
-        );
+    let binding = binding::Binding::from(book);
+    if graphics.protocol_type() != ratatui_image::picker::ProtocolType::Halfblocks
+        && binding.draw(frame, slot, graphics)
+    {
         return;
     }
-    let title = single_line(book.title.clone().unwrap_or_else(|| "Untitled".into()));
-    let author = single_line(book.authors.join(", "));
-    let seed = title
-        .bytes()
-        .chain(author.bytes())
-        .fold(2166136261u32, |a, b| (a ^ b as u32).wrapping_mul(16777619));
-    let palette = [
-        (64, 85, 87),
-        (110, 65, 61),
-        (76, 73, 105),
-        (102, 83, 59),
-        (60, 77, 106),
-        (76, 87, 68),
-    ];
-    let (r, g, b) = palette[seed as usize % palette.len()];
+    let title = &binding.title;
+    let (r, g, b) = binding.cloth();
     let cloth = Style::new()
         .bg(Color::Rgb(r, g, b))
         .fg(Color::Rgb(246, 229, 191));
@@ -154,7 +136,7 @@ fn jacket(frame: &mut Frame, slot: Rect, book: &Book, graphics: &ratatui_image::
         Rect::new(area.x + 1, area.y, 1, area.height),
     );
     let field = Rect::new(area.x + 2, area.y, area.width - 3, area.height);
-    let ornament = ["─ ◇ ─", "· ✦ ·", "─ ❖ ─", "· ◆ ·"][(seed >> 4) as usize % 4];
+    let ornament = "─ ❧ ─";
     frame.render_widget(
         Paragraph::new(ornament).centered().style(gold),
         line(field, 0, 1),
@@ -171,7 +153,7 @@ fn jacket(frame: &mut Frame, slot: Rect, book: &Book, graphics: &ratatui_image::
                     .collect()
             } else {
                 caption(
-                    &title,
+                    title,
                     field.width,
                     usize::from(field.height.saturating_sub(y + 1)),
                 )

@@ -296,6 +296,7 @@ fn bookorbit_shelf(
     notices: &mut Vec<String>,
 ) -> Result<()> {
     let connection = settings::Settings::load()?.bookorbit;
+    let explicit_server = server.is_some();
     let address = server
         .or_else(|| env::var("BOTUI_SERVER").ok())
         .unwrap_or_else(|| connection.server.clone());
@@ -305,6 +306,9 @@ fn bookorbit_shelf(
         String::new()
     };
     let mut shelf = shelf::Shelf::new(address, user);
+    if explicit_server {
+        shelf.focus_bookorbit();
+    }
     shelf.grid_view = !connection.list_view;
     shelf.credentials = Some(connection);
     loop {
@@ -364,12 +368,9 @@ fn bookorbit_shelf(
 fn run() -> Result<()> {
     let start = arguments()?;
     if matches!(start, Start::License) {
-        println!(
-            "{}\n{}\n{}\n{}",
-            include_str!("../../../licenses/NOTICE.md"),
-            include_str!("../../../LICENSE"),
-            include_str!("../../../licenses/bookorbit/LICENSE"),
-            include_str!("../../../licenses/bookorbit/ADDITIONAL_TERMS.md")
+        print!(
+            "BOTUI · GPL-3.0-or-later\n\n{}",
+            include_str!("../../../LICENSE")
         );
         return Ok(());
     }

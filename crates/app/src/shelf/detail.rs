@@ -94,9 +94,7 @@ impl Shelf {
             let w = (area.width / 5).clamp(15, 24);
             let cover = Rect::new(area.x, area.y + 1, w, area.height.saturating_sub(4).min(18));
             self.artwork(f, cover, book);
-            if self.session.is_some() || self.links.originals.contains_key(&book.id) {
-                self.card.hits.push((cover, Act::Cover));
-            }
+            self.card.hits.push((cover, Act::Cover));
             body.x += w + 3;
             body.width -= w + 3;
         }
@@ -273,9 +271,7 @@ impl Shelf {
         if has_files {
             controls.extend([("[R Read]", Act::Read), ("[D Save offline]", Act::Save)]);
         }
-        if self.session.is_some() || self.links.originals.contains_key(&book.id) {
-            controls.push(("[C View cover]", Act::Cover));
-        }
+        controls.push(("[C View cover]", Act::Cover));
         if matches!(status, Some("Reading" | "Rereading" | "On hold")) {
             controls.push((
                 if status == Some("On hold") {
@@ -411,15 +407,12 @@ impl Shelf {
                     {
                         return Ok(bytes);
                     }
-                    if let Some(img) = super::gallery::bauhaus::original(&book) {
-                        return crate::cover_viewer::png(img);
-                    }
                 } else if let (Some(cat), Some(url)) = (catalog, href) {
                     return cat
                         .full_cover(url)
                         .map_err(|_| "Could not retrieve the OPDS cover.".into());
                 }
-                Err("No cover available for this book.".into())
+                super::gallery::binding::Binding::from(&book).png()
             });
             return Ok(true);
         }

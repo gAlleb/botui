@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="240" height="360" viewBox="0 0 240 360">
+  <rect width="240" height="360" fill="{cloth}"/>
+  <path d="M0 0h14v360H0z" fill="#141218" opacity=".32"/>
+  <path d="M16 0v360" stroke="#ede0b5" opacity=".36"/>
+  <g fill="none" stroke="#e2bd81">
+    <rect x="25" y="9" width="205" height="342" rx="2" opacity=".75"/>
+    <path d="M30 32V15h18m159 0h18v17M30 328v17h18m159 0h18v-17" opacity=".8"/>
+  </g>
+  <!-- A foil-stamped sprig. The bent stem and alternating leaves share one die. -->
+  <g fill="#debd85">
+    <path d="M112 92q19-19 26-53" fill="none" stroke="#debd85" stroke-width="1.5"/>
+    <path d="M135 52q-9-8 4-18 3 13-4 18zm-3 11q1-12 16-14-3 12-16 14zm-2 5q-14-3-14-18 13 5 14 18zm-6 10q5-11 19-9-6 10-19 9zm-3 3q-14 1-17-13 13 1 17 13z"/>
+    <path d="M96 100h24v1H96zm39 0h24v1h-24zm-11 0 4-3 4 3-4 3z"/>
+  </g>
+  <g text-anchor="middle" font-family="serif" fill="#fff0ce">{lettering}</g>
+  <path d="M103 310h50m-40 3h30" stroke="#dfbf88" fill="none"/>
+</svg>

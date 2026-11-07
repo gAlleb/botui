@@ -340,9 +340,9 @@ class Terminal:
 def login(term, url, wrong_password=False):
     home = term.see("Connect to BookOrbit")
     assert "Your TUI book reader." in home and "EPUB  ·  FB2" in home
-    term.keys("Down")
+    term.keys("Home")
     term.see("Browse a folder on this device")
-    term.keys("Up")
+    term.keys("Down")
     term.see("Sign in to a BookOrbit server")
     term.keys("Enter")
     form = term.see("Password")

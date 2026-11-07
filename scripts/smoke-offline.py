@@ -182,7 +182,7 @@ with tempfile.TemporaryDirectory() as name, shelf.Fixture(False) as server:
         assert len(updated) == len(epub.read_bytes())
         server.files[301] = ("epub", "application/epub+zip", updated)
         server.revision = "2"
-        term.keys("Enter"); term.see("Continue reading"); term.keys("1")
+        term.keys("b"); term.see("Continue reading"); term.keys("1")
         term.see(shelf.BOOK); term.keys("Enter")
         term.see("Harbor Press")
         term.click("EPUB", shelf.formats(term))

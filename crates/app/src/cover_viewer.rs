@@ -38,9 +38,20 @@ impl Viewer {
         let path = path.to_owned();
         self.start(move |cancel| match kind {
             Pdf | Djvu => png(botui_fixed::page(&path, kind, 1, 1440, cancel)?),
-            _ => botui_formats::cover(&path)
-                .map_err(|e| e.to_string())?
-                .ok_or_else(|| "No embedded cover available for this book.".into()),
+            _ => {
+                if let Some(bytes) = botui_formats::cover(&path).map_err(|e| e.to_string())? {
+                    return Ok(bytes);
+                }
+                let meta = botui_formats::book_metadata(&path).map_err(|e| e.to_string())?;
+                let (title, authors) = crate::catalog::local_credits(&path, Some(&meta));
+                crate::shelf::gallery::binding::Binding::new(
+                    &title,
+                    &authors,
+                    meta.series.first().map(String::as_str),
+                    None,
+                )
+                .png()
+            }
         });
     }
     pub fn start(&mut self, get: impl FnOnce(&AtomicBool) -> Result<Vec<u8>> + Send + 'static) {

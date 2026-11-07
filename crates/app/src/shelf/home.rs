@@ -9,48 +9,60 @@ use ratatui::{
     widgets::{Paragraph, Wrap},
 };
 
-fn source(cmd: &Command, connected: bool) -> (&'static str, &'static str, &'static str) {
+fn source(cmd: &Command, connected: bool) -> (char, &'static str, &'static str) {
     match cmd {
         Command::Connect if connected => (
-            "C",
+            'C',
             "Sign out of the current account and enter another server address or username.",
             "Enter Change connection   Esc Back",
         ),
         Command::Connect => (
-            "B",
+            'B',
             "Sign in to a BookOrbit server to read your books and sync your position and bookmarks.",
             "0  Dashboard      /  Search",
         ),
         Command::OpenTab(Tab::Dashboard) => (
-            "B",
+            'B',
             "Return to your account dashboard, current books and newest additions.",
             "0  Dashboard      /  Search",
         ),
         Command::Local => (
-            "L",
+            'L',
             "Browse a folder on this device. Open an EPUB, FB2, PDF or DjVu and pick up where you left off.",
             "P  Choose folder      /  Search",
         ),
         Command::Opds => (
-            "P",
+            'P',
             "Connect to an OPDS catalog, browse its feeds and choose an edition to read or download.",
             "Enter  Open feed      /  Search",
         ),
         Command::Downloads(crate::cache::Source::BookOrbit) => (
-            "D",
+            'D',
             "Continue your BookOrbit books offline. Your reading position syncs when your account reconnects.",
             "Enter  Open book      /  Search",
         ),
         Command::Downloads(crate::cache::Source::Opds) => (
-            "O",
+            'O',
             "Read books you saved from OPDS catalogs. Reading progress is stored on this device.",
             "Enter  Open book      /  Search",
         ),
-        _ => ("", "", ""),
+        _ => ('\0', "", ""),
     }
 }
 
 impl Shelf {
+    pub(super) fn home_shortcut(&self, key: char) -> Option<usize> {
+        self.current().rows.iter().position(|row| {
+            key.is_ascii_alphabetic()
+                && key.eq_ignore_ascii_case(&source(&row.action, self.session.is_some()).0)
+        })
+    }
+
+    pub(crate) fn focus_bookorbit(&mut self) {
+        let bookorbit = self.home_shortcut('B');
+        self.current_mut().selection.select(bookorbit);
+    }
+
     pub(super) fn draw_home(&mut self, f: &mut Frame) {
         let screen = f.area();
         let frame = crate::appearance::block();
@@ -61,11 +73,14 @@ impl Shelf {
         }
         let sources = self.current().rows.len() as u16;
         // Both halves, the masthead and the footer belong to one reading-width panel.
-        let canvas = crate::centered(area, area.width.min(84), 28 + sources.saturating_sub(5));
+        let canvas = crate::centered(area, area.width.min(92), 22 + sources);
         let ink = Style::new().fg(Color::Cyan);
         let row = |y, h| Rect::new(canvas.x, y, canvas.width, h);
-        let mut y = canvas.y + masthead::draw(f, area, canvas);
-        if canvas.height >= 10 && !masthead::illustrated(canvas) {
+        let masthead_h = masthead::draw(f, area, canvas);
+        let illustrated = masthead::illustrated(canvas);
+        let short = illustrated && canvas.height <= masthead_h + sources + 1;
+        let mut y = canvas.y + masthead_h + u16::from(illustrated && !short);
+        if canvas.height >= 10 && !illustrated {
             let tagline = if canvas.width >= 64 {
                 "Your TUI book reader.   EPUB · FB2 · PDF · DjVu"
             } else {
@@ -74,7 +89,7 @@ impl Shelf {
             f.render_widget(Paragraph::new(tagline).centered().dim(), row(y, 1));
             y += 1 + u16::from(canvas.height >= 16);
         }
-        if masthead::illustrated(canvas) && y + 8 < canvas.bottom() {
+        if illustrated && y + sources + 3 < canvas.bottom() {
             f.render_widget(
                 Paragraph::new("─".repeat(canvas.width.into())).dim(),
                 row(y, 1),
@@ -85,7 +100,7 @@ impl Shelf {
         let footer = row(canvas.bottom().saturating_sub(1), 1);
         let left = if wide { 35 } else { canvas.width };
         let guide_x = if wide { canvas.x + left + 3 } else { canvas.x };
-        if y < footer.y {
+        if !short && y < footer.y {
             f.render_widget(
                 Paragraph::new("Choose a library").bold(),
                 Rect::new(canvas.x, y, left, 1),
@@ -147,14 +162,30 @@ impl Shelf {
         {
             let (_, description, keys) = source(&action, self.session.is_some());
             let w = canvas.right() - guide_x;
-            let guide = Paragraph::new(description).wrap(Wrap { trim: true });
-            let h = (guide.line_count(w) as u16).min(bottom - guide_y);
-            f.render_widget(guide, Rect::new(guide_x, guide_y, w, h));
-            let key_y = guide_y + h + u16::from(wide);
-            if key_y < bottom {
+            // Reserve for the longest description and shortcut at this width, including
+            // Change connection when signed in. Selection only changes the text.
+            let wrapped = |text| Paragraph::new(text).wrap(Wrap { trim: true });
+            let (description_rows, key_rows) = self
+                .current()
+                .rows
+                .iter()
+                .map(|r| source(&r.action, self.session.is_some()))
+                .fold((0, 0), |(d, k), (_, desc, keys)| {
+                    (
+                        d.max(wrapped(desc).line_count(w) as u16),
+                        k.max(wrapped(keys).line_count(w) as u16),
+                    )
+                });
+            let room = bottom - guide_y;
+            let key_h = key_rows.min(room.saturating_sub(1));
+            let desc_h = description_rows.min(room - key_h);
+            f.render_widget(wrapped(description), Rect::new(guide_x, guide_y, w, desc_h));
+            if key_h > 0 {
+                let gap = u16::from(wide && room > desc_h + key_h);
+                let key_y = guide_y + desc_h + gap;
                 f.render_widget(
-                    Paragraph::new(keys).style(ink).wrap(Wrap { trim: true }),
-                    Rect::new(guide_x, key_y, w, bottom - key_y),
+                    wrapped(keys).style(ink),
+                    Rect::new(guide_x, key_y, w, key_h),
                 );
             }
         }

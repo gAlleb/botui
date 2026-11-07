@@ -14,6 +14,8 @@ struct Ink {
     aqua: Color,
     violet: Color,
     shade: Color,
+    pupil: Color,
+    glint: Color,
 }
 
 impl Ink {
@@ -26,6 +28,8 @@ impl Ink {
                 aqua: Color::Reset,
                 violet: Color::Reset,
                 shade: Color::Reset,
+                pupil: Color::Reset,
+                glint: Color::Reset,
             };
         }
         let palette = crate::settings::interface_palette();
@@ -47,12 +51,14 @@ impl Ink {
             "everforest" => (0xe69875, 0xdbbc7f, 0x83c092, 0xd699b6),
             _ => {
                 return Self {
-                    paper: Color::White,
+                    paper: Color::Gray,
                     feathers: Color::Red,
                     amber: Color::Yellow,
                     aqua: Color::Cyan,
                     violet: Color::Magenta,
                     shade: Color::Blue,
+                    pupil: Color::Black,
+                    glint: Color::White,
                 };
             }
         };
@@ -74,6 +80,14 @@ impl Ink {
             aqua: rgb(aqua),
             violet: rgb(violet),
             shade,
+            pupil: if palette.0.contains("light")
+                || matches!(palette.0, "catppuccin-latte" | "rose-pine-dawn")
+            {
+                fg
+            } else {
+                bg
+            },
+            glint: rgb(0xfffaf0),
         }
     }
 }
@@ -87,14 +101,14 @@ fn draw_glyphs(f: &mut Frame, x: u16, y: u16, line: &str, style: impl Fn(usize, 
 }
 
 pub(super) fn illustrated(canvas: Rect) -> bool {
-    canvas.width >= mark::W && canvas.height >= 22
+    canvas.width >= mark::MIN && canvas.height >= 22
 }
 
 pub(super) fn draw(f: &mut Frame, area: Rect, canvas: Rect) -> u16 {
     let ink = Ink::current();
     let illustrated = illustrated(canvas);
     let (w, h) = if illustrated {
-        (mark::W, mark::H)
+        (mark::width(canvas.width), mark::H)
     } else {
         (5, 1)
     };
@@ -139,10 +153,10 @@ pub(super) fn draw(f: &mut Frame, area: Rect, canvas: Rect) -> u16 {
         });
         return 1;
     }
-    mark::draw(f, mark.x, mark.y, &ink);
+    mark::draw(f, mark, &ink);
     let caption = Rect::new(
         mark.x + mark::TYPE_X,
-        mark.y + 8,
+        mark.bottom() - 3,
         mark.width - mark::TYPE_X,
         1,
     );
@@ -154,5 +168,5 @@ pub(super) fn draw(f: &mut Frame, area: Rect, canvas: Rect) -> u16 {
             ..caption
         },
     );
-    h + 1
+    h
 }

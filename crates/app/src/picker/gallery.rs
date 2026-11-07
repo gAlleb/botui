@@ -72,30 +72,19 @@ fn card(
     let mut h = DefaultHasher::new();
     e.path.hash(&mut h);
     let id = h.finish();
-    let name = e.path.file_stem().unwrap_or_default().to_string_lossy();
-    let (author, title) = name.split_once(" - ").unwrap_or(("", name.as_ref()));
+    let (title, authors) = crate::catalog::local_credits(&e.path, meta);
     Book {
         id,
-        title: Some(
-            meta.map(|m| m.title.as_str())
-                .filter(|t| !t.is_empty())
-                .unwrap_or(title)
-                .into(),
-        ),
-        authors: if let Some(m) = meta.filter(|m| !m.authors.is_empty()) {
-            m.authors.clone()
-        } else if author.is_empty() {
-            vec![]
-        } else {
-            vec![author.into()]
-        },
+        title: Some(title),
+        authors,
         files: vec![BookFile {
             id,
             format: Some(kind.label().into()),
             role: "primary".into(),
             size_bytes: None,
         }],
-        jacket: crate::catalog::Jacket::Cloth,
+        series: meta.and_then(|m| m.series.first()).cloned(),
+        series_index: None,
         has_cover: None,
         progress: e.percent,
     }

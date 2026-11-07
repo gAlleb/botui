@@ -1,10 +1,10 @@
+<p align="center"><img src="docs/images/mascot.png" width="200" height="200" alt="BOTUI’s owl perched on two books"></p>
+
 # botui
 
 **English** · [Русский](README.ru.md)
 
 A standalone terminal book reader for local folders, OPDS catalogs and BookOrbit libraries. Read reflowable EPUB and FB2 or the original PDF and DjVu pages. All four formats support a single page, a facing spread and continuous scrolling, with keyboard and mouse controls.
-
-![BookOrbit dashboard with reading progress, recent additions and book covers in Kitty](docs/images/dashboard.png)
 
 [Installation](#installation) · [First run](#first-run) · [BookOrbit](#bookorbit) · [Reading](#reading) · [Configuration](#configuration) · [Development](#development)
 
@@ -70,11 +70,11 @@ botui --opds https://books.example.org/opds
 botui --config-path                        # create or locate the config file
 ```
 
-On the start screen, move the selection to see the description and controls for that source. Press **B** for BookOrbit, **L** for the local library, **P** for OPDS **D** for BookOrbit offline downloads or **O** for OPDS downloads. Enter and a click also open the selection.
+On the start screen, move the selection to see the description and controls for that source. The local library is selected at startup. Press **Enter** or **L** to open it, **B** for BookOrbit, **P** for OPDS, **D** for BookOrbit offline downloads or **O** for OPDS downloads. Enter and a click also open the selection.
 
 ![Source chooser with its keyboard guide](docs/images/start.png)
 
-Click the cover inside a book card, or press **C**, to open it with your system image viewer. On the shelf, clicking still opens the book card. While reading a local EPUB or FB2, **C** opens the embedded cover; for PDF and DjVu it shows the first page. BOTUI uses the desktop’s image association via `xdg-open`.
+Click the cover inside a book card, or press **C**, to open it with your system image viewer. On the shelf, clicking still opens the book card. In a local EPUB or FB2, **C** opens the embedded cover. If a book or catalog has no cover image, BOTUI makes a [cloth jacket](docs/images/generated-jacket.png) from the title and author. For PDF and DjVu, **C** shows the first page. BOTUI uses the desktop’s image association via `xdg-open`.
 
 **F2** opens Settings: Appearance, Reader, Library, BookOrbit, Keys, About and Legal. **?** or **F1** opens the shortcut guide for the current screen. Use **[ / ]** to switch groups or type **/** to find a key or command. The footer shortcuts are clickable. **Q** closes the book, **Q** on the shelf returns to the source chooser, and **Q** there exits. **Esc** goes up one catalog level. When launched with a single file path, closing that file ends the command.
 
@@ -83,6 +83,8 @@ Click the cover inside a book card, or press **C**, to open it with your system 
 In a wide terminal the left pane shows the folder tree, currently reading and recently added. Click a folder name to display its books on the right; click its arrow to fold or expand it. **F6** switches focus, **← / →** fold or expand, and **Enter** opens a folder. Drag the divider to resize it. Small windows keep the numbered tabs. [See the local library in Kitty](docs/images/local-library.png).
 
 ## BookOrbit
+
+![BookOrbit dashboard with reading progress, recent additions and book covers in Kitty](docs/images/dashboard.png)
 
 Choose **Connect to BookOrbit** to sign in. The dashboard shows continue reading, recent additions and discovery shelves. Reading streaks, yearly goals, challenges and Reading DNA appear when the server supplies those widgets. Select a book to choose its file. Use **0** to revisit and refresh the dashboard.
 
@@ -199,4 +201,4 @@ The Rust workspace separates the BookOrbit and OPDS adapters, ebook parsing, tex
 
 ## License
 
-Original BOTUI code is [GPL-3.0-or-later](LICENSE). Only the Bauhaus generator for missing BookOrbit covers uses adapted artwork, with its [own license and notices](licenses/NOTICE.md). Open **F2 → Legal** in the app, or run **botui --license** for the full texts.
+BOTUI and its generated jackets are licensed under [GPL-3.0-or-later](LICENSE). **F2 → Legal** identifies the license. Run `botui --license` for its full text. Book covers supplied by publishers or catalogs retain their own rights.

@@ -221,6 +221,7 @@ impl Pane {
     }
     fn home(connected: bool) -> Self {
         let mut rows = vec![
+            Row::new("Browse local library…", Command::Local),
             Row::new(
                 if connected {
                     "Dashboard"
@@ -233,7 +234,6 @@ impl Pane {
                     Command::Connect
                 },
             ),
-            Row::new("Browse local library…", Command::Local),
             Row::new("Open OPDS catalog…", Command::Opds),
             Row::new(
                 Source::BookOrbit.label(),
@@ -1472,18 +1472,10 @@ impl Shelf {
                 }
                 return None;
             }
-            let cmd = match key {
-                Some(KeyCode::Char('b' | 'B')) => {
-                    self.current().rows.first().map(|r| r.action.clone())
-                }
-                Some(KeyCode::Char('l' | 'L')) => Some(Command::Local),
-                Some(KeyCode::Char('p' | 'P')) => Some(Command::Opds),
-                Some(KeyCode::Char('d' | 'D')) => Some(Command::Downloads(Source::BookOrbit)),
-                Some(KeyCode::Char('o' | 'O')) => Some(Command::Downloads(Source::Opds)),
-                Some(KeyCode::Char('c' | 'C')) if self.session.is_some() => Some(Command::Connect),
-                _ => None,
-            };
-            if let Some(cmd) = cmd {
+            if let Some(KeyCode::Char(key)) = key
+                && let Some(index) = self.home_shortcut(key)
+            {
+                let cmd = self.current().rows[index].action.clone();
                 return self.apply(cmd);
             }
         }
