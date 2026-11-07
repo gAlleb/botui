@@ -2,7 +2,7 @@
 
 **English** · [Русский](README.ru.md)
 
-Read a book from your BookOrbit account, an OPDS catalog or a local folder in the terminal. EPUB and FB2 reflow into one page or a two-page spread. PDF and DjVu retain their original pages. Use the keyboard, click a cover or scroll with the mouse.
+A terminal book reader for BookOrbit, OPDS catalogs and local folders. Read reflowable EPUB and FB2 or the original PDF and DjVu pages. All four formats support a single page, a facing spread and continuous scrolling, with keyboard and mouse controls.
 
 ![BookOrbit dashboard with reading progress, recent additions and book covers in Kitty](docs/images/dashboard.png)
 
@@ -62,6 +62,8 @@ On the start screen, move the selection to see the description and controls for 
 
 ![Source chooser with its keyboard guide](docs/images/start.png)
 
+**F2** opens Settings: Appearance, Reader, Library, BookOrbit and Keys. **?** or **F1** goes straight to the shortcuts for the current screen. The footer shortcuts are clickable. **Q** closes the book, **Q** on the shelf returns to the source chooser, and **Q** there exits. **Esc** goes up one catalog level. When launched with a single file path, closing that file ends the command.
+
 **Local library** uses your saved root, then `~/Books`, then the current directory. Click **P Folder…** to paste a path. **R Set library here** remembers the folder currently on screen. **/** searches file and folder names recursively. **2** opens reading history with percentages and **3** shows recent files by creation time, falling back to modification time.
 
 ## BookOrbit
@@ -81,7 +83,13 @@ Choose **Connect to BookOrbit** to sign in. The dashboard shows continue reading
 
 To keep an edition on this device, choose **D Save offline** on its file list. Open it again through **Offline downloads**. The next sign-in to the same account can send offline progress if the server position still matches. Text bookmarks come from the selected BookOrbit file. A bookmark whose location cannot be resolved stays visible by name.
 
-**OPDS** accepts an Atom catalog URL and optional HTTP Basic credentials over HTTPS. Follow navigation feeds, search when the catalog advertises Atom search or OpenSearch, and select a downloadable edition. OPDS reading positions and notes are stored locally.
+Wide screens have a separately framed navigation tree. Click **Libraries** or **Collections** to fold them, or press **F6**, move with **↑/↓** and fold or expand with **←/→**. **4 / 5** open the full directories. Folded groups are remembered.
+
+Before opening an edition, its card shows the author, series, synopsis, publisher, date, language, ISBN and reading progress when supplied by the server. **R** reads the selected edition, **D** saves it offline and **I** opens the full synopsis. **H Put on hold** removes a book from active reading and keeps your place; **H Resume reading** puts it back. **X Reset reading state** requires confirmation, clears personal progress across the book’s editions and changes it to Unread on BookOrbit. It keeps files, bookmarks and notes. Reaching the end sends 100%; BookOrbit applies its own completion policy. Use `botui --check-bookmarks "Title"` to check edition-specific bookmark addresses without changing progress.
+
+See the [book details before reading](docs/images/book-details.png) and [navigation with the libraries folded](docs/images/navigation-folded.png).
+
+**OPDS** accepts OPDS 1 Atom and OPDS 2 JSON. Browse navigation, groups and facets; choose an edition, search through an advertised template or OpenSearch, and download direct acquisitions. Use HTTPS for HTTP Basic accounts. Loan-only and DRM entries remain catalog information. Positions and notes are local.
 
 ## Reading
 
@@ -90,7 +98,7 @@ To keep an edition on this device, choose **D Save offline** on its file list. O
 | EPUB and FB2 action | Controls |
 | --- | --- |
 | Turn pages | Left / Right, Page Up / Page Down, mouse wheel |
-| One page / facing pages | **1 / 2** |
+| Single page / facing spread / continuous scroll | **1 / 2 / 3**. In scroll mode ↑/↓ move one line, the wheel moves several, and PgUp/PgDn move a screen |
 | Open menu | **M**, Esc or click the page |
 | Adjust page width and column gap with a live preview | **W**, then click **− / +** on either row |
 | Adjust without opening the panel | **[** wider page, **]** narrower page. **{** smaller gap, **}** larger gap |
@@ -104,15 +112,23 @@ To keep an edition on this device, choose **D Save offline** on its file list. O
 
 Width and spacing are in terminal cells. Extra room sits outside the spread. A narrow window shows one page. Resize or adjust either value while reading to reflow both pages around the current text position. In scanned EPUB/FB2 text, botui can join printed line breaks and split words. Set `preserve_printed_lines = true` for editions where those breaks are intentional.
 
-For **PDF and DjVu**, use **P Read pages** on the file card, **1 / 2** for a page or spread and **+ / −** to zoom. Arrows pan while zoomed. **O** opens page navigation, **/** finds text and **N** advances to the next match. **B / G** manage page bookmarks and **I / A / E** manage and export page notes. The text reader’s width settings apply to reflowable books.
+For **PDF and DjVu**, choose **P Read pages** on the file card or **R Read** on the book card. **1 / 2 / 3** select one page, facing pages or scroll. Scrolling shows the end of one sheet and the start of the next together. The device remembers the offset within the sheet; BookOrbit stores a page number. **+ / −** zoom, **P** (or **Ctrl+G**) jumps straight to a page by number, **/** searches its text layer, **N** advances through matches, **B / G** manage bookmarks, and **I / A / E** manage and export page notes. There is no OCR step. **Z** hides the controls for the full window width. [A PDF at reading width in Kitty](docs/images/pdf-scroll.png).
+
+Embedded raster illustrations appear in the text; **I** also opens the separate viewer. Tables adapt to the available width. Set **F2 → Reader → Illustrations** to viewer only if desired. **S** displays book statistics; **F2 → Library → Reading statistics** shows totals on this device.
 
 ## Configuration
 
 Run `botui --config-path` to print the exact path. The default is `~/.config/botui/config.toml`. The same TOML file holds the library root, interface, reader bindings and BookOrbit account. The default UI language is English. See the [commented configuration](config.example.toml).
 
+**F2 → Appearance** sets the interface palette independently of the reading paper (**T**). Terminal uses the default foreground, background and ANSI slots, so changes to the emulator’s palette appear without restarting. Opaque paper follows the emulator’s OSC 11 response; if it cannot report RGB, botui uses ANSI black or your explicit `opaque_color`. Neither pywal nor matugen is required. Built-in themes include Gruvbox, Catppuccin, Nord, Dracula, Tokyo Night, Solarized, One Dark, Kanagawa, Rosé Pine and Everforest. A named palette stays fixed; transparency lets the window background show through. Set borders and jacket corners to Rounded, Square or None here.
+
+![Appearance settings in Gruvbox](docs/images/settings.png)
+
 ```toml
 library_root = "/path/to/books"
+interface_theme = "terminal"
 theme = "terminal"
+reading_layout = "auto"    # auto, single, spread, scroll
 borders = "rounded"        # rounded, square, none
 opaque_background = false
 page_width = 78
