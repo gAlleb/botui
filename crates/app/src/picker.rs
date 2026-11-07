@@ -358,24 +358,30 @@ impl Picker {
         }
         if view == LocalView::Reading {
             self.index.clear();
-            self.entries = botui_store::HistoryEntry::for_root(&self.root)?
+            let history = botui_store::HistoryEntry::for_root(&self.root)?;
+            let positions = match (self.source, &self.allowed) {
+                (Some(crate::cache::Source::BookOrbit), Some(files)) => {
+                    crate::offline::unfinished_downloads(files, history)?
+                }
+                _ => history
+                    .into_iter()
+                    .filter(|e| {
+                        self.allowed
+                            .as_ref()
+                            .is_none_or(|files| files.contains(&e.path))
+                    })
+                    .map(|e| (e.path, e.percent))
+                    .collect(),
+            };
+            self.entries = positions
                 .into_iter()
-                .filter(|entry| {
-                    self.allowed
-                        .as_ref()
-                        .is_none_or(|files| files.contains(&entry.path))
-                })
-                .filter_map(|entry| {
-                    let kind = FileKind::from_path(&entry.path)?;
-                    let name = format!(
-                        "{:>3}%   {}",
-                        entry.percent,
-                        entry.path.file_name()?.to_string_lossy()
-                    );
+                .filter_map(|(path, percent)| {
+                    let kind = FileKind::from_path(&path)?;
+                    let name = format!("{percent:>3}%   {}", path.file_name()?.to_string_lossy());
                     Some(Entry {
-                        percent: Some(entry.percent),
+                        percent: Some(percent),
                         meta: None,
-                        path: entry.path,
+                        path,
                         name,
                         kind: Some(kind),
                     })

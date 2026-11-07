@@ -130,7 +130,10 @@ with tempfile.TemporaryDirectory() as name, shelf.Fixture(False) as server:
         term.keys("o")
         assert shelf.BOOK not in term.see("Only from OPDS")
         term.keys("q"); term.see("Choose a library"); term.keys("d")
-        frame = term.see(shelf.BOOK)
+        term.see(shelf.BOOK)
+        term.keys("2")
+        frame = term.wait("Connected progress on the offline Reading tab",
+                          lambda f: shelf.BOOK in f and "Currently reading" in f and "%" in f)
         assert "Only from OPDS" not in frame
         term.click(shelf.BOOK, frame)
         term.wait("Offline resumes chapter five", lambda f: f.strip().startswith("Chapter 5"))

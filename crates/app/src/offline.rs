@@ -186,6 +186,43 @@ impl Copy {
         Ok(())
     }
 }
+/// The connected reader saves a file position here even before the download
+/// has ever been opened from the offline shelf.
+pub fn unfinished_downloads(
+    files: &std::collections::HashSet<PathBuf>,
+    history: Vec<botui_store::HistoryEntry>,
+) -> io::Result<Vec<(PathBuf, u8)>> {
+    let mut local: std::collections::HashMap<_, _> = history
+        .into_iter()
+        .map(|h| (h.path, (h.read_at, h.percent)))
+        .collect();
+    let mut reading = Vec::new();
+    for path in files {
+        let record = sidecar(path);
+        let previous = local.remove(path);
+        let (time, percent) = if let Some(copy) = load(&record)? {
+            let pos = copy.starting_position();
+            let started = pos.percentage > 0. || pos.text.cfi.is_some() || pos.text.page.is_some();
+            if !started || pos.percentage >= 100. {
+                continue;
+            }
+            let modified = record.metadata()?.modified()?;
+            let time = previous.map_or(modified, |(at, _)| at.max(modified));
+            (time, pos.percentage.round().clamp(0., 99.) as u8)
+        } else if let Some(known) = previous {
+            known
+        } else {
+            continue;
+        };
+        reading.push((std::cmp::Reverse(time), path.clone(), percent));
+    }
+    reading.sort_unstable();
+    Ok(reading
+        .into_iter()
+        .map(|(_, path, percent)| (path, percent))
+        .collect())
+}
+
 fn matches_move(current: &Progress, movement: &Move) -> bool {
     (current.percentage - movement.percentage).abs() < 0.000_001
         && match &movement.target {
