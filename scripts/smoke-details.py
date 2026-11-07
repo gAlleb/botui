@@ -16,12 +16,24 @@ def exercise(tmp, f):
         t.keys("2");t.click(s.OTHER_BOOK,t.see(s.OTHER_BOOK))
         t.see("Harbor Press");t.see("Beacon #2");t.see("37% read");t.see("northern lighthouse")
         t.click("[I Synopsis]",t.see("[I Synopsis]"));t.see("[ Close ]");t.keys("Escape")
+        for which, label, title in (("Down", "In series · Beacon", "Beacon  ·  2"), (None, "By author · Марина Лоцман", "Марина Лоцман  ·  2")):
+            t.click("[B Related books]",t.see("[B Related books]"));t.see(label)
+            if which: t.keys(which)
+            t.keys("Enter");t.see(title)
+            t.click(s.BOOK,t.see(s.BOOK));t.see("[I Synopsis]")
+            t.keys("Escape");t.see(title);t.keys("Escape");t.see("37% read");t.see("[H Put on hold]")
+        t.click("[L Reading log]",t.see("[L Reading log]"))
+        t.see("30 sessions · 5h 0m");t.see("2026-10-30 12:00 UTC");t.keys("End")
+        frame=t.see("2026-10-01 12:00 UTC")
+        t.click("2026-10-01 12:00 UTC",frame);t.see("Source    koreader");t.see("2026-10-01 12:10 UTC")
+        t.keys("Escape");t.see("30 sessions");t.keys("Escape");t.see("Editions")
         assert not f.saved and not any(path.endswith('/serve') for _,path,_ in f.requests)
         t.click("[H Put on hold]",t.see("[H Put on hold]"));t.see("Reading status: On hold")
         t.keys("Escape");t.wait("Paused title is gone from Currently reading",lambda a:"Currently reading" in a and s.OTHER_BOOK not in a)
         t.keys("1");t.click(s.OTHER_BOOK,t.see(s.OTHER_BOOK));t.see("[H Resume reading]");t.keys("h");t.see("Reading status: Reading")
         t.keys("x");t.see("cannot be undone.");t.keys("Enter");t.see("Editions");assert f.statuses[201]=="reading"
         t.keys("x");t.see("cannot be undone.");t.keys("Right","Enter");t.see("Reading state reset.");assert f.statuses[201]=="unread"
+        t.keys("l");t.see("No reading sessions recorded");t.keys("Escape");t.see("Editions")
         t.keys("2");t.wait("Reset title absent",lambda a:"Currently reading" in a and s.OTHER_BOOK not in a)
         assert len([v for v in f.requests if v[1].endswith('/reset-reading-state')])==1
         t.keys("q");t.see("Choose a library");t.keys("q")

@@ -14,6 +14,7 @@ def run(name,f):
         t.click('FB2',s.formats(t));t.see(s.FB2_MARK)
         t.keys('z');t.wait('Zen',lambda x:'Z Zen' not in x);t.keys('o');t.see('Chapters:');t.keys('End','Enter');t.wait('переход',lambda x:x.strip().startswith('Обратный рейс'));t.keys('q');s.formats(t)
         assert f.saved==[302],f.saved
+        t.see("[H Put on hold]")
         # Erase only the isolated fixture's local position: the next jump must come from the API.
         previous,=(Path(name)/"state/botui/positions").glob("*.json")
         previous.unlink()
@@ -40,6 +41,19 @@ def run(name,f):
         before=sum(1 for method,path,status in f.requests if method=="POST" and path.endswith("/auth/login") and status==200)
         t.keys('b');t.see('Continue reading')
         assert sum(1 for method,path,status in f.requests if method=="POST" and path.endswith("/auth/login") and status==200)==before
+        # Force the write to remain outstanding while Ctrl+C arrives. Logout must come afterwards.
+        t.keys('1');t.see('All books');t.click(s.BOOK,t.see(s.BOOK));t.click('FB2',s.formats(t))
+        t.see(s.FB2_MARK);t.keys('o');t.see('Chapters:');t.keys('End','Enter');t.see('Обратный рейс')
+        f.save_entered=threading.Event();f.allow_save=threading.Event()
+        t.keys('q');assert f.save_entered.wait(4);t.keys('C-c')
+        try:
+            t.see('Saving position to BookOrbit');assert f.token is not None
+        finally:
+            f.allow_save.set()
+        for _ in range(110):
+            if t.run('has-session','-t','shelf',required=False).returncode: break
+            time.sleep(.04)
+        assert f.saved==[302,302,302] and f.token is None
     finally:t.run('kill-server',required=False)
 if __name__=='__main__':
     with tempfile.TemporaryDirectory() as tmp,s.Fixture(False) as f:

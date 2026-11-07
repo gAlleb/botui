@@ -168,6 +168,10 @@ class Handler(BaseHTTPRequestHandler):
         assert ident in (301,302,303) and change["kind"]=="text"
         assert change["editedAt"]==(self.server.progress.get(ident,{}).get("updatedAt") or "1970-01-01T00:00:00.000Z")
         assert change["text"].get("cfi","").startswith("epubcfi(") or change["text"].get("page",0)>0
+        if hasattr(self.server, 'save_entered'):
+            self.server.save_entered.set()
+            assert self.server.allow_save.wait(5), "fixture timed out during the pending save"
+        self.server.statuses[200] = "read" if change["percentage"] >= 100 else "reading"
         self.server.progress[ident]=dict(fileId=ident,updatedAt="2026-11-07T10:00:00.000Z",percentage=change["percentage"],text=change["text"])
         self.server.saved.append(ident)
         return self.reply(200,{"results":[{"fileId":ident,"status":"saved"}]})
@@ -183,7 +187,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.reply(200, {"items":items[page*size:(page+1)*size], "total":len(items), "page":page, "size":size})
         if url.path in [API+"/books/200",API+"/books/201"]:
             idx=int(url.path.rsplit('/',1)[1]);b=self.server.card(idx-200)
-            return self.reply(200,dict(title=b['title'],authors=[{"name":a} for a in b["authors"]],description="<p>Letters from the northern lighthouse.</p>",publisher="Harbor Press",language="en",isbn13="9780000000002",seriesName="Beacon",seriesIndex=2,libraryName="Port",readStatus={"status":self.server.statuses.get(idx,"unread"),"startedAt":None,"finishedAt":None}))
+            return self.reply(200,dict(title=b['title'],authors=[{"id":410,"name":a} for a in b["authors"]],description="<p>Letters from the northern lighthouse.</p>",publisher="Harbor Press",language="en",isbn13="9780000000002",seriesName="Beacon",seriesId=49,seriesIndex=2,libraryName="Port",readStatus={"status":self.server.statuses.get(idx,"unread"),"startedAt":None,"finishedAt":None}))
         if url.path.startswith(API + "/dashboard/scrollers/"):
             key = url.path.rsplit("/", 1)[1]
             indexes = {"continue-reading":[i-200 for i,st in self.server.statuses.items() if st in ("reading","rereading")], "recently-added":[0,1], "random":[0]}[key]
@@ -200,6 +204,17 @@ class Handler(BaseHTTPRequestHandler):
                 assert query["sort"] == (["title"] if endpoint=="authors" else ["seriesIndex"])
                 assert query["order"] == ["asc"] and (endpoint=="series" or query["collapseSeries"] == ["false"])
                 return send_page([self.server.card(i) for i in ([0,1] if endpoint=="authors" else [1,0])])
+        if url.path == API + "/books/201/sessions":
+            page = int(query['page'][0])
+            size = int(query['pageSize'][0])
+            assert page >= 1 and size == 25
+            assert query['sortBy'] == ['startedAt'] and query['sortDir'] == ['desc']
+            total = 30 if self.server.statuses.get(201) != 'unread' else 0
+            items = [dict(id=i, startedAt=f'2026-10-{i:02}T12:00:00.000Z', endedAt=f'2026-10-{i:02}T12:10:00.000Z',
+                          durationSeconds=600, source='koreader', sessionType='read',
+                          format='epub', endProgress=float(i)) for i in range(total, 0, -1)]
+            return self.reply(200, dict(items=items[(page-1)*size:page*size], total=total, page=page, pageSize=size,
+                                        stats=dict(totalSeconds=total*600)))
         if url.path == API + "/books/200/bookmarks":
             return self.reply(200,self.server.marks.get(int(parse_qs(url.query)["readerFileId"][0]),[]))
         if url.path == API + "/reading-progress":

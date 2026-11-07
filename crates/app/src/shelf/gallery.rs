@@ -227,7 +227,7 @@ impl Shelf {
                     let n = match scope {
                         Scope::Library(l) => l.book_count,
                         Scope::Collection(c) => Some(c.book_count),
-                        Scope::Group(_, g) => Some(g.book_count),
+                        Scope::Group(_, g) => g.book_count,
                         _ => None,
                     };
                     frame.render_widget(

@@ -9,6 +9,7 @@ use botui_bookorbit::browse::{Directory, DirectoryPage, Group};
 mod native;
 mod opds;
 mod rail;
+mod reading_log;
 mod view;
 
 use crate::catalog::{Book, BookFile};
@@ -123,6 +124,7 @@ enum Command {
     Feed(botui_opds::Address),
     InlineFeed(String, Arc<Vec<botui_opds::Entry>>),
     NoAcquisition,
+    SessionDetail(String),
     Connect,
     OpenTab(Tab),
     Books(Scope, u32),
@@ -149,6 +151,11 @@ impl Row {
 }
 
 enum Section {
+    ReadingLog {
+        book: u64,
+        next: Option<u32>,
+        seen: std::collections::HashSet<u64>,
+    },
     Dashboard(dashboard::Dashboard),
     Groups {
         directory: Directory,
@@ -171,6 +178,7 @@ enum Section {
 }
 
 enum Tail {
+    ReadingLog(botui_bookorbit::reading_log::ReadingLog),
     Groups(DirectoryPage),
     Books(BooksPage),
     Feed(botui_opds::Address, Box<botui_opds::Feed>),
@@ -237,6 +245,7 @@ impl Pane {
 }
 
 enum Loaded {
+    ReadingLog(u64, botui_bookorbit::reading_log::ReadingLog),
     Dashboard(dashboard::Dashboard, Vec<Row>),
     Groups(Directory, String, DirectoryPage),
     Feed(
@@ -278,6 +287,12 @@ enum Loaded {
     },
 }
 
+#[derive(Clone, Copy)]
+enum AfterSave {
+    Home,
+    Quit,
+}
+
 struct Pending {
     title: &'static str,
     closing: bool,
@@ -301,7 +316,7 @@ pub(crate) struct Shelf {
     scan_button: Rect,
     notice: Option<String>,
     exit_warning: Option<String>,
-    after_save_home: bool,
+    after_save: Option<AfterSave>,
     worker: Worker,
     pending: Option<Pending>,
     covers: covers::Covers,
@@ -344,7 +359,7 @@ impl Shelf {
             scan_button: Rect::default(),
             notice: None,
             exit_warning: None,
-            after_save_home: false,
+            after_save: None,
             worker: Worker::new(),
             pending: None,
             covers: covers::Covers::new(),
@@ -742,7 +757,9 @@ impl Shelf {
     }
     fn source_home(&mut self) -> Option<Selection> {
         if self.pending.as_ref().is_some_and(|p| p.saving) {
-            self.after_save_home = true;
+            if self.after_save.is_none() {
+                self.after_save = Some(AfterSave::Home);
+            }
             return None;
         }
         if self.is_opds {
@@ -778,6 +795,11 @@ impl Shelf {
             return self.end_session(true);
         }
         self.stack.pop();
+        if let Section::Files(book) = &self.current().section
+            && self.card.id != book.id
+        {
+            self.card = detail::Card::open(book.id, self.session.clone());
+        }
         if self.dirty_shelves[0] && matches!(self.current().section, Section::Dashboard(_)) {
             self.open_tab(Tab::Dashboard);
         } else if self.dirty_shelves[1]
@@ -796,6 +818,10 @@ impl Shelf {
 
     fn end_session(&mut self, quit: bool) -> Option<Selection> {
         if self.pending.as_ref().is_some_and(|p| p.closing) {
+            return None;
+        }
+        if quit && self.pending.as_ref().is_some_and(|p| p.saving) {
+            self.after_save = Some(AfterSave::Quit);
             return None;
         }
         self.pending = None;
@@ -856,6 +882,9 @@ impl Shelf {
                     rows,
                 ));
             }
+            Command::SessionDetail(detail) => {
+                self.info = Some(detail);
+            }
             Command::NoAcquisition => {
                 self.notice =
                     Some("This catalog provides no direct download for this edition.".into())
@@ -889,6 +918,7 @@ impl Shelf {
 
     fn complete(&mut self, loaded: Loaded) -> Option<Selection> {
         match loaded {
+            Loaded::ReadingLog(book, log) => self.show_reading_log(book, log),
             Loaded::Feed(c, f, r) => self.show_feed(c, *f, r),
             Loaded::Login {
                 offline_notice,
@@ -1037,6 +1067,10 @@ impl Shelf {
                 file,
                 percent,
             } => {
+                self.dirty_shelves = [true, true];
+                if let Section::Files(book) = &self.current().section {
+                    self.card = detail::Card::open(book.id, self.session.clone());
+                }
                 // Cached parent panes are restored on Back. Repaint the accepted
                 // value everywhere the same edition is already on the shelf.
                 let update = |book: &mut Book| {
@@ -1085,6 +1119,21 @@ impl Shelf {
             return;
         }
         let ticket = match &pane.section {
+            Section::ReadingLog {
+                book,
+                next: Some(page),
+                ..
+            } => {
+                let Some(session) = self.session.clone() else {
+                    return;
+                };
+                let (book, page) = (*book, *page);
+                self.worker.start(move |_| {
+                    session
+                        .with_token(|api, t| api.reading_log(t, book, page))
+                        .map(Tail::ReadingLog)
+                })
+            }
             Section::Groups {
                 directory,
                 query,
@@ -1138,6 +1187,12 @@ impl Shelf {
         let pane = self.current_mut();
         pane.tail = None;
         match result {
+            Ok(Tail::ReadingLog(log)) => {
+                if let Section::ReadingLog { next, seen, .. } = &mut pane.section {
+                    *next = log.next();
+                    pane.rows.extend(reading_log::rows(log.items, seen));
+                }
+            }
             Ok(Tail::Groups(p)) => {
                 if let Section::Groups {
                     directory, next, ..
@@ -1187,7 +1242,7 @@ impl Shelf {
             Err(TryRecvError::Disconnected) => Err("Background request interrupted.".into()),
         };
         self.pending = None;
-        let return_home = std::mem::take(&mut self.after_save_home);
+        let after_save = self.after_save.take();
         let selection = match result {
             Ok(loaded) => self.complete(loaded),
             Err(e) => {
@@ -1216,8 +1271,12 @@ impl Shelf {
                 None
             }
         };
-        if return_home && selection.is_none() && self.login.is_none() {
-            return self.source_home();
+        if selection.is_none() {
+            match after_save {
+                Some(AfterSave::Quit) => return self.end_session(true),
+                Some(AfterSave::Home) if self.login.is_none() => return self.source_home(),
+                _ => (),
+            }
         }
         selection
     }

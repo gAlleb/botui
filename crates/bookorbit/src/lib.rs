@@ -5,6 +5,7 @@ pub mod dashboard;
 pub mod detail;
 mod model;
 pub mod progress;
+pub mod reading_log;
 mod session;
 pub use session::Session;
 #[cfg(test)]

@@ -22,7 +22,7 @@ impl Directory {
 pub struct Group {
     pub id: u64,
     pub name: String,
-    pub book_count: u64,
+    pub book_count: Option<u64>,
 }
 
 #[derive(Deserialize)]

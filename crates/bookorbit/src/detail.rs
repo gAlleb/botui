@@ -7,6 +7,8 @@ pub struct Detail {
     pub title: Option<String>,
     pub authors: Vec<Name>,
     pub description: Option<String>,
+    pub series_id: Option<u64>,
+    pub series_memberships: Vec<SeriesMembership>,
     pub series_name: Option<String>,
     pub series_index: Option<serde_json::Value>,
     pub language: Option<String>,
@@ -24,7 +26,14 @@ pub struct Detail {
 }
 #[derive(Deserialize)]
 pub struct Name {
+    pub id: Option<u64>,
     pub name: String,
+}
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SeriesMembership {
+    pub series_id: u64,
+    pub series_name: String,
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]

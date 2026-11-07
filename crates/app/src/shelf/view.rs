@@ -37,7 +37,7 @@ impl Shelf {
             let inner = border.inner(panel);
             frame.render_widget(border, panel);
             frame.render_widget(Paragraph::new(job.title).style(heading()), inner);
-            if !job.closing {
+            if !job.closing && !job.saving {
                 self.draw_buttons(frame, inner, "[ Cancel ]", true);
             }
             return;
@@ -261,6 +261,7 @@ impl Shelf {
                 } => "This collection is empty.",
                 Section::Books { .. } => "No books on this shelf.",
                 Section::Home => "",
+                Section::ReadingLog { .. } => "No reading sessions recorded for this book.",
                 Section::Feed { .. } => "No books or catalog entries here.",
             };
             frame.render_widget(Paragraph::new(empty).wrap(Wrap { trim: true }), list_area);

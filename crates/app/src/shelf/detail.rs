@@ -30,6 +30,8 @@ enum Act {
     Hold,
     Reset,
     More,
+    Log,
+    Related,
 }
 pub(super) fn status_label(s: &str) -> &str {
     match s {
@@ -173,15 +175,26 @@ impl Shelf {
         let files_y = (body.y + 18)
             .min(footer.saturating_sub((book.files.len() as u16).clamp(1, 5) + 1))
             .max(body.y);
-        let actions_y = files_y
-            .saturating_sub(if body.width >= 87 {
-                2
-            } else if body.width >= 45 {
-                3
-            } else {
-                4
-            })
-            .max(body.y);
+        // Reserve for all possible actions so an arriving metadata request cannot displace a click.
+        let mut lines = 1;
+        let mut used = 0;
+        for label in [
+            "[R Read]",
+            "[D Save offline]",
+            "[H Resume reading]",
+            "[X Reset reading state]",
+            "[I Synopsis]",
+            "[L Reading log]",
+            "[B Related books]",
+        ] {
+            let width = label.len() as u16;
+            if used > 0 && used + width > body.width {
+                used = 0;
+                lines += 1;
+            }
+            used += width + 1;
+        }
+        let actions_y = files_y.saturating_sub(lines + 1).max(body.y);
         let reserve = footer.saturating_sub(actions_y);
         if let Some(v) = d
             && footer.saturating_sub(y) > reserve
@@ -273,6 +286,16 @@ impl Shelf {
         if d.and_then(|v| v.description.as_ref()).is_some() {
             controls.push(("[I Synopsis]", Act::More));
         }
+        if self.session.is_some() {
+            controls.push(("[L Reading log]", Act::Log));
+        }
+        if d.is_some_and(|v| {
+            v.authors.iter().any(|a| a.id.is_some())
+                || v.series_id.is_some()
+                || !v.series_memberships.is_empty()
+        }) {
+            controls.push(("[B Related books]", Act::Related));
+        }
         for (label, act) in controls {
             let w = label.len() as u16;
             if x + w > body.right() {
@@ -328,6 +351,8 @@ impl Shelf {
     ) -> io::Result<bool> {
         let action = match e {
             Event::Key(k) if k.kind != KeyEventKind::Release => match k.code {
+                KeyCode::Char('b' | 'B') => Some(Act::Related),
+                KeyCode::Char('l' | 'L') if self.session.is_some() => Some(Act::Log),
                 KeyCode::Char('r' | 'R') => Some(Act::Read),
                 KeyCode::Char('h' | 'H') => Some(Act::Hold),
                 KeyCode::Char('x' | 'X') => Some(Act::Reset),
@@ -360,9 +385,32 @@ impl Shelf {
             }
             return Ok(true);
         }
+        if matches!(act, Act::Log) {
+            self.reading_log(self.card.id);
+            return Ok(true);
+        }
         let Some(d) = self.card.data.as_ref() else {
             return Ok(true);
         };
+        if matches!(act, Act::Related) {
+            let scopes = related_books(d);
+            if !scopes.is_empty() {
+                let labels = scopes
+                    .iter()
+                    .map(|scope| match scope {
+                        super::Scope::Group(super::Directory::Authors, g) => {
+                            format!("By author · {}", g.name)
+                        }
+                        _ => format!("In series · {}", scope.name()),
+                    })
+                    .map(super::single_line)
+                    .collect::<Vec<_>>();
+                if let Some(i) = crate::prompt::choose(term, "Related books", &labels, 0)? {
+                    self.books(scopes[i].clone(), 0);
+                }
+            }
+            return Ok(true);
+        }
         if matches!(act, Act::More) {
             if let Some(s) = &d.description {
                 crate::prompt::message(term, "Synopsis", &botui_formats::synopsis(s))?;
@@ -411,4 +459,36 @@ impl Shelf {
         }
         Ok(true)
     }
+}
+
+fn related_books(detail: &Detail) -> Vec<super::Scope> {
+    use super::{Directory, Group, Scope};
+    let mut scopes = Vec::new();
+    let mut add = |kind: Directory, id: u64, name: &str| {
+        if !scopes
+            .iter()
+            .any(|s| matches!(s, Scope::Group(d, g) if *d == kind && g.id == id))
+        {
+            scopes.push(Scope::Group(
+                kind,
+                Group {
+                    id,
+                    name: name.to_owned(),
+                    book_count: None,
+                },
+            ));
+        }
+    };
+    for author in &detail.authors {
+        if let Some(id) = author.id {
+            add(Directory::Authors, id, &author.name);
+        }
+    }
+    for series in &detail.series_memberships {
+        add(Directory::Series, series.series_id, &series.series_name);
+    }
+    if let (Some(id), Some(name)) = (detail.series_id, &detail.series_name) {
+        add(Directory::Series, id, name);
+    }
+    scopes
 }
