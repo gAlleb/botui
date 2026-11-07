@@ -30,12 +30,12 @@ FB2_MARK = "Почта на пристани"
 TOTAL = 101
 
 
-def pdf(tones=False):
-    objects = [b'<< /Type /Catalog /Pages 2 0 R >>', b'<< /Type /Pages /Count 3 /Kids [3 0 R 5 0 R 7 0 R] >>']
-    for i in range(3):
-        objects.append(f'<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 440] /Resources << /Font << /F1 << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> >> >> /Contents {4+2*i} 0 R >>'.encode())
+def pdf(tones=False, width=300, height=440, shades=(0.3, 0.8, 0.5)):
+    objects = [b'<< /Type /Catalog /Pages 2 0 R >>', f'<< /Type /Pages /Count {len(shades)} /Kids [{" ".join(f"{3+2*i} 0 R" for i in range(len(shades)))}] >>'.encode()]
+    for i in range(len(shades)):
+        objects.append(f'<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {width} {height}] /Resources << /Font << /F1 << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> >> >> /Contents {4+2*i} 0 R >>'.encode())
         content = f'0.{i+2} 0.4 0.6 rg {28*i} 30 {220-i*28} {350-i*40} re f'.encode()
-        if tones:content=f'{[0.3,0.8,0.5][i]} g 0 0 1000 1000 re f'.encode()
+        if tones:content=f'{shades[i]} g 0 0 1000 1000 re f'.encode()
         if i==1 and not tones:content+=b" BT /F1 16 Tf 10 32 Td (Lighthouse atlas) Tj ET"
         objects.append(f'<< /Length {len(content)} >>\nstream\n'.encode()+content+b'\nendstream')
     data=bytearray(b'%PDF-1.4\n'); offsets=[0]

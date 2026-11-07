@@ -33,21 +33,7 @@ impl Pages {
             .err()
             .map(String::as_str)
     }
-    pub fn update(
-        &mut self,
-        path: &Path,
-        kind: FileKind,
-        first: u32,
-        count: u32,
-        cols: u16,
-        side: u16,
-    ) {
-        let visible_end = first.saturating_add(u32::from(cols) - 1).min(count);
-        let end = visible_end.saturating_add(u32::from(cols)).min(count);
-        let relevant = |k: Key| k.1 == side && (first..=end).contains(&k.0);
-        if self.job.as_ref().is_some_and(|(k, _)| !relevant(*k)) {
-            self.job = None;
-        }
+    pub fn poll(&mut self) {
         if let Some((k, t)) = &self.job {
             let result = match t.receiver.try_recv() {
                 Ok(result) => Some(result.map_err(|error| error.to_string())),
@@ -58,6 +44,26 @@ impl Pages {
                 self.cache.put(*k, result);
                 self.job = None;
             }
+        }
+    }
+    pub fn update(
+        &mut self,
+        path: &Path,
+        kind: FileKind,
+        first: u32,
+        count: u32,
+        cols: u16,
+        side: u16,
+    ) {
+        let visible_end = first.saturating_add(u32::from(cols) - 1).min(count);
+        let end = visible_end.saturating_add(2).min(count);
+        let capacity = NonZeroUsize::new(usize::from(cols) + 2).unwrap();
+        if self.cache.cap() != capacity {
+            self.cache.resize(capacity);
+        }
+        let relevant = |k: Key| k.1 == side && (first..=end).contains(&k.0);
+        if self.job.as_ref().is_some_and(|(k, _)| !relevant(*k)) {
+            self.job = None;
         }
         for i in first..=visible_end {
             self.cache.promote(&(i, side));

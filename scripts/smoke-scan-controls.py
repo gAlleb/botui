@@ -35,8 +35,7 @@ with tempfile.TemporaryDirectory(prefix="botui-width-") as tmp:
         term.see("100%")
         term.click("[ Done ]", term.see("[ Done ]"))
         term.keys("p")
-        frame = term.see("Go to page")
-        assert ":" * 40 in frame and "Page 1" in frame
+        frame = term.wait("Dialog over the rendered sheet",lambda f:"Go to page" in f and ":" * 40 in f and "Page 1" in f)
         line = next(line for line in frame.splitlines() if "Go to page" in line)
         x = line.index("Go to page") - 2
         assert abs((x + 17) - (left + right)/2) <= 2, (x,left,right)
@@ -54,4 +53,17 @@ with tempfile.TemporaryDirectory(prefix="botui-width-") as tmp:
         scroll.stop(term)
     finally:
         term.run("kill-server", required=False)
+# Six very wide presentation slides fit on one screen when zoomed out.
+with tempfile.TemporaryDirectory(prefix="botui-small-sheets-") as tmp:
+    root=Path(tmp)
+    slides=root/"slides.pdf"
+    slides.write_bytes(scroll.s.pdf(True, 600, 95, (.2,.3,.42,.6,.72,.99)))
+    term=scroll.start(root,slides)
+    try:
+        term.see("1 / 6")
+        term.keys("3", *["-"]*7)
+        term.wait("Sixth sheet is rendered without scrolling",lambda f:"25%" in f and "%" * 12 in f and ":"*12 in f)
+        scroll.stop(term)
+    finally:
+        term.run("kill-server",required=False)
 print("Passed: physical PDF width, symmetric margins, mouse controls, zoom persistence and page dialog over the sheet.")

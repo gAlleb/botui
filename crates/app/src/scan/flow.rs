@@ -4,14 +4,29 @@ use super::pages::Pages;
 use crate::cover::{Crop, Picture};
 use ratatui::{Frame, layout::Rect};
 use ratatui_image::picker::Picker;
-pub(super) struct Strip<'a> {
-    pub pages: &'a Pages,
+#[derive(Clone, Copy)]
+pub(super) struct Viewport<'a> {
     pub side: u16,
     pub width: u16,
     pub height: u16,
     pub picker: &'a Picker,
     pub crop: Crop,
     pub count: u32,
+}
+pub(super) struct Strip<'a> {
+    pub pages: &'a Pages,
+    view: Viewport<'a>,
+}
+impl<'a> Viewport<'a> {
+    pub fn strip(self, pages: &'a Pages) -> Strip<'a> {
+        Strip { view: self, pages }
+    }
+}
+impl<'a> std::ops::Deref for Strip<'a> {
+    type Target = Viewport<'a>;
+    fn deref(&self) -> &Self::Target {
+        &self.view
+    }
 }
 impl Strip<'_> {
     fn rows(&self, n: u32) -> u32 {

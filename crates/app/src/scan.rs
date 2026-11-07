@@ -189,11 +189,8 @@ pub fn read_server(
             .max(screen.height.saturating_mul(size.height))
             .clamp(240, 1600);
         let side = (u32::from(side) * u32::from(crop.percent.max(100)) / 100).min(1920) as u16;
-        if let Some(count) = total {
-            pages.update(path, kind, n, count, if scrolling { 2 } else { cols }, side);
-        }
-        let strip = flow::Strip {
-            pages: &pages,
+        pages.poll();
+        let view = flow::Viewport {
             side,
             width: crop.fit(body, false).width,
             height: screen.height.saturating_sub(u16::from(!zen)),
@@ -201,6 +198,17 @@ pub fn read_server(
             crop,
             count: total.unwrap_or(0),
         };
+        if let Some(count) = total {
+            // Smaller sheets (especially landscape slides) can fit more than a spread.
+            // Keep every visible slice, then prefetch two neighbours off screen.
+            let visible = if scrolling {
+                view.strip(&pages).parts(n, offset).count().max(1) as u16
+            } else {
+                cols
+            };
+            pages.update(path, kind, n, count, visible, side);
+        }
+        let strip = view.strip(&pages);
         end_visible = if scrolling {
             strip.end(n, offset)
         } else {
