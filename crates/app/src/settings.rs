@@ -27,6 +27,7 @@ pub struct Settings {
     pub opaque_color: Option<String>,
     pub borders: crate::appearance::BordersStyle,
     pub page_width: Option<u16>,
+    pub paragraph_indent: u8,
     pub reading_layout: Option<String>,
     pub column_gap: Option<u16>,
     pub bookorbit: Connection,

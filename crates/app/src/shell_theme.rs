@@ -76,7 +76,8 @@ pub const ALL: &[Palette] = &[
     ),
 ];
 pub fn index(id: Option<&str>) -> usize {
-    ALL.iter().position(|p| Some(p.0) == id).unwrap_or(0)
+    let id = id.unwrap_or("gruvbox-dark");
+    ALL.iter().position(|p| p.0 == id).unwrap_or(0)
 }
 fn rgb(n: u32) -> Color {
     let [_, r, g, b] = n.to_be_bytes();

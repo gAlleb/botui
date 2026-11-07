@@ -207,6 +207,10 @@ fn rows(tab: usize, s: &Settings, ctx: Context) -> Vec<String> {
                 "Default page layout",
                 s.reading_layout.as_deref().unwrap_or("auto"),
             ),
+            pair(
+                "First-line indent",
+                &format!("{} cells", s.paragraph_indent.min(8)),
+            ),
         ],
         2 => vec![
             pair(
@@ -326,6 +330,8 @@ pub fn show(term: &mut AppTerminal, start: Open, ctx: Context) -> io::Result<()>
                     (1,2)=>"Preferred width of each text column, in terminal cells. A narrow window uses one page.",
                     (1,3)=>"Space between facing text pages. The W panel also lets you adjust this while reading.",
                     (1,4)=>"Reflow repairs words split across printed lines. Preserve keeps the book’s original breaks.",
+                    (1,6)=>"Default for newly opened books: one page, a spread or continuous scroll.",
+                    (1,7)=>"Indent the first line of a text paragraph by 0–8 cells. Wrapped lines keep their left edge.",
                     (1,_)=>"Display embedded illustrations on the page or open them from I when you need them.",
                     (2,0)=>"Choose the library used by the folder browser. Searches also include its subfolders.",
                     (2,1)=>"Open local folders as a list or a grid of covers.",

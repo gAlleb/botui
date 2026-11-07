@@ -88,13 +88,20 @@ pub(super) fn setting(
         (1, 1) => {
             Settings::update(|s| s.zen = !s.zen)?;
         }
-        (1, 2) | (1, 3) => {
+        (1, 2) | (1, 3) | (1, 7) => {
             let (val, lo, hi, title) = if i == 2 {
                 (
                     p.page_width.unwrap_or(78),
                     32,
                     240,
                     "Page width · 32–240 cells",
+                )
+            } else if i == 7 {
+                (
+                    u16::from(p.paragraph_indent.min(8)),
+                    0,
+                    8,
+                    "First-line indent · 0–8 cells",
                 )
             } else {
                 (p.column_gap.unwrap_or(4), 0, 32, "Column gap · 0–32 cells")
@@ -108,6 +115,8 @@ pub(super) fn setting(
                 Settings::update(|s| {
                     if i == 2 {
                         s.page_width = Some(n)
+                    } else if i == 7 {
+                        s.paragraph_indent = n as u8;
                     } else {
                         s.column_gap = Some(n)
                     }

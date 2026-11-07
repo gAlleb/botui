@@ -13,6 +13,7 @@ pub(super) fn geometry(
     mode: LayoutMode,
     width: u16,
     gap: u16,
+    zen: bool,
 ) -> (Rect, LayoutMode, u16) {
     let available = area
         .width
@@ -28,7 +29,7 @@ pub(super) fn geometry(
     } else {
         width.min(available)
     };
-    let vertical = (area.height / 13).min(2);
+    let vertical = (area.height / 13).min(2).saturating_sub(u16::from(zen));
     (
         crate::centered(area, used, area.height.saturating_sub(2 * vertical)),
         if spread {
@@ -152,8 +153,13 @@ mod tests {
         for width in [180, 240, 320] {
             for page in [52, 76] {
                 for gap in [0, 4, 12] {
-                    let (area, mode, actual_gap) =
-                        geometry(Rect::new(0, 0, width, 40), LayoutMode::Spread, page, gap);
+                    let (area, mode, actual_gap) = geometry(
+                        Rect::new(0, 0, width, 40),
+                        LayoutMode::Spread,
+                        page,
+                        gap,
+                        false,
+                    );
                     assert_eq!(
                         (mode, actual_gap, area.width),
                         (LayoutMode::Spread, gap, page * 2 + gap)
@@ -162,8 +168,19 @@ mod tests {
                 }
             }
         }
-        let (single, mode, _) = geometry(Rect::new(0, 0, 45, 14), LayoutMode::Spread, 76, 6);
+        let (single, mode, _) = geometry(Rect::new(0, 0, 45, 14), LayoutMode::Spread, 76, 6, false);
         assert_eq!(mode, LayoutMode::Single);
         assert!(single.width <= 45);
+    }
+    #[test]
+    fn zen_reclaims_one_row_on_each_edge_without_changing_the_spread() {
+        for (height, top) in [(8, 0), (24, 0), (40, 1)] {
+            let screen = Rect::new(0, 0, 160, height);
+            let (normal, _, _) = geometry(screen, LayoutMode::Spread, 70, 8, false);
+            let (zen, _, gap) = geometry(screen, LayoutMode::Spread, 70, 8, true);
+            assert_eq!((zen.x, zen.width, gap), (normal.x, normal.width, 8));
+            assert_eq!((zen.y, screen.bottom() - zen.bottom()), (top, top));
+            assert_eq!(zen.height, normal.height + 2 * u16::from(normal.y > 0));
+        }
     }
 }
