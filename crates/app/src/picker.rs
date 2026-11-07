@@ -1,6 +1,7 @@
 mod gallery;
 mod index;
 mod info;
+mod navigation;
 use botui_formats::FileKind;
 use info::show_info;
 
@@ -36,6 +37,7 @@ struct Entry {
 
 pub struct Picker {
     index: index::Index,
+    navigation: navigation::Navigation,
     dir: PathBuf,
     root: PathBuf,
     grid_view: bool,
@@ -60,10 +62,12 @@ pub struct Picker {
 
 impl Picker {
     pub fn new(dir: PathBuf) -> io::Result<Self> {
+        let settings = crate::settings::Settings::load()?;
         let mut picker = Self {
             index: index::Index::new(),
+            navigation: navigation::Navigation::new(settings.sidebar_width),
             dir: dir.clone(),
-            grid_view: crate::settings::Settings::load()?.local_grid,
+            grid_view: settings.local_grid,
             grid: None,
             covers: crate::shelf::covers::Covers::new(),
             graphics: crate::cover::graphics(),
@@ -85,6 +89,11 @@ impl Picker {
         };
         picker.load(&dir)?;
         Ok(picker)
+    }
+
+    fn set_root(&mut self, root: PathBuf) {
+        self.root = root;
+        self.navigation.visit(&self.root, &self.dir, &self.entries);
     }
 
     fn load(&mut self, dir: &Path) -> io::Result<()> {
@@ -110,6 +119,7 @@ impl Picker {
         self.view = LocalView::Directory;
         self.entries = entries;
         self.dir = dir.to_owned();
+        self.navigation.visit(&self.root, &self.dir, &self.entries);
         self.warm_directory();
         self.error = None;
         Ok(())
@@ -117,8 +127,9 @@ impl Picker {
 
     fn draw(&mut self, frame: &mut Frame) {
         let area = frame.area();
-        let panel = area;
         frame.render_widget(Clear, area);
+        let panel = self.navigation.layout(frame, area);
+        let compact = panel == area;
         let block = crate::appearance::block().title(" Local library ");
         let inner = block.inner(panel);
         frame.render_widget(block, panel);
@@ -127,15 +138,30 @@ impl Picker {
         if inner.height == 0 {
             return;
         }
+        let title_width = inner.width.saturating_sub(9);
         frame.render_widget(
             Paragraph::new(match &self.view {
                 LocalView::Reading => "Currently reading".into(),
                 LocalView::Recent => "Recently added".into(),
                 LocalView::Search(q) => format!("Search · {} · {} results", q, self.entries.len()),
-                LocalView::Directory => self.dir.display().to_string(),
+                LocalView::Directory => {
+                    use unicode_truncate::UnicodeTruncateStr;
+                    let path = self.dir.to_string_lossy();
+                    if path.unicode_truncate(usize::from(title_width)).0.len() == path.len() {
+                        path.into_owned()
+                    } else {
+                        let (tail, _) =
+                            path.unicode_truncate_start(usize::from(title_width.saturating_sub(1)));
+                        format!("…{tail}")
+                    }
+                }
             })
             .bold(),
-            Rect { height: 1, ..inner },
+            Rect {
+                height: 1,
+                width: title_width,
+                ..inner
+            },
         );
         let label = if self.grid_view {
             "[V List]"
@@ -149,38 +175,44 @@ impl Picker {
             1,
         );
         frame.render_widget(Paragraph::new(label).cyan(), self.view_button);
-        let mut x = inner.x;
-        for (i, label) in ["1 Folders", "2 Currently reading", "3 Recently added"]
-            .iter()
-            .enumerate()
-        {
-            let rect = Rect::new(
-                x,
-                inner.y + 1,
-                (label.len() as u16 + 2).min(inner.right().saturating_sub(x)),
-                inner.height.saturating_sub(1).min(1),
-            );
-            self.shelves[i] = rect;
-            x = rect.right();
-            let selected = matches!(
-                (&self.view, i),
-                (LocalView::Directory, 0) | (LocalView::Reading, 1) | (LocalView::Recent, 2)
-            );
-            frame.render_widget(
-                Paragraph::new(format!(" {label} ")).style(if selected {
-                    Style::new().reversed()
-                } else {
-                    Style::new().fg(Color::Cyan)
-                }),
-                rect,
-            );
+        self.shelves = [Rect::default(); 3];
+        if compact {
+            let mut x = inner.x;
+            let tabs = if inner.width < 51 {
+                ["1 Folders", "2 Reading", "3 Recent"]
+            } else {
+                ["1 Folders", "2 Currently reading", "3 Recently added"]
+            };
+            for (i, label) in tabs.iter().enumerate() {
+                let rect = Rect::new(
+                    x,
+                    inner.y + 1,
+                    (label.len() as u16 + 2).min(inner.right().saturating_sub(x)),
+                    inner.height.saturating_sub(1).min(1),
+                );
+                self.shelves[i] = rect;
+                x = rect.right();
+                let selected = matches!(
+                    (&self.view, i),
+                    (LocalView::Directory, 0) | (LocalView::Reading, 1) | (LocalView::Recent, 2)
+                );
+                frame.render_widget(
+                    Paragraph::new(format!(" {label} ")).style(if selected {
+                        Style::new().reversed()
+                    } else {
+                        Style::new().fg(Color::Cyan)
+                    }),
+                    rect,
+                );
+            }
         }
-        let bottom = u16::from(inner.height >= 4);
+        let header = if compact { 2 } else { 1 };
+        let bottom = self.draw_footer(frame, inner, inner.height.saturating_sub(header + 1));
         self.rows = Rect::new(
             inner.x,
-            inner.y + 2,
+            inner.y + header,
             inner.width,
-            inner.height.saturating_sub(2 + bottom),
+            inner.height.saturating_sub(header + bottom),
         );
         self.grid = None;
         if self.grid_view
@@ -226,49 +258,67 @@ impl Picker {
             };
             frame.render_widget(Paragraph::new(text), self.rows);
         }
-        self.info_button = Rect::default();
-        if bottom > 0 {
-            let footer = Rect::new(inner.x, inner.bottom() - 1, inner.width, 1);
-            self.exit = Rect::new(footer.x, footer.y, footer.width.min(11), 1);
-            frame.render_widget(Paragraph::new("[ Q Back ]"), self.exit);
-            let message = Rect::new(
-                self.exit.right(),
-                footer.y,
-                footer.width.saturating_sub(self.exit.width),
-                1,
+        if let Some(error) = &self.error {
+            frame.render_widget(
+                Paragraph::new(error.as_str()).fg(Color::Yellow),
+                Rect::new(inner.x, inner.y, inner.width, 1),
             );
-            self.prefs_buttons.draw(frame, message);
-            let mut x = (message.x + 23).min(message.right());
-            let mut button = |label: &str| {
-                let r = Rect::new(
-                    x,
-                    message.y,
-                    (label.chars().count() as u16 + 1).min(message.right().saturating_sub(x)),
-                    1,
-                );
-                frame.render_widget(Paragraph::new(label).cyan(), r);
-                x = r.right();
-                r
-            };
-            self.up_button = if self.view == LocalView::Directory && self.dir.parent().is_some() {
-                button("[↑ Up]")
-            } else {
-                Rect::default()
-            };
-            self.path_button = button("[P Folder…]");
-            self.search_button = button("[/ Search]");
-            self.root_button = button("[R Set library here]");
-            if self.selected_scan().is_some() {
-                self.info_button = button("[I File info]");
-            }
+        }
+    }
 
-            if let Some(error) = &self.error {
-                frame.render_widget(
-                    Paragraph::new(error.as_str()).fg(Color::Yellow),
-                    Rect::new(inner.x, inner.y, inner.width, 1),
-                );
+    /// Keep each mouse target intact when a sidebar, split or narrow terminal
+    /// leaves less space for actions. Reserve these rows before drawing the books.
+    fn draw_footer(&mut self, frame: &mut Frame, inner: Rect, max_rows: u16) -> u16 {
+        let directory = self.view == LocalView::Directory;
+        let actions = [
+            Some("[ Q Back ]"),
+            Some("[F2 Settings] [? Help]"),
+            self.selected_scan().map(|_| "[I File info]"),
+            (directory && self.dir.parent().is_some()).then_some("[↑ Up]"),
+            Some("[P Folder…]"),
+            Some("[/ Search]"),
+            directory.then_some("[R Set library here]"),
+        ];
+        let mut rects = [Rect::default(); 7];
+        let (mut x, mut line) = (0, 0);
+        for (rect, label) in rects.iter_mut().zip(actions) {
+            let Some(label) = label else { continue };
+            let width = label.chars().count() as u16;
+            if width > inner.width {
+                continue;
+            }
+            if x + width > inner.width {
+                x = 0;
+                line += 1;
+            }
+            if line >= max_rows {
+                break;
+            }
+            *rect = Rect::new(inner.x + x, line, width, 1);
+            x += width + 1;
+        }
+        let height = (line + 1).min(max_rows);
+        for rect in rects.iter_mut().filter(|r| !r.is_empty()) {
+            rect.y += inner.bottom() - height;
+        }
+        let [back, prefs, info, up, folder, search, root] = rects;
+        self.exit = back;
+        self.info_button = info;
+        self.up_button = up;
+        self.path_button = folder;
+        self.search_button = search;
+        self.root_button = root;
+        self.prefs_buttons.draw(frame, prefs);
+        for (rect, label) in rects.into_iter().zip(actions) {
+            if rect == prefs || rect.is_empty() {
+                continue;
+            }
+            if let Some(label) = label {
+                let text = Paragraph::new(label);
+                frame.render_widget(if rect == back { text } else { text.cyan() }, rect);
             }
         }
+        height
     }
 
     fn browse(&mut self, view: LocalView) -> io::Result<()> {
@@ -299,6 +349,7 @@ impl Picker {
                 })
                 .collect();
             self.list = ListState::default().with_selected((!self.entries.is_empty()).then_some(0));
+            self.navigation.show_shelf(&view);
             self.view = view;
             self.warm_directory();
             self.error = None;
@@ -311,6 +362,7 @@ impl Picker {
                 _ => None,
             },
         );
+        self.navigation.show_shelf(&view);
         self.view = view;
         self.entries.clear();
         self.list = ListState::default();
@@ -397,11 +449,31 @@ impl Picker {
             let Some(e) = event else {
                 continue;
             };
+            if let Some(result) = self.navigation.splitter.input(&e) {
+                if let Err(error) = result {
+                    self.error = Some(error.to_string());
+                }
+                continue;
+            }
+            if let Some(result) = self.navigation.input(&e) {
+                let result = result.and_then(|action| match action {
+                    Some(navigation::Node::Folder(path)) => self.load(&path),
+                    Some(navigation::Node::Folders) => self.browse(LocalView::Directory),
+                    Some(navigation::Node::Reading) => self.browse(LocalView::Reading),
+                    Some(navigation::Node::Recent) => self.browse(LocalView::Recent),
+                    _ => Ok(()),
+                });
+                if let Err(error) = result {
+                    self.error = Some(error.to_string());
+                }
+                continue;
+            }
             if let Some(open) = self.prefs_buttons.event(&e) {
                 let old = crate::settings::Settings::load()?.library_root;
                 crate::preferences::show(term, open, crate::preferences::Context::Local)?;
                 let cfg = crate::settings::Settings::load()?;
                 self.grid_view = cfg.local_grid;
+                self.navigation.splitter.preferred = cfg.sidebar_width;
                 if cfg.library_root != old
                     && let Some(root) = cfg
                         .library_root
@@ -413,7 +485,7 @@ impl Picker {
                         .or_else(|| std::env::current_dir().ok())
                 {
                     self.load(&root)?;
-                    self.root = root;
+                    self.set_root(root);
                 }
                 continue;
             }
@@ -462,7 +534,7 @@ impl Picker {
                         let path = path.canonicalize()?;
                         self.load(&path)?;
                         crate::settings::Settings::update(|s| s.library_root = Some(path.clone()))?;
-                        self.root = path;
+                        self.set_root(path);
                         Ok(())
                     })();
                     if let Err(e) = result {
@@ -542,7 +614,7 @@ impl Picker {
                         s.library_root = Some(self.dir.clone())
                     }) {
                         Ok(_) => {
-                            self.root = self.dir.clone();
+                            self.set_root(self.dir.clone());
                             self.error = Some(format!("Library saved · {}", self.root.display()));
                         }
                         Err(e) => self.error = Some(e.to_string()),
