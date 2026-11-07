@@ -30,6 +30,22 @@ FB2_MARK = "Почта на пристани"
 TOTAL = 101
 
 
+def pdf(tones=False):
+    objects = [b'<< /Type /Catalog /Pages 2 0 R >>', b'<< /Type /Pages /Count 3 /Kids [3 0 R 5 0 R 7 0 R] >>']
+    for i in range(3):
+        objects.append(f'<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 440] /Resources << /Font << /F1 << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> >> >> /Contents {4+2*i} 0 R >>'.encode())
+        content = f'0.{i+2} 0.4 0.6 rg {28*i} 30 {220-i*28} {350-i*40} re f'.encode()
+        if tones:content=f'{[0.3,0.8,0.5][i]} g 0 0 1000 1000 re f'.encode()
+        if i==1 and not tones:content+=b" BT /F1 16 Tf 10 32 Td (Lighthouse atlas) Tj ET"
+        objects.append(f'<< /Length {len(content)} >>\nstream\n'.encode()+content+b'\nendstream')
+    data=bytearray(b'%PDF-1.4\n'); offsets=[0]
+    for i,obj in enumerate(objects,1):
+        offsets.append(len(data)); data.extend(f'{i} 0 obj\n'.encode()+obj+b'\nendobj\n')
+    offset=len(data);data.extend(f'xref\n0 {len(offsets)}\n0000000000 65535 f \n'.encode())
+    for pos in offsets[1:]:data.extend(f'{pos:010} 00000 n \n'.encode())
+    data.extend(f'trailer\n<< /Size {len(offsets)} /Root 1 0 R >>\nstartxref\n{offset}\n%%EOF\n'.encode());return data
+
+
 def epub():
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w") as archive:
@@ -59,14 +75,15 @@ class Fixture(ThreadingHTTPServer):
         self.files = {
             301: ("epub", "application/epub+zip", epub()),
             302: ("fb2", "application/x-fictionbook+xml", (ROOT / "examples/first-light.fb2").read_bytes()),
-            303: ("pdf", "application/pdf", b"%PDF-1.4\n"),
+            303: ("pdf", "application/pdf", pdf()),
+            4001: ("pdf", "application/pdf", pdf()),
         }
 
     def card(self, index):
         if index == 0:
             title = BOOK
             files = [{"id": i, "format": ext, "role": "primary" if i == 301 else "content", "sizeBytes": len(data)}
-                     for i, (ext, _, data) in self.files.items()]
+                     for i, (ext, _, data) in self.files.items() if i in (301, 302, 303)]
         else:
             title = OTHER_BOOK if index == 1 else f"Архивный том {index + 1}"
             files = [{"id": 4000 + index, "format": "pdf", "role": "primary", "sizeBytes": 1000}]
@@ -374,7 +391,7 @@ def check_collections(tmp, binary, fixture):
         formats(term)
         frame = term.see("▀")
         term.click("PDF", frame)
-        term.wait("Сведения о PDF", lambda s: "PDF" in s and "Open the original pages" in s)
+        term.wait("PDF opens directly from the edition row", lambda s: "PDF" in s and "1 / 3" in s)
         term.keys("Escape")
         for label, heading in [("FB2", FB2_MARK), ("EPUB", EPUB_MARK)]:
             term.click(label, formats(term))
@@ -382,6 +399,7 @@ def check_collections(tmp, binary, fixture):
             if label == "FB2":
                 term.keys("z");term.wait("Zen",lambda s:"Z Zen" not in s);term.keys("o");term.see("Chapters:");term.keys("End","Enter")
                 term.wait("Конец книги FB2",lambda s:s.strip().startswith("Обратный рейс"))
+                term.keys("z");term.see("Z Zen")
             term.keys("q")
             formats(term)
         term.keys("Escape")
@@ -389,7 +407,7 @@ def check_collections(tmp, binary, fixture):
         term.click(OTHER_BOOK, shelf)
         missing_cover = term.wait("Оттиск без обложки", lambda s: OTHER_BOOK in s and "PDF" in s and BOOK not in s)
         term.click("PDF", missing_cover)
-        term.wait("Карточка PDF без обложки", lambda s: "Open the original pages" in s and OTHER_BOOK in s and "───" in s)
+        term.wait("PDF without cover opens from its edition row", lambda s: "PDF" in s and "1 / 3" in s)
         term.keys("Escape")
         term.keys("Escape")
         term.see(BOOK)
@@ -402,7 +420,7 @@ def check_collections(tmp, binary, fixture):
         assert ("GET", API + "/books/200/thumbnail", 200) in requests, requests
         assert not any(path == API + "/books/201/thumbnail" for _, path, _ in requests), requests
         downloads = [path for method, path, status in requests if method == "GET" and path.endswith("/serve") and status == 200]
-        assert downloads == [API + "/books/files/302/serve", API + "/books/files/301/serve"], requests
+        assert downloads == [f"{API}/books/files/{i}/serve" for i in (303, 302, 301, 4001)], requests
         assert [(path, status) for method, path, status in requests if method == "POST" and path.startswith(API + "/auth/")] == [
             (API + "/auth/login", 401), (API + "/auth/login", 200),
             (API + "/auth/refresh", 200), (API + "/auth/logout", 200)

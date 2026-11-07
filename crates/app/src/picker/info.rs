@@ -71,10 +71,6 @@ impl FileInfo {
         if let Some(size) = self.size {
             lines.push(Line::from(format!("Size: {size} bytes")));
         }
-        lines.push(Line::from(""));
-        lines.push(Line::from(
-            "This terminal displays pages using character graphics.",
-        ));
         let body = Rect {
             height: inner.height.saturating_sub(1),
             ..inner

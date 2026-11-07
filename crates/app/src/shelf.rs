@@ -312,8 +312,6 @@ pub(crate) struct Shelf {
     stack: Vec<Pane>,
     login: Option<login::Login>,
     info: Option<String>,
-    scan_file: Option<BookFile>,
-    scan_button: Rect,
     notice: Option<String>,
     exit_warning: Option<String>,
     after_save: Option<AfterSave>,
@@ -355,8 +353,6 @@ impl Shelf {
             stack: vec![Pane::home(false)],
             login: None,
             info: None,
-            scan_file: None,
-            scan_button: Rect::default(),
             notice: None,
             exit_warning: None,
             after_save: None,
@@ -601,31 +597,20 @@ impl Shelf {
     }
 
     fn open_file(&mut self, file: BookFile) {
-        if !file
+        if file
             .format
             .as_deref()
             .and_then(botui_formats::FileKind::from_extension)
-            .is_some_and(botui_formats::FileKind::readable)
+            .is_some()
         {
-            self.scan_file = file
-                .format
-                .as_deref()
-                .and_then(botui_formats::FileKind::from_extension)
-                .filter(|k| !k.readable())
-                .map(|_| file.clone());
+            self.download(file);
+        } else {
             self.info = Some(format!(
-                "{}\n\n{}\n\n{}",
+                "{}\n\n{}\n\nNo reader available for this format.",
                 self.current().title,
                 file_label(&file).trim(),
-                if self.scan_file.is_some() {
-                    "Open the original pages to read this book."
-                } else {
-                    "No reader available for this format."
-                }
             ));
-            return;
         }
-        self.download(file);
     }
     fn request_covers(&mut self, ids: &[u64]) {
         for &id in ids {
@@ -776,7 +761,6 @@ impl Shelf {
         self.pending = None;
         self.info = None;
         self.login = None;
-        self.scan_file = None;
         self.bookmarks = None;
         self.stack = vec![Pane::home(self.session.is_some())];
         None
@@ -1346,13 +1330,6 @@ impl Shelf {
             return None;
         }
         if self.info.is_some() {
-            if (matches!(key, Some(KeyCode::Char('p' | 'P')))
-                || click.is_some_and(|p| self.scan_button.contains(p)))
-                && let Some(file) = self.scan_file.clone()
-            {
-                self.download(file);
-                return None;
-            }
             if matches!(
                 key,
                 Some(KeyCode::Esc | KeyCode::Enter | KeyCode::Backspace)

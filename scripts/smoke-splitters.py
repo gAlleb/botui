@@ -115,8 +115,6 @@ def exercise(directory, server):
     pdf.write_bytes(sources.pdf(tones=True))
     term = shelf.Terminal(directory, BINARY, args=[str(pdf)])
     try:
-        term.see("P Read")
-        term.keys("p")
         at_width(term, 45)
         term.see("1 / 3")
         term.keys("p")
@@ -139,8 +137,6 @@ def exercise(directory, server):
 
     term = shelf.Terminal(directory, BINARY, args=[str(pdf)])
     try:
-        term.see("P Read")
-        term.keys("p")
         assert "2 / 3" in term.wait("Restored fixed page and width", lambda f: "2 / 3" in f and
                                     any(line.find("↔") == 20 for line in f.splitlines()))
     finally:

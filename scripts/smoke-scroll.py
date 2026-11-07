@@ -35,7 +35,7 @@ def text_scroll(d):
 def scan_scroll(d,file):
     d.mkdir();t=start(d,file)
     try:
-        t.see('P Read');t.keys('p');t.wait('First rendered page',lambda f:'::::::::' in f)
+        t.wait('First rendered page',lambda f:'::::::::' in f)
         t.keys('m');controls=t.see('Continuous scroll')
         assert controls.index('Single page') < controls.index('Two-page spread') < controls.index('Continuous scroll')
         t.click('Go to page number',controls);t.see('Go to page');t.keys('2','Enter');t.see('2 / 3');t.keys('b');t.see('Page bookmarked')
@@ -54,7 +54,7 @@ def scan_scroll(d,file):
         t.keys(',');t.wait('Jump restores scroll offset',lambda a:'::::::::' in a and '########' in a)
         t.keys('.');t.see('3 / 3');t.keys(',');t.see('1 / 3')
         stop(t);state=saved(d);assert state['scrolling'] and state['scan_offset']>0
-        t=start(d,file);t.see('P Read');t.keys('p');t.wait('Restored within the same physical sheet',lambda a:'::::::::' in a and '########' in a)
+        t=start(d,file);t.wait('Restored within the same physical sheet',lambda a:'::::::::' in a and '########' in a)
         # Delete an off-screen bookmark without moving or losing the saved position.
         t.keys('g');t.see('Page bookmarks');t.keys('Delete');t.see('Delete bookmark?');t.keys('Escape')
         t.see('Page bookmarks');t.click('[×]',t.see('[×]'))
@@ -62,7 +62,7 @@ def scan_scroll(d,file):
         t.see('Bookmark removed');stop(t)
         after=saved(d)
         assert not after['marks'] and (after['block'],after['scan_offset'])==(state['block'],state['scan_offset'])
-        t=start(d,file);t.see('P Read');t.keys('p');t.keys('g');t.see('No entries yet.');t.keys('Escape')
+        t=start(d,file);t.see('1 / 3');t.keys('g');t.see('No entries yet.');t.keys('Escape')
         t.keys('2');t.wait('Spread leaves the scroll view',lambda a:'Scroll' not in a and '########' in a);stop(t)
     finally:t.run('kill-server',required=False)
 def damaged_sheet_and_search(d):
@@ -90,7 +90,7 @@ sys.stdout.write('Lighthouse on the north shore\\f\\fLighthouse by the southern 
     program.chmod(0o755)
     t=start(d,path,'PATH='+str(bin_dir)+os.pathsep+os.environ['PATH'])
     try:
-        t.see('P Read'); t.keys('p'); t.see('1 / 3')
+        t.see('1 / 3')
         t.keys('2'); t.see('Page 2 unavailable')
         t.keys('1','/'); t.see('Find in text layer'); t.type('lighthouse'); t.keys('Enter')
         t.see('2 matching pages'); t.keys('F5'); frame=t.see('Matching pages')

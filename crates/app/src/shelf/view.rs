@@ -18,7 +18,6 @@ impl Shelf {
         self.home_controls.clear();
         self.keep_button = Rect::default();
         self.search_button = Rect::default();
-        self.scan_button = Rect::default();
         self.rail.clear_hits();
         self.grid = None;
         self.view_button = Rect::default();
@@ -117,19 +116,6 @@ impl Shelf {
                 ),
             );
             self.draw_buttons(frame, inner, "[ Back ]", false);
-            if self.scan_file.is_some() && inner.height >= 2 {
-                let x = self.back_button.right().saturating_add(1);
-                self.scan_button = Rect::new(
-                    x,
-                    inner.bottom() - 1,
-                    inner.right().saturating_sub(x).min(19),
-                    1,
-                );
-                frame.render_widget(
-                    Paragraph::new("[ P Read pages ]").style(heading()),
-                    self.scan_button,
-                );
-            }
             return;
         }
         let inner = if !wide && self.session.is_some() && inner.height >= 4 {

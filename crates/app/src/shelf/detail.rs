@@ -372,13 +372,6 @@ impl Shelf {
             if let Some(Command::File(file)) = self.current().action() {
                 if matches!(act, Act::Save) {
                     self.transfer(file, true);
-                } else if let Some(kind) = file
-                    .format
-                    .as_deref()
-                    .and_then(botui_formats::FileKind::from_extension)
-                    && !kind.readable()
-                {
-                    self.download(file);
                 } else {
                     self.open_file(file);
                 }

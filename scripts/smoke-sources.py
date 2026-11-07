@@ -16,20 +16,7 @@ shelf = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(shelf)
 BINARY = ROOT/'target/debug/botui'
 
-def pdf(tones=False):
-    objects = [b'<< /Type /Catalog /Pages 2 0 R >>', b'<< /Type /Pages /Count 3 /Kids [3 0 R 5 0 R 7 0 R] >>']
-    for i in range(3):
-        objects.append(f'<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 440] /Resources << /Font << /F1 << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> >> >> /Contents {4+2*i} 0 R >>'.encode())
-        content = f'0.{i+2} 0.4 0.6 rg {28*i} 30 {220-i*28} {350-i*40} re f'.encode()
-        if tones:content=f'{[0.3,0.8,0.5][i]} g 0 0 1000 1000 re f'.encode()
-        if i==1 and not tones:content+=b" BT /F1 16 Tf 10 32 Td (Lighthouse atlas) Tj ET"
-        objects.append(f'<< /Length {len(content)} >>\nstream\n'.encode()+content+b'\nendstream')
-    data=bytearray(b'%PDF-1.4\n'); offsets=[0]
-    for i,obj in enumerate(objects,1):
-        offsets.append(len(data)); data.extend(f'{i} 0 obj\n'.encode()+obj+b'\nendobj\n')
-    offset=len(data);data.extend(f'xref\n0 {len(offsets)}\n0000000000 65535 f \n'.encode())
-    for pos in offsets[1:]:data.extend(f'{pos:010} 00000 n \n'.encode())
-    data.extend(f'trailer\n<< /Size {len(offsets)} /Root 1 0 R >>\nstartxref\n{offset}\n%%EOF\n'.encode());return data
+pdf = shelf.pdf
 
 class Term(shelf.Terminal):
     def __init__(self,tmp,*args):
@@ -44,11 +31,11 @@ class Feed(BaseHTTPRequestHandler):
             self.send_error(401);return
         atom='<feed xmlns="http://www.w3.org/2005/Atom">'
         pages={'/start':(atom+'<title>Каталог OPDS</title><link rel="search" type="application/opensearchdescription+xml" href="search.xml"/><entry><title>Книги маяка</title><link rel="subsection" type="application/atom+xml" href="shelf"/></entry></feed>').encode(),
-               '/shelf':(atom+'<title>Моя полка OPDS</title><entry xml:base="/pub/"><title>Атлас пролива</title><author><name>Иванов</name></author><link rel="http://opds-spec.org/acquisition" type="application/epub+zip" href="first.epub"/><link rel="http://opds-spec.org/image/thumbnail" href="cover"/></entry><link rel="next" href="next"/></feed>').encode(),
+               '/shelf':(atom+'<title>Моя полка OPDS</title><entry xml:base="/pub/"><title>Атлас пролива</title><author><name>Иванов</name></author><link rel="http://opds-spec.org/acquisition" type="application/epub+zip" href="first.epub"/><link rel="http://opds-spec.org/acquisition" type="application/pdf" href="atlas.pdf"/><link rel="http://opds-spec.org/image/thumbnail" href="cover"/></entry><link rel="next" href="next"/></feed>').encode(),
                '/next':(atom+'<title>Следующий выпуск</title><entry><title>Continuation</title><link rel="subsection" type="application/atom+xml" href="shelf"/></entry><link rel="previous" href="shelf"/></feed>').encode(),
                '/search.xml':b'<OpenSearchDescription xmlns="http://a9.com/-/spec/opensearch/1.1/"><Url type="application/atom+xml" template="/find?q={searchTerms}"/></OpenSearchDescription>',
                '/find?q=Amber%20%26%20fire':(atom+'<title>Results</title><entry><title>Verified match</title><link rel="subsection" type="application/atom+xml" href="shelf"/></entry></feed>').encode(),
-               '/pub/first.epub':shelf.epub(),'/pub/cover':(ROOT/'scripts/fixtures/shelf-cover.jpg').read_bytes()}
+               '/pub/atlas.pdf':pdf(),'/pub/first.epub':shelf.epub(),'/pub/cover':(ROOT/'scripts/fixtures/shelf-cover.jpg').read_bytes()}
         data=pages.get(self.path)
         if not data:self.send_error(404);return
         self.server.seen.add(self.path);self.send_response(200);self.send_header('Content-Length',str(len(data)));self.end_headers();self.wfile.write(data)
@@ -62,9 +49,11 @@ def opds(tmp):
             t.click('Книги маяка',t.see('Книги маяка'));t.see('Атлас пролива');t.see('▀')
             t.see('Continuation');t.keys('PageDown','PageUp');t.see('Атлас пролива')
             t.click('Атлас пролива',t.see('Атлас пролива'));t.click('EPUB',t.wait('Форматы книги OPDS',lambda s:'EPUB' in s and '[V ' not in s))
-            t.see(shelf.EPUB_MARK);t.keys('q');t.see('EPUB');t.keys('Escape');t.see('Моя полка OPDS')
+            t.see(shelf.EPUB_MARK);t.keys('q');t.see('EPUB')
+            t.click('PDF',t.see('PDF'));t.see('1 / 3');t.keys('q');t.see('EPUB')
+            t.keys('Escape');t.see('Моя полка OPDS')
             t.keys('/');t.see('Search OPDS catalog');t.type('Amber & fire');t.keys('Enter');t.see('Verified match')
-            assert server.seen=={'/search.xml','/find?q=Amber%20%26%20fire','/start','/shelf','/next','/pub/cover','/pub/first.epub'},server.seen
+            assert server.seen=={'/search.xml','/find?q=Amber%20%26%20fire','/start','/shelf','/next','/pub/cover','/pub/first.epub','/pub/atlas.pdf'},server.seen
         finally:t.run('kill-server',required=False);server.shutdown()
 
 def opds2(tmp):
@@ -96,10 +85,28 @@ def opds2(tmp):
             assert server.seen=={'/v2','/file.epub','/search?query=Atlas%20%26%20maps','/v2-next'},server.seen
         finally:t.run('kill-server',required=False);server.shutdown()
 
+def local_scan(tmp):
+    directory = tmp / "library"
+    directory.mkdir()
+    path = directory / "Atlas.pdf"
+    path.write_bytes(pdf())
+    t = Term(tmp, "--local", directory)
+    try:
+        listing = t.see("[I File info]")
+        assert "Atlas.pdf" in listing
+        t.click("[I File info]", listing)
+        t.see("External viewer")
+        t.keys("Escape")
+        t.click("Atlas.pdf", t.see("Atlas.pdf"))
+        t.see("1 / 3")
+        t.keys("q")
+        t.see("[I File info]")
+    finally:
+        t.run("kill-server", required=False)
+
 def scan(tmp,path):
     t=Term(tmp,path)
     try:
-        t.see('P Read');t.keys('p')
         first=t.wait('Первая страница скана',lambda s:'▀' in s or '▄' in s)
         t.keys('Right');t.wait('Другое изображение на второй странице',lambda s:s!=first and ('▄' in s or '▀' in s))
         t.keys('+');t.wait('Увеличенная страница',lambda s:'▄' in s or '▀' in s);t.keys('Down','-');t.keys('m');t.see('2 / 3');t.click('Two-page spread',t.see('Two-page spread'))
@@ -119,12 +126,15 @@ def scan(tmp,path):
             time.sleep(.025)
     finally:t.run('kill-server',required=False)
     t=Term(tmp,path)
-    try:t.see('P Read');t.keys('p');t.wait('Восстановление скана',lambda s:'▀' in s or '▄' in s);t.keys('g');t.see('Page bookmarks');t.see('Page 2');t.keys('Enter');t.keys('s');frame=t.see('Sessions on this device');assert 'Sessions on this device  2' in frame,frame
+    try:t.wait('Восстановление скана',lambda s:'▀' in s or '▄' in s);t.keys('g');t.see('Page bookmarks');t.see('Page 2');t.keys('Enter');t.keys('s');frame=t.see('Sessions on this device');assert 'Sessions on this device  2' in frame,frame
     finally:t.run('kill-server',required=False)
 
 if __name__=='__main__':
     with tempfile.TemporaryDirectory(prefix='botui-sources-') as name:
-        tmp=Path(name);opds(tmp);opds2(tmp);p=tmp/'тест.pdf';p.write_bytes(pdf());scan(tmp,p)
+        tmp=Path(name)
+        for check in (local_scan, opds, opds2):
+            folder=tmp/check.__name__;folder.mkdir();check(folder)
+        p=tmp/'тест.pdf';p.write_bytes(pdf());scan(tmp,p)
         parts=[]
         for i in range(3):
             p=tmp/f'p{i}.ppm';p.write_bytes(b'P6\n80 100\n255\n'+bytes(v for y in range(100) for x in range(80) for v in ((x*3+i*40)%255,(y*2)%255,70)))

@@ -377,11 +377,7 @@ fn run() -> Result<()> {
         if io::stdin().is_terminal() && io::stdout().is_terminal() {
             let (_screen, mut terminal) = Screen::enter()?;
             let mut notices = vec![];
-            if cover::graphics().protocol_type() != ratatui_image::picker::ProtocolType::Halfblocks
-                || picker::show_info(&mut terminal, file, kind)?
-            {
-                open_book(&mut terminal, file, &mut notices)?;
-            }
+            open_book(&mut terminal, file, &mut notices)?;
             drop(_screen);
             for n in notices {
                 eprintln!("botui: {n}");

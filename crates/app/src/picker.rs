@@ -2,7 +2,7 @@ mod gallery;
 mod index;
 mod info;
 use botui_formats::FileKind;
-pub(super) use info::show_info;
+use info::show_info;
 
 use std::{
     fs, io,
@@ -48,6 +48,7 @@ pub struct Picker {
     view: LocalView,
     shelves: [Rect; 3],
     search_button: Rect,
+    info_button: Rect,
     root_button: Rect,
     path_button: Rect,
     prefs_buttons: crate::preferences::Buttons,
@@ -73,6 +74,7 @@ impl Picker {
             view: LocalView::Directory,
             shelves: [Rect::default(); 3],
             search_button: Rect::default(),
+            info_button: Rect::default(),
             root_button: Rect::default(),
             path_button: Rect::default(),
             prefs_buttons: Default::default(),
@@ -226,6 +228,7 @@ impl Picker {
             };
             frame.render_widget(Paragraph::new(text), self.rows);
         }
+        self.info_button = Rect::default();
         if bottom > 0 {
             let footer = Rect::new(inner.x, inner.bottom() - 1, inner.width, 1);
             self.exit = Rect::new(footer.x, footer.y, footer.width.min(11), 1);
@@ -257,6 +260,9 @@ impl Picker {
             self.path_button = button("[P Folder…]");
             self.search_button = button("[/ Search]");
             self.root_button = button("[R Set library here]");
+            if self.selected_scan().is_some() {
+                self.info_button = button("[I File info]");
+            }
 
             if let Some(error) = &self.error {
                 frame.render_widget(
@@ -351,6 +357,12 @@ impl Picker {
             self.list.select(Some(0));
         }
     }
+    fn selected_scan(&self) -> Option<(&Path, FileKind)> {
+        let entry = self.entries.get(self.list.selected()?)?;
+        let kind = entry.kind?;
+        (!kind.readable()).then_some((&entry.path, kind))
+    }
+
     fn move_selection(&mut self, delta: isize) {
         let Some(i) = self.list.selected() else {
             return;
@@ -418,6 +430,17 @@ impl Picker {
                 Event::Key(k) if k.kind != KeyEventKind::Release => Some(k.code),
                 _ => None,
             };
+            if (matches!(key, Some(KeyCode::Char('i' | 'I')))
+                || click.is_some_and(|p| self.info_button.contains(p)))
+                && let Some((path, kind)) = self.selected_scan()
+            {
+                match show_info(term, path, kind) {
+                    Ok(true) => return Ok(Some(path.to_owned())),
+                    Ok(false) => (),
+                    Err(e) => self.error = Some(e.to_string()),
+                }
+                continue;
+            }
             if matches!(key, Some(KeyCode::Char('p' | 'P')))
                 || click.is_some_and(|p| self.path_button.contains(p))
             {
@@ -639,15 +662,8 @@ impl Picker {
             };
             if let Some(entry) = open.and_then(|i| self.entries.get(i)) {
                 let path = entry.path.clone();
-                if let Some(kind) = entry.kind {
+                if entry.kind.is_some() {
                     self.error = None;
-                    if !kind.readable()
-                        && crate::cover::graphics().protocol_type()
-                            == ratatui_image::picker::ProtocolType::Halfblocks
-                        && !show_info(term, &path, kind)?
-                    {
-                        continue;
-                    }
                     return Ok(Some(path));
                 }
                 let previous = self.dir.clone();
