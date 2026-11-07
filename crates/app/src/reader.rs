@@ -104,6 +104,7 @@ struct Reader {
     opaque: bool,
     sidebar: navigation::Navigation,
     sidebar_rect: Rect,
+    splitter: crate::splitter::Splitter,
     footer: [Rect; 5],
     remote_marked: bool,
     sidebar_focus: bool,
@@ -177,6 +178,10 @@ impl Reader {
             opaque: settings.opaque_background,
             sidebar,
             sidebar_rect: Rect::default(),
+            splitter: crate::splitter::Splitter::new(
+                crate::splitter::Pane::Contents,
+                settings.contents_width,
+            ),
             footer: [Rect::default(); 5],
             remote_marked: false,
             sidebar_focus: false,
@@ -207,17 +212,12 @@ impl Reader {
     fn draw(&mut self, frame: &mut Frame, notice: Option<&str>) {
         let screen = frame.area();
         let mut page = screen;
-        self.sidebar_rect = Rect::default();
         if !self.zen {
             page.height = page.height.saturating_sub(1);
-            if screen.width >= 78 {
-                let w = (screen.width / 5).clamp(22, 32);
-                self.sidebar_rect = Rect::new(page.x, page.y, w, page.height);
-                page.x += w + 1;
-                page.width -= w + 1;
-            } else {
-                self.sidebar_focus = false;
-            }
+        }
+        (self.sidebar_rect, page) = self.splitter.layout(page, !self.zen && screen.width >= 78);
+        if self.sidebar_rect.is_empty() {
+            self.sidebar_focus = false;
         }
         let (text, actual, gap) =
             layout::geometry(page, self.mode, self.page_width, self.gap, self.zen);
@@ -311,6 +311,7 @@ impl Reader {
                     self.sidebar.follow(self.pager.anchor());
                 }
                 self.sidebar.draw_at(frame, style, self.sidebar_rect, false);
+                self.splitter.draw_grip(frame);
             }
             let foot = Rect::new(
                 screen.x,
@@ -1050,6 +1051,17 @@ pub fn read_server(
                     break Action::Resize;
                 }
                 let e = crate::settings::read_event()?;
+                if reader.menu.is_none()
+                    && reader.nav.is_none()
+                    && reader.palette.is_none()
+                    && reader.layout_panel.is_none()
+                    && let Some(result) = reader.splitter.input(&e)
+                {
+                    if let Err(error) = result {
+                        notices.push(error.to_string());
+                    }
+                    break Action::Resize;
+                }
                 if let Event::Paste(value) = &e
                     && let Some(nav) = reader.nav.as_mut()
                 {
@@ -1120,6 +1132,7 @@ pub fn read_server(
                 )?;
                 let new = crate::settings::Settings::load()?;
                 reader.zen = new.zen;
+                reader.splitter.preferred = new.contents_width;
                 if new.reading_layout != old.reading_layout {
                     reader.mode = match new.reading_layout.as_deref() {
                         Some("scroll") => LayoutMode::Scroll,

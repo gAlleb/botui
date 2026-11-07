@@ -27,6 +27,19 @@ impl Shelf {
         self.file_button = Rect::default();
         self.list_area = Rect::default();
         self.tab_buttons = [Rect::default(); Tab::ALL.len()];
+        let panel = if self.session.is_some() || self.is_opds {
+            frame.area()
+        } else {
+            centered(frame.area(), 84, 18)
+        };
+        let wide = self.pending.is_none()
+            && self.login.is_none()
+            && self.session.is_some()
+            && self.info.is_none()
+            && panel.width >= 123
+            && panel.height >= 20
+            && (self.view_available() || matches!(self.current().section, Section::Dashboard(_)));
+        let (side, panel) = self.rail.splitter.layout(panel, wide);
         if let Some(job) = &self.pending {
             let panel = centered(frame.area(), 54, 7);
             let border = crate::appearance::block().title(if self.is_opds {
@@ -50,30 +63,12 @@ impl Shelf {
             self.draw_home(frame);
             return;
         }
-        let panel = if self.session.is_some() || self.is_opds {
-            frame.area()
-        } else {
-            centered(frame.area(), 84, 18)
-        };
-        let wide = self.session.is_some()
-            && self.info.is_none()
-            && panel.width >= 123
-            && panel.height >= 20
-            && (self.view_available() || matches!(self.current().section, Section::Dashboard(_)));
-        let panel = if wide {
-            let w = (panel.width / 5).clamp(25, 32);
+        if wide {
             let tab = self.active_tab();
             let scope = super::rail::current_scope(&self.current().section).cloned();
-            self.rail.draw(
-                frame,
-                Rect::new(panel.x, panel.y, w, panel.height),
-                tab,
-                scope.as_ref(),
-            );
-            Rect::new(panel.x + w + 1, panel.y, panel.width - w - 1, panel.height)
-        } else {
-            panel
-        };
+            self.rail.draw(frame, side, tab, scope.as_ref());
+            self.rail.splitter.draw_grip(frame);
+        }
         let border = crate::appearance::block().title(if self.is_opds {
             " OPDS "
         } else {

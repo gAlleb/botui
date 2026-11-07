@@ -1559,6 +1559,7 @@ impl Shelf {
     }
 
     pub fn choose(&mut self, term: &mut AppTerminal) -> io::Result<Selection> {
+        self.rail.splitter.preferred = crate::settings::Settings::load()?.sidebar_width;
         loop {
             if let Some(choice) = self.collect_results() {
                 return Ok(choice);
@@ -1578,6 +1579,12 @@ impl Shelf {
                 continue;
             }
             let e = crate::settings::read_event()?;
+            if let Some(result) = self.rail.splitter.input(&e) {
+                if let Err(err) = result {
+                    self.notice = Some(err.to_string());
+                }
+                continue;
+            }
             if self.pending.is_none()
                 && self.login.is_none()
                 && self.info.is_none()
@@ -1585,7 +1592,9 @@ impl Shelf {
             {
                 let old = crate::settings::Settings::load()?.bookorbit;
                 crate::preferences::show(term, open, crate::preferences::Context::Shelf)?;
-                let new = crate::settings::Settings::load()?.bookorbit;
+                let settings = crate::settings::Settings::load()?;
+                self.rail.splitter.preferred = settings.sidebar_width;
+                let new = settings.bookorbit;
                 if !self.is_opds {
                     if self.session.is_none()
                         && (old.server != new.server || old.username != new.username)

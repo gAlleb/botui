@@ -53,6 +53,8 @@ pub fn read_server(
     let prefs = crate::settings::Settings::load()?;
     let mut zen = prefs.zen;
     let mut sidebar = contents::Contents::default();
+    let mut splitter =
+        crate::splitter::Splitter::new(crate::splitter::Pane::Contents, prefs.contents_width);
     let outline_path = path.to_owned();
     let mut outline_job =
         Some(worker.start(move |cancel| botui_fixed::outline(&outline_path, kind, cancel)));
@@ -163,12 +165,11 @@ pub fn read_server(
             }
         }
         let screen = term.size()?;
-        let rail = if !zen && screen.width >= 78 {
-            (screen.width / 5).clamp(22, 32)
-        } else {
-            0
-        };
-        let available = screen.width - rail;
+        let (sidebar_area, body) = splitter.layout(
+            Rect::new(0, 0, screen.width, screen.height),
+            !zen && screen.width >= 78,
+        );
+        let available = body.width;
         let cols = if !scrolling && spread && total != Some(1) && available >= 68 {
             2u16
         } else {
@@ -210,18 +211,12 @@ pub fn read_server(
         let mut footer_buttons = crate::preferences::Buttons::default();
         term.draw(|f| {
             let screen = f.area();
-            sidebar.draw(
-                f,
-                Rect::new(screen.x, screen.y, rail, screen.height),
-                n,
-                total.unwrap_or(0),
-            );
-            let area = Rect::new(
-                screen.x + rail,
-                screen.y,
-                available,
-                screen.height.saturating_sub(u16::from(!zen)),
-            );
+            sidebar.draw(f, sidebar_area, n, total.unwrap_or(0));
+            splitter.draw_grip(f);
+            let area = Rect {
+                height: body.height.saturating_sub(u16::from(!zen)),
+                ..body
+            };
             if !zen && screen.height > 0 {
                 let y = screen.bottom() - 1;
                 let mut right = area.right();
@@ -333,6 +328,12 @@ pub fn read_server(
             offset,
             crop,
         };
+        if !menu && let Some(result) = splitter.input(&e) {
+            if let Err(error) = result {
+                message = error.to_string();
+            }
+            continue;
+        }
         if !menu && let Some(target) = sidebar.input(&e, total.unwrap_or(0)) {
             if let Some(target) = target
                 && let Some(count) = total
@@ -542,6 +543,7 @@ pub fn read_server(
                 )?;
                 let updated = crate::settings::Settings::load()?;
                 zen = updated.zen;
+                splitter.preferred = updated.contents_width;
                 if before != updated.reading_layout {
                     scrolling = updated.reading_layout.as_deref() == Some("scroll");
                     spread = updated.reading_layout.as_deref() == Some("spread");

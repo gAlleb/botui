@@ -17,8 +17,8 @@ struct Sidebar {
     authors: Option<u64>,
     series: Option<u64>,
 }
-#[derive(Default)]
 pub(super) struct Rail {
+    pub splitter: crate::splitter::Splitter,
     data: Sidebar,
     work: Option<Ticket<Sidebar>>,
     hits: Vec<(Rect, usize)>,
@@ -52,14 +52,25 @@ impl Rail {
         }
     }
     pub fn saved() -> Self {
-        let mut rail = Self::default();
-        if let Ok(c) = crate::settings::Settings::load() {
-            rail.folded = [
+        let c = crate::settings::Settings::load().unwrap_or_default();
+        Self {
+            splitter: crate::splitter::Splitter::new(
+                crate::splitter::Pane::Library,
+                c.sidebar_width,
+            ),
+            data: Sidebar::default(),
+            work: None,
+            hits: vec![],
+            rows: vec![],
+            viewport: Rect::default(),
+            focused: false,
+            cursor: 0,
+            offset: 0,
+            folded: [
                 c.bookorbit.libraries_collapsed,
                 c.bookorbit.collections_collapsed,
-            ];
+            ],
         }
-        rail
     }
     fn slot(tab: Tab) -> Option<usize> {
         match tab {

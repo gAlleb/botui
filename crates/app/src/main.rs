@@ -13,6 +13,7 @@ mod scan;
 mod settings;
 mod shelf;
 mod shell_theme;
+mod splitter;
 mod stats;
 mod terminal_input;
 mod theme;
