@@ -113,3 +113,37 @@ fn bookmarks_resolve_element_or_range_starts_without_guessing_another_chapter() 
     );
     assert_eq!(book.bookmark_anchor("epubcfi(/9998/12)"), None);
 }
+
+#[test]
+fn a_repeated_epub_passage_has_its_own_file_address() {
+    let html = "<html><head/><body><p>Again.</p><p hidden='hidden'>Again.</p><p>Third line.</p><p>Again.</p></body></html>";
+    let mut d = botui_core::Document::default();
+    super::xhtml::append_blocks(html, &mut d.blocks, &mut vec![], &mut d.tables);
+    super::locations::epub(html, "/6/2", 0, &d.blocks, &mut d.locations);
+    for (block, step) in [(0, 2), (2, 8)] {
+        let a = botui_core::Anchor { block, byte: 2 };
+        let addr = format!("epubcfi(/6/2!/4/{step}/1:2)");
+        assert_eq!(d.cfi(a), Some(addr.clone()));
+        assert_eq!(d.bookmark_anchor(&addr), Some(a));
+    }
+}
+
+#[test]
+fn image_only_epub_keeps_two_spine_destinations_and_ignores_remote_art() {
+    let book=read_book(archive(&[
+        ("META-INF/container.xml",r#"<container><rootfiles><rootfile full-path="book.opf"/></rootfiles></container>"#),
+        ("book.opf",r#"<package><manifest><item id="a" href="a.xhtml" media-type="application/xhtml+xml"/><item id="b" href="b.xhtml" media-type="application/xhtml+xml"/><item id="nav" properties="nav" href="toc.xhtml" media-type="application/xhtml+xml"/><item id="ill" href="i.jpg" media-type="image/jpeg"/></manifest><spine><itemref idref="a"/><itemref idref="b"/></spine></package>"#),
+        ("a.xhtml",r#"<html><body><img src="https://example.org/out.jpg"/><svg><image href="i.jpg"/></svg></body></html>"#),
+        ("b.xhtml",r#"<html><body><img alt="Last plate" src="i.jpg"/></body></html>"#),
+        ("toc.xhtml",r#"<html><body><nav epub:type="toc"><ol><li><a href="a.xhtml">First</a></li><li><a href="b.xhtml">Last</a></li></ol></nav></body></html>"#),
+    ]),"album").unwrap();
+    assert_eq!(book.blocks.len(), 2);
+    assert_eq!(book.blocks[1].text, "Last plate");
+    assert_eq!(
+        book.contents
+            .iter()
+            .map(|(a, _)| a.block)
+            .collect::<Vec<_>>(),
+        [0, 1]
+    );
+}

@@ -32,6 +32,14 @@ def run(name,f):
         t.click('FB2',s.formats(t));t.see(s.FB2_MARK);t.keys('o');t.see('Chapters:');t.keys('End','Enter')
         t.wait('переход без синхронизации',lambda x:x.strip().startswith('Обратный рейс'));t.keys('q')
         t.see('could not be located');assert f.saved==[302]
+        # Closing the reader and immediately leaving the shelf must finish its pending save.
+        f.progress[302]['text']['cfi']=f.marks[302][-1]['cfi']
+        t.click('FB2',s.formats(t));t.see('Обратный рейс');t.keys('o');t.see('Chapters:');t.keys('Home','Enter')
+        t.see(s.FB2_MARK);t.keys('q','q');t.see("Choose a library")
+        assert f.saved==[302,302],f.saved
+        before=sum(1 for method,path,status in f.requests if method=="POST" and path.endswith("/auth/login") and status==200)
+        t.keys('b');t.see('Continue reading')
+        assert sum(1 for method,path,status in f.requests if method=="POST" and path.endswith("/auth/login") and status==200)==before
     finally:t.run('kill-server',required=False)
 if __name__=='__main__':
     with tempfile.TemporaryDirectory() as tmp,s.Fixture(False) as f:

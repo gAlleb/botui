@@ -1,0 +1,92 @@
+//! A continuous strip of raster pages. Keep a fraction within the top page so a resize
+//! does not reinterpret a row offset in the old font or viewport geometry.
+use super::pages::Pages;
+use crate::cover::{Crop, Picture};
+use ratatui::{Frame, layout::Rect};
+use ratatui_image::picker::Picker;
+pub(super) struct Strip<'a> {
+    pub pages: &'a Pages,
+    pub side: u16,
+    pub width: u16,
+    pub height: u16,
+    pub picker: &'a Picker,
+    pub crop: Crop,
+    pub count: u32,
+}
+impl Strip<'_> {
+    fn rows(&self, n: u32) -> u32 {
+        self.pages
+            .get(n, self.side)
+            .map_or(u32::from(self.height.max(1)), |p| {
+                p.strip_rows(self.width, self.picker, self.crop)
+            })
+            .max(1)
+    }
+    fn row(&self, n: u32, f: u16) -> u32 {
+        ((u64::from(self.rows(n)) * u64::from(f) + 32767) / 65535) as u32
+    }
+    fn frac(&self, n: u32, r: u32) -> u16 {
+        ((u64::from(r) * 65535 + u64::from(self.rows(n)) / 2) / u64::from(self.rows(n))).min(65535)
+            as u16
+    }
+    pub fn shift(&self, n: &mut u32, f: &mut u16, delta: i32) {
+        let mut row = i64::from(self.row(*n, *f)) + i64::from(delta);
+        while row < 0 && *n > 1 {
+            *n -= 1;
+            row += i64::from(self.rows(*n)) + 1;
+        }
+        while *n < self.count && row > i64::from(self.rows(*n)) {
+            row -= i64::from(self.rows(*n)) + 1;
+            *n += 1;
+        }
+        let max = if *n == self.count {
+            self.rows(*n).saturating_sub(self.height.into())
+        } else {
+            self.rows(*n)
+        };
+        *f = self.frac(*n, row.clamp(0, i64::from(max)) as u32);
+    }
+    pub fn parts(&self, n: u32, f: u16) -> impl Iterator<Item = (u32, u32, u32, u16, u16)> + '_ {
+        let mut n = n;
+        let mut skip = self.row(n, f).min(self.rows(n));
+        let mut y = 0u16;
+        std::iter::from_fn(move || {
+            if y >= self.height || n > self.count {
+                return None;
+            }
+            let rows = self.rows(n);
+            let take = rows.saturating_sub(skip).min(u32::from(self.height - y)) as u16;
+            let result = (n, skip, rows, y, take);
+            y = y.saturating_add(take).saturating_add(1);
+            n += 1;
+            skip = 0;
+            Some(result)
+        })
+    }
+    pub fn end(&self, n: u32, f: u16) -> bool {
+        self.parts(n, f)
+            .any(|(p, skip, rows, _, take)| p == self.count && skip + u32::from(take) >= rows)
+    }
+    pub fn draw(&self, f: &mut Frame, r: Rect, n: u32, offset: u16) {
+        for (n, skip, rows, y, take) in self.parts(n, offset) {
+            if let Some(p) = self.pages.get(n, self.side)
+                && take > 0
+            {
+                let area = Rect::new(r.x, r.y + y, r.width, take);
+                p.draw_strip(f, area, self.picker, self.crop, skip, rows);
+            }
+        }
+    }
+}
+impl Picture {
+    pub(super) fn strip_rows(&self, width: u16, picker: &Picker, crop: Crop) -> u32 {
+        let (w, h) = self.dimensions();
+        let cell = picker.font_size();
+        ((u64::from(h)
+            * u64::from(width)
+            * u64::from(cell.width.max(1))
+            * (1u64 << crop.level.min(2)))
+        .div_ceil(u64::from(w.max(1)) * u64::from(cell.height.max(1))))
+        .clamp(1, 32_000) as u32
+    }
+}

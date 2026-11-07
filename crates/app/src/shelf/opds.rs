@@ -5,7 +5,6 @@ use std::{collections::HashMap, sync::Arc};
 
 #[derive(Default)]
 pub(super) struct Links {
-    pub search: Option<botui_opds::Search>,
     ids: HashMap<Address, u64>,
     files: HashMap<u64, Address>,
     pub covers: HashMap<u64, Address>,
@@ -40,8 +39,11 @@ impl Shelf {
             Ok(Loaded::Feed(cat, Box::new(feed), href))
         });
     }
+    pub(super) fn feed_search(&self) -> Option<&botui_opds::Search> {
+        self.stack.iter().rev().find_map(|p| p.search.as_ref())
+    }
     pub(super) fn search_feed(&mut self, query: String) {
-        let (Some(cat), Some(search)) = (self.catalog.clone(), self.links.search.clone()) else {
+        let (Some(cat), Some(search)) = (self.catalog.clone(), self.feed_search().cloned()) else {
             return;
         };
         self.fetch("Searching OPDS…", move |_| {
@@ -63,9 +65,7 @@ impl Shelf {
     pub(super) fn show_feed(&mut self, cat: Arc<Catalog>, feed: Feed, href: Address) {
         self.login = None;
         self.catalog = Some(cat);
-        if feed.search.is_some() {
-            self.links.search = feed.search;
-        }
+        let search = feed.search;
         let rows = self.feed_rows(feed.items);
         self.stack.push(Pane::new(
             Section::Feed {
@@ -75,11 +75,16 @@ impl Shelf {
             feed.title,
             rows,
         ));
+        self.current_mut().search = search;
     }
     pub(super) fn feed_rows(&mut self, items: Vec<Entry>) -> Vec<Row> {
         let mut rows = vec![];
         for e in items {
             match e {
+                Entry::Group(name, items) => rows.push(Row::new(
+                    name.clone(),
+                    Command::InlineFeed(name, Arc::new(items)),
+                )),
                 Entry::Directory(name, href) => rows.push(Row::new(name, Command::Feed(href))),
                 Entry::Book {
                     title,
@@ -87,7 +92,14 @@ impl Shelf {
                     files,
                     cover,
                 } => {
-                    let id = self.links.id(&files[0].href);
+                    let Some(first) = files.first() else {
+                        rows.push(Row::new(
+                            format!("{title} · no direct download"),
+                            Command::NoAcquisition,
+                        ));
+                        continue;
+                    };
+                    let id = self.links.id(&first.href);
                     let has_cover = Some(cover.is_some());
                     if let Some(href) = cover {
                         self.links.covers.insert(id, href);

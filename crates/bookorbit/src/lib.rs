@@ -2,6 +2,7 @@
 pub mod bookmarks;
 pub mod browse;
 pub mod dashboard;
+pub mod detail;
 mod model;
 pub mod progress;
 mod session;

@@ -2,7 +2,7 @@ use super::{Scope, Section, Shelf, Tab};
 use crate::centered;
 use ratatui::{
     Frame,
-    layout::{Position, Rect},
+    layout::Rect,
     style::{Color, Modifier, Style},
     widgets::{Clear, List, ListItem, Paragraph, Wrap},
 };
@@ -13,6 +13,7 @@ fn heading() -> Style {
 
 impl Shelf {
     pub(super) fn draw(&mut self, frame: &mut Frame) {
+        self.prefs_buttons = Default::default();
         self.home_hits.clear();
         self.home_controls.clear();
         self.keep_button = Rect::default();
@@ -22,6 +23,7 @@ impl Shelf {
         self.grid = None;
         self.view_button = Rect::default();
         self.back_button = Rect::default();
+        self.home_button = Rect::default();
         self.file_button = Rect::default();
         self.list_area = Rect::default();
         self.tab_buttons = [Rect::default(); Tab::ALL.len()];
@@ -52,6 +54,25 @@ impl Shelf {
             frame.area()
         } else {
             centered(frame.area(), 84, 18)
+        };
+        let wide = self.session.is_some()
+            && self.info.is_none()
+            && panel.width >= 123
+            && panel.height >= 20
+            && (self.view_available() || matches!(self.current().section, Section::Dashboard(_)));
+        let panel = if wide {
+            let w = (panel.width / 5).clamp(25, 32);
+            let tab = self.active_tab();
+            let scope = super::rail::current_scope(&self.current().section).cloned();
+            self.rail.draw(
+                frame,
+                Rect::new(panel.x, panel.y, w, panel.height),
+                tab,
+                scope.as_ref(),
+            );
+            Rect::new(panel.x + w + 1, panel.y, panel.width - w - 1, panel.height)
+        } else {
+            panel
         };
         let border = crate::appearance::block().title(if self.is_opds {
             " OPDS "
@@ -116,22 +137,7 @@ impl Shelf {
             }
             return;
         }
-        let inner = if inner.width >= 121
-            && inner.height >= 18
-            && (self.view_available() || matches!(self.current().section, Section::Dashboard(_)))
-            && self.session.is_some()
-        {
-            let w = (inner.width / 5).clamp(23, 30);
-            let tab = self.active_tab();
-            let scope = super::rail::current_scope(&self.current().section).cloned();
-            self.rail.draw(
-                frame,
-                Rect::new(inner.x, inner.y, w, inner.height.saturating_sub(1)),
-                tab,
-                scope.as_ref(),
-            );
-            Rect::new(inner.x + w + 1, inner.y, inner.width - w - 1, inner.height)
-        } else if self.session.is_some() && inner.height >= 4 {
+        let inner = if !wide && self.session.is_some() && inner.height >= 4 {
             let height = self.draw_tabs(frame, inner);
             Rect::new(
                 inner.x,
@@ -142,6 +148,10 @@ impl Shelf {
         } else {
             inner
         };
+        if let Some(book) = detail.as_ref() {
+            self.draw_card(frame, inner, book);
+            return;
+        }
         if matches!(self.current().section, Section::Dashboard(_)) {
             self.draw_dashboard(frame, inner);
             self.draw_buttons(frame, inner, "[ Back ]", true);
@@ -184,7 +194,7 @@ impl Shelf {
                 "[V Grid]"
             };
             let w = label.chars().count() as u16;
-            if (self.session.is_some() || self.links.search.is_some()) && left.width >= 30 {
+            if (self.session.is_some() || self.feed_search().is_some()) && left.width >= 30 {
                 self.search_button = Rect::new(left.right() - w - 12, left.y, 11, 1);
                 frame.render_widget(
                     Paragraph::new("[/ Search]").style(Style::new().fg(Color::Cyan)),
@@ -347,7 +357,7 @@ impl Shelf {
         rows as u16
     }
 
-    fn draw_buttons(&mut self, frame: &mut Frame, inner: Rect, back: &str, local: bool) {
+    pub(super) fn draw_buttons(&mut self, frame: &mut Frame, inner: Rect, back: &str, local: bool) {
         if inner.height < 2 {
             return;
         }
@@ -366,21 +376,22 @@ impl Shelf {
             );
             frame.render_widget(Paragraph::new(label), self.file_button);
         }
-        if self.pending.is_none() && self.info.is_none() && inner.width > 54 {
-            let help = if matches!(self.current().section, Section::Books { .. }) {
-                "PgUp/PgDn · Enter or click"
+        if self.pending.is_none() && self.info.is_none() {
+            let mut x = if local {
+                self.file_button.right() + 1
             } else {
-                "Enter or click to open"
+                self.back_button.right() + 1
             };
-            let x = inner.right().saturating_sub(help.chars().count() as u16);
-            if !self.back_button.contains(Position::new(x, y))
-                && !self.file_button.contains(Position::new(x, y))
+            let label = "[Q Home]";
+            if !matches!(self.current().section, Section::Home)
+                && inner.right().saturating_sub(x) >= label.len() as u16
             {
-                frame.render_widget(
-                    Paragraph::new(help).style(Style::new().add_modifier(Modifier::DIM)),
-                    Rect::new(x, y, inner.right() - x, 1),
-                );
+                self.home_button = Rect::new(x, y, label.len() as u16, 1);
+                frame.render_widget(Paragraph::new(label).style(heading()), self.home_button);
+                x = self.home_button.right().saturating_add(1);
             }
+            self.prefs_buttons
+                .draw(frame, Rect::new(x, y, inner.right().saturating_sub(x), 1));
         }
     }
 }

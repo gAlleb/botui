@@ -1,6 +1,6 @@
 use ratatui::{
     style::{Color, Style},
-    widgets::{Block, BorderType, Borders, Padding},
+    widgets::{Block, BorderType, Padding},
 };
 use serde::{Deserialize, Serialize};
 use std::sync::atomic::{AtomicU8, Ordering};
@@ -50,13 +50,6 @@ pub fn block<'a>() -> Block<'a> {
         BordersStyle::Rounded => Block::bordered().border_type(BorderType::Rounded),
         BordersStyle::Square => Block::bordered(),
         BordersStyle::None => Block::new().padding(Padding::horizontal(1)),
-    }
-}
-pub fn divider<'a>() -> Block<'a> {
-    if BordersStyle::current() == BordersStyle::None {
-        Block::new()
-    } else {
-        Block::new().borders(Borders::RIGHT)
     }
 }
 pub fn card<'a>(active: bool) -> Block<'a> {

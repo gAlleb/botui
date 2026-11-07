@@ -45,6 +45,7 @@ pub(super) fn parse(bytes: &[u8], fallback: &str) -> Result<Document> {
     let mut locations = botui_core::Locations::default();
     let mut blocks = Vec::new();
     let mut raw = vec![];
+    let mut tables = std::collections::BTreeMap::new();
     let mut ids = std::collections::HashMap::new();
     let mut note_targets = std::collections::HashMap::new();
     for body in root.children().filter(|n| n.has_tag_name("body")) {
@@ -67,7 +68,18 @@ pub(super) fn parse(bytes: &[u8], fallback: &str) -> Result<Document> {
                     let parent_is_block = node.ancestors().skip(1).any(|n| {
                         n.has_tag_name("p") || n.has_tag_name("v") || n.has_tag_name("subtitle")
                     });
-                    let block = if parent_is_block {
+                    let block = if parent_is_block
+                        && (!node.has_tag_name("image")
+                            || node
+                                .ancestors()
+                                .skip(1)
+                                .find(|n| {
+                                    n.has_tag_name("p")
+                                        || n.has_tag_name("v")
+                                        || n.has_tag_name("subtitle")
+                                })
+                                .is_some_and(|n| !text(n).is_empty()))
+                    {
                         blocks.len().saturating_sub(1)
                     } else {
                         blocks.len()
@@ -75,6 +87,29 @@ pub(super) fn parse(bytes: &[u8], fallback: &str) -> Result<Document> {
                     raw.push((block, node.has_tag_name("image"), text(node), attr.value()));
                 }
                 continue;
+            }
+            if node.has_tag_name("tr") {
+                let mut header = false;
+                let cells: Vec<_> = node
+                    .children()
+                    .filter(|c| c.has_tag_name("td") || c.has_tag_name("th"))
+                    .map(|c| {
+                        header |= c.has_tag_name("th");
+                        text(c)
+                    })
+                    .collect();
+                let count = cells.iter().filter(|s| !s.is_empty()).count();
+                if count > 0 {
+                    tables.insert(
+                        blocks.len(),
+                        botui_core::TableRow {
+                            end: blocks.len() + count,
+                            columns: cells.len(),
+                            cells,
+                            header,
+                        },
+                    );
+                }
             }
             let heading = match node.tag_name().name() {
                 "title"
@@ -104,7 +139,36 @@ pub(super) fn parse(bytes: &[u8], fallback: &str) -> Result<Document> {
         }
     }
     if blocks.is_empty() {
-        return Err(invalid("No readable text in this FB2").into());
+        let binaries: std::collections::HashSet<_> = root
+            .children()
+            .filter(|n| {
+                n.has_tag_name("binary")
+                    && n.attribute("content-type")
+                        .is_some_and(super::resources::raster)
+                    && n.text().is_some_and(|s| !s.trim().is_empty())
+            })
+            .filter_map(|n| n.attribute("id"))
+            .collect();
+        for (block, image, label, href) in &mut raw {
+            if *image
+                && href
+                    .strip_prefix('#')
+                    .is_some_and(|id| binaries.contains(id))
+            {
+                *block = blocks.len();
+                blocks.push(Block {
+                    text: if label.is_empty() {
+                        format!("Plate {}", blocks.len() + 1)
+                    } else {
+                        label.clone()
+                    },
+                    heading: false,
+                });
+            }
+        }
+        if blocks.is_empty() {
+            return Err(invalid("No readable text or illustrations in this FB2").into());
+        }
     }
     use botui_core::{Anchor, Reference, Target};
     let references = raw
@@ -137,13 +201,18 @@ pub(super) fn parse(bytes: &[u8], fallback: &str) -> Result<Document> {
                 return None;
             };
             Some(Reference {
-                source: source.min(blocks.len() - 1),
+                source: if image {
+                    source.min(blocks.len())
+                } else {
+                    source.min(blocks.len() - 1)
+                },
                 label,
                 target,
             })
         })
         .collect();
     Ok(Document {
+        tables,
         references,
         contents: vec![],
         title,

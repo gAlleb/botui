@@ -64,6 +64,7 @@ pub(super) fn append_blocks(
     html: &str,
     blocks: &mut Vec<Block>,
     links: &mut Vec<RawLink>,
+    tables: &mut std::collections::BTreeMap<usize, botui_core::TableRow>,
 ) -> Vec<(String, usize)> {
     let dom = Html::parse_document(html);
     let Some(body) = dom
@@ -77,11 +78,51 @@ pub(super) fn append_blocks(
     let mut buffer = String::new();
     let mut is_heading = false;
     let mut hidden = None;
+    let mut table_start = None;
+    let mut table_rows = vec![];
+    let mut columns = 0;
     for edge in body.traverse() {
         match edge {
             Edge::Open(node) if hidden.is_none() => match node.value() {
                 Node::Element(el) => {
                     let name = el.name();
+                    if name == "svg" && el.attr("hidden").is_none() {
+                        for n in node
+                            .descendants()
+                            .filter_map(scraper::ElementRef::wrap)
+                            .filter(|n| n.value().name() == "image")
+                        {
+                            if let Some((_, href)) = n
+                                .value()
+                                .attrs()
+                                .find(|(key, _)| matches!(*key, "href" | "xlink:href"))
+                            {
+                                links.push(RawLink {
+                                    block: blocks.len(),
+                                    image: true,
+                                    label: String::new(),
+                                    href: href.into(),
+                                });
+                            }
+                        }
+                    }
+                    if name == "tr" && el.attr("hidden").is_none() {
+                        flush(&mut buffer, is_heading, blocks);
+                        let cells: Vec<_> = scraper::ElementRef::wrap(node)
+                            .into_iter()
+                            .flat_map(|e| e.child_elements())
+                            .filter(|c| matches!(c.value().name(), "td" | "th"))
+                            .collect();
+                        let header = cells.iter().any(|c| c.value().name() == "th");
+                        table_start = Some((
+                            blocks.len(),
+                            header,
+                            cells
+                                .iter()
+                                .map(|c| clean(&c.text().collect::<Vec<_>>().join(" ")))
+                                .collect::<Vec<_>>(),
+                        ));
+                    }
                     if let Some(id) = el.attr("id").or_else(|| el.attr("name")) {
                         let next =
                             blocks.len() + usize::from(boundary(name) && !buffer.trim().is_empty());
@@ -130,10 +171,39 @@ pub(super) fn append_blocks(
                 if hidden == Some(node.id()) {
                     hidden = None;
                 } else if hidden.is_none()
+                    && node
+                        .value()
+                        .as_element()
+                        .is_some_and(|el| el.name() == "table")
+                {
+                    for start in table_rows.drain(..) {
+                        if let Some(row) = tables.get_mut(&start) {
+                            row.columns = columns;
+                        }
+                    }
+                    columns = 0;
+                } else if hidden.is_none()
                     && let Some(el) = node.value().as_element()
                     && boundary(el.name())
                 {
                     flush(&mut buffer, is_heading, blocks);
+                    if el.name() == "tr"
+                        && let Some((start, header, cells)) = table_start.take()
+                        && start < blocks.len()
+                        && !cells.is_empty()
+                    {
+                        columns = columns.max(cells.len());
+                        table_rows.push(start);
+                        tables.insert(
+                            start,
+                            botui_core::TableRow {
+                                end: blocks.len(),
+                                header,
+                                cells,
+                                columns: 0,
+                            },
+                        );
+                    }
                     if heading(el.name()) {
                         is_heading = false;
                     }

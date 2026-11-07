@@ -4,16 +4,25 @@ local_grid = false
 
 # Reader defaults. Use "terminal" to follow your terminal's colors.
 theme = "terminal"
+interface_theme = "terminal"
+# Optional override. By default, solid Terminal paper follows the active terminal background.
+# opaque_color = "#1f2125"
 zen = false
 # Preferred width of one text page and the space between facing pages, in terminal cells.
 # page_width = 78
 column_gap = 4
+# Default layout for books without a saved mode: auto, single, spread, scroll.
+reading_layout = "auto"
 opaque_background = false
 # Window frames, cover cards and jackets: "rounded", "square", or "none".
 borders = "rounded"
 preserve_printed_lines = false
+hide_inline_images = false
 
 [bookorbit]
+# Remember which navigation groups are folded on a wide screen.
+# libraries_collapsed = false
+# collections_collapsed = false
 server = ""
 username = ""
 list_view = false

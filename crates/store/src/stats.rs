@@ -33,3 +33,37 @@ impl LocalState {
         Ok(())
     }
 }
+
+#[derive(Default)]
+pub struct LibraryStats {
+    pub books: u64,
+    pub sessions: u64,
+    pub seconds: u64,
+    pub unreadable: u64,
+}
+impl LibraryStats {
+    pub fn on_device() -> io::Result<Self> {
+        let dir = super::state_dir()?.join("botui/positions");
+        let mut total = Self::default();
+        let entries = match fs::read_dir(dir) {
+            Ok(v) => v,
+            Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(total),
+            Err(e) => return Err(e),
+        };
+        for e in entries {
+            let p = e?.path();
+            if p.extension().is_none_or(|ext| ext != "stats") {
+                continue;
+            }
+            match fs::File::open(p).and_then(|f| Ok(serde_json::from_reader::<_, Stats>(f)?)) {
+                Ok(s) => {
+                    total.books += 1;
+                    total.sessions = total.sessions.saturating_add(s.sessions);
+                    total.seconds = total.seconds.saturating_add(s.seconds);
+                }
+                Err(_) => total.unreadable += 1,
+            }
+        }
+        Ok(total)
+    }
+}

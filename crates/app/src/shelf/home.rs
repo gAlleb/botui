@@ -1,22 +1,14 @@
 //! The offline source chooser and its contextual keyboard reference.
+mod masthead;
 use super::{Command, Shelf, Tab};
 use ratatui::{
     Frame,
     layout::Rect,
     style::{Color, Style, Stylize},
-    text::{Line, Span},
+    text::Line,
     widgets::{Paragraph, Wrap},
 };
 
-const LOGO: [&str; 7] = [
-    " ▄▄▄▄▄▄▄   ▄▄▄▄▄▄▄",
-    " █     ▀▄ ▄▀     █     ██████╗   ██████╗  ████████╗ ██╗   ██╗ ██╗",
-    " █ ▀▀▀  █ █  ▀▀▀ █     ██╔══██╗ ██╔═══██╗ ╚══██╔══╝ ██║   ██║ ██║",
-    " █ ▀▀   █ █   ▀▀ █     ██████╔╝ ██║   ██║    ██║    ██║   ██║ ██║",
-    " █ ▀▀▀  █ █  ▀▀▀ █     ██╔══██╗ ██║   ██║    ██║    ██║   ██║ ██║",
-    " █     ▄█ █▄     █     ██████╔╝ ╚██████╔╝    ██║    ╚██████╔╝ ██║",
-    " ▀▀▀▀▀▀  ▀  ▀▀▀▀▀▀     ╚═════╝   ╚═════╝     ╚═╝     ╚═════╝  ╚═╝",
-];
 fn source(cmd: &Command, connected: bool) -> (&'static str, &'static str, &'static str) {
     match cmd {
         Command::Connect if connected => (
@@ -67,46 +59,11 @@ impl Shelf {
             area.width
                 .saturating_sub(u16::from(area.width > 32) * 4)
                 .min(82),
-            area.height.min(34),
+            area.height.min(38),
         );
         let ink = Style::new().fg(Color::Cyan);
         let row = |y, h| Rect::new(canvas.x, y, canvas.width, h);
-        let large = canvas.height >= 24 && canvas.width >= 66;
-        let mut y = canvas.y;
-        if large {
-            let logo_width = LOGO.iter().map(|s| s.chars().count() as u16).max().unwrap();
-            let logo_area = crate::centered(row(y, 7), logo_width, 7);
-            let colors = if std::env::var_os("NO_COLOR").is_none() {
-                [
-                    Color::Rgb(102, 207, 200),
-                    Color::Rgb(171, 161, 232),
-                    Color::Rgb(137, 179, 217),
-                ]
-            } else {
-                [Color::Reset; 3]
-            };
-            for (i, line) in LOGO.iter().enumerate() {
-                let left: String = line.chars().take(10).collect();
-                let right: String = line.chars().skip(10).take(13).collect();
-                let word: String = line.chars().skip(23).collect();
-                let spans = Line::from(vec![
-                    Span::styled(left, Style::new().fg(colors[0])),
-                    Span::styled(right, Style::new().fg(colors[1])),
-                    Span::styled(word, Style::new().fg(colors[2])),
-                ]);
-                f.render_widget(
-                    Paragraph::new(spans),
-                    Rect::new(logo_area.x, y + i as u16, logo_area.width, 1),
-                );
-            }
-            y += 8;
-        } else {
-            f.render_widget(
-                Paragraph::new("BOTUI").centered().style(ink.bold()),
-                row(y, 1),
-            );
-            y += 1;
-        }
+        let mut y = canvas.y + masthead::draw(f, area, canvas);
         if canvas.height >= 12 {
             let tag =
                 Paragraph::new("Your TUI book reader. BookOrbit/OPDS/PDF/DjVU/EPUB/FB2 compatible")
@@ -183,13 +140,12 @@ impl Shelf {
         self.home_hits = hits;
         self.list_area = Rect::new(canvas.x, y, canvas.width, detail_y.saturating_sub(y));
         let footer = row(canvas.bottom() - 1, 1);
-        let mut x = footer.x;
+        self.prefs_buttons.draw(f, footer);
+        let mut x = footer.x + 23;
         self.home_controls.clear();
         for (label, command) in [
             ("↑↓ Choose", None),
             ("Enter Open", self.current().action()),
-            ("F Background", Some(Command::Background)),
-            ("U Borders", Some(Command::Borders)),
             ("Q Quit", Some(Command::Quit)),
         ] {
             let width = Line::from(label).width() as u16;

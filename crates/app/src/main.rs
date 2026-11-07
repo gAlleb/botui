@@ -3,14 +3,18 @@ mod cache;
 mod catalog;
 mod connection;
 mod cover;
+mod diagnostic;
 mod offline;
 mod picker;
+mod preferences;
 mod prompt;
 mod reader;
 mod scan;
 mod settings;
 mod shelf;
+mod shell_theme;
 mod stats;
+mod terminal_input;
 mod theme;
 
 use std::env;
@@ -31,12 +35,13 @@ use ratatui::{Terminal, backend::CrosstermBackend, layout::Rect};
 type AppTerminal = Terminal<CrosstermBackend<io::Stdout>>;
 type Result<T> = std::result::Result<T, Box<dyn Error>>;
 
-const HELP: &str = "botui [FILE | DIRECTORY | --local [DIRECTORY] | --library DIRECTORY | --server URL | --opds URL]\n\nOpen a book or remember a local library folder. With no arguments, choose a source. Use --config-path to initialize and locate config.toml.\nBookOrbit: 0 dashboard, 1 all books, 2 reading, 3 recent, 4 libraries, 5 collections, 6 authors, 7 series. / search, V grid/list, U borders.\nIn EPUB or FB2: arrows or wheel to turn pages, 1/2 page/spread, W page layout, [/] width, {/} column gap, Z zen, O contents, T theme, F background, B/G bookmarks, M menu, Q close.\nPDF and DjVu: 1/2 page/spread, +/- zoom, arrows to pan while zoomed.\n";
+const HELP: &str = "botui [FILE | DIRECTORY | --local [DIRECTORY] | --library DIRECTORY | --server URL | --opds URL]\n\nOpen a book or remember a local library folder. With no arguments, choose a source. F2 settings, ? shortcuts. Use --config-path to locate config.toml or --check-bookmarks TITLE to inspect server bookmarks without editing them.\nBookOrbit: 0 dashboard, 1 all books, 2 reading, 3 recent, 4 libraries, 5 collections, 6 authors, 7 series. / search, V grid/list, U borders.\nIn EPUB or FB2: 1/2/3 single/spread/scroll, arrows or wheel to read, W page layout, [/] width, {/} column gap, Z zen, O contents, T theme, F background, B/G bookmarks, M menu, Q close.\nPDF and DjVu: 1/2/3 single/spread/scroll, P go to page (Ctrl+G also works), / find text, N next match, +/- zoom, Z zen, G bookmarks.\n";
 
 struct Screen;
 
 impl Screen {
     fn enter() -> io::Result<(Self, AppTerminal)> {
+        crate::settings::detect_terminal();
         enable_raw_mode()?;
         // Keep the guard alive through partial setup, input errors and unwinding.
         let guard = Self;
@@ -84,12 +89,19 @@ enum Start {
     File(PathBuf),
     Help,
     ConfigPath,
+    CheckBookmarks(String),
 }
 
 fn arguments() -> Result<Start> {
     let mut args = env::args_os().skip(1);
     let start = match args.next() {
         None => Start::Shelf(None),
+        Some(v) if v == "--check-bookmarks" => Start::CheckBookmarks(
+            args.next()
+                .ok_or("Supply a book title after --check-bookmarks")?
+                .into_string()
+                .map_err(|_| "Invalid title")?,
+        ),
         Some(v) if v == "--config-path" => Start::ConfigPath,
         Some(v) if v == "--help" || v == "-h" => Start::Help,
         Some(v) if v == "--opds" => Start::Opds(
@@ -332,6 +344,9 @@ fn run() -> Result<()> {
         return Ok(());
     }
     settings::Settings::initialize()?;
+    if let Start::CheckBookmarks(title) = &start {
+        return diagnostic::bookmarks(title).map_err(|e| -> Box<dyn Error> { e });
+    }
     if matches!(start, Start::ConfigPath) {
         println!("{}", settings::path()?.display());
         return Ok(());
@@ -390,8 +405,14 @@ fn run() -> Result<()> {
             Some((path, doc)) => open_local_doc(&mut terminal, &path, Some(doc), &mut notices)?,
             None => match start {
                 Start::Shelf(server) => bookorbit_shelf(&mut terminal, server, &mut notices)?,
-                Start::Opds(url) => opds_shelf(&mut terminal, url, &mut notices)?,
-                Start::Local(root) => local_library(&mut terminal, &mut notices, root)?,
+                Start::Opds(url) => {
+                    opds_shelf(&mut terminal, url, &mut notices)?;
+                    bookorbit_shelf(&mut terminal, None, &mut notices)?;
+                }
+                Start::Local(root) => {
+                    local_library(&mut terminal, &mut notices, root)?;
+                    bookorbit_shelf(&mut terminal, None, &mut notices)?;
+                }
                 _ => unreachable!("file and help handled before entering terminal"),
             },
         }

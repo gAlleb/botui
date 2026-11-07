@@ -32,7 +32,7 @@ description = "Exercise library, authentication and reader flows in isolated ter
 run = """
 set -eu
 cargo build --workspace --locked
-for part in config reader library shelf sources progress offline resources; do
+for part in config reader library shelf sources progress offline resources preferences details scroll; do
   python3 "scripts/smoke-$part.py"
 done
 """

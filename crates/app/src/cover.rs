@@ -45,9 +45,25 @@ pub(crate) struct Crop {
     pub x: u8,
     pub y: u8,
 }
+#[derive(Copy, Clone, PartialEq, Eq)]
+struct StripKey {
+    skip: u32,
+    rows: u32,
+    area: Size,
+    crop: Crop,
+}
+#[derive(Copy, Clone, PartialEq, Eq)]
+struct CellStrip {
+    width: u16,
+    rows: u32,
+    x: u8,
+    zoom: u8,
+}
 pub(crate) struct Picture {
     source: DynamicImage,
     is_cover: bool,
+    strip: RefCell<Option<(StripKey, Box<Picture>)>>,
+    strip_cells: RefCell<Option<(CellStrip, image::RgbImage)>>,
     ready: RefCell<Option<(Size, Crop, bool, Protocol)>>,
 }
 
@@ -56,6 +72,8 @@ impl Picture {
         Self {
             source,
             is_cover: false,
+            strip: Default::default(),
+            strip_cells: Default::default(),
             ready: RefCell::new(None),
         }
     }
@@ -64,6 +82,9 @@ impl Picture {
         let mut picture = Self::decode(bytes, 240, 360)?;
         picture.is_cover = true;
         Some(picture)
+    }
+    pub fn inline(bytes: Vec<u8>) -> Option<Self> {
+        Self::decode(bytes, 720, 540)
     }
     pub fn illustration(bytes: Vec<u8>) -> Option<Self> {
         Self::decode(bytes, 2048, 2048)
@@ -80,6 +101,100 @@ impl Picture {
         Some(Self::new(decoder.decode().ok()?.thumbnail(width, height)))
     }
 
+    pub fn dimensions(&self) -> (u32, u32) {
+        (self.source.width(), self.source.height())
+    }
+    pub fn draw_strip(
+        &self,
+        f: &mut Frame,
+        area: Rect,
+        picker: &Picker,
+        crop: Crop,
+        skip: u32,
+        rows: u32,
+    ) {
+        if area.is_empty() || rows == 0 {
+            return;
+        }
+        if picker.protocol_type() == ProtocolType::Halfblocks || monochrome() {
+            let key = CellStrip {
+                width: area.width,
+                rows,
+                x: crop.x,
+                zoom: crop.level,
+            };
+            let mut cache = self.strip_cells.borrow_mut();
+            if cache.as_ref().is_none_or(|(k, _)| *k != key) {
+                let (w, h) = self.dimensions();
+                let cw = (w / (1 << crop.level.min(2))).max(1);
+                let x = (w - cw) * u32::from(crop.x) / 255;
+                let width = u32::from(area.width);
+                let height = (rows * 2).min((2_000_000 / width).max(1));
+                let pix = self
+                    .source
+                    .crop_imm(x, 0, cw, h)
+                    .resize_exact(width, height, image::imageops::FilterType::Triangle)
+                    .into_rgb8();
+                *cache = Some((key, pix));
+            }
+            if let Some((_, im)) = &*cache {
+                let mono = monochrome();
+                let color = |p: &image::Rgb<u8>| ratatui::style::Color::Rgb(p[0], p[1], p[2]);
+                for y in 0..area.height {
+                    let row = (skip + u32::from(y)) * 2;
+                    let pixel = |dy| {
+                        ((u64::from(row + dy) * u64::from(im.height()) / u64::from(rows * 2))
+                            as u32)
+                            .min(im.height() - 1)
+                    };
+                    for x in 0..area.width {
+                        let a = im.get_pixel(x.into(), pixel(0));
+                        let b = im.get_pixel(x.into(), pixel(1));
+                        let cell = &mut f.buffer_mut()[(area.x + x, area.y + y)];
+                        if mono {
+                            const SHADE: &[u8] = b" .:-=+*#%@";
+                            let l = (299 * usize::from(a[0])
+                                + 587 * usize::from(a[1])
+                                + 114 * usize::from(a[2]))
+                                / 1000;
+                            cell.set_char(SHADE[l * (SHADE.len() - 1) / 255] as char);
+                        } else {
+                            cell.set_char('▀').set_fg(color(a)).set_bg(color(b));
+                        }
+                    }
+                }
+            }
+            return;
+        }
+        let key = StripKey {
+            skip,
+            rows,
+            area: area.as_size(),
+            crop,
+        };
+        let mut cache = self.strip.borrow_mut();
+        if cache.as_ref().is_none_or(|(k, _)| *k != key) {
+            let (w, h) = self.dimensions();
+            let cw = (w / (1 << crop.level.min(2))).max(1);
+            let x = (w - cw) * u32::from(crop.x) / 255;
+            let y = (u64::from(h) * u64::from(skip) / u64::from(rows)).min(u64::from(h - 1)) as u32;
+            let end = (u64::from(h) * u64::from(skip + u32::from(area.height)))
+                .div_ceil(u64::from(rows))
+                .min(u64::from(h)) as u32;
+            *cache = Some((
+                key,
+                Box::new(Self::new(self.source.crop_imm(
+                    x,
+                    y,
+                    cw,
+                    end.saturating_sub(y).max(1),
+                ))),
+            ));
+        }
+        if let Some((_, page)) = &*cache {
+            page.draw(f, area, picker);
+        }
+    }
     pub fn draw(&self, frame: &mut Frame, area: Rect, picker: &Picker) {
         self.draw_region(frame, area, picker, Crop::default());
     }

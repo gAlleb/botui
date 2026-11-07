@@ -5,7 +5,7 @@ use botui_core::Anchor;
 pub use notes::Note;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-pub use stats::Stats;
+pub use stats::{LibraryStats, Stats};
 use std::{
     env, fs, io,
     path::{Path, PathBuf},
@@ -15,6 +15,9 @@ use tempfile::NamedTempFile;
 pub struct Saved {
     pub anchor: Anchor,
     pub spread: bool,
+    pub scrolling: bool,
+    pub scan_offset: u16,
+    pub finished: bool,
     pub theme: String,
     pub marks: Vec<Anchor>,
     pub margin: i8,
@@ -26,6 +29,12 @@ struct Record {
     block: usize,
     byte: usize,
     spread: bool,
+    #[serde(default)]
+    scrolling: bool,
+    #[serde(default)]
+    scan_offset: u16,
+    #[serde(default)]
+    finished: bool,
     theme: String,
     #[serde(default)]
     marks: Vec<(usize, usize)>,
@@ -71,7 +80,11 @@ impl HistoryEntry {
         let modified = path.metadata()?.modified().ok();
         let entry = Self {
             path,
-            percent: percent.round().clamp(0., 100.) as u8,
+            percent: if percent >= 100. {
+                100
+            } else {
+                percent.round().clamp(0., 99.) as u8
+            },
             modified,
             read_at: std::time::SystemTime::now(),
         };
@@ -142,6 +155,9 @@ impl LocalState {
                 byte: record.byte,
             },
             spread: record.spread,
+            scrolling: record.scrolling,
+            scan_offset: record.scan_offset,
+            finished: record.finished,
             margin: record.margin.clamp(-2, 4),
             theme: record.theme,
             marks: record
@@ -163,6 +179,9 @@ impl LocalState {
                 block: saved.anchor.block,
                 byte: saved.anchor.byte,
                 spread: saved.spread,
+                scrolling: saved.scrolling,
+                scan_offset: saved.scan_offset,
+                finished: saved.finished,
                 margin: saved.margin,
                 theme: saved.theme.clone(),
                 marks: saved.marks.iter().map(|a| (a.block, a.byte)).collect(),
@@ -187,6 +206,9 @@ mod tests {
         first.save(&Saved {
             anchor: Anchor { block: 5, byte: 14 },
             spread: true,
+            scrolling: false,
+            scan_offset: 0,
+            finished: false,
             margin: 0,
             theme: "sepia".into(),
             marks: vec![],

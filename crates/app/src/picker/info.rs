@@ -5,9 +5,7 @@ use std::{
 };
 
 use botui_formats::FileKind;
-use crossterm::event::{
-    self, Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind,
-};
+use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind};
 use ratatui::{
     Frame,
     layout::{Position, Rect},
@@ -133,12 +131,12 @@ pub(crate) fn show_info(term: &mut AppTerminal, path: &Path, kind: FileKind) -> 
         let mut external = Rect::default();
         term.draw(|f| {
             back = info.draw(f);
-            crate::settings::paint(f);
+            crate::settings::paint_interface(f);
             let right = centered(f.area(), 72, 10).right().saturating_sub(1);
             open = open_button(back, right);
             external = external_button(open, right);
         })?;
-        let e = event::read()?;
+        let e = crate::settings::read_event()?;
         if matches!(e,Event::Key(k) if k.kind!=KeyEventKind::Release && matches!(k.code,KeyCode::Char('p'|'P')))
             || matches!(e,Event::Mouse(m) if m.kind==MouseEventKind::Down(MouseButton::Left) && open.contains(Position::new(m.column,m.row)))
         {

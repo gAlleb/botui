@@ -94,3 +94,10 @@ pub fn supplement(path: &Path, member: &str, fragment: &str) -> Result<String> {
     }
     Ok(s)
 }
+
+pub(super) fn raster(mime: &str) -> bool {
+    matches!(
+        mime,
+        "image/jpeg" | "image/jpg" | "image/png" | "image/webp"
+    )
+}

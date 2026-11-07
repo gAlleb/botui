@@ -22,3 +22,4 @@ lru = "0.18"
 botui-fixed = { path = "../fixed" }
 botui-opds = { path = "../opds" }
 unicode-truncate = "2.0"
+terminal-colorsaurus = "1"

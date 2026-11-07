@@ -5,6 +5,7 @@ use roxmltree::Node;
 #[derive(Clone)]
 pub enum Search {
     Template(Url, String),
+    Json(Url, String),
     Description(Url),
 }
 
@@ -50,15 +51,7 @@ pub(super) fn advertised(base: &Url, root: Node<'_, '_>) -> Option<Search> {
 
 /// Substitute query text as data even when it contains URI delimiters.
 fn expand(base: &Url, template: &str, terms: &str) -> Result<Url> {
-    let mut value = String::new();
-    for b in terms.bytes() {
-        if b.is_ascii_alphanumeric() || b"-._~".contains(&b) {
-            value.push(b as char);
-        } else {
-            use std::fmt::Write;
-            write!(value, "%{b:02X}")?;
-        }
-    }
+    let value = encode(terms)?;
     let mut s = template.replace("{searchTerms}", &value);
     while let Some((_, tail)) = s.split_once('{') {
         let key = tail.split_once('}').ok_or("Invalid OpenSearch template")?.0;
@@ -72,6 +65,7 @@ fn expand(base: &Url, template: &str, terms: &str) -> Result<Url> {
 impl Catalog {
     pub fn search_url(&self, search: &Search, terms: &str) -> Result<Url> {
         match search {
+            Search::Json(base, s) => json_url(base, s, terms),
             Search::Template(base, template) => expand(base, template, terms),
             Search::Description(u) => {
                 let r = self.get(u.clone(), "application/opensearchdescription+xml", 15)?;
@@ -98,4 +92,49 @@ impl Catalog {
             }
         }
     }
+}
+
+fn encode(terms: &str) -> Result<String> {
+    let mut value = String::new();
+    for b in terms.bytes() {
+        if b.is_ascii_alphanumeric() || b"-._~".contains(&b) {
+            value.push(b as char);
+        } else {
+            use std::fmt::Write;
+            write!(value, "%{b:02X}")?;
+        }
+    }
+    Ok(value)
+}
+
+/// OPDS 2 uses RFC 6570 query expansions. Send only the provided keyword,
+/// dropping optional fields like title/author without leaking them into the path.
+pub(super) fn json_url(base: &Url, template: &str, terms: &str) -> Result<Url> {
+    let mut rest = template;
+    let mut url = String::new();
+    let mut found = false;
+    let value = encode(terms)?;
+    while let Some((prefix, tail)) = rest.split_once('{') {
+        url.push_str(prefix);
+        let (expr, suffix) = tail.split_once('}').ok_or("Invalid OPDS search template")?;
+        if expr == "query" {
+            url.push_str(&value);
+            found = true;
+        } else if let Some(vars) = expr.strip_prefix(['?', '&']) {
+            if vars.split(',').any(|v| v == "query") {
+                url.push(if expr.starts_with('?') { '?' } else { '&' });
+                url.push_str("query=");
+                url.push_str(&value);
+                found = true;
+            }
+        } else {
+            return Err("Unsupported OPDS search expression".into());
+        }
+        rest = suffix;
+    }
+    if !found {
+        return Err("No query parameter in OPDS search template".into());
+    }
+    url.push_str(rest);
+    validated(base.join(&url)?)
 }

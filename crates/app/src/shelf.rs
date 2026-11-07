@@ -1,6 +1,7 @@
 pub(crate) mod background;
 pub(crate) mod covers;
 mod dashboard;
+mod detail;
 pub(crate) mod gallery;
 mod home;
 mod login;
@@ -120,6 +121,8 @@ enum Command {
     Background,
     Opds,
     Feed(botui_opds::Address),
+    InlineFeed(String, Arc<Vec<botui_opds::Entry>>),
+    NoAcquisition,
     Connect,
     OpenTab(Tab),
     Books(Scope, u32),
@@ -179,6 +182,7 @@ struct Pane {
     rows: Vec<Row>,
     tail: Option<Ticket<botui_bookorbit::Result<Tail>>>,
     tail_error: bool,
+    search: Option<botui_opds::Search>,
     selection: ListState,
 }
 impl Pane {
@@ -188,6 +192,7 @@ impl Pane {
             section,
             tail: None,
             tail_error: false,
+            search: None,
             title: single_line(title.into()),
             rows,
             selection,
@@ -256,7 +261,17 @@ enum Loaded {
         Option<crate::reader::bookmarks::ServerMarks>,
     ),
     Kept,
-    Moved(bool),
+    Status(
+        u64,
+        botui_bookorbit::detail::UserStatus,
+        bool,
+        Option<String>,
+    ),
+    Moved {
+        saved: bool,
+        file: u64,
+        percent: u8,
+    },
     LoggedOut {
         quit: bool,
         warning: Option<String>,
@@ -266,6 +281,7 @@ enum Loaded {
 struct Pending {
     title: &'static str,
     closing: bool,
+    saving: bool,
     work: Ticket<botui_bookorbit::Result<Loaded>>,
 }
 
@@ -285,19 +301,24 @@ pub(crate) struct Shelf {
     scan_button: Rect,
     notice: Option<String>,
     exit_warning: Option<String>,
+    after_save_home: bool,
     worker: Worker,
     pending: Option<Pending>,
     covers: covers::Covers,
     graphics: ratatui_image::picker::Picker,
     rail: rail::Rail,
+    card: detail::Card,
+    dirty_shelves: [bool; 2],
     grid: Option<gallery::Grid>,
     pub(crate) grid_view: bool,
     view_button: Rect,
     list_area: Rect,
     back_button: Rect,
+    home_button: Rect,
     file_button: Rect,
     keep_button: Rect,
     tab_buttons: [Rect; Tab::ALL.len()],
+    prefs_buttons: crate::preferences::Buttons,
     home_hits: Vec<(Rect, usize)>,
     home_controls: Vec<(Rect, Command)>,
     search_button: Rect,
@@ -323,19 +344,24 @@ impl Shelf {
             scan_button: Rect::default(),
             notice: None,
             exit_warning: None,
+            after_save_home: false,
             worker: Worker::new(),
             pending: None,
             covers: covers::Covers::new(),
             graphics: crate::cover::graphics(),
-            rail: rail::Rail::default(),
+            rail: rail::Rail::saved(),
+            card: Default::default(),
+            dirty_shelves: [false; 2],
             grid: None,
             grid_view: true,
             view_button: Rect::default(),
             list_area: Rect::default(),
             back_button: Rect::default(),
+            home_button: Rect::default(),
             file_button: Rect::default(),
             keep_button: Rect::default(),
             tab_buttons: [Rect::default(); Tab::ALL.len()],
+            prefs_buttons: Default::default(),
             home_hits: vec![],
             home_controls: vec![],
             search_button: Rect::default(),
@@ -364,6 +390,7 @@ impl Shelf {
         self.pending = Some(Pending {
             title,
             closing: false,
+            saving: false,
             work: self.worker.start(task),
         });
     }
@@ -544,6 +571,7 @@ impl Shelf {
     }
 
     fn open_files(&mut self, book: Book) {
+        self.card = detail::Card::open(book.id, self.session.clone());
         let rows = book
             .files
             .iter()
@@ -694,9 +722,46 @@ impl Shelf {
             self.fetch("Saving position to BookOrbit…", move |_| {
                 session
                     .with_token(|api, t| api.save_move(t, &base, &change))
-                    .map(Loaded::Moved)
+                    .map(|saved| Loaded::Moved {
+                        saved,
+                        file: base.file_id,
+                        percent: change.percentage.round().clamp(
+                            0.0,
+                            if change.percentage >= 100.0 {
+                                100.0
+                            } else {
+                                99.0
+                            },
+                        ) as u8,
+                    })
             });
+            if let Some(job) = &mut self.pending {
+                job.saving = true;
+            }
         }
+    }
+    fn source_home(&mut self) -> Option<Selection> {
+        if self.pending.as_ref().is_some_and(|p| p.saving) {
+            self.after_save_home = true;
+            return None;
+        }
+        if self.is_opds {
+            return Some(Selection::Quit);
+        }
+        if matches!(self.current().section, Section::Home)
+            && self.pending.is_none()
+            && self.login.is_none()
+            && self.info.is_none()
+        {
+            return self.end_session(true);
+        }
+        self.pending = None;
+        self.info = None;
+        self.login = None;
+        self.scan_file = None;
+        self.bookmarks = None;
+        self.stack = vec![Pane::home(self.session.is_some())];
+        None
     }
     fn back(&mut self) -> Option<Selection> {
         self.notice = None;
@@ -713,6 +778,19 @@ impl Shelf {
             return self.end_session(true);
         }
         self.stack.pop();
+        if self.dirty_shelves[0] && matches!(self.current().section, Section::Dashboard(_)) {
+            self.open_tab(Tab::Dashboard);
+        } else if self.dirty_shelves[1]
+            && matches!(
+                self.current().section,
+                Section::Books {
+                    scope: Scope::Reading,
+                    ..
+                }
+            )
+        {
+            self.open_tab(Tab::Reading);
+        }
         None
     }
 
@@ -722,7 +800,9 @@ impl Shelf {
         }
         self.pending = None;
         self.covers.reset();
-        self.rail = rail::Rail::default();
+        self.rail = rail::Rail::saved();
+        self.card = Default::default();
+        self.dirty_shelves = [false; 2];
         let Some(session) = self.session.take() else {
             if quit {
                 return Some(Selection::Quit);
@@ -735,6 +815,7 @@ impl Shelf {
         self.pending = Some(Pending {
             title: "Signing out…",
             closing: true,
+            saving: false,
             work: Worker::new().start(move |_| {
                 let warning = session
                     .logout()
@@ -764,6 +845,21 @@ impl Shelf {
             Command::Downloads => return Some(Selection::Downloads),
             Command::Opds => return Some(Selection::Opds),
             Command::Feed(href) => self.fetch_feed(href),
+            Command::InlineFeed(name, items) => {
+                let rows = self.feed_rows(items.as_ref().clone());
+                self.stack.push(Pane::new(
+                    Section::Feed {
+                        next: None,
+                        visited: Default::default(),
+                    },
+                    name,
+                    rows,
+                ));
+            }
+            Command::NoAcquisition => {
+                self.notice =
+                    Some("This catalog provides no direct download for this edition.".into())
+            }
             Command::Back => return self.back(),
             Command::Local => {
                 self.pending = None;
@@ -815,6 +911,7 @@ impl Shelf {
                 self.open_tab(Tab::Dashboard);
             }
             Loaded::Dashboard(d, rows) => {
+                self.dirty_shelves[0] = false;
                 self.stack.truncate(1);
                 self.stack
                     .push(Pane::new(Section::Dashboard(d), "Dashboard", rows));
@@ -867,6 +964,9 @@ impl Shelf {
                 self.show_directory(Section::Libraries, "Libraries", rows);
             }
             Loaded::Books(scope, books) => {
+                if scope == Scope::Reading {
+                    self.dirty_shelves[1] = false;
+                }
                 let has_next = more_books(&books);
                 let title = format!("{}  ·  {}", scope.name(), books.total);
                 let rows = book_rows(books.items);
@@ -895,13 +995,66 @@ impl Shelf {
                 self.notice = note;
                 return Some(Selection::Book(path, base));
             }
+            Loaded::Status(id, status, reset, warning) => {
+                self.dirty_shelves = [true, true];
+                if reset {
+                    for p in &mut self.stack {
+                        if let Section::Files(b) = &mut p.section
+                            && b.id == id
+                        {
+                            b.progress = None;
+                        }
+                        for r in &mut p.rows {
+                            if let Command::Files(b) = &mut r.action
+                                && b.id == id
+                            {
+                                b.progress = None;
+                            }
+                        }
+                    }
+                }
+                self.notice = Some(warning.unwrap_or_else(|| {
+                    if reset {
+                        "Reading state reset. Files and bookmarks kept.".into()
+                    } else {
+                        format!("Reading status: {}", detail::status_label(&status.status))
+                    }
+                }));
+                if self.card.id == id
+                    && let Some(meta) = self.card.data.as_mut()
+                {
+                    meta.read_status = Some(status);
+                }
+            }
             Loaded::Kept => self.notice = Some("Saved in Offline downloads".into()),
-            Loaded::Moved(false) => {
+            Loaded::Moved { saved: false, .. } => {
                 self.notice = Some(
                     "Another device updated this book. This device kept its local position.".into(),
                 )
             }
-            Loaded::Moved(true) => (),
+            Loaded::Moved {
+                saved: true,
+                file,
+                percent,
+            } => {
+                // Cached parent panes are restored on Back. Repaint the accepted
+                // value everywhere the same edition is already on the shelf.
+                let update = |book: &mut Book| {
+                    if book.files.iter().any(|f| f.id == file) {
+                        book.progress = Some(percent);
+                    }
+                };
+                for p in &mut self.stack {
+                    if let Section::Files(book) = &mut p.section {
+                        update(book);
+                    }
+                    for row in &mut p.rows {
+                        if let Command::Files(book) = &mut row.action {
+                            update(book);
+                        }
+                    }
+                }
+            }
             Loaded::LoggedOut { quit, warning } => {
                 if quit {
                     self.exit_warning = warning;
@@ -1027,13 +1180,15 @@ impl Shelf {
         self.collect_tail();
         self.covers.collect();
         self.rail.collect();
+        self.card.collect();
         let result = match self.pending.as_ref()?.work.receiver.try_recv() {
             Ok(result) => result,
             Err(TryRecvError::Empty) => return None,
             Err(TryRecvError::Disconnected) => Err("Background request interrupted.".into()),
         };
         self.pending = None;
-        match result {
+        let return_home = std::mem::take(&mut self.after_save_home);
+        let selection = match result {
             Ok(loaded) => self.complete(loaded),
             Err(e) => {
                 if botui_bookorbit::is_unauthorized(e.as_ref()) {
@@ -1045,7 +1200,9 @@ impl Shelf {
                         self.session = None;
                         self.stack = vec![Pane::home(false)];
                         self.covers.reset();
-                        self.rail = rail::Rail::default();
+                        self.rail = rail::Rail::saved();
+                        self.card = Default::default();
+                        self.dirty_shelves = [false; 2];
                         self.login_screen();
                         if let Some(form) = &mut self.login {
                             form.focus_password();
@@ -1058,7 +1215,11 @@ impl Shelf {
                 }
                 None
             }
+        };
+        if return_home && selection.is_none() && self.login.is_none() {
+            return self.source_home();
         }
+        selection
     }
 
     fn input(&mut self, event: Event) -> Option<Selection> {
@@ -1083,8 +1244,11 @@ impl Shelf {
             return None;
         }
         if self.pending.is_some() {
-            if key == Some(KeyCode::Char('q')) {
-                return self.end_session(true);
+            if matches!(key, Some(KeyCode::Char('q' | 'Q'))) {
+                return self.source_home();
+            }
+            if self.pending.as_ref().is_some_and(|p| p.saving) {
+                return None;
             }
             if key == Some(KeyCode::Char('o')) {
                 return self.apply(Command::Local);
@@ -1104,6 +1268,9 @@ impl Shelf {
                 None => {}
             }
             return None;
+        }
+        if click.is_some_and(|p| self.home_button.contains(p)) {
+            return self.source_home();
         }
         if matches!(key, Some(KeyCode::Char('u' | 'U'))) {
             return self.apply(Command::Borders);
@@ -1177,6 +1344,21 @@ impl Shelf {
                 return self.apply(cmd);
             }
         }
+        if let Some(action) = self.rail.handle(&event) {
+            match action {
+                Ok(Some(cmd)) => {
+                    if matches!(cmd, Command::Books(..))
+                        && let Some(i) = self.all_books_index()
+                    {
+                        self.stack.truncate(i + 1);
+                    }
+                    return self.apply(cmd);
+                }
+                Err(error) => self.notice = Some(error.to_string()),
+                Ok(None) => {}
+            }
+            return None;
+        }
         if self.session.is_some() {
             let tab = match key {
                 Some(KeyCode::Char(n @ '0'..='7')) => {
@@ -1191,14 +1373,6 @@ impl Shelf {
             if let Some(tab) = tab {
                 return self.apply(Command::OpenTab(tab));
             }
-        }
-        if let Some(cmd) = click.and_then(|p| self.rail.hit(p)) {
-            if matches!(cmd, Command::Books(..))
-                && let Some(i) = self.all_books_index()
-            {
-                self.stack.truncate(i + 1);
-            }
-            return self.apply(cmd);
         }
         if self.view_available()
             && (matches!(key, Some(KeyCode::Char('v' | 'V')))
@@ -1270,7 +1444,7 @@ impl Shelf {
         let action = match event {
             Event::Key(k) if k.kind != KeyEventKind::Release => match k.code {
                 KeyCode::Esc | KeyCode::Backspace | KeyCode::Left => Some(Command::Back),
-                KeyCode::Char('q') => Some(Command::Quit),
+                KeyCode::Char('q' | 'Q') => return self.source_home(),
                 KeyCode::Char('o') => Some(Command::Local),
                 KeyCode::Enter | KeyCode::Right => self.current().action(),
                 KeyCode::Char('r') if self.current().tail_error => {
@@ -1331,19 +1505,48 @@ impl Shelf {
             }
             term.draw(|frame| {
                 self.draw(frame);
-                crate::settings::paint(frame)
+                crate::settings::paint_interface(frame)
             })?;
             self.prefetch();
             if (self.pending.is_some()
                 || self.current().tail.is_some()
                 || self.covers.busy()
-                || self.rail.busy())
+                || self.rail.busy()
+                || self.card.busy())
                 && !event::poll(Duration::from_millis(80))?
             {
                 continue;
             }
-            let e = event::read()?;
-            if (self.session.is_some() || self.links.search.is_some())
+            let e = crate::settings::read_event()?;
+            if self.pending.is_none()
+                && self.login.is_none()
+                && self.info.is_none()
+                && let Some(open) = self.prefs_buttons.event(&e)
+            {
+                let old = crate::settings::Settings::load()?.bookorbit;
+                crate::preferences::show(term, open, crate::preferences::Context::Shelf)?;
+                let new = crate::settings::Settings::load()?.bookorbit;
+                if !self.is_opds {
+                    if self.session.is_none()
+                        && (old.server != new.server || old.username != new.username)
+                    {
+                        self.server = new.server.clone();
+                        self.username = new.username.clone();
+                    }
+                    self.grid_view = !new.list_view;
+                    self.credentials = Some(new);
+                }
+                continue;
+            }
+            if self.pending.is_none()
+                && self.info.is_none()
+                && self.login.is_none()
+                && matches!(self.current().section, Section::Files(_))
+                && self.card_input(term, &e)?
+            {
+                continue;
+            }
+            if (self.session.is_some() || self.feed_search().is_some())
                 && self.pending.is_none()
                 && self.info.is_none()
                 && self.login.is_none()
@@ -1403,7 +1606,7 @@ fn more_books(books: &BooksPage) -> bool {
         && (u64::from(books.page) + 1) * u64::from(books.size.max(1)) < books.total
 }
 // A list item has exactly one terminal row, including metadata supplied by a server.
-fn single_line(mut text: String) -> String {
+pub(crate) fn single_line(mut text: String) -> String {
     if text.chars().any(char::is_control) {
         text = text
             .chars()

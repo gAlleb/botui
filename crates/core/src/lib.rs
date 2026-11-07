@@ -1,6 +1,8 @@
 //! Text pagination shared by every source and terminal frontend.
 
 mod location;
+mod media;
+pub use media::TableRow;
 mod printed;
 mod reference;
 pub use reference::{Reference, Target};
@@ -12,6 +14,7 @@ use unicode_width::UnicodeWidthStr;
 
 #[derive(Clone, Debug, Default)]
 pub struct Document {
+    pub tables: std::collections::BTreeMap<usize, TableRow>,
     pub references: Vec<Reference>,
     pub contents: Vec<(Anchor, String)>,
     pub locations: Locations,
@@ -35,12 +38,15 @@ pub struct Anchor {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LayoutMode {
+    Scroll,
     Single,
     Spread,
 }
 
 #[derive(Debug)]
 pub struct PageLine {
+    pub image: Option<usize>,
+    pub table_header: bool,
     pub text: String,
     pub heading: bool,
     start: Anchor,
@@ -76,6 +82,7 @@ impl Layout {
 
 pub struct Pager {
     printed: Vec<bool>,
+    inline_images: bool,
     layout: Layout,
     lines: Vec<PageLine>,
     first: usize,
@@ -94,15 +101,42 @@ impl Pager {
         mode: LayoutMode,
         repair_printed: bool,
     ) -> Self {
-        let printed = if repair_printed {
+        Self::with_media(doc, width, height, mode, repair_printed, true)
+    }
+    pub fn with_media(
+        doc: &Document,
+        width: u16,
+        height: u16,
+        mode: LayoutMode,
+        repair_printed: bool,
+        inline_images: bool,
+    ) -> Self {
+        let mut printed = if repair_printed {
             printed::printed_lines(&doc.blocks)
         } else {
             vec![false; doc.blocks.len()]
         };
+        for (&start, row) in &doc.tables {
+            for v in printed
+                .iter_mut()
+                .skip(start)
+                .take(row.end.saturating_sub(start))
+            {
+                *v = false;
+            }
+        }
+        for r in &doc.references {
+            if matches!(r.target, Target::Image(_))
+                && let Some(p) = printed.get_mut(r.source)
+            {
+                *p = false;
+            }
+        }
         let layout = Layout::new(width, height, mode, SPREAD_GAP);
-        let lines = wrap_document(doc, layout.width, &printed);
+        let lines = wrap_document(doc, layout.width, &printed, inline_images);
         Self {
             layout,
+            inline_images,
             printed,
             lines,
             first: 0,
@@ -127,7 +161,7 @@ impl Pager {
             return;
         }
         if self.layout.width != layout.width {
-            self.lines = wrap_document(doc, layout.width, &self.printed);
+            self.lines = wrap_document(doc, layout.width, &self.printed, self.inline_images);
         }
         self.layout = layout;
         self.seek(self.focus);
@@ -149,10 +183,12 @@ impl Pager {
     pub fn seek(&mut self, anchor: Anchor) {
         self.focus = anchor;
         // Anchors are in document order, including the paragraph separators.
-        self.first = self
-            .lines
-            .partition_point(|line| line.start <= anchor)
-            .saturating_sub(1);
+        let first = self.lines.partition_point(|line| line.start < anchor);
+        self.first = if self.lines.get(first).is_some_and(|l| l.start == anchor) {
+            first
+        } else {
+            first.saturating_sub(1)
+        };
     }
 
     pub fn lines(&self, column: usize) -> &[PageLine] {
@@ -188,20 +224,83 @@ impl Pager {
         }
     }
 
+    pub fn scroll(&mut self, lines: isize) {
+        let max = self.lines.len().saturating_sub(self.layout.height.max(1));
+        let first = self.first.saturating_add_signed(lines).min(max);
+        if !self.lines.is_empty() && first != self.first {
+            self.move_to(first);
+        }
+    }
+    pub fn viewport(&self) -> usize {
+        self.layout.height.max(1)
+    }
+    pub fn at_end(&self) -> bool {
+        self.first + self.layout.height * self.layout.columns >= self.lines.len()
+    }
     fn move_to(&mut self, first: usize) {
         self.first = first;
         self.focus = self.lines[first].start;
     }
 }
 
-fn wrap_document(doc: &Document, width: u16, printed: &[bool]) -> Vec<PageLine> {
+fn wrap_document(
+    doc: &Document,
+    width: u16,
+    printed: &[bool],
+    inline_images: bool,
+) -> Vec<PageLine> {
     let mut lines = Vec::new();
     if width == 0 {
         return lines;
     }
+    let mut images = std::collections::BTreeMap::<usize, Vec<usize>>::new();
+    for (i, r) in doc.references.iter().enumerate() {
+        if inline_images && matches!(r.target, Target::Image(_)) {
+            images
+                .entry(r.source.min(doc.blocks.len()))
+                .or_default()
+                .push(i);
+        }
+    }
+    let draw_images = |lines: &mut Vec<PageLine>, boundary: usize| {
+        if let Some(ids) = images.get(&boundary) {
+            let anchor = if boundary == 0 {
+                Anchor::default()
+            } else {
+                Anchor {
+                    block: boundary - 1,
+                    byte: doc.blocks[boundary - 1].text.len(),
+                }
+            };
+            for &id in ids {
+                for _ in 0..(width / 7).clamp(3, 9) {
+                    lines.push(PageLine {
+                        text: String::new(),
+                        heading: false,
+                        start: anchor,
+                        image: Some(id),
+                        table_header: false,
+                    });
+                }
+            }
+        }
+    };
     let mut start = 0;
     while start < doc.blocks.len() {
+        draw_images(&mut lines, start);
+        if let Some(row) = doc.tables.get(&start) {
+            media::table(&mut lines, start, row, width.into());
+            let end = row.end.clamp(start + 1, doc.blocks.len());
+            for i in start + 1..end {
+                draw_images(&mut lines, i);
+            }
+            start = end;
+            continue;
+        }
         let end = printed::end(&doc.blocks, printed, start);
+        let end = (start + 1..=end)
+            .find(|i| images.contains_key(i) || doc.tables.contains_key(i))
+            .map_or(end, |i| i - 1);
         let block = &doc.blocks[end];
         let before = lines.len();
         printed::wrap(
@@ -213,6 +312,8 @@ fn wrap_document(doc: &Document, width: u16, printed: &[bool]) -> Vec<PageLine> 
         start = end + 1;
         if lines.len() > before {
             lines.push(PageLine {
+                image: None,
+                table_header: false,
                 text: String::new(),
                 heading: false,
                 start: Anchor {
@@ -222,7 +323,13 @@ fn wrap_document(doc: &Document, width: u16, printed: &[bool]) -> Vec<PageLine> 
             });
         }
     }
-    lines.pop(); // Omit the trailing paragraph separator.
+    if lines
+        .last()
+        .is_some_and(|l| l.image.is_none() && l.text.is_empty())
+    {
+        lines.pop();
+    }
+    draw_images(&mut lines, doc.blocks.len());
     lines
 }
 
@@ -237,6 +344,8 @@ fn wrap_block(lines: &mut Vec<PageLine>, block: &Block, index: usize, width: usi
     let mut used = 0;
     let emit = |lines: &mut Vec<PageLine>, row: &mut String, byte| {
         lines.push(PageLine {
+            image: None,
+            table_header: false,
             text: std::mem::take(row),
             heading: block.heading,
             start: Anchor { block: index, byte },
@@ -296,6 +405,7 @@ mod tests {
 
     fn document(paragraphs: &[&str]) -> Document {
         Document {
+            tables: Default::default(),
             title: "Книга".into(),
             references: vec![],
             contents: vec![],

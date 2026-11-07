@@ -252,8 +252,10 @@ pub fn search(
             .contains(&term)
     };
     let mut pages = Vec::new();
+    let mut any_text = false;
     if kind == FileKind::Pdf {
         for (i, page) in text.split('\x0c').enumerate() {
+            any_text |= !page.trim().is_empty();
             if matches(page) {
                 pages.push(i as u32 + 1);
             }
@@ -290,6 +292,7 @@ pub fn search(
                         depth = depth.saturating_sub(1);
                         if depth == 0 {
                             page += 1;
+                            any_text |= !value.trim().is_empty();
                             if matches(&value) {
                                 pages.push(page);
                             }
@@ -300,6 +303,9 @@ pub fn search(
                 }
             }
         }
+    }
+    if !any_text {
+        return Err(io::Error::other("This scan has no searchable text layer."));
     }
     Ok(pages)
 }

@@ -16,12 +16,13 @@ shelf = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(shelf)
 BINARY = ROOT/'target/debug/botui'
 
-def pdf():
+def pdf(tones=False):
     objects = [b'<< /Type /Catalog /Pages 2 0 R >>', b'<< /Type /Pages /Count 3 /Kids [3 0 R 5 0 R 7 0 R] >>']
     for i in range(3):
         objects.append(f'<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 440] /Resources << /Font << /F1 << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> >> >> /Contents {4+2*i} 0 R >>'.encode())
         content = f'0.{i+2} 0.4 0.6 rg {28*i} 30 {220-i*28} {350-i*40} re f'.encode()
-        if i==1:content+=b" BT /F1 16 Tf 10 32 Td (Lighthouse atlas) Tj ET"
+        if tones:content=f'{[0.3,0.8,0.5][i]} g 0 0 1000 1000 re f'.encode()
+        if i==1 and not tones:content+=b" BT /F1 16 Tf 10 32 Td (Lighthouse atlas) Tj ET"
         objects.append(f'<< /Length {len(content)} >>\nstream\n'.encode()+content+b'\nendstream')
     data=bytearray(b'%PDF-1.4\n'); offsets=[0]
     for i,obj in enumerate(objects,1):
@@ -66,6 +67,35 @@ def opds(tmp):
             assert server.seen=={'/search.xml','/find?q=Amber%20%26%20fire','/start','/shelf','/next','/pub/cover','/pub/first.epub'},server.seen
         finally:t.run('kill-server',required=False);server.shutdown()
 
+def opds2(tmp):
+    import json
+    class JSONFeed(BaseHTTPRequestHandler):
+        def log_message(self,*_):pass
+        def do_GET(self):
+            self.server.seen.add(self.path)
+            if self.path=='/file.epub':
+                data=shelf.epub();mime='application/epub+zip'
+            else:
+                assert 'application/opds+json' in self.headers.get('Accept','')
+                publication={'metadata':{'title':{'en':'Harbour Atlas'},'author':[{'name':'Rowan'},'Nia']},'links':[{'rel':['download'],'type':'application/epub+zip','href':'file.epub'}]}
+                pages={
+                    '/v2':{'metadata':{'title':'Harbour catalog'},'groups':[{'metadata':{'title':'Maps'},'publications':[publication]}],'links':[{'rel':['search'],'templated':True,'href':'search{?query,author}'}]},
+                    '/search?query=Atlas%20%26%20maps':{'metadata':{'title':'Matches'},'publications':[publication],'links':[{'rel':'next','href':'v2-next'}]},
+                    '/v2-next':{'metadata':{'title':'Next'},'publications':[{'metadata':{'title':'Loan only'},'links':[{'rel':'borrow','href':'not-a-download'}]}]},
+                }
+                if self.path not in pages:self.send_error(404);return
+                data=json.dumps(pages[self.path]).encode();mime='application/opds+json'
+            self.send_response(200);self.send_header('Content-Type',mime);self.send_header('Content-Length',str(len(data)));self.end_headers();self.wfile.write(data)
+    with ThreadingHTTPServer(('127.0.0.1',0),JSONFeed) as server:
+        server.seen=set();threading.Thread(target=server.serve_forever,daemon=True).start()
+        t=Term(tmp,'--opds',f'http://127.0.0.1:{server.server_port}/v2')
+        try:
+            t.see('OPDS catalog');t.keys('Tab','Tab','Enter');t.click('Maps',t.see('Maps'));t.click('Harbour Atlas',t.see('Harbour Atlas'))
+            t.click('EPUB',t.wait('edition',lambda s:'EPUB' in s and '[V ' not in s));t.see(shelf.EPUB_MARK);t.keys('q');t.see('EPUB');t.keys('Escape');t.see('Harbour Atlas')
+            t.keys('/');t.see('Search OPDS catalog');t.type('Atlas & maps');t.keys('Enter');t.see('Loan only');t.click('Loan only',t.see('Loan only'));t.see('no direct download')
+            assert server.seen=={'/v2','/file.epub','/search?query=Atlas%20%26%20maps','/v2-next'},server.seen
+        finally:t.run('kill-server',required=False);server.shutdown()
+
 def scan(tmp,path):
     t=Term(tmp,path)
     try:
@@ -74,6 +104,8 @@ def scan(tmp,path):
         t.keys('Right');t.wait('Другое изображение на второй странице',lambda s:s!=first and ('▄' in s or '▀' in s))
         t.keys('+');t.wait('Увеличенная страница',lambda s:'▄' in s or '▀' in s);t.keys('Down','-');t.keys('m');t.see('2 / 3');t.click('Two-page spread',t.see('Two-page spread'))
         t.wait('Возврат из меню в разворот',lambda s:'Two-page spread' not in s and ('▀' in s or '▄' in s))
+        t.keys('3');t.see('Scroll');t.keys('p');t.see('Go to page');t.keys('C-u');t.type('3');t.keys('Enter');t.see('3 / 3')
+        t.keys('C-g');t.see('Go to page');t.keys('C-u');t.type('1');t.keys('Enter');t.see('1 / 3')
         t.keys('Home','/');t.see('Find in text layer');t.type('lighthouse');t.keys('Enter');t.see('1 matching page')
         t.keys('b');t.see('Page bookmarked');t.keys('i');t.see('Page note');t.type('Watch the lighthouse');t.keys('Enter')
         t.keys('Home','g');t.see('Page bookmarks');t.see('Page 2');t.keys('Enter')
@@ -92,7 +124,7 @@ def scan(tmp,path):
 
 if __name__=='__main__':
     with tempfile.TemporaryDirectory(prefix='botui-sources-') as name:
-        tmp=Path(name);opds(tmp);p=tmp/'тест.pdf';p.write_bytes(pdf());scan(tmp,p)
+        tmp=Path(name);opds(tmp);opds2(tmp);p=tmp/'тест.pdf';p.write_bytes(pdf());scan(tmp,p)
         parts=[]
         for i in range(3):
             p=tmp/f'p{i}.ppm';p.write_bytes(b'P6\n80 100\n255\n'+bytes(v for y in range(100) for x in range(80) for v in ((x*3+i*40)%255,(y*2)%255,70)))
@@ -100,4 +132,4 @@ if __name__=='__main__':
         djvu=tmp/'скан.djvu';subprocess.run(['djvm','-c',str(djvu),*map(str,parts)],check=True)
         ocr=tmp/'page.txt';ocr.write_text('(page 0 0 80 100 (line 0 0 55 20 "Lighthouse atlas"))')
         subprocess.run(['djvused',str(djvu),'-s','-e',f'select 2; set-txt {ocr}'],check=True);scan(tmp,djvu)
-    print('Проверены независимый OPDS с Basic Auth, разделы, картинки, пагинация, чтение EPUB; PDF и DjVu по три страницы, разворот и возврат на страницу 2.')
+    print('Проверены OPDS 1/Atom и OPDS 2/JSON, поиск, издания и чтение EPUB; PDF и DjVu по три страницы, разворот и возврат на страницу 2.')

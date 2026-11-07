@@ -41,3 +41,20 @@ pub fn finish(store: Option<&LocalState>, opened: Instant, notices: &mut Vec<Str
         notices.push(format!("Could not save reading statistics: {e}"));
     }
 }
+
+pub fn library(term: &mut crate::AppTerminal) -> io::Result<()> {
+    let s = botui_store::LibraryStats::on_device()?;
+    let mut rows = vec![
+        format!(" Editions opened          {}", s.books),
+        format!(" Completed sessions       {}", s.sessions),
+        format!(" Total time books open    {}", elapsed(s.seconds)),
+        " Counts this device, across sources. Identical files count once.".into(),
+    ];
+    if s.unreadable > 0 {
+        rows.push(format!(
+            " {} unreadable statistics records skipped.",
+            s.unreadable
+        ));
+    }
+    crate::prompt::choose(term, "Library statistics · this device", &rows, 0).map(|_| ())
+}

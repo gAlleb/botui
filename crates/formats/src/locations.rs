@@ -104,6 +104,13 @@ pub fn epub(html: &str, spine: &str, start: usize, blocks: &[Block], map: &mut L
                         | "div"
                         | "pre"
                 )
+                && !n.ancestors().filter(Node::is_element).any(|a| {
+                    a.has_attribute("hidden")
+                        || matches!(
+                            a.tag_name().name(),
+                            "script" | "style" | "template" | "svg" | "noscript"
+                        )
+                })
                 && !n.children().any(|c| {
                     c.is_element()
                         && matches!(
@@ -124,8 +131,8 @@ pub fn epub(html: &str, spine: &str, start: usize, blocks: &[Block], map: &mut L
         if !t.is_empty() {
             by_text
                 .entry(t)
-                .and_modify(|old| *old = None)
-                .or_insert(Some(n));
+                .or_insert_with(std::collections::VecDeque::new)
+                .push_back(n);
         }
     }
     let mut counts = HashMap::new();
@@ -148,12 +155,12 @@ pub fn epub(html: &str, spine: &str, start: usize, blocks: &[Block], map: &mut L
             }
         }
     }
+    // Both parsers walk visible prose in document order. Match repeated paragraphs
+    // only when every occurrence has a source, never the first equal string by default.
+    by_text.retain(|text, nodes| counts.get(text) == Some(&nodes.len()));
     for (i, b) in blocks.iter().enumerate() {
-        if counts[&b.text] != 1 {
-            continue;
-        }
-        if let Some(Some(n)) = by_text.get(&b.text)
-            && let Some(runs) = build(*n, &b.text, |c| {
+        if let Some(n) = by_text.get_mut(&b.text).and_then(|ns| ns.pop_front())
+            && let Some(runs) = build(n, &b.text, |c| {
                 let mut steps = vec![];
                 for n in c.ancestors().take_while(|n| n.parent_element().is_some()) {
                     steps.push(numbers.get(&n.id())?.0);

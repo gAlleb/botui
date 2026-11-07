@@ -20,13 +20,40 @@ pub struct Settings {
     pub zen: bool,
     pub local_grid: bool,
     pub preserve_printed_lines: bool,
+    pub hide_inline_images: bool,
     pub opaque_background: bool,
     pub theme: Option<String>,
+    pub interface_theme: Option<String>,
+    pub opaque_color: Option<String>,
     pub borders: crate::appearance::BordersStyle,
     pub page_width: Option<u16>,
+    pub reading_layout: Option<String>,
     pub column_gap: Option<u16>,
     pub bookorbit: Connection,
     pub keys: BTreeMap<char, String>,
+}
+thread_local! {
+    static SHELL_THEME: std::cell::Cell<usize> = const {std::cell::Cell::new(0)};
+    static SOLID_COLOR: std::cell::Cell<Option<Color>> = const {std::cell::Cell::new(None)};
+    static TERMINAL: std::cell::Cell<crate::shell_theme::TerminalPaper> = Default::default();
+
+}
+pub(crate) fn rgb(s: &str) -> Option<Color> {
+    let s = s.strip_prefix('#')?;
+    if s.len() != 6 || !s.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return None;
+    }
+    let n = u32::from_str_radix(s, 16).ok()?.to_be_bytes();
+    Some(Color::Rgb(n[1], n[2], n[3]))
+}
+pub(crate) fn detect_terminal() {
+    TERMINAL.set(crate::shell_theme::TerminalPaper::detect());
+}
+pub(crate) fn read_event() -> io::Result<crossterm::event::Event> {
+    crate::terminal_input::read(&TERMINAL)
+}
+pub(crate) fn opaque() -> bool {
+    OPAQUE.load(Ordering::Relaxed)
 }
 static OPAQUE: AtomicBool = AtomicBool::new(false);
 pub fn path() -> io::Result<PathBuf> {
@@ -174,19 +201,79 @@ impl Settings {
         Ok(settings)
     }
     pub fn activate(&self) {
+        SHELL_THEME.set(crate::shell_theme::index(self.interface_theme.as_deref()));
+        SOLID_COLOR.set(self.opaque_color.as_deref().and_then(rgb));
         self.borders.activate();
         OPAQUE.store(self.opaque_background, Ordering::Relaxed);
     }
 }
 pub fn paint(frame: &mut Frame) {
-    if OPAQUE.load(Ordering::Relaxed) {
-        for cell in &mut frame.buffer_mut().content {
-            if cell.bg == Color::Reset {
-                cell.bg = Color::Rgb(31, 33, 37);
-                if cell.fg == Color::Reset {
-                    cell.fg = Color::Rgb(231, 229, 220);
-                }
+    paint_with(frame, 0);
+}
+pub fn paint_book(frame: &mut Frame, theme: crate::theme::Theme) {
+    if theme == crate::theme::Theme::TERMINAL {
+        paint(frame);
+        return;
+    }
+    let style = theme.style();
+    let ink = style.fg.unwrap_or(Color::Reset);
+    let paper = TERMINAL.get().solid(style.bg.unwrap_or(Color::Reset));
+    let accent = theme.link();
+    let solid = opaque();
+    for cell in &mut frame.buffer_mut().content {
+        cell.fg = match cell.fg {
+            Color::Reset => ink,
+            Color::Cyan | Color::Blue | Color::Yellow => accent,
+            c => c,
+        };
+        if cell.bg == Color::Reset && solid {
+            cell.bg = paper;
+        } else if matches!(cell.bg, Color::Blue | Color::Cyan | Color::Yellow) {
+            cell.bg = accent;
+        } else if solid {
+            cell.bg = TERMINAL.get().solid(cell.bg);
+        }
+    }
+}
+pub fn shell_colors() -> Option<(Color, Color, Color)> {
+    let i = SHELL_THEME.get();
+    (i != 0).then(|| crate::shell_theme::ALL[i].colors())
+}
+pub fn paint_interface(frame: &mut Frame) {
+    paint_with(frame, SHELL_THEME.get());
+}
+fn paint_with(frame: &mut Frame, index: usize) {
+    let solid = opaque();
+    if !solid && index == 0 {
+        return;
+    }
+    let term = TERMINAL.get();
+    let (fg, bg, accent) = crate::shell_theme::ALL[index].colors();
+    let paper = if index == 0 {
+        SOLID_COLOR.get().or(term.bg).unwrap_or(Color::Black)
+    } else {
+        bg
+    };
+    let paper = term.solid(paper);
+    for cell in &mut frame.buffer_mut().content {
+        if index != 0 {
+            let named = |c| match c {
+                Color::Cyan | Color::Yellow | Color::Blue => accent,
+                _ => c,
+            };
+            cell.fg = if cell.fg == Color::Reset {
+                fg
+            } else {
+                named(cell.fg)
+            };
+            cell.bg = named(cell.bg);
+        }
+        if cell.bg == Color::Reset {
+            if solid {
+                cell.bg = paper;
             }
+        } else if solid {
+            cell.bg = term.solid(cell.bg);
         }
     }
 }

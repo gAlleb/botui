@@ -3,7 +3,7 @@ use crate::{
     cover::{Picture, graphics},
 };
 use botui_core::{Anchor, Document, Target};
-use crossterm::event::{self, Event, KeyCode, KeyEventKind, MouseButton, MouseEventKind};
+use crossterm::event::{Event, KeyCode, KeyEventKind, MouseButton, MouseEventKind};
 use ratatui::{
     layout::Rect,
     style::Stylize,
@@ -128,7 +128,7 @@ fn view(
             );
             crate::settings::paint(f)
         })?;
-        match event::read()? {
+        match crate::settings::read_event()? {
             Event::Key(k) if k.kind != KeyEventKind::Release => match k.code {
                 KeyCode::Esc | KeyCode::Enter | KeyCode::Char('q') => return Ok(()),
                 KeyCode::Down => scroll = scroll.saturating_add(1).min(limit),

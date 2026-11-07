@@ -1,0 +1,65 @@
+#!/usr/bin/env python3
+"""Check overlapping text during a one-line move and two distinct raster pages in one viewport."""
+from pathlib import Path
+import importlib.util,tempfile,re,json,shutil,subprocess,time
+root=Path(__file__).resolve().parents[1]
+spec=importlib.util.spec_from_file_location('sources',root/'scripts/smoke-sources.py');s=importlib.util.module_from_spec(spec);spec.loader.exec_module(s)
+def start(d,path):
+    t=s.shelf.Terminal(d,Path('/usr/bin/env'),args=['NO_COLOR=1',str(root/'target/debug/botui'),str(path)])
+    return t
+def stop(t):
+    t.keys('q')
+    for _ in range(100):
+        if t.run('has-session','-t','shelf',required=False).returncode:break
+        time.sleep(.035)
+    else:raise AssertionError('reader failed to exit')
+    t.run('kill-server',required=False)
+def saved(d):
+    for p in d.rglob('*.json'):
+        val=json.loads(p.read_text())
+        if isinstance(val,dict) and 'spread' in val and 'block' in val:return val
+def text_scroll(d):
+    d.mkdir();file=d/'scroll.fb2'
+    file.write_text('<FictionBook><body><section>'+''.join(f'<p>Passage {i:03}.</p>' for i in range(100))+'</section></body></FictionBook>')
+    t=start(d,file)
+    try:
+        t.see('Passage 001');t.keys('3');state=t.see('Scroll ·');first=re.findall(r'Passage \d+',state)
+        t.keys('Down');second=t.wait('Line scroll keeps neighboring passages',lambda a:first[0] not in a and first[2] in a);assert len(set(first)&set(re.findall(r'Passage \d+',second)))>2
+        t.keys('PageDown');last=t.wait('Page scroll advances',lambda a:first[2] not in a and 'Passage' in a)
+        at=re.findall(r'Passage \d+',last)[0];t.keys('2','3');t.see(at);stop(t)
+        assert saved(d)['scrolling']
+        t=start(d,file);t.see(at)
+        for _ in range(18):t.keys('PageDown')
+        t.see('Passage 099');stop(t);assert saved(d)['finished']
+    finally:t.run('kill-server',required=False)
+def scan_scroll(d,file):
+    d.mkdir();t=start(d,file)
+    try:
+        t.see('P Read');t.keys('p');t.wait('First rendered page',lambda f:'::::::::' in f)
+        t.keys('m');controls=t.see('Continuous scroll')
+        assert controls.index('Single page') < controls.index('Two-page spread') < controls.index('Continuous scroll')
+        t.click('Go to page number',controls);t.see('Go to page');t.keys('2','Enter');t.see('2 / 3')
+        t.keys('p');t.see('Go to page');t.keys('1','Enter');t.see('1 / 3')
+        t.keys('m');t.click('Continuous scroll',t.see('Continuous scroll'));t.see('Scroll');both=False
+        samples=[]
+        for i in range(130):
+            t.keys('Down');time.sleep(.04)
+            a=t.run('capture-pane','-p','-t','shelf').stdout
+            if i%8==0:samples.append([i, sorted(set(m.group(1) for m in re.finditer(r'([^\s])\1{6,}',a))),a.splitlines()[-1].strip()])
+            if '::::::::' in a and '########' in a:
+                both=True;break
+        assert both,('No sheet transition',file.suffix,samples)
+        stop(t);state=saved(d);assert state['scrolling'] and state['scan_offset']>0
+        t=start(d,file);t.see('P Read');t.keys('p');t.wait('Restored within the same physical sheet',lambda a:'::::::::' in a and '########' in a)
+        t.keys('2');t.wait('Spread leaves the scroll view',lambda a:'Scroll' not in a and '########' in a);stop(t)
+    finally:t.run('kill-server',required=False)
+if __name__=='__main__':
+    with tempfile.TemporaryDirectory(prefix='botui-flow-') as tmp:
+        d=Path(tmp);text_scroll(d/'text');pdf=d/'pages.pdf';pdf.write_bytes(s.pdf(True));scan_scroll(d/'pdf',pdf)
+        if shutil.which('c44') and shutil.which('djvm'):
+            sheets=[]
+            for i,color in enumerate((76,204,128)):
+                ppm=d/f'{i}.ppm';ppm.write_bytes(b'P6\n120 175\n255\n'+bytes([color])*3*120*175)
+                sheet=d/f'{i}.djvu';subprocess.run(['c44',str(ppm),str(sheet)],check=True);sheets.append(str(sheet))
+            djvu=d/'pages.djvu';subprocess.run(['djvm','-c',str(djvu),*sheets],check=True);scan_scroll(d/'djvu',djvu)
+    print('Passed line scrolling, reflow, completion and persisted cross-page PDF/DjVu scrolling.')

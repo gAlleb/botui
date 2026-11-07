@@ -97,18 +97,21 @@ impl Navigation {
             Kind::Notes => " Reading notes ",
             Kind::Search => " Find in book ",
         };
-        let panel = if popup {
-            crate::appearance::block()
-        } else {
-            crate::appearance::divider()
-        }
-        .title(title)
-        .style(style);
+        let panel = crate::appearance::block().title(title).style(style);
         let inner = panel.inner(area);
         f.render_widget(Clear, area);
         f.render_widget(panel, area);
         let heading = if self.kind == Kind::Search {
-            format!(" Find: {}▏", self.query)
+            format!(
+                " Find: {}▏   {}{}",
+                self.query,
+                self.items.len(),
+                if self.items.len() == 5000 {
+                    " · refine for more"
+                } else {
+                    " matches"
+                }
+            )
         } else {
             format!(
                 " {}: {}",

@@ -1,4 +1,5 @@
-//! An OPDS 1.x/Atom source: no BookOrbit routes, tokens or identifiers.
+//! OPDS Atom and JSON catalogs: no BookOrbit routes, tokens or identifiers.
+mod json;
 mod search;
 pub use reqwest::Url as Address;
 use reqwest::{
@@ -29,7 +30,9 @@ pub struct Feed {
     pub previous: Option<Url>,
     pub next: Option<Url>,
 }
+#[derive(Clone)]
 pub enum Entry {
+    Group(String, Vec<Entry>),
     Directory(String, Url),
     Book {
         title: String,
@@ -38,6 +41,7 @@ pub enum Entry {
         cover: Option<Url>,
     },
 }
+#[derive(Clone)]
 pub struct File {
     pub href: Url,
     pub format: String,
@@ -107,10 +111,17 @@ impl Catalog {
         Err("Too many OPDS redirects".into())
     }
     pub fn feed(&self, href: Url) -> Result<Feed> {
-        let response = self.get(href, "application/atom+xml, application/xml;q=0.8", 20)?;
+        let response = self.get(href, "application/opds+json, application/atom+xml, application/opds-publication+json, application/xml;q=0.8, application/json;q=0.8", 20)?;
         let base = response.url().clone();
         let bytes = bounded(response, 4 << 20)?;
-        parse(&base, std::str::from_utf8(&bytes)?)
+        let text = std::str::from_utf8(&bytes)?
+            .trim_start_matches('﻿')
+            .trim_start();
+        if text.starts_with('{') {
+            json::parse(&base, text)
+        } else {
+            parse(&base, text)
+        }
     }
     pub fn cover(&self, href: Url) -> Result<Vec<u8>> {
         bounded(self.get(href, "image/*", 12)?, 2 << 20)
@@ -206,21 +217,7 @@ fn parse(base: &Url, xml: &str) -> Result<Feed> {
             } else if rel == "http://opds-spec.org/acquisition"
                 || rel == "http://opds-spec.org/acquisition/open-access"
             {
-                let fmt = match mime {
-                    "application/epub+zip" => "epub",
-                    "application/pdf" => "pdf",
-                    "image/vnd.djvu" | "image/x-djvu" => "djvu",
-                    "application/fb2+xml" | "application/x-fictionbook+xml" => "fb2",
-                    _ => href
-                        .path()
-                        .rsplit('/')
-                        .next()
-                        .and_then(|v| v.rsplit_once('.'))
-                        .map(|(_, ext)| ext)
-                        .filter(|v| v.len() <= 12)
-                        .unwrap_or("file"),
-                }
-                .to_owned();
+                let fmt = format(mime, &href);
                 files.push(File {
                     href,
                     format: fmt,
@@ -253,4 +250,22 @@ fn parse(base: &Url, xml: &str) -> Result<Feed> {
         next: link("next"),
         previous: link("previous"),
     })
+}
+
+fn format(mime: &str, href: &Url) -> String {
+    match mime {
+        "application/epub+zip" => "epub",
+        "application/pdf" => "pdf",
+        "image/vnd.djvu" | "image/x-djvu" => "djvu",
+        "application/fb2+xml" | "application/x-fictionbook+xml" => "fb2",
+        _ => href
+            .path()
+            .rsplit('/')
+            .next()
+            .and_then(|v| v.rsplit_once('.'))
+            .map(|(_, ext)| ext)
+            .filter(|v| v.len() <= 12)
+            .unwrap_or("file"),
+    }
+    .to_owned()
 }

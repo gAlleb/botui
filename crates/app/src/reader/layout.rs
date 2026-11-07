@@ -128,6 +128,7 @@ impl Panel {
                 KeyCode::Char('}') => Some(Action::Gap(1)),
                 KeyCode::Char('1') => Some(Action::Single),
                 KeyCode::Char('2') => Some(Action::Spread),
+                KeyCode::Char('3') => Some(Action::Scroll),
                 KeyCode::Esc | KeyCode::Enter | KeyCode::Char('w' | 'W' | 'm' | 'M') => {
                     Some(Action::Layout)
                 }

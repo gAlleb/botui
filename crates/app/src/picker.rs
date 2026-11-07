@@ -47,8 +47,7 @@ pub struct Picker {
     search_button: Rect,
     root_button: Rect,
     path_button: Rect,
-    bg_button: Rect,
-    borders_button: Rect,
+    prefs_buttons: crate::preferences::Buttons,
     up_button: Rect,
     entries: Vec<Entry>,
     list: ListState,
@@ -72,8 +71,7 @@ impl Picker {
             search_button: Rect::default(),
             root_button: Rect::default(),
             path_button: Rect::default(),
-            bg_button: Rect::default(),
-            borders_button: Rect::default(),
+            prefs_buttons: Default::default(),
             up_button: Rect::default(),
             entries: Vec::new(),
             list: ListState::default(),
@@ -211,7 +209,8 @@ impl Picker {
                 footer.width.saturating_sub(self.exit.width),
                 1,
             );
-            let mut x = message.x;
+            self.prefs_buttons.draw(frame, message);
+            let mut x = (message.x + 23).min(message.right());
             let mut button = |label: &str| {
                 let r = Rect::new(
                     x,
@@ -231,8 +230,7 @@ impl Picker {
             self.path_button = button("[P Folder…]");
             self.search_button = button("[/ Search]");
             self.root_button = button("[R Set library here]");
-            self.bg_button = button("[F Background]");
-            self.borders_button = button("[U Borders]");
+
             if let Some(error) = &self.error {
                 frame.render_widget(
                     Paragraph::new(error.as_str()).fg(Color::Yellow),
@@ -251,6 +249,7 @@ impl Picker {
         if view == LocalView::Reading {
             self.entries = botui_store::HistoryEntry::for_root(&self.root)?
                 .into_iter()
+                .filter(|entry| entry.percent < 100)
                 .filter_map(|entry| {
                     let kind = FileKind::from_path(&entry.path)?;
                     let name = format!(
@@ -354,14 +353,34 @@ impl Picker {
         loop {
             term.draw(|frame| {
                 self.draw(frame);
-                crate::settings::paint(frame)
+                crate::settings::paint_interface(frame)
             })?;
             if self.covers.busy() && !event::poll(std::time::Duration::from_millis(60))? {
                 self.covers.collect();
                 continue;
             }
             self.covers.collect();
-            let e = event::read()?;
+            let e = crate::settings::read_event()?;
+            if let Some(open) = self.prefs_buttons.event(&e) {
+                let old = crate::settings::Settings::load()?.library_root;
+                crate::preferences::show(term, open, crate::preferences::Context::Local)?;
+                let cfg = crate::settings::Settings::load()?;
+                self.grid_view = cfg.local_grid;
+                if cfg.library_root != old
+                    && let Some(root) = cfg
+                        .library_root
+                        .or_else(|| {
+                            std::env::var_os("HOME")
+                                .map(|h| PathBuf::from(h).join("Books"))
+                                .filter(|p| p.is_dir())
+                        })
+                        .or_else(|| std::env::current_dir().ok())
+                {
+                    self.load(&root)?;
+                    self.root = root;
+                }
+                continue;
+            }
             let click = match &e {
                 Event::Mouse(m) if m.kind == MouseEventKind::Down(MouseButton::Left) => {
                     Some(Position::new(m.column, m.row))
@@ -405,17 +424,13 @@ impl Picker {
                 }
                 continue;
             }
-            if matches!(key, Some(KeyCode::Char('u' | 'U')))
-                || click.is_some_and(|p| self.borders_button.contains(p))
-            {
+            if matches!(key, Some(KeyCode::Char('u' | 'U'))) {
                 if let Err(e) = crate::appearance::cycle() {
                     self.error = Some(e.to_string());
                 }
                 continue;
             }
-            if matches!(key, Some(KeyCode::Char('f' | 'F')))
-                || click.is_some_and(|p| self.bg_button.contains(p))
-            {
+            if matches!(key, Some(KeyCode::Char('f' | 'F'))) {
                 if let Err(e) = crate::settings::Settings::update(|s| {
                     s.opaque_background = !s.opaque_background
                 }) {

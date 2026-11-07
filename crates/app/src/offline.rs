@@ -138,10 +138,12 @@ pub fn sync(
             continue;
         };
         let current = session.with_token(|a, t| a.progress(t, record.base.file_id))?;
-        let matches = match &m.target {
-            Target::Text(cfi) => current.text.cfi.as_ref() == Some(cfi),
-            Target::Page(n) => current.text.page == Some(*n),
-        };
+        // Finishing the last viewport can change only the percentage.
+        let matches = (current.percentage - m.percentage).abs() < 0.000_001
+            && match &m.target {
+                Target::Text(cfi) => current.text.cfi.as_ref() == Some(cfi),
+                Target::Page(n) => current.text.page == Some(*n),
+            };
         let saved = matches
             || (current == record.base
                 && session.with_token(|a, t| a.save_move(t, &record.base, m))?);
@@ -164,4 +166,35 @@ pub fn sync(
         }
     }
     Ok(messages.into_iter().next())
+}
+
+/// A confirmed BookOrbit reset supersedes unsent moves for this account's editions.
+pub fn reset_positions(account: &str, files: &[u64]) -> io::Result<()> {
+    let dir = crate::cache::downloads()?;
+    if !dir.is_dir() {
+        return Ok(());
+    }
+    let _lock = lock(&dir)?;
+    for item in fs::read_dir(&dir)? {
+        let path = item?.path();
+        if !path
+            .file_name()
+            .is_some_and(|s| s.to_string_lossy().starts_with('.'))
+            || path.extension().and_then(|v| v.to_str()) != Some("json")
+        {
+            continue;
+        }
+        if let Some(mut copy) = load(&path)?
+            && copy.account == account
+            && files.contains(&copy.base.file_id)
+        {
+            copy.pending = None;
+            copy.base.updated_at = None;
+            copy.base.percentage = 0.;
+            copy.base.text.cfi = None;
+            copy.base.text.page = None;
+            write(&path, &copy)?;
+        }
+    }
+    Ok(())
 }

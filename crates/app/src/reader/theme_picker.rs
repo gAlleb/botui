@@ -9,14 +9,14 @@ use ratatui::{
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) enum Edit {
+pub(crate) enum Edit {
     Row(usize),
     Dark(bool),
     Accept(Theme),
     Cancel,
 }
 
-pub(super) struct Picker {
+pub(crate) struct Picker {
     row: usize,
     dark: bool,
     offset: usize,
@@ -27,7 +27,7 @@ pub(super) struct Picker {
 }
 
 impl Picker {
-    pub(super) fn new(theme: Theme) -> Self {
+    pub(crate) fn new(theme: Theme) -> Self {
         Self {
             row: theme.row(),
             dark: theme.dark(),
@@ -39,11 +39,11 @@ impl Picker {
         }
     }
 
-    pub(super) fn preview(&self) -> Theme {
+    pub(crate) fn preview(&self) -> Theme {
         Theme::at(self.row, self.dark)
     }
 
-    pub(super) fn edit(&mut self, edit: Edit) {
+    pub(crate) fn edit(&mut self, edit: Edit) {
         match edit {
             Edit::Row(row) => self.row = row,
             Edit::Dark(dark) => self.dark = dark,
@@ -51,14 +51,17 @@ impl Picker {
         }
     }
 
-    pub(super) fn draw(&mut self, f: &mut Frame) {
+    pub(crate) fn draw(&mut self, f: &mut Frame) {
+        self.draw_named(f, " Reader theme ");
+    }
+    pub(crate) fn draw_named(&mut self, f: &mut Frame, title: &str) {
         let screen = f.area();
         let popup = centered(screen, 46, Theme::COUNT as u16 + 4);
         self.popup = popup;
         let style = self.preview().style();
         f.render_widget(Clear, popup);
         let block = if popup.height >= 5 && popup.width >= 16 {
-            crate::appearance::block().title(" Reader theme ")
+            crate::appearance::block().title(title)
         } else {
             Block::new()
         }
@@ -166,7 +169,7 @@ impl Picker {
         }
     }
 
-    pub(super) fn input(&self, event: Event) -> Option<Edit> {
+    pub(crate) fn input(&self, event: Event) -> Option<Edit> {
         let shift = |delta| Edit::Row(self.row.saturating_add_signed(delta).min(Theme::COUNT - 1));
         match event {
             Event::Key(k) if k.kind != KeyEventKind::Release => match k.code {

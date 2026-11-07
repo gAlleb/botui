@@ -52,6 +52,7 @@ class Fixture(ThreadingHTTPServer):
         self.token = TOKEN
         self.refresh = "a" * 64
         self.expired_once = False
+        self.statuses = {201:"reading"}
         self.progress = {}
         self.saved = []
         self.marks = {}
@@ -94,10 +95,13 @@ class Handler(BaseHTTPRequestHandler):
                 "refreshTokenExpiresAt": "2099-02-01T00:00:00Z", "sessionId": 8}
 
     def do_POST(self):
-        data = json.loads(self.rfile.read(int(self.headers.get("Content-Length", "0"))))
+        data = json.loads(self.rfile.read(int(self.headers.get("Content-Length", "0"))) or b"{}")
         total = TOTAL if self.server.has_collections else 2
         catalogs = {API + "/books/query": range(total), API + "/libraries/31/books": [0],
                     API + "/libraries/32/books": range(1, total)}
+        if self.path == API + "/books/201/reset-reading-state" and self.headers.get("Authorization") == f"Bearer {self.server.token}":
+            self.server.statuses[201]="unread"
+            return self.reply(201,{"readStatus":{"status":"unread","startedAt":None,"finishedAt":None}})
         if self.path == API + "/dashboard/widgets/batch" and self.headers.get("Authorization") == f"Bearer {self.server.token}":
             return self.reply(200, {"items":[{"type":"reading-streak","failed":False,"data":{"currentStreak":4,"longestStreak":9}},
                                   {"type":"monthly-challenge","failed":False,"data":{"title":"Streak Builder","progress":4,"target":5}}]})
@@ -115,7 +119,7 @@ class Handler(BaseHTTPRequestHandler):
             if "filter" in data:
                 assert data["filter"]["rules"][0]["value"] == ["reading", "rereading"]
                 assert data["sort"][0] == {"field": "lastReadAt", "dir": "desc"}
-                ids = [i for i in ids if i == 1]
+                ids=[i for i in ids if self.server.statuses.get(200+i) in ("reading","rereading")]
             if data.get("sort") == [{"field": "addedAt", "dir": "desc"}]: ids.reverse()
             return self.reply(200, {"page": page, "size": size, "total": len(ids),
                                     "items": [self.server.card(i) for i in ids[page * size:(page + 1) * size]]})
@@ -149,6 +153,13 @@ class Handler(BaseHTTPRequestHandler):
             return self.reply(204,{})
         return self.reply(404,{})
 
+    def do_PATCH(self):
+        if self.path == API + "/books/201/status" and self.headers.get("Authorization") == f"Bearer {self.server.token}":
+            st=json.loads(self.rfile.read(int(self.headers['Content-Length'])))['status']
+            assert st in ('reading','on_hold')
+            self.server.statuses[201]=st
+            return self.reply(200,{"status":st,"startedAt":"2026-10-01","finishedAt":None})
+        self.reply(404,{})
     def do_PUT(self):
         if self.path != API + "/reading-progress" or self.headers.get("Authorization") != f"Bearer {self.server.token}":
             return self.reply(403,{})
@@ -170,9 +181,12 @@ class Handler(BaseHTTPRequestHandler):
         size = int(query.get("size", [24])[0])
         def send_page(items):
             return self.reply(200, {"items":items[page*size:(page+1)*size], "total":len(items), "page":page, "size":size})
+        if url.path in [API+"/books/200",API+"/books/201"]:
+            idx=int(url.path.rsplit('/',1)[1]);b=self.server.card(idx-200)
+            return self.reply(200,dict(title=b['title'],authors=[{"name":a} for a in b["authors"]],description="<p>Letters from the northern lighthouse.</p>",publisher="Harbor Press",language="en",isbn13="9780000000002",seriesName="Beacon",seriesIndex=2,libraryName="Port",readStatus={"status":self.server.statuses.get(idx,"unread"),"startedAt":None,"finishedAt":None}))
         if url.path.startswith(API + "/dashboard/scrollers/"):
             key = url.path.rsplit("/", 1)[1]
-            indexes = {"continue-reading":[1], "recently-added":[0,1], "random":[0]}[key]
+            indexes = {"continue-reading":[i-200 for i,st in self.server.statuses.items() if st in ("reading","rereading")], "recently-added":[0,1], "random":[0]}[key]
             items = [self.server.card(i) for i in indexes]
             return self.reply(200, items if key == "random" else {"books":items, "total":len(items)})
         for endpoint, total, target in [("authors",410,"Роджер Желязны"),("series",49,"Хроники Амбера")]:
@@ -295,6 +309,8 @@ def formats(term):
 
 
 def quit_shelf(term):
+    if "Choose a library" not in term.run("capture-pane","-p","-t","shelf").stdout:
+        term.keys("q");term.see("Choose a library")
     term.keys("q")
     deadline = time.monotonic() + 8
     while term.run("has-session", "-t", "shelf", required=False).returncode == 0:
@@ -373,7 +389,7 @@ def check_collections(tmp, binary, fixture):
             (API + "/auth/refresh", 200), (API + "/auth/logout", 200)
         ], requests
         config = tomllib.loads((tmp / "config/botui/config.toml").read_text())["bookorbit"]
-        assert config == {"server": url, "username": USER, "list_view": False}, "Проверьте сохраняемые поля подключения"
+        assert {k:v for k,v in config.items() if not k.endswith("_collapsed")} == {"server": url, "username": USER, "list_view": False}, "Проверьте сохраняемые поля подключения"
     finally:
         term.run("kill-server", required=False)
 

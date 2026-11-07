@@ -23,12 +23,13 @@ def check(tmp):
     with ZipFile(epub, "w") as z:
         z.writestr("META-INF/container.xml", '<container><rootfile full-path="a.opf"/></container>')
         z.writestr("a.opf", '<package><metadata><title>Atlas</title></metadata><manifest><item id="a" href="chap.xhtml" media-type="application/xhtml+xml"/><item id="n" href="notes.xhtml" media-type="application/xhtml+xml"/><item id="p" href="map.jpg" media-type="image/jpeg"/></manifest><spine><itemref idref="a"/><itemref idref="n" linear="no"/></spine></package>')
-        z.writestr("chap.xhtml", '<html><body><h1>Harbour</h1><p>See <a href="#end">Next chapter</a>, <a href="notes.xhtml#memo">Source note</a> and <a href="https://example.org/map">Publisher website</a>.</p><p><img src="map.jpg" alt="Map plate"/></p>' + '<p>Walking along the bay.</p>' * 100 + '<h1 id="end">Observatory</h1><p>Last passage.</p></body></html>')
+        z.writestr("chap.xhtml", '<html><body><h1>Harbour</h1><p>See <a href="#end">Next chapter</a>, <a href="notes.xhtml#memo">Source note</a> and <a href="https://example.org/map">Publisher website</a>.</p><p><img src="map.jpg" alt="Map plate"/></p><table><tr><th>Port</th><th>Tide</th></tr><tr><td>Whitby</td><td>High</td></tr></table>' + '<p>Walking along the bay.</p>' * 100 + '<h1 id="end">Observatory</h1><p>Last passage.</p></body></html>')
         z.writestr("notes.xhtml", '<html><body><p id="memo">In 1812 the harbour moved.</p></body></html>')
         z.writestr("map.jpg", pic)
     t = shelf.Terminal(tmp, BINARY, args=[str(epub)])
     try:
-        t.see("Harbour")
+        page=t.wait("inline illustration in reading flow",lambda f:"Harbour" in f and ("▀" in f or "▄" in f) and "Whitby" in f)
+        assert any("Whitby" in line and "│" in line and "High" in line for line in page.splitlines()),page
         select(t, "Source note")
         t.see("In 1812 the harbour moved.")
         t.keys("Escape")

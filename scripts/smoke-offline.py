@@ -44,7 +44,19 @@ with tempfile.TemporaryDirectory() as name, shelf.Fixture(False) as server:
         assert server.progress[302]["text"]["cfi"] == record["pending"]["target"]["Text"]
         assert json.loads(meta.read_text())["pending"] is None
         shelf.quit_shelf(term)
+
+        # The last screen can finish at the very same CFI as the saved position.
+        completed = json.loads(meta.read_text())
+        completed["base"]["percentage"] = 99
+        server.progress[302]["percentage"] = 99
+        completed["pending"] = {"target": record["pending"]["target"], "percentage": 100}
+        meta.write_text(json.dumps(completed))
+        term = shelf.Terminal(tmp, binary, url)
+        shelf.login(term, url)
+        assert server.saved == [302, 302] and server.progress[302]["percentage"] == 100
+        assert json.loads(meta.read_text())["pending"] is None
+        shelf.quit_shelf(term)
     finally:
         term.run("kill-server", required=False)
         server.shutdown()
-print("Passed offline reading, no network access, durable progress and conditional upload.")
+print("Passed offline reading, conditional upload and finishing at an unchanged location.")

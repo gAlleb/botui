@@ -1,11 +1,12 @@
 //! Geometry is shared by drawing, keyboard navigation and mouse hit testing.
+mod jacket_edge;
 use super::{Book, Command, Scope, Shelf, single_line};
 use crate::centered;
 use ratatui::{
     Frame,
     layout::{Position, Rect},
     style::{Color, Style},
-    widgets::{Block, Paragraph, Wrap},
+    widgets::{Paragraph, Wrap},
 };
 
 pub(crate) struct Grid {
@@ -108,7 +109,7 @@ pub(super) fn caption(text: &str, width: u16, max_lines: usize) -> String {
 
 /// A cloth binding and foil ornament drawn as terminal cells. The same title
 /// and author always get the same jacket, independent of sorting and resizing.
-fn jacket(frame: &mut Frame, slot: Rect, book: &Book) {
+fn jacket(frame: &mut Frame, slot: Rect, book: &Book, graphics: &ratatui_image::picker::Picker) {
     let title = single_line(book.title.clone().unwrap_or_else(|| "Untitled".into()));
     let author = single_line(book.authors.join(", "));
     let seed = title
@@ -129,15 +130,18 @@ fn jacket(frame: &mut Frame, slot: Rect, book: &Book) {
         .fg(Color::Rgb(246, 229, 191));
     let gold = cloth.fg(Color::Rgb(222, 192, 139));
     let area = centered(slot, (slot.height * 4 / 3).max(4), slot.height);
-    frame.render_widget(Block::default().style(cloth), area);
-    if area.width < 3 || area.height < 2 {
+    let area = jacket_edge::paper(frame, area, cloth, (r, g, b), graphics);
+    if area.is_empty() {
+        return;
+    }
+    if area.width < 4 || area.height < 2 {
         return;
     }
     frame.render_widget(
         Paragraph::new("│\n".repeat(area.height.into())).style(gold),
         Rect::new(area.x + 1, area.y, 1, area.height),
     );
-    let field = Rect::new(area.x + 2, area.y, area.width - 2, area.height);
+    let field = Rect::new(area.x + 2, area.y, area.width - 3, area.height);
     let ornament = ["─ ◇ ─", "· ✦ ·", "─ ❖ ─", "· ◆ ·"][(seed >> 4) as usize % 4];
     frame.render_widget(
         Paragraph::new(ornament).centered().style(gold),
@@ -170,25 +174,13 @@ fn jacket(frame: &mut Frame, slot: Rect, book: &Book) {
             line(field, field.height - 1, 1),
         );
     }
-    if crate::appearance::BordersStyle::current() == crate::appearance::BordersStyle::Rounded
-        && area.width >= 6
-    {
-        for x in [area.x, area.right() - 1] {
-            for (y, symbol) in [(area.y, '▄'), (area.bottom() - 1, '▀')] {
-                frame.buffer_mut()[(x, y)]
-                    .set_char(symbol)
-                    .set_fg(Color::Rgb(r, g, b))
-                    .set_bg(Color::Reset);
-            }
-        }
-    }
 }
 impl Shelf {
     pub(super) fn artwork(&self, frame: &mut Frame, slot: Rect, book: &Book) {
         if let Some(pic) = self.covers.image(book.id) {
             pic.draw(frame, slot, &self.graphics)
         } else if !slot.is_empty() {
-            jacket(frame, slot, book)
+            jacket(frame, slot, book, &self.graphics)
         }
     }
     pub(super) fn draw_grid(&mut self, frame: &mut Frame, area: Rect) {
@@ -278,7 +270,7 @@ pub(crate) fn book_face(
     if let Some(pic) = picture {
         pic.draw(frame, area, graphics);
     } else if !area.is_empty() {
-        jacket(frame, area, book);
+        jacket(frame, area, book, graphics);
     }
     frame.render_widget(
         Paragraph::new(caption(&title, inner.width, if meta == 4 { 2 } else { 1 }))

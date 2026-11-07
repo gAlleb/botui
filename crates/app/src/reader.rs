@@ -3,7 +3,7 @@ mod layout;
 mod navigation;
 pub(crate) mod notes;
 mod resources;
-mod theme_picker;
+pub(crate) mod theme_picker;
 use navigation::{Edit, Kind};
 
 use std::{
@@ -40,11 +40,15 @@ enum Action {
     Export,
     Statistics,
     Resources,
+    Settings,
+    Help,
     Resume,
     Previous,
     Next,
     Single,
     Spread,
+    Scroll,
+    Lines(i8),
     Theme,
     Pick(theme_picker::Edit),
     Navigate(Kind),
@@ -59,12 +63,13 @@ enum Action {
     Resize,
 }
 
-const COMMANDS: [Action; 22] = [
+const COMMANDS: [Action; 25] = [
     Action::Resume,
     Action::Previous,
     Action::Next,
     Action::Single,
     Action::Spread,
+    Action::Scroll,
     Action::Theme,
     Action::Navigate(Kind::Contents),
     Action::Navigate(Kind::Search),
@@ -81,6 +86,8 @@ const COMMANDS: [Action; 22] = [
     Action::Resources,
     Action::JumpBack,
     Action::JumpForward,
+    Action::Settings,
+    Action::Help,
     Action::Close,
 ];
 
@@ -89,11 +96,13 @@ struct Reader {
     opaque: bool,
     sidebar: navigation::Navigation,
     sidebar_rect: Rect,
-    footer: [Rect; 3],
+    footer: [Rect; 5],
     remote_marked: bool,
     sidebar_focus: bool,
     history: Vec<botui_core::Anchor>,
     future: Vec<botui_core::Anchor>,
+    source: std::path::PathBuf,
+    illustrations: Option<crate::shelf::covers::Covers>,
     doc: Document,
     pager: Pager,
     mode: LayoutMode,
@@ -109,12 +118,19 @@ struct Reader {
     margin: i8,
     bindings: std::collections::HashMap<char, Action>,
     dirty: bool,
+    finished: bool,
 }
 
 impl Reader {
-    fn new(doc: Document, area: Rect, saved: Option<Saved>) -> Self {
+    fn new(doc: Document, area: Rect, saved: Option<Saved>, source: &Path) -> Self {
         let settings = crate::settings::Settings::load().unwrap_or_default();
-        let mode = if saved.as_ref().is_some_and(|s| !s.spread) {
+        let mode = if saved.is_none() && settings.reading_layout.as_deref() == Some("single") {
+            LayoutMode::Single
+        } else if (saved.is_none() && settings.reading_layout.as_deref() == Some("scroll"))
+            || saved.as_ref().is_some_and(|s| s.scrolling)
+        {
+            LayoutMode::Scroll
+        } else if saved.as_ref().is_some_and(|s| !s.spread) {
             LayoutMode::Single
         } else {
             LayoutMode::Spread
@@ -126,34 +142,36 @@ impl Reader {
             .clamp(32, 240);
         let gap = settings.column_gap.unwrap_or(4).min(32);
         let (text, mode_for_size, _) = layout::geometry(area, mode, page_width, gap);
-        let mut pager = Pager::with_reflow(
+        let mut pager = Pager::with_media(
             &doc,
             text.width,
             text.height,
             mode_for_size,
             !settings.preserve_printed_lines,
+            !settings.hide_inline_images,
         );
         let marks = saved.as_ref().map(|s| s.marks.clone()).unwrap_or_default();
-        let theme = if let Some(state) = saved {
+        if let Some(state) = &saved {
             pager.seek(state.anchor);
-            Theme::from_id(&state.theme)
-        } else {
-            settings
-                .theme
-                .as_deref()
-                .map_or(Theme::TERMINAL, Theme::from_id)
-        };
+        }
+        let theme = settings
+            .theme
+            .as_deref()
+            .or_else(|| saved.as_ref().map(|s| s.theme.as_str()))
+            .map_or(Theme::TERMINAL, Theme::from_id);
         let sidebar = navigation::Navigation::new(Kind::Contents, &doc, pager.anchor(), &[]);
         Self {
             zen: settings.zen,
             opaque: settings.opaque_background,
             sidebar,
             sidebar_rect: Rect::default(),
-            footer: [Rect::default(); 3],
+            footer: [Rect::default(); 5],
             remote_marked: false,
             sidebar_focus: false,
             history: vec![],
             future: vec![],
+            source: source.into(),
+            illustrations: None,
             doc,
             pager,
             mode,
@@ -169,6 +187,7 @@ impl Reader {
             margin,
             bindings: Default::default(),
             dirty: false,
+            finished: saved.as_ref().is_some_and(|s| s.finished),
         }
     }
 
@@ -190,12 +209,19 @@ impl Reader {
         let (text, actual, gap) = layout::geometry(page, self.mode, self.page_width, self.gap);
         self.pager
             .relayout_with_gap(&self.doc, text.width, text.height, actual, gap);
-        let style = self
+        let mut style = self
             .palette
             .as_ref()
             .map_or(self.theme, |p| p.preview())
             .style();
+        if !crate::settings::opaque() {
+            style.bg = Some(ratatui::style::Color::Reset);
+        }
         frame.render_widget(Block::new().style(style), screen);
+        if let Some(p) = &mut self.illustrations {
+            p.collect();
+        }
+        let mut figures = Vec::new();
         for c in 0..self.pager.columns() {
             let x = text
                 .x
@@ -208,11 +234,56 @@ impl Reader {
                 .enumerate()
             {
                 let rect = Rect::new(x, text.y + y as u16, self.pager.column_width(), 1);
-                let mut para = Paragraph::new(line.text.as_str()).style(style);
+                if let Some(image) = line.image {
+                    if let Some((id, area)) = figures.last_mut() as Option<&mut (usize, Rect)>
+                        && *id == image
+                        && area.x == rect.x
+                        && area.bottom() == rect.y
+                    {
+                        area.height += 1;
+                    } else {
+                        figures.push((image, rect));
+                    }
+                    continue;
+                }
+                let mut para = Paragraph::new(line.text.as_str()).style(if line.table_header {
+                    style.add_modifier(Modifier::BOLD)
+                } else {
+                    style
+                });
                 if line.heading {
                     para = para.centered().style(style.add_modifier(Modifier::BOLD));
                 }
                 frame.render_widget(para, rect);
+            }
+        }
+        for (id, area) in figures {
+            let entry = &self.doc.references[id];
+            if let botui_core::Target::Image(member) = &entry.target {
+                let pictures = self
+                    .illustrations
+                    .get_or_insert_with(|| crate::shelf::covers::Covers::with_capacity(8));
+                let member = member.clone();
+                let path = self.source.clone();
+                pictures.request_with(
+                    id as u64,
+                    move || Ok(botui_formats::illustration(&path, &member).ok()),
+                    crate::cover::Picture::inline,
+                );
+                if let Some(picture) = pictures.image(id as u64) {
+                    picture.draw(frame, area, &crate::cover::graphics());
+                } else {
+                    frame.render_widget(
+                        Paragraph::new(format!("Illustration · {}", entry.label))
+                            .centered()
+                            .style(style.add_modifier(Modifier::DIM)),
+                        Rect {
+                            y: area.y + area.height / 2,
+                            height: 1,
+                            ..area
+                        },
+                    );
+                }
             }
         }
         if !self.zen {
@@ -229,10 +300,16 @@ impl Reader {
                 screen.height.min(1),
             );
             let mut right = foot.right();
-            for (i, label) in [" Z Zen ", " O Contents ", " M Menu "]
-                .into_iter()
-                .enumerate()
-                .rev()
+            for (i, label) in [
+                " Z Zen ",
+                " O Contents ",
+                " M Menu ",
+                " F2 Settings ",
+                " ? Help ",
+            ]
+            .into_iter()
+            .enumerate()
+            .rev()
             {
                 let width = (label.len() as u16).min(right - foot.x);
                 right -= width;
@@ -244,7 +321,12 @@ impl Reader {
                 );
             }
             let count = format!(
-                " {} / {} ",
+                " {}{} / {} ",
+                if self.mode == LayoutMode::Scroll {
+                    "Scroll · "
+                } else {
+                    ""
+                },
                 self.pager.page_number(),
                 self.pager.page_count()
             );
@@ -314,7 +396,9 @@ impl Reader {
         let rows = COMMANDS.iter().map(|action| {
             let marked = matches!(
                 (action, self.mode),
-                (Action::Single, LayoutMode::Single) | (Action::Spread, LayoutMode::Spread)
+                (Action::Single, LayoutMode::Single)
+                    | (Action::Spread, LayoutMode::Spread)
+                    | (Action::Scroll, LayoutMode::Scroll)
             );
             let (label, shortcut): (std::borrow::Cow<'_, str>, _) = match action {
                 Action::Resume => ("Resume".into(), "Esc"),
@@ -322,6 +406,7 @@ impl Reader {
                 Action::Next => ("Next page".into(), "→"),
                 Action::Single => ("Single page".into(), "1"),
                 Action::Spread => ("Two-page spread".into(), "2"),
+                Action::Scroll => ("Continuous scroll".into(), "3"),
                 Action::Theme => (format!("Theme · {}", self.theme.name()).into(), "T"),
                 Action::Navigate(Kind::Contents) => ("Contents".into(), "O"),
                 Action::Navigate(Kind::Search) => ("Find in book".into(), "/"),
@@ -356,7 +441,7 @@ impl Reader {
                 Action::Background => (
                     format!(
                         "Background · {}",
-                        if self.opaque { "Opaque" } else { "Terminal" }
+                        if self.opaque { "Opaque" } else { "Transparent" }
                     )
                     .into(),
                     "F",
@@ -365,6 +450,8 @@ impl Reader {
                 Action::Navigate(Kind::Notes) => ("Reading notes".into(), "A"),
                 Action::Export => ("Export notes to Markdown".into(), "E"),
                 Action::Statistics => ("Reading statistics".into(), "S"),
+                Action::Settings => ("Settings".into(), "F2"),
+                Action::Help => ("Keyboard shortcuts".into(), "?"),
                 Action::Resources => (
                     format!("Links & illustrations ({})", self.doc.references.len()).into(),
                     "I",
@@ -446,6 +533,8 @@ impl Reader {
                 self.sidebar.input(Event::Key(k)).map(Action::Sidebar)
             }
             Event::Key(k) if k.kind != KeyEventKind::Release => match k.code {
+                KeyCode::F(2) => Some(Action::Settings),
+                KeyCode::Char('?') | KeyCode::F(1) => Some(Action::Help),
                 KeyCode::Char(c)
                     if self.menu.is_none()
                         && !k
@@ -475,9 +564,10 @@ impl Reader {
                 KeyCode::Char('g' | 'G') => Some(Action::Navigate(Kind::Marks)),
                 KeyCode::Char('b' | 'B') => Some(Action::Mark),
                 KeyCode::Char('q' | 'Q') => Some(Action::Close),
-                KeyCode::Char('m' | 'M' | '?') | KeyCode::Esc => Some(Action::Menu),
+                KeyCode::Char('m' | 'M') | KeyCode::Esc => Some(Action::Menu),
                 KeyCode::Char('1') => Some(Action::Single),
                 KeyCode::Char('2') => Some(Action::Spread),
+                KeyCode::Char('3') => Some(Action::Scroll),
                 KeyCode::Char('t' | 'T') => Some(Action::Theme),
                 KeyCode::Up | KeyCode::Char('k') | KeyCode::BackTab if self.menu.is_some() => {
                     Some(Action::Up)
@@ -491,6 +581,12 @@ impl Reader {
                     .selected()
                     .and_then(|i| COMMANDS.get(i).copied()),
                 KeyCode::Tab | KeyCode::Enter => Some(Action::Menu),
+                KeyCode::Down | KeyCode::Char('j') if self.mode == LayoutMode::Scroll => {
+                    Some(Action::Lines(1))
+                }
+                KeyCode::Up | KeyCode::Char('k') if self.mode == LayoutMode::Scroll => {
+                    Some(Action::Lines(-1))
+                }
                 KeyCode::Left
                 | KeyCode::PageUp
                 | KeyCode::Up
@@ -514,7 +610,15 @@ impl Reader {
                 self.footer
                     .iter()
                     .position(|r| r.contains(Position::new(m.column, m.row)))
-                    .map(|i| [Action::Zen, Action::Navigate(Kind::Contents), Action::Menu][i])
+                    .map(|i| {
+                        [
+                            Action::Zen,
+                            Action::Navigate(Kind::Contents),
+                            Action::Menu,
+                            Action::Settings,
+                            Action::Help,
+                        ][i]
+                    })
             }
             Event::Mouse(m) => match m.kind {
                 MouseEventKind::Down(MouseButton::Left) if self.menu.is_none() => {
@@ -528,6 +632,16 @@ impl Reader {
                     } else {
                         Some(Action::Resume)
                     }
+                }
+                MouseEventKind::ScrollUp
+                    if self.mode == LayoutMode::Scroll && self.menu.is_none() =>
+                {
+                    Some(Action::Lines(-3))
+                }
+                MouseEventKind::ScrollDown
+                    if self.mode == LayoutMode::Scroll && self.menu.is_none() =>
+                {
+                    Some(Action::Lines(3))
                 }
                 MouseEventKind::ScrollUp => Some(if self.menu.is_some() {
                     Action::Up
@@ -657,21 +771,42 @@ impl Reader {
                     list.select(Some(next));
                 }
             }
-            Action::Previous | Action::Next => {
-                let anchor = self.pager.anchor();
-                if action == Action::Next {
-                    self.pager.next()
-                } else {
-                    self.pager.previous()
+            Action::Previous | Action::Next | Action::Lines(_) => {
+                let old = self.pager.anchor();
+                let forward = match action {
+                    Action::Lines(n) => {
+                        self.pager.scroll(isize::from(n));
+                        n > 0
+                    }
+                    Action::Next => {
+                        if self.mode == LayoutMode::Scroll {
+                            self.pager.scroll(self.pager.viewport() as isize);
+                        } else {
+                            self.pager.next();
+                        }
+                        true
+                    }
+                    _ => {
+                        if self.mode == LayoutMode::Scroll {
+                            self.pager.scroll(-(self.pager.viewport() as isize));
+                        } else {
+                            self.pager.previous();
+                        }
+                        false
+                    }
+                };
+                self.dirty |= old != self.pager.anchor();
+                if forward && self.pager.at_end() && !self.finished {
+                    self.finished = true;
+                    self.dirty = true;
                 }
-                self.dirty |= anchor != self.pager.anchor();
                 self.menu = None;
             }
-            Action::Single | Action::Spread => {
-                let mode = if action == Action::Single {
-                    LayoutMode::Single
-                } else {
-                    LayoutMode::Spread
+            Action::Single | Action::Spread | Action::Scroll => {
+                let mode = match action {
+                    Action::Single => LayoutMode::Single,
+                    Action::Scroll => LayoutMode::Scroll,
+                    _ => LayoutMode::Spread,
                 };
                 if self.mode != mode {
                     self.mode = mode;
@@ -695,6 +830,8 @@ impl Reader {
                 }
             }
             Action::Resources
+            | Action::Settings
+            | Action::Help
             | Action::Statistics
             | Action::Note
             | Action::Export
@@ -711,6 +848,9 @@ impl Reader {
             let snapshot = Saved {
                 anchor: self.pager.anchor(),
                 spread: self.mode == LayoutMode::Spread,
+                scrolling: self.mode == LayoutMode::Scroll,
+                scan_offset: 0,
+                finished: self.finished,
                 theme: self.theme.id(),
                 marks: self.marks.clone(),
                 margin: self.margin,
@@ -749,6 +889,7 @@ fn bindings() -> io::Result<std::collections::HashMap<char, Action>> {
                 "bookmarks" => Action::Navigate(Kind::Marks),
                 "single" => Action::Single,
                 "spread" => Action::Spread,
+                "scroll" => Action::Scroll,
                 "page-layout" => Action::Layout,
                 "wider-gap" => Action::Gap(1),
                 "narrower-gap" => Action::Gap(-1),
@@ -783,7 +924,7 @@ pub fn read_server(
     mut remote: Option<&mut bookmarks::ServerMarks>,
 ) -> io::Result<(Option<botui_bookorbit::progress::Move>, f64)> {
     let before = notices.len();
-    let (mut state, saved) = match LocalState::for_file(path).and_then(|store| {
+    let (mut state, mut saved) = match LocalState::for_file(path).and_then(|store| {
         let saved = store.load()?;
         Ok((Some(store), saved))
     }) {
@@ -794,7 +935,13 @@ pub fn read_server(
         }
     };
     let size = term.size()?;
-    let mut reader = Reader::new(doc, Rect::new(0, 0, size.width, size.height), saved);
+    if base.is_some_and(|p| p.percentage == 0. && p.text.cfi.is_none() && p.text.page.is_none())
+        && let Some(local) = &mut saved
+    {
+        local.anchor = botui_core::Anchor::default();
+        local.finished = false;
+    }
+    let mut reader = Reader::new(doc, Rect::new(0, 0, size.width, size.height), saved, path);
     match bindings() {
         Ok(map) => reader.bindings = map,
         Err(e) => notices.push(format!("Could not read key bindings: {e}")),
@@ -802,7 +949,7 @@ pub fn read_server(
     let mut can_sync = base.is_some();
     if let Some(p) = base {
         if let Some(cfi) = p.text.cfi.as_deref() {
-            if let Some(a) = reader.doc.resolve_cfi(cfi) {
+            if let Some(a) = reader.doc.bookmark_anchor(cfi) {
                 reader.pager.seek(a);
                 reader.dirty = true;
             } else {
@@ -816,12 +963,19 @@ pub fn read_server(
     }
     let opened = Instant::now();
     let start = reader.pager.anchor();
+    let started_finished = reader.finished;
     let mut last_save = Instant::now();
     let result: io::Result<()> = (|| {
         loop {
             term.draw(|frame| {
                 reader.draw(frame, notices[before..].last().map(String::as_str));
-                crate::settings::paint(frame)
+                crate::settings::paint_book(
+                    frame,
+                    reader
+                        .palette
+                        .as_ref()
+                        .map_or(reader.theme, |p| p.preview()),
+                )
             })?;
             let action = loop {
                 if reader.dirty {
@@ -831,7 +985,12 @@ pub fn read_server(
                         last_save = Instant::now();
                     }
                 }
-                let e = event::read()?;
+                if reader.illustrations.as_ref().is_some_and(|p| p.busy())
+                    && !event::poll(Duration::from_millis(70))?
+                {
+                    break Action::Resize;
+                }
+                let e = crate::settings::read_event()?;
                 if let Event::Paste(value) = &e
                     && let Some(nav) = reader.nav.as_mut()
                 {
@@ -889,6 +1048,57 @@ pub fn read_server(
                 }
                 continue;
             }
+            if matches!(action, Action::Settings | Action::Help) {
+                let old = crate::settings::Settings::load()?;
+                crate::preferences::show(
+                    term,
+                    if action == Action::Help {
+                        crate::preferences::Open::Help
+                    } else {
+                        crate::preferences::Open::Settings
+                    },
+                    crate::preferences::Context::Text,
+                )?;
+                let new = crate::settings::Settings::load()?;
+                reader.zen = new.zen;
+                if new.reading_layout != old.reading_layout {
+                    reader.mode = match new.reading_layout.as_deref() {
+                        Some("scroll") => LayoutMode::Scroll,
+                        Some("single") => LayoutMode::Single,
+                        _ => LayoutMode::Spread,
+                    };
+                    reader.dirty = true;
+                }
+
+                reader.opaque = new.opaque_background;
+                reader.menu = None;
+                if new.theme != old.theme {
+                    reader.theme = Theme::from_id(new.theme.as_deref().unwrap_or("terminal"));
+                    reader.dirty = true;
+                }
+                if let Some(w) = new.page_width {
+                    reader.page_width = w.clamp(32, 240);
+                }
+                if let Some(g) = new.column_gap {
+                    reader.gap = g.min(32);
+                }
+                if old.preserve_printed_lines != new.preserve_printed_lines
+                    || old.hide_inline_images != new.hide_inline_images
+                {
+                    let focus = reader.pager.anchor();
+                    let size = term.size()?;
+                    reader.pager = Pager::with_media(
+                        &reader.doc,
+                        size.width,
+                        size.height,
+                        reader.mode,
+                        !new.preserve_printed_lines,
+                        !new.hide_inline_images,
+                    );
+                    reader.pager.seek(focus);
+                }
+                continue;
+            }
             if action == Action::Resources {
                 reader.menu = None;
                 match resources::open(term, path, &reader.doc, reader.pager.anchor()) {
@@ -910,7 +1120,11 @@ pub fn read_server(
                     term,
                     state.as_ref(),
                     opened,
-                    reader.doc.text_percentage(reader.pager.anchor()),
+                    if reader.finished && reader.pager.at_end() {
+                        100.
+                    } else {
+                        reader.doc.text_percentage(reader.pager.anchor()).min(99.)
+                    },
                 ) {
                     notices.push(e.to_string());
                 }
@@ -976,8 +1190,12 @@ pub fn read_server(
     crate::stats::finish(state.as_ref(), opened, notices);
     result?;
     let a = reader.pager.anchor();
-    let percent = reader.doc.text_percentage(a);
-    if can_sync && a != start {
+    let percent = if reader.finished && reader.pager.at_end() {
+        100.
+    } else {
+        reader.doc.text_percentage(a).min(99.)
+    };
+    if can_sync && (a != start || reader.finished != started_finished) {
         if let Some(cfi) = reader.doc.cfi(a) {
             return Ok((
                 Some(botui_bookorbit::progress::Move {

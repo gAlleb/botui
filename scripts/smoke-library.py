@@ -35,7 +35,7 @@ def check(tmp):
     try:
         frame = t.see("Local library")
         assert frame.startswith("╭") and frame.splitlines()[0].endswith("╮"),frame
-        t.click("U Borders",frame)
+        t.keys("u")
         t.wait("Square shelf corners",lambda f:f.startswith("┌") and f.splitlines()[0].endswith("┐"))
         t.keys("u")
         t.wait("Borderless shelf",lambda f:"Local library" in f.splitlines()[0] and not any(c in f for c in "╭╮┌┐"))
@@ -61,7 +61,7 @@ def check(tmp):
         t.see("%")
         t.keys("3")
         t.see(filename)
-        t.keys("q")
+        t.keys("q");t.see("Choose a library");t.keys("q")
         for _ in range(100):
             if t.run("has-session",required=False).returncode:
                 break

@@ -24,8 +24,11 @@ pub(crate) struct Covers {
 }
 impl Covers {
     pub fn new() -> Self {
+        Self::with_capacity(48)
+    }
+    pub fn with_capacity(size: usize) -> Self {
         Self {
-            images: LruCache::new(NonZeroUsize::new(48).unwrap()),
+            images: LruCache::new(NonZeroUsize::new(size).unwrap()),
             slots: std::array::from_fn(|_| Slot {
                 worker: Worker::new(),
                 job: None,
@@ -52,6 +55,14 @@ impl Covers {
         id: u64,
         fetch: impl FnOnce() -> botui_bookorbit::Result<Option<Vec<u8>>> + Send + 'static,
     ) {
+        self.request_with(id, fetch, Picture::cover)
+    }
+    pub fn request_with(
+        &mut self,
+        id: u64,
+        fetch: impl FnOnce() -> botui_bookorbit::Result<Option<Vec<u8>>> + Send + 'static,
+        decode: fn(Vec<u8>) -> Option<Picture>,
+    ) {
         if self
             .images
             .get(&id)
@@ -68,8 +79,7 @@ impl Covers {
         };
         slot.job = Some((
             id,
-            slot.worker
-                .start(move |_| Ok(fetch()?.and_then(Picture::cover))),
+            slot.worker.start(move |_| Ok(fetch()?.and_then(decode))),
         ));
     }
     pub fn collect(&mut self) {

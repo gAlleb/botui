@@ -12,6 +12,8 @@ pub(crate) struct Connection {
     pub server: String,
     pub username: String,
     pub list_view: bool,
+    pub libraries_collapsed: bool,
+    pub collections_collapsed: bool,
     pub password: Option<String>,
     pub password_command: Option<PasswordCommand>,
 }

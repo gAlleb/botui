@@ -115,3 +115,17 @@ fn decode_xml(bytes: &[u8]) -> Result<Cow<'_, str>> {
             .into()
         })
 }
+
+/// Display untrusted catalog HTML as plain text; do not request linked resources.
+pub fn synopsis(input: &str) -> String {
+    if !input.contains('<') {
+        return xhtml::clean(input);
+    }
+    let mut blocks = vec![];
+    xhtml::append_blocks(input, &mut blocks, &mut vec![], &mut Default::default());
+    blocks
+        .into_iter()
+        .map(|b| b.text)
+        .collect::<Vec<_>>()
+        .join("\n")
+}

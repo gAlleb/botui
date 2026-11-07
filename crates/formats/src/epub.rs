@@ -48,12 +48,22 @@ pub(super) fn read_book(reader: impl Read + Seek, fallback: &str) -> Result<Docu
         .filter(|n| tag(*n, "item"))
         .filter_map(|n| Some((n.attribute("id")?, n)))
         .collect();
+    let resources: HashMap<_, _> = items
+        .values()
+        .filter_map(|n| {
+            Some((
+                member_path(&package_path, n.attribute("href")?).ok()?,
+                n.attribute("media-type")?,
+            ))
+        })
+        .collect();
     let spine = section("spine").ok_or_else(|| invalid("Missing EPUB reading order"))?;
     let mut locations = botui_core::Locations::default();
     let mut blocks = Vec::<Block>::new();
     let mut starts = HashMap::new();
     let mut ids = HashMap::new();
     let mut raw = vec![];
+    let mut tables = Default::default();
     for item in spine
         .children()
         .filter(|n| tag(*n, "itemref") && n.attribute("linear") != Some("no"))
@@ -79,7 +89,7 @@ pub(super) fn read_book(reader: impl Read + Seek, fallback: &str) -> Result<Docu
         let start = blocks.len();
         starts.insert(member.clone(), start);
         let mut links = vec![];
-        for (id, block) in xhtml::append_blocks(&html, &mut blocks, &mut links) {
+        for (id, block) in xhtml::append_blocks(&html, &mut blocks, &mut links, &mut tables) {
             ids.entry((member.clone(), id)).or_insert(block);
         }
         let member: std::sync::Arc<str> = member.into();
@@ -87,7 +97,44 @@ pub(super) fn read_book(reader: impl Read + Seek, fallback: &str) -> Result<Docu
         super::locations::epub(&html, &spine_path, start, &blocks[start..], &mut locations);
     }
     if blocks.is_empty() {
-        return Err(invalid("No readable text in this EPUB").into());
+        let mut plates = HashMap::<String, (usize, usize)>::new();
+        for (base, link) in &mut raw {
+            if link.image
+                && member_path(base, &link.href)
+                    .ok()
+                    .and_then(|p| resources.get(&p))
+                    .is_some_and(|m| super::resources::raster(m))
+            {
+                link.block = blocks.len();
+                let entry = plates.entry(base.to_string()).or_insert((blocks.len(), 0));
+                entry.1 += 1;
+                blocks.push(Block {
+                    text: if link.label.is_empty() {
+                        format!("Plate {}", blocks.len() + 1)
+                    } else {
+                        link.label.clone()
+                    },
+                    heading: false,
+                });
+            }
+        }
+        starts.retain(|key, pos| {
+            plates.get(key).is_some_and(|(start, _)| {
+                *pos = *start;
+                true
+            })
+        });
+        // A single-plate spine item has one unambiguous destination. Do not invent
+        // fragment offsets for a multi-plate chapter which contains no text anchors.
+        ids.retain(|(member, _), pos| {
+            plates.get(member).is_some_and(|(start, count)| {
+                *pos = *start;
+                *count == 1
+            })
+        });
+        if blocks.is_empty() {
+            return Err(invalid("No readable text or illustrations in this EPUB").into());
+        }
     }
     let mut contents = Vec::new();
     let nav = items.values().find(|n| {
@@ -117,15 +164,6 @@ pub(super) fn read_book(reader: impl Read + Seek, fallback: &str) -> Result<Docu
         }
     }
     use botui_core::{Anchor, Reference, Target};
-    let resources: HashMap<_, _> = items
-        .values()
-        .filter_map(|n| {
-            Some((
-                member_path(&package_path, n.attribute("href")?).ok()?,
-                n.attribute("media-type")?,
-            ))
-        })
-        .collect();
     let references = raw
         .into_iter()
         .filter_map(|(base, link)| {
@@ -175,13 +213,18 @@ pub(super) fn read_book(reader: impl Read + Seek, fallback: &str) -> Result<Docu
                 }
             };
             Some(Reference {
-                source: link.block.min(blocks.len() - 1),
+                source: if link.image {
+                    link.block.min(blocks.len())
+                } else {
+                    link.block.min(blocks.len() - 1)
+                },
                 label,
                 target,
             })
         })
         .collect();
     Ok(Document {
+        tables,
         references,
         contents,
         title,
