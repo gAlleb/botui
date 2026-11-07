@@ -1,0 +1,27 @@
+# Local library. Uncomment to use a specific folder.
+# library_root = "/path/to/books"
+local_grid = false
+
+# Reader defaults. Use "terminal" to follow your terminal's colors.
+theme = "terminal"
+zen = false
+# Preferred width of one text page and the space between facing pages, in terminal cells.
+# page_width = 78
+column_gap = 4
+opaque_background = false
+# Window frames, cover cards and jackets: "rounded", "square", or "none".
+borders = "rounded"
+preserve_printed_lines = false
+
+[bookorbit]
+server = ""
+username = ""
+list_view = false
+# Uncomment one way to sign in with this account.
+# password_command = ["pass", "show", "bookorbit"]
+# password = "your password"
+
+[keys]
+# Custom reader shortcuts
+# n = "next"
+# p = "previous"

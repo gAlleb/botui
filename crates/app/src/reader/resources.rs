@@ -7,7 +7,7 @@ use crossterm::event::{self, Event, KeyCode, KeyEventKind, MouseButton, MouseEve
 use ratatui::{
     layout::Rect,
     style::Stylize,
-    widgets::{Block, Clear, Paragraph, Wrap},
+    widgets::{Clear, Paragraph, Wrap},
 };
 use std::{io, path::Path};
 pub(super) fn open(
@@ -95,8 +95,8 @@ fn view(
                 },
                 screen.height.saturating_sub(2),
             );
-            let block =
-                Block::bordered().title(format!(" {} ", label.replace(char::is_control, " ")));
+            let block = crate::appearance::block()
+                .title(format!(" {} ", label.replace(char::is_control, " ")));
             let inner = block.inner(area);
             f.render_widget(Clear, area);
             f.render_widget(block, area);

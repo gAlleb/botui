@@ -47,19 +47,23 @@ pub(crate) struct Crop {
 }
 pub(crate) struct Picture {
     source: DynamicImage,
-    ready: RefCell<Option<(Size, Crop, Protocol)>>,
+    is_cover: bool,
+    ready: RefCell<Option<(Size, Crop, bool, Protocol)>>,
 }
 
 impl Picture {
     pub fn new(source: DynamicImage) -> Self {
         Self {
             source,
+            is_cover: false,
             ready: RefCell::new(None),
         }
     }
 
     pub fn cover(bytes: Vec<u8>) -> Option<Self> {
-        Self::decode(bytes, 240, 360)
+        let mut picture = Self::decode(bytes, 240, 360)?;
+        picture.is_cover = true;
+        Some(picture)
     }
     pub fn illustration(bytes: Vec<u8>) -> Option<Self> {
         Self::decode(bytes, 2048, 2048)
@@ -83,9 +87,16 @@ impl Picture {
         if area.is_empty() {
             return;
         }
+        let rounded = self.is_cover
+            && crate::appearance::BordersStyle::current()
+                == crate::appearance::BordersStyle::Rounded;
         let source = || {
             if crop.level == 0 {
-                return self.source.clone();
+                return if rounded {
+                    rounded_cover(&self.source)
+                } else {
+                    self.source.clone()
+                };
             }
             let scale = 1u32 << crop.level.min(2);
             let w = (self.source.width() / scale).max(1);
@@ -100,13 +111,17 @@ impl Picture {
         if monochrome() {
             let raster = source()
                 .thumbnail(u32::from(area.width), u32::from(area.height) * 2)
-                .into_luma8();
+                .into_luma_alpha8();
             let h = (raster.height() as u16).div_ceil(2);
             let r = crate::centered(area, raster.width() as u16, h);
             const SHADE: &[u8] = b" .:-=+*#%@";
             for y in 0..r.height {
                 for x in 0..r.width {
-                    let lum = raster.get_pixel(x.into(), u32::from(y) * 2)[0];
+                    let pixel = raster.get_pixel(x.into(), u32::from(y) * 2);
+                    if pixel[1] < 128 {
+                        continue;
+                    }
+                    let lum = pixel[0];
                     frame.buffer_mut()[(r.x + x, r.y + y)]
                         .set_char(SHADE[usize::from(lum) * (SHADE.len() - 1) / 255] as char);
                 }
@@ -115,10 +130,9 @@ impl Picture {
         }
         let size = area.as_size();
         let mut ready = self.ready.borrow_mut();
-        if ready
-            .as_ref()
-            .is_none_or(|(old, view, _)| *old != size || *view != crop)
-        {
+        if ready.as_ref().is_none_or(|(old, view, corners, _)| {
+            *old != size || *view != crop || *corners != rounded
+        }) {
             *ready = picker
                 .new_protocol(
                     source(),
@@ -126,9 +140,9 @@ impl Picture {
                     Resize::Scale(Some(image::imageops::FilterType::Triangle)),
                 )
                 .ok()
-                .map(|p| (size, crop, p));
+                .map(|p| (size, crop, rounded, p));
         }
-        if let Some((_, _, p)) = &*ready {
+        if let Some((_, _, _, p)) = &*ready {
             let size = p.size();
             frame.render_widget(
                 Image::new(p),
@@ -136,4 +150,27 @@ impl Picture {
             );
         }
     }
+}
+
+fn rounded_cover(source: &DynamicImage) -> DynamicImage {
+    let mut pixels = source.to_rgba8();
+    let (w, h) = pixels.dimensions();
+    let radius = (w.min(h) / 14).min(18);
+    for y in 0..radius {
+        for x in 0..radius {
+            let dx = (radius - x) as f32 - 0.5;
+            let dy = (radius - y) as f32 - 0.5;
+            let opacity = (radius as f32 + 0.5 - dx.hypot(dy)).clamp(0., 1.);
+            for (cx, cy) in [
+                (x, y),
+                (w - 1 - x, y),
+                (x, h - 1 - y),
+                (w - 1 - x, h - 1 - y),
+            ] {
+                let alpha = &mut pixels.get_pixel_mut(cx, cy)[3];
+                *alpha = (f32::from(*alpha) * opacity).round() as u8;
+            }
+        }
+    }
+    DynamicImage::ImageRgba8(pixels)
 }

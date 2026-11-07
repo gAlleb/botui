@@ -1,23 +1,25 @@
 //! A wide terminal can keep navigation in sight while browsing book jackets.
 use super::{
-    Command, Scope, Section, Session, Tab,
+    Command, Directory, Scope, Section, Session, Tab,
     background::{Ticket, Worker},
 };
 use ratatui::{
     Frame,
     layout::{Position, Rect},
     style::{Color, Style},
-    widgets::{Block, Borders, Paragraph},
+    widgets::Paragraph,
 };
-use std::{
-    sync::{Arc, mpsc::TryRecvError},
-    time::{Duration, Instant},
-};
+use std::sync::{Arc, mpsc::TryRecvError};
+#[derive(Default)]
+struct Sidebar {
+    groups: Vec<Scope>,
+    authors: Option<u64>,
+    series: Option<u64>,
+}
 #[derive(Default)]
 pub(super) struct Rail {
-    groups: Option<Vec<Scope>>,
-    work: Option<Ticket<Vec<Scope>>>,
-    last: Option<Instant>,
+    data: Sidebar,
+    work: Option<Ticket<Sidebar>>,
     hits: Vec<(Rect, Command)>,
 }
 impl Rail {
@@ -30,8 +32,10 @@ impl Rail {
     pub fn collect(&mut self) {
         if let Some(job) = &self.work {
             match job.receiver.try_recv() {
-                Ok(groups) => {
-                    self.groups = Some(groups);
+                Ok(mut groups) => {
+                    groups.authors = groups.authors.or(self.data.authors);
+                    groups.series = groups.series.or(self.data.series);
+                    self.data = groups;
                     self.work = None;
                 }
                 Err(TryRecvError::Disconnected) => self.work = None,
@@ -45,36 +49,44 @@ impl Rail {
             .find(|(a, _)| a.contains(p))
             .map(|(_, c)| c.clone())
     }
-    pub fn draw(
-        &mut self,
-        f: &mut Frame,
-        area: Rect,
-        session: Arc<Session>,
-        active: Tab,
-        scope: Option<&Scope>,
-    ) {
-        if self.groups.is_none()
-            && self.work.is_none()
-            && self
-                .last
-                .is_none_or(|i| i.elapsed() > Duration::from_secs(30))
-        {
-            self.last = Some(Instant::now());
-            self.work = Some(Worker::new().start(move |_| {
-                let mut groups = vec![];
-                if let Ok(l) = session.with_token(|a, t| a.libraries(t)) {
-                    groups.extend(l.into_iter().map(Scope::Library));
-                }
-                if let Ok(c) = session.with_token(|a, t| a.collections(t)) {
-                    groups.extend(c.into_iter().map(Scope::Collection));
-                }
-                groups
-            }));
+    pub fn refresh(&mut self, session: Arc<Session>) {
+        self.work = Some(Worker::new().start(move |_| {
+            let mut groups = vec![];
+            if let Ok(l) = session.with_token(|a, t| a.libraries(t)) {
+                groups.extend(l.into_iter().map(Scope::Library));
+            }
+            if let Ok(c) = session.with_token(|a, t| a.collections(t)) {
+                groups.extend(c.into_iter().map(Scope::Collection));
+            }
+            let total = |d| {
+                session
+                    .with_token(|a, t| a.directory(t, d, "", 0, 1))
+                    .ok()
+                    .map(|page| page.total)
+            };
+            Sidebar {
+                groups,
+                authors: total(Directory::Authors),
+                series: total(Directory::Series),
+            }
+        }));
+    }
+    pub fn set_total(&mut self, directory: Directory, total: u64) {
+        match directory {
+            Directory::Authors => self.data.authors = Some(total),
+            Directory::Series => self.data.series = Some(total),
         }
+    }
+    pub fn count(&self, tab: Tab) -> Option<u64> {
+        match tab {
+            Tab::Groups(Directory::Authors) => self.data.authors,
+            Tab::Groups(Directory::Series) => self.data.series,
+            _ => None,
+        }
+    }
+    pub fn draw(&mut self, f: &mut Frame, area: Rect, active: Tab, scope: Option<&Scope>) {
         f.render_widget(
-            Block::default()
-                .borders(Borders::RIGHT)
-                .border_style(Style::new().dim()),
+            crate::appearance::divider().border_style(Style::new().dim()),
             area,
         );
         let mut y = area.y;
@@ -93,6 +105,8 @@ impl Rail {
             let count = match &cmd {
                 Command::Books(Scope::Library(l), _) => l.book_count,
                 Command::Books(Scope::Collection(c), _) => Some(c.book_count),
+                Command::OpenTab(Tab::Groups(Directory::Authors)) => self.data.authors,
+                Command::OpenTab(Tab::Groups(Directory::Series)) => self.data.series,
                 _ => None,
             }
             .map(|n| n.to_string());
@@ -128,41 +142,27 @@ impl Rail {
             self.hits.push((r, cmd));
             y += 1;
         };
-        draw(
-            "1 All books".into(),
-            active == Tab::All,
-            true,
-            Command::OpenTab(Tab::All),
-        );
-        draw(
-            "4 Currently reading".into(),
-            active == Tab::Reading,
-            true,
-            Command::OpenTab(Tab::Reading),
-        );
-        draw(
-            "5 Recently added".into(),
-            active == Tab::Recent,
-            true,
-            Command::OpenTab(Tab::Recent),
-        );
-        for (tab, name) in [
-            (Tab::Libraries, "2 Libraries"),
-            (Tab::Collections, "3 Collections"),
-        ] {
+        let mut room = (area.height as usize).saturating_sub(Tab::ALL.len());
+        for (index, tab) in Tab::ALL.into_iter().enumerate() {
+            let group = matches!(tab, Tab::Libraries | Tab::Collections);
             draw(
-                name.into(),
-                active == tab && scope.is_none(),
+                format!("{} {}", index, tab.titles()[0]),
+                active == tab && (!group || scope.is_none()),
                 true,
                 Command::OpenTab(tab),
             );
-            if let Some(groups) = &self.groups {
-                let max = if tab == Tab::Libraries {
-                    area.height.saturating_sub(7) as usize
-                } else {
-                    area.height as usize
-                };
-                for group in groups.iter().filter(|g| g.tab() == tab).take(max) {
+            if !group {
+                continue;
+            }
+            {
+                for group in self
+                    .data
+                    .groups
+                    .iter()
+                    .filter(|g| g.tab() == tab)
+                    .take(room)
+                {
+                    room -= 1;
                     draw(
                         format!("  {}", group.name()),
                         Some(group) == scope,

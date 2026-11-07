@@ -1,0 +1,38 @@
+[tools]
+rust = "1.99.1"
+
+[tasks.build]
+description = "Build the release executable in target/release"
+run = "cargo build --release --locked -p botui"
+
+[tasks.install]
+description = "Install botui in ~/.local/bin (override with PREFIX)"
+depends = ["build"]
+run = """
+set -eu
+dest="${PREFIX:-$HOME/.local}/bin"
+mkdir -p "$dest"
+if ! test target/release/botui -ef "$dest/botui"; then
+  install -m 755 target/release/botui "$dest/botui"
+fi
+echo "Installed $dest/botui"
+"""
+
+[tasks.check]
+description = "Check formatting, lint all targets and run Rust tests"
+run = """
+set -eu
+cargo fmt --all --check
+cargo clippy --workspace --all-targets --locked -- -D warnings
+cargo test --workspace --locked -- --include-ignored
+"""
+
+[tasks.smoke]
+description = "Exercise library, authentication and reader flows in isolated terminals"
+run = """
+set -eu
+cargo build --workspace --locked
+for part in config reader library shelf sources progress offline resources; do
+  python3 "scripts/smoke-$part.py"
+done
+"""

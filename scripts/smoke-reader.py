@@ -10,6 +10,8 @@ import subprocess
 import sys
 import tempfile
 import time
+import tomllib
+import re
 
 ROOT = Path(__file__).resolve().parents[1]
 BOOK = ROOT / "examples/first-light.fb2"
@@ -73,6 +75,28 @@ def check(tmp):
         keys("z");wait_for("Zen hides contents",lambda s:"Z Zen" not in s and heading in s)
         mouse(0, 30, 6)
         menu = wait_for("Меню по щелчку", lambda s: "Resume" in s)
+        def key_column(frame, action):
+            line = next(line for line in frame.splitlines() if action in line)
+            match = re.search(r"(?:Esc|[12TBGZFW])(?=│)", line)
+            assert match, line
+            return match.end()
+        assert len({key_column(menu, name) for name in ("Resume","Single page","Two-page spread","Theme","Add bookmark","Page width & column gap")}) == 1
+        row,line = next((i,line) for i,line in enumerate(menu.splitlines(),1) if "Page width & column gap" in line)
+        mouse(0,line.index("Page width")+1,row)
+        panel = wait_for("Live page layout",lambda f:"Column gap" in f and "[ Done ]" in f)
+        row,line = next((i,line) for i,line in enumerate(panel.splitlines(),1) if "Column gap" in line)
+        mouse(0,line.index("[+]")+2,row)
+        wait_for("Mouse widens gap",lambda f:"5 cells" in f)
+        keys("-l","{")
+        wait_for("Keyboard narrows gap",lambda f:"4 cells" in f)
+        row,line = next((i,line) for i,line in enumerate(panel.splitlines(),1) if "Page width" in line)
+        mouse(0,line.index("[-]")+2,row)
+        config = tmp/"config/botui/config.toml"
+        wait_for("Width saved separately",lambda f: "cells" in f and tomllib.loads(config.read_text()).get("page_width",0)>0)
+        keys("Escape")
+        wait_for("Close live layout",lambda f:"[ Done ]" not in f)
+        keys("m")
+        menu=wait_for("Return to menu",lambda f:"Single page" in f)
         label = "Single page"
         row, line = next((i, line) for i, line in enumerate(menu.splitlines(), 1) if label in line)
         mouse(0, line.index(label) + 1, row)
@@ -108,7 +132,7 @@ def check(tmp):
         close_book()
         saved, = (tmp / "botui/positions").glob("*.json")
         record = json.loads(saved.read_text())
-        assert record["spread"] and record["theme"] == "sepia-dark" and record["margin"] == 1 and record["block"] > 0, record
+        assert record["spread"] and record["theme"] == "sepia-dark" and record["margin"] == 2 and record["block"] > 0, record
         open_book()
         wait_for("Возврат на прочитанное место", lambda s: s == page)
         keys("s");wait_for("Statistics persist across sessions",lambda s:"Sessions on this device  2" in s)

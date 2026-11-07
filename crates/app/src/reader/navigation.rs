@@ -5,7 +5,7 @@ use ratatui::{
     Frame,
     layout::{Position, Rect},
     style::Style,
-    widgets::{Block, Clear, List, ListState, Paragraph},
+    widgets::{Clear, List, ListState, Paragraph},
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -98,9 +98,9 @@ impl Navigation {
             Kind::Search => " Find in book ",
         };
         let panel = if popup {
-            Block::bordered().border_type(ratatui::widgets::BorderType::Rounded)
+            crate::appearance::block()
         } else {
-            Block::new().borders(ratatui::widgets::Borders::RIGHT)
+            crate::appearance::divider()
         }
         .title(title)
         .style(style);

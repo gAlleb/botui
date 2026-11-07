@@ -40,6 +40,7 @@ pub(super) fn fetch_books(
 ) -> botui_bookorbit::Result<BooksPage> {
     use botui_bookorbit::CatalogOrder;
     session.with_token(|api, t| match scope {
+        Scope::Group(directory, group) => api.group_books(t, *directory, group.id, page, PAGE_SIZE),
         Scope::All => api.all_books(t, page, PAGE_SIZE),
         Scope::Library(l) => api.library_books(t, l.id, page, PAGE_SIZE),
         Scope::Collection(c) => api.books(t, c.id, page, PAGE_SIZE),
@@ -49,4 +50,21 @@ pub(super) fn fetch_books(
         Scope::Reading => api.catalog_query(t, None, page, PAGE_SIZE, CatalogOrder::Reading, None),
         Scope::Recent => api.catalog_query(t, None, page, PAGE_SIZE, CatalogOrder::Recent, None),
     })
+}
+
+pub(super) fn next_group_page(page: &super::DirectoryPage) -> Option<u32> {
+    (!page.items.is_empty()
+        && (u64::from(page.page) + 1) * u64::from(page.size.max(1)) < page.total)
+        .then(|| page.page + 1)
+}
+pub(super) fn group_rows(directory: super::Directory, groups: Vec<super::Group>) -> Vec<Row> {
+    groups
+        .into_iter()
+        .map(|group| {
+            Row::new(
+                format!("{}   ·   {}", group.name, group.book_count),
+                Command::Books(Scope::Group(directory, group), 0),
+            )
+        })
+        .collect()
 }

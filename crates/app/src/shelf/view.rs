@@ -4,7 +4,7 @@ use ratatui::{
     Frame,
     layout::{Position, Rect},
     style::{Color, Modifier, Style},
-    widgets::{Block, BorderType, Clear, List, ListItem, Paragraph, Wrap},
+    widgets::{Clear, List, ListItem, Paragraph, Wrap},
 };
 
 fn heading() -> Style {
@@ -13,6 +13,8 @@ fn heading() -> Style {
 
 impl Shelf {
     pub(super) fn draw(&mut self, frame: &mut Frame) {
+        self.home_hits.clear();
+        self.home_controls.clear();
         self.keep_button = Rect::default();
         self.search_button = Rect::default();
         self.scan_button = Rect::default();
@@ -22,17 +24,14 @@ impl Shelf {
         self.back_button = Rect::default();
         self.file_button = Rect::default();
         self.list_area = Rect::default();
-        self.tab_buttons = [Rect::default(); 5];
+        self.tab_buttons = [Rect::default(); Tab::ALL.len()];
         if let Some(job) = &self.pending {
             let panel = centered(frame.area(), 54, 7);
-            let border =
-                Block::bordered()
-                    .border_type(BorderType::Rounded)
-                    .title(if self.is_opds {
-                        " OPDS "
-                    } else {
-                        " BookOrbit "
-                    });
+            let border = crate::appearance::block().title(if self.is_opds {
+                " OPDS "
+            } else {
+                " BookOrbit "
+            });
             let inner = border.inner(panel);
             frame.render_widget(border, panel);
             frame.render_widget(Paragraph::new(job.title).style(heading()), inner);
@@ -45,30 +44,20 @@ impl Shelf {
             form.draw(frame, self.notice.as_deref());
             return;
         }
+        if matches!(self.current().section, Section::Home) && self.info.is_none() {
+            self.draw_home(frame);
+            return;
+        }
         let panel = if self.session.is_some() || self.is_opds {
-            centered(
-                frame.area(),
-                frame
-                    .area()
-                    .width
-                    .saturating_sub(if frame.area().width > 84 { 4 } else { 0 })
-                    .min(158),
-                frame
-                    .area()
-                    .height
-                    .saturating_sub(if frame.area().height > 26 { 2 } else { 0 })
-                    .min(60),
-            )
+            frame.area()
         } else {
             centered(frame.area(), 84, 18)
         };
-        let border = Block::bordered()
-            .border_type(BorderType::Rounded)
-            .title(if self.is_opds {
-                " OPDS "
-            } else {
-                " BookOrbit "
-            });
+        let border = crate::appearance::block().title(if self.is_opds {
+            " OPDS "
+        } else {
+            " BookOrbit "
+        });
         let inner = border.inner(panel);
         frame.render_widget(border, panel);
         if inner.is_empty() {
@@ -129,8 +118,8 @@ impl Shelf {
         }
         let inner = if inner.width >= 121
             && inner.height >= 18
-            && self.view_available()
-            && let Some(session) = self.session.clone()
+            && (self.view_available() || matches!(self.current().section, Section::Dashboard(_)))
+            && self.session.is_some()
         {
             let w = (inner.width / 5).clamp(23, 30);
             let tab = self.active_tab();
@@ -138,17 +127,26 @@ impl Shelf {
             self.rail.draw(
                 frame,
                 Rect::new(inner.x, inner.y, w, inner.height.saturating_sub(1)),
-                session,
                 tab,
                 scope.as_ref(),
             );
             Rect::new(inner.x + w + 1, inner.y, inner.width - w - 1, inner.height)
         } else if self.session.is_some() && inner.height >= 4 {
-            self.draw_tabs(frame, inner);
-            Rect::new(inner.x, inner.y + 1, inner.width, inner.height - 1)
+            let height = self.draw_tabs(frame, inner);
+            Rect::new(
+                inner.x,
+                inner.y + height,
+                inner.width,
+                inner.height - height,
+            )
         } else {
             inner
         };
+        if matches!(self.current().section, Section::Dashboard(_)) {
+            self.draw_dashboard(frame, inner);
+            self.draw_buttons(frame, inner, "[ Back ]", true);
+            return;
+        }
         let top = inner.height.min(1);
         let mut left = inner;
         if let Some(book) = &detail
@@ -231,6 +229,12 @@ impl Shelf {
         } else if self.current().rows.is_empty() {
             let pane = self.current();
             let empty = match pane.section {
+                Section::Dashboard(_) => "",
+                Section::Groups {
+                    directory: super::Directory::Authors,
+                    ..
+                } => "No matching authors.",
+                Section::Groups { .. } => "No matching series.",
                 Section::Collections => "No personal collections yet.",
                 Section::Libraries => "No libraries available to this account.",
                 Section::Files(_) => "No files available for this book.",
@@ -292,34 +296,55 @@ impl Shelf {
         self.draw_buttons(frame, inner, back, local);
     }
 
-    fn draw_tabs(&mut self, frame: &mut Frame, area: Rect) {
-        let labels = if area.width >= 76 {
-            [
-                "1 All books",
-                "2 Libraries",
-                "3 Collections",
-                "4 Currently reading",
-                "5 Recently added",
-            ]
-        } else if area.width >= 42 {
-            ["1 Books", "2 Libs", "3 Lists", "4 Reading", "5 New"]
-        } else {
-            ["1 All", "2 L", "3 C", "4 R", "5 +"]
+    fn draw_tabs(&mut self, frame: &mut Frame, area: Rect) -> u16 {
+        let labels = |variant: usize| {
+            Tab::ALL
+                .iter()
+                .enumerate()
+                .map(|(i, t)| {
+                    let count = self
+                        .rail
+                        .count(*t)
+                        .map(|n| format!(" {n}"))
+                        .unwrap_or_default();
+                    format!("{i} {}{count}", t.titles()[variant])
+                })
+                .collect::<Vec<_>>()
         };
+        let rows = if area.width < 108 { 2 } else { 1 };
+        let per_row = Tab::ALL.len() / rows;
+        let fits = |labels: &[String]| {
+            labels
+                .chunks(per_row)
+                .all(|r| r.iter().map(|s| s.len() + 2).sum::<usize>() <= area.width as usize)
+        };
+        let labels = (0..3)
+            .map(labels)
+            .find(|l| fits(l))
+            .unwrap_or_else(|| labels(2));
         let active = self.active_tab();
-        let mut x = area.x;
-        for (i, label) in labels.iter().enumerate() {
-            let width = (label.chars().count() as u16 + 2).min(area.right().saturating_sub(x));
-            let rect = Rect::new(x, area.y, width, 1);
-            self.tab_buttons[i] = rect;
-            let style = if active == Tab::ALL[i] {
-                heading().add_modifier(Modifier::REVERSED)
-            } else {
-                Style::new().fg(Color::Cyan)
-            };
-            frame.render_widget(Paragraph::new(format!(" {label} ")).style(style), rect);
-            x = rect.right();
+        for (row, chunk) in labels.chunks(per_row).enumerate() {
+            let mut x = area.x;
+            for (col, label) in chunk.iter().enumerate() {
+                let i = row * per_row + col;
+                let cap = if fits(&labels) {
+                    area.right() - x
+                } else {
+                    area.width / per_row as u16
+                };
+                let width = (label.len() as u16 + 2).min(cap);
+                let rect = Rect::new(x, area.y + row as u16, width, 1);
+                self.tab_buttons[i] = rect;
+                let style = if active == Tab::ALL[i] {
+                    heading().reversed()
+                } else {
+                    Style::new().fg(Color::Cyan)
+                };
+                frame.render_widget(Paragraph::new(format!(" {label} ")).style(style), rect);
+                x = rect.right();
+            }
         }
+        rows as u16
     }
 
     fn draw_buttons(&mut self, frame: &mut Frame, inner: Rect, back: &str, local: bool) {

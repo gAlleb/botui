@@ -4,7 +4,7 @@ use ratatui::{
     Frame,
     layout::{Position, Rect},
     style::{Modifier, Style},
-    widgets::{Block, Clear, Paragraph},
+    widgets::{Clear, Paragraph},
 };
 
 pub(super) enum Command {
@@ -41,7 +41,7 @@ impl Login {
 
     pub fn draw(&mut self, f: &mut Frame, notice: Option<&str>) {
         let box_area = centered(f.area(), 72, 15);
-        let panel = Block::bordered().title(if self.opds {
+        let panel = crate::appearance::block().title(if self.opds {
             " OPDS catalog · credentials optional "
         } else {
             " Sign in to BookOrbit "

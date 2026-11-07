@@ -5,7 +5,7 @@ use crossterm::event::{
 use ratatui::{
     layout::{Position, Rect},
     style::Stylize,
-    widgets::{Block, Clear, Paragraph},
+    widgets::{Clear, Paragraph},
 };
 use std::io;
 
@@ -25,7 +25,7 @@ pub fn edit(
         term.draw(|f| {
             underneath(f);
             let area = centered(f.area(), 64, 5);
-            let border = Block::bordered().title(format!(" {title} "));
+            let border = crate::appearance::block().title(format!(" {title} "));
             let inner = border.inner(area);
             f.render_widget(Clear, area);
             f.render_widget(border, area);
@@ -132,7 +132,7 @@ pub fn choose(
         let mut back = Rect::default();
         term.draw(|f| {
             let area = centered(f.area(), 70, (labels.len().clamp(3, 18) + 3) as u16);
-            let block = Block::bordered().title(format!(" {title} "));
+            let block = crate::appearance::block().title(format!(" {title} "));
             let inner = block.inner(area);
             f.render_widget(Clear, area);
             f.render_widget(block, area);

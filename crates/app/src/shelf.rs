@@ -1,7 +1,10 @@
 pub(crate) mod background;
 pub(crate) mod covers;
+mod dashboard;
 pub(crate) mod gallery;
+mod home;
 mod login;
+use botui_bookorbit::browse::{Directory, DirectoryPage, Group};
 mod native;
 mod opds;
 mod rail;
@@ -38,6 +41,8 @@ pub(crate) enum Selection {
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Tab {
+    Dashboard,
+    Groups(Directory),
     All,
     Libraries,
     Collections,
@@ -46,13 +51,28 @@ enum Tab {
 }
 
 impl Tab {
-    const ALL: [Self; 5] = [
+    const ALL: [Self; 8] = [
+        Self::Dashboard,
         Self::All,
-        Self::Libraries,
-        Self::Collections,
         Self::Reading,
         Self::Recent,
+        Self::Libraries,
+        Self::Collections,
+        Self::Groups(Directory::Authors),
+        Self::Groups(Directory::Series),
     ];
+    fn titles(self) -> [&'static str; 3] {
+        match self {
+            Self::Dashboard => ["Dashboard", "Home", "H"],
+            Self::Groups(Directory::Authors) => ["Authors", "Authors", "A"],
+            Self::Groups(Directory::Series) => ["Series", "Series", "S"],
+            Self::All => ["All books", "Books", "All"],
+            Self::Reading => ["Currently reading", "Reading", "R"],
+            Self::Recent => ["Recently added", "New", "+"],
+            Self::Libraries => ["Libraries", "Libs", "L"],
+            Self::Collections => ["Collections", "Lists", "C"],
+        }
+    }
     fn adjacent(self, forward: bool) -> Self {
         let i = Self::ALL.iter().position(|tab| *tab == self).unwrap_or(0);
         Self::ALL[(i + if forward { 1 } else { Self::ALL.len() - 1 }) % Self::ALL.len()]
@@ -61,6 +81,7 @@ impl Tab {
 
 #[derive(Clone, PartialEq, Eq)]
 enum Scope {
+    Group(Directory, Group),
     All,
     Library(Library),
     Collection(Collection),
@@ -71,6 +92,7 @@ enum Scope {
 impl Scope {
     fn name(&self) -> &str {
         match self {
+            Self::Group(_, g) => &g.name,
             Self::All => "All books",
             Self::Reading => "Currently reading",
             Self::Recent => "Recently added",
@@ -81,6 +103,7 @@ impl Scope {
     }
     fn tab(&self) -> Tab {
         match self {
+            Self::Group(d, _) => Tab::Groups(*d),
             Self::Reading => Tab::Reading,
             Self::Recent => Tab::Recent,
             Self::Search(_) | Self::All => Tab::All,
@@ -92,6 +115,7 @@ impl Scope {
 
 #[derive(Clone)]
 enum Command {
+    Borders,
     Downloads,
     Background,
     Opds,
@@ -122,6 +146,12 @@ impl Row {
 }
 
 enum Section {
+    Dashboard(dashboard::Dashboard),
+    Groups {
+        directory: Directory,
+        query: String,
+        next: Option<u32>,
+    },
     Feed {
         next: Option<botui_opds::Address>,
         visited: std::collections::HashSet<botui_opds::Address>,
@@ -138,6 +168,7 @@ enum Section {
 }
 
 enum Tail {
+    Groups(DirectoryPage),
     Books(BooksPage),
     Feed(botui_opds::Address, Box<botui_opds::Feed>),
 }
@@ -166,21 +197,23 @@ impl Pane {
         let mut rows = vec![
             Row::new(
                 if connected {
-                    "All books"
+                    "Dashboard"
                 } else {
                     "Connect to BookOrbit"
                 },
-                Command::OpenTab(Tab::All),
+                if connected {
+                    Command::OpenTab(Tab::Dashboard)
+                } else {
+                    Command::Connect
+                },
             ),
             Row::new("Browse local library…", Command::Local),
             Row::new("Open OPDS catalog…", Command::Opds),
             Row::new("Offline downloads", Command::Downloads),
-            Row::new("Toggle opaque background   F", Command::Background),
         ];
         if connected {
             rows.push(Row::new("Change connection…", Command::Connect));
         }
-        rows.push(Row::new("Quit", Command::Quit));
         Self::new(Section::Home, "Library", rows)
     }
     fn move_by(&mut self, delta: isize) {
@@ -199,6 +232,8 @@ impl Pane {
 }
 
 enum Loaded {
+    Dashboard(dashboard::Dashboard, Vec<Row>),
+    Groups(Directory, String, DirectoryPage),
     Feed(
         Arc<botui_opds::Catalog>,
         Box<botui_opds::Feed>,
@@ -237,6 +272,7 @@ struct Pending {
 pub(crate) struct Shelf {
     pub(crate) bookmarks: Option<crate::reader::bookmarks::ServerMarks>,
     is_opds: bool,
+    pub(crate) credentials: Option<crate::connection::Connection>,
     links: opds::Links,
     catalog: Option<Arc<botui_opds::Catalog>>,
     server: String,
@@ -261,7 +297,9 @@ pub(crate) struct Shelf {
     back_button: Rect,
     file_button: Rect,
     keep_button: Rect,
-    tab_buttons: [Rect; 5],
+    tab_buttons: [Rect; Tab::ALL.len()],
+    home_hits: Vec<(Rect, usize)>,
+    home_controls: Vec<(Rect, Command)>,
     search_button: Rect,
 }
 
@@ -273,6 +311,7 @@ impl Shelf {
             server,
             username,
             is_opds: false,
+            credentials: None,
             bookmarks: None,
             catalog: None,
             links: opds::Links::default(),
@@ -296,7 +335,9 @@ impl Shelf {
             back_button: Rect::default(),
             file_button: Rect::default(),
             keep_button: Rect::default(),
-            tab_buttons: [Rect::default(); 5],
+            tab_buttons: [Rect::default(); Tab::ALL.len()],
+            home_hits: vec![],
+            home_controls: vec![],
             search_button: Rect::default(),
         }
     }
@@ -339,9 +380,14 @@ impl Shelf {
             return self.submit_opds();
         }
         let Some(form) = &mut self.login else { return };
+        let configured = self
+            .credentials
+            .as_ref()
+            .filter(|c| c.has_credentials() && c.matches(&form.server, &form.username))
+            .cloned();
         if form.server.trim().is_empty()
             || form.username.trim().is_empty()
-            || form.password.is_empty()
+            || (form.password.is_empty() && configured.is_none())
         {
             self.notice = Some("Enter the address, username and password.".into());
             return;
@@ -353,6 +399,16 @@ impl Shelf {
         self.notice = None;
         self.fetch("Signing in to BookOrbit…", move |cancel| {
             let api = BookOrbit::new(&server)?;
+            let password = if password.is_empty() {
+                configured
+                    .ok_or("Enter your BookOrbit password.")?
+                    .resolve(cancel)?
+            } else {
+                password
+            };
+            if cancel.load(std::sync::atomic::Ordering::Acquire) {
+                return Err("Sign-in cancelled.".into());
+            }
             let session = api.sign_in(&username, &password)?;
             if cancel.load(std::sync::atomic::Ordering::Acquire) {
                 let _ = session.logout();
@@ -377,6 +433,7 @@ impl Shelf {
         matches!(
             self.current().section,
             Section::Feed { .. }
+                | Section::Groups { .. }
                 | Section::Libraries
                 | Section::Collections
                 | Section::Books { .. }
@@ -389,6 +446,8 @@ impl Shelf {
             .rev()
             .find_map(|pane| match &pane.section {
                 Section::Books { scope, .. } => Some(scope.tab()),
+                Section::Dashboard(_) => Some(Tab::Dashboard),
+                Section::Groups { directory, .. } => Some(Tab::Groups(*directory)),
                 Section::Libraries => Some(Tab::Libraries),
                 Section::Collections => Some(Tab::Collections),
                 _ => None,
@@ -408,12 +467,32 @@ impl Shelf {
         })
     }
 
+    fn root_depth(&self) -> usize {
+        self.all_books_index().map_or_else(
+            || {
+                if self
+                    .stack
+                    .get(1)
+                    .is_some_and(|p| matches!(p.section, Section::Dashboard(_)))
+                {
+                    2
+                } else {
+                    1
+                }
+            },
+            |i| i + 1,
+        )
+    }
     fn open_tab(&mut self, tab: Tab) {
         let Some(session) = self.session.clone() else {
             self.login_screen();
             return;
         };
         match tab {
+            Tab::Dashboard => {
+                self.fetch("Loading dashboard…", move |_| dashboard::load(&session))
+            }
+            Tab::Groups(d) => self.groups(d, String::new()),
             Tab::Reading => self.books(Scope::Reading, 0),
             Tab::Recent => self.books(Scope::Recent, 0),
             Tab::All => {
@@ -438,9 +517,19 @@ impl Shelf {
 
     fn show_directory(&mut self, section: Section, title: &str, rows: Vec<Row>) {
         // Back from either directory restores the original page and selected book.
-        self.stack
-            .truncate(self.all_books_index().map_or(1, |i| i + 1));
+        self.stack.truncate(self.root_depth());
         self.stack.push(Pane::new(section, title, rows));
+    }
+
+    fn groups(&mut self, directory: Directory, query: String) {
+        let Some(session) = self.session.clone() else {
+            return;
+        };
+        self.fetch("Loading directory…", move |_| {
+            let page =
+                session.with_token(|api, t| api.directory(t, directory, &query, 0, PAGE_SIZE))?;
+            Ok(Loaded::Groups(directory, query, page))
+        });
     }
 
     fn books(&mut self, scope: Scope, page: u32) {
@@ -660,6 +749,11 @@ impl Shelf {
     fn apply(&mut self, cmd: Command) -> Option<Selection> {
         self.notice = None;
         match cmd {
+            Command::Borders => {
+                if let Err(e) = crate::appearance::cycle() {
+                    self.notice = Some(e.to_string());
+                }
+            }
             Command::Background => {
                 if let Err(e) = crate::settings::Settings::update(|s| {
                     s.opaque_background = !s.opaque_background
@@ -676,6 +770,15 @@ impl Shelf {
                 return Some(Selection::Local);
             }
             Command::Quit => return self.end_session(true),
+            Command::Connect
+                if self.session.is_none()
+                    && self.credentials.as_ref().is_some_and(|c| {
+                        c.has_credentials() && c.matches(&self.server, &self.username)
+                    }) =>
+            {
+                self.login_screen();
+                self.submit();
+            }
             Command::Connect => return self.end_session(false),
             Command::OpenTab(tab) => self.open_tab(tab),
             Command::Books(c, p) => self.books(c, p),
@@ -708,7 +811,35 @@ impl Shelf {
                 {
                     self.notice = Some(format!("Could not save address and username: {e}"));
                 }
-                self.open_tab(Tab::All);
+                self.rail.refresh(self.session.as_ref().unwrap().clone());
+                self.open_tab(Tab::Dashboard);
+            }
+            Loaded::Dashboard(d, rows) => {
+                self.stack.truncate(1);
+                self.stack
+                    .push(Pane::new(Section::Dashboard(d), "Dashboard", rows));
+            }
+            Loaded::Groups(directory, query, page) => {
+                if query.is_empty() {
+                    self.rail.set_total(directory, page.total);
+                }
+                let name = Tab::Groups(directory).titles()[0];
+                let label = if query.is_empty() {
+                    name.to_owned()
+                } else {
+                    format!("{name} · {query}")
+                };
+                let next = native::next_group_page(&page);
+                let rows = native::group_rows(directory, page.items);
+                self.show_directory(
+                    Section::Groups {
+                        directory,
+                        query,
+                        next,
+                    },
+                    &format!("{label}  ·  {}", page.total),
+                    rows,
+                );
             }
             Loaded::Collections(items) => {
                 let rows = items
@@ -740,10 +871,10 @@ impl Shelf {
                 let title = format!("{}  ·  {}", scope.name(), books.total);
                 let rows = book_rows(books.items);
                 if scope == Scope::All {
-                    self.stack.truncate(1);
+                    let depth = self.all_books_index().unwrap_or_else(|| self.root_depth());
+                    self.stack.truncate(depth);
                 } else if matches!(scope, Scope::Reading | Scope::Recent | Scope::Search(_)) {
-                    self.stack
-                        .truncate(self.all_books_index().map_or(1, |i| i + 1));
+                    self.stack.truncate(self.root_depth());
                 }
                 self.stack.push(Pane::new(
                     Section::Books {
@@ -801,6 +932,19 @@ impl Shelf {
             return;
         }
         let ticket = match &pane.section {
+            Section::Groups {
+                directory,
+                query,
+                next: Some(next),
+            } => {
+                let session = self.session.clone().expect("native catalog");
+                let (d, q, n) = (*directory, query.clone(), *next);
+                self.worker.start(move |_| {
+                    session
+                        .with_token(|api, t| api.directory(t, d, &q, n, PAGE_SIZE))
+                        .map(Tail::Groups)
+                })
+            }
             Section::Books {
                 scope,
                 page,
@@ -841,6 +985,19 @@ impl Shelf {
         let pane = self.current_mut();
         pane.tail = None;
         match result {
+            Ok(Tail::Groups(p)) => {
+                if let Section::Groups {
+                    directory, next, ..
+                } = &mut pane.section
+                {
+                    if *next == Some(p.page) {
+                        *next = native::next_group_page(&p);
+                        pane.rows.extend(native::group_rows(*directory, p.items));
+                    } else {
+                        *next = None;
+                    }
+                }
+            }
             Ok(Tail::Feed(url, feed)) => {
                 let rows = self.feed_rows(feed.items);
                 let pane = self.current_mut();
@@ -948,6 +1105,9 @@ impl Shelf {
             }
             return None;
         }
+        if matches!(key, Some(KeyCode::Char('u' | 'U'))) {
+            return self.apply(Command::Borders);
+        }
         if matches!(key, Some(KeyCode::Char('f' | 'F'))) {
             return self.apply(Command::Background);
         }
@@ -981,13 +1141,47 @@ impl Shelf {
         if click.is_some_and(|p| self.file_button.contains(p)) {
             return self.apply(Command::Local);
         }
+        if matches!(self.current().section, Section::Home) {
+            if let Event::Mouse(m) = &event
+                && m.kind == MouseEventKind::Moved
+            {
+                let p = Position::new(m.column, m.row);
+                if let Some((_, i)) = self.home_hits.iter().find(|(r, _)| r.contains(p)) {
+                    let index = *i;
+                    self.current_mut().selection.select(Some(index));
+                }
+                return None;
+            }
+            if let Some(p) = click {
+                if let Some((_, cmd)) = self.home_controls.iter().find(|(r, _)| r.contains(p)) {
+                    return self.apply(cmd.clone());
+                }
+                if let Some((_, i)) = self.home_hits.iter().find(|(r, _)| r.contains(p)) {
+                    let index = *i;
+                    self.current_mut().selection.select(Some(index));
+                    return self.apply(self.current().action()?);
+                }
+                return None;
+            }
+            let cmd = match key {
+                Some(KeyCode::Char('b' | 'B')) => {
+                    self.current().rows.first().map(|r| r.action.clone())
+                }
+                Some(KeyCode::Char('l' | 'L')) => Some(Command::Local),
+                Some(KeyCode::Char('p' | 'P')) => Some(Command::Opds),
+                Some(KeyCode::Char('d' | 'D')) => Some(Command::Downloads),
+                Some(KeyCode::Char('c' | 'C')) if self.session.is_some() => Some(Command::Connect),
+                _ => None,
+            };
+            if let Some(cmd) = cmd {
+                return self.apply(cmd);
+            }
+        }
         if self.session.is_some() {
             let tab = match key {
-                Some(KeyCode::Char('4')) => Some(Tab::Reading),
-                Some(KeyCode::Char('5')) => Some(Tab::Recent),
-                Some(KeyCode::Char('1')) => Some(Tab::All),
-                Some(KeyCode::Char('2')) => Some(Tab::Libraries),
-                Some(KeyCode::Char('3')) => Some(Tab::Collections),
+                Some(KeyCode::Char(n @ '0'..='7')) => {
+                    Tab::ALL.get((n as u8 - b'0') as usize).copied()
+                }
                 Some(KeyCode::Tab) => Some(self.active_tab().adjacent(true)),
                 Some(KeyCode::BackTab) => Some(self.active_tab().adjacent(false)),
                 _ => click
@@ -1029,6 +1223,27 @@ impl Shelf {
                     return self.apply(action);
                 }
                 return None;
+            }
+            if let Section::Dashboard(d) = &self.current().section {
+                let down = match (&event, key) {
+                    (_, Some(KeyCode::Down | KeyCode::Char('j'))) => Some(true),
+                    (_, Some(KeyCode::Up | KeyCode::Char('k'))) => Some(false),
+                    (Event::Mouse(m), _)
+                        if self.list_area.contains(Position::new(m.column, m.row)) =>
+                    {
+                        match m.kind {
+                            MouseEventKind::ScrollDown => Some(true),
+                            MouseEventKind::ScrollUp => Some(false),
+                            _ => None,
+                        }
+                    }
+                    _ => None,
+                };
+                if let (Some(down), Some(index)) = (down, self.current().selection.selected()) {
+                    let next = d.vertical(index, down);
+                    self.current_mut().selection.select(Some(next));
+                    return None;
+                }
             }
             let step = grid.cols as isize;
             let delta = match (&event, key) {
@@ -1135,17 +1350,26 @@ impl Shelf {
                 && (matches!(&e, Event::Key(k) if k.kind!=KeyEventKind::Release && k.code==KeyCode::Char('/'))
                     || matches!(&e, Event::Mouse(m) if m.kind==MouseEventKind::Down(MouseButton::Left) && self.search_button.contains(Position::new(m.column,m.row))))
             {
+                let directory = match self.current().section {
+                    Section::Groups { directory, .. } => Some(directory),
+                    _ => None,
+                };
                 let old = match &self.current().section {
                     Section::Books {
                         scope: Scope::Search(q),
                         ..
                     } => q.clone(),
+                    Section::Groups { query, .. } => query.clone(),
                     _ => String::new(),
                 };
                 if let Some(q) = crate::prompt::edit(
                     term,
                     if self.is_opds {
                         "Search OPDS catalog"
+                    } else if directory == Some(Directory::Authors) {
+                        "Search authors"
+                    } else if directory == Some(Directory::Series) {
+                        "Search series"
                     } else {
                         "Search all books · title or author"
                     },
@@ -1157,6 +1381,8 @@ impl Shelf {
                         if !q.is_empty() {
                             self.search_feed(q);
                         }
+                    } else if let Some(d) = directory {
+                        self.groups(d, q);
                     } else if q.is_empty() {
                         self.open_tab(Tab::All)
                     } else {

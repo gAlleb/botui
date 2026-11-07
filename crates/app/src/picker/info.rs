@@ -13,7 +13,7 @@ use ratatui::{
     layout::{Position, Rect},
     style::Stylize,
     text::Line,
-    widgets::{Block, Clear, Paragraph, Wrap},
+    widgets::{Clear, Paragraph, Wrap},
 };
 
 use crate::{AppTerminal, centered};
@@ -62,7 +62,7 @@ impl FileInfo {
     fn draw(&self, frame: &mut Frame) -> Rect {
         let area = frame.area();
         let panel = centered(area, 72, 10);
-        let block = Block::bordered().title(" Book details ");
+        let block = crate::appearance::block().title(" Book details ");
         let inner = block.inner(panel);
         frame.render_widget(Clear, area);
         frame.render_widget(block, panel);

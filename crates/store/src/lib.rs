@@ -37,7 +37,7 @@ pub struct LocalState {
     path: PathBuf,
 }
 
-fn state_dir() -> io::Result<PathBuf> {
+pub fn state_dir() -> io::Result<PathBuf> {
     env::var_os("XDG_STATE_HOME")
         .map(PathBuf::from)
         .filter(|p| p.is_absolute())

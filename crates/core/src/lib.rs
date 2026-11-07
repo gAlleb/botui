@@ -58,10 +58,10 @@ struct Layout {
 }
 
 impl Layout {
-    fn new(width: u16, height: u16, mode: LayoutMode) -> Self {
-        let spread = mode == LayoutMode::Spread && width >= 2 * MIN_COLUMN + SPREAD_GAP;
+    fn new(width: u16, height: u16, mode: LayoutMode, gap: u16) -> Self {
+        let spread = mode == LayoutMode::Spread && width >= 2 * MIN_COLUMN + gap;
         let (columns, width, gutter) = if spread {
-            (2, (width - SPREAD_GAP) / 2, SPREAD_GAP)
+            (2, (width - gap) / 2, gap)
         } else {
             (1, width, 0)
         };
@@ -99,7 +99,7 @@ impl Pager {
         } else {
             vec![false; doc.blocks.len()]
         };
-        let layout = Layout::new(width, height, mode);
+        let layout = Layout::new(width, height, mode, SPREAD_GAP);
         let lines = wrap_document(doc, layout.width, &printed);
         Self {
             layout,
@@ -112,7 +112,22 @@ impl Pager {
 
     /// Reflow the same document. Keep the line containing the saved word at the top.
     pub fn relayout(&mut self, doc: &Document, width: u16, height: u16, mode: LayoutMode) {
-        let layout = Layout::new(width, height, mode);
+        self.relayout_with_gap(doc, width, height, mode, SPREAD_GAP)
+    }
+    pub fn relayout_with_gap(
+        &mut self,
+        doc: &Document,
+        width: u16,
+        height: u16,
+        mode: LayoutMode,
+        gap: u16,
+    ) {
+        let layout = Layout::new(
+            width,
+            height,
+            mode,
+            gap.min(width.saturating_sub(2 * MIN_COLUMN)),
+        );
         if self.layout == layout {
             return;
         }

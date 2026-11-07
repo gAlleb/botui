@@ -1,3 +1,4 @@
+mod appearance;
 mod cache;
 mod catalog;
 mod connection;
@@ -30,7 +31,7 @@ use ratatui::{Terminal, backend::CrosstermBackend, layout::Rect};
 type AppTerminal = Terminal<CrosstermBackend<io::Stdout>>;
 type Result<T> = std::result::Result<T, Box<dyn Error>>;
 
-const HELP: &str = "botui [FILE | DIRECTORY | --local [DIRECTORY] | --library DIRECTORY | --server URL | --opds URL]\n\nOpen a book or remember a local library folder. With no arguments, choose a source.\nOn the shelf: / search all books, 4 currently reading, 5 recently added, V grid/list.\nIn EPUB or FB2: arrows or wheel to turn pages, 1/2 page/spread, [/] margins, Z zen, O contents, T theme, F background, B/G bookmarks, M menu, Q close.\nPDF and DjVu: 1/2 page/spread, +/- zoom, arrows to pan while zoomed.\n";
+const HELP: &str = "botui [FILE | DIRECTORY | --local [DIRECTORY] | --library DIRECTORY | --server URL | --opds URL]\n\nOpen a book or remember a local library folder. With no arguments, choose a source. Use --config-path to initialize and locate config.toml.\nBookOrbit: 0 dashboard, 1 all books, 2 reading, 3 recent, 4 libraries, 5 collections, 6 authors, 7 series. / search, V grid/list, U borders.\nIn EPUB or FB2: arrows or wheel to turn pages, 1/2 page/spread, W page layout, [/] width, {/} column gap, Z zen, O contents, T theme, F background, B/G bookmarks, M menu, Q close.\nPDF and DjVu: 1/2 page/spread, +/- zoom, arrows to pan while zoomed.\n";
 
 struct Screen;
 
@@ -82,12 +83,14 @@ enum Start {
     Local(Option<PathBuf>),
     File(PathBuf),
     Help,
+    ConfigPath,
 }
 
 fn arguments() -> Result<Start> {
     let mut args = env::args_os().skip(1);
     let start = match args.next() {
         None => Start::Shelf(None),
+        Some(v) if v == "--config-path" => Start::ConfigPath,
         Some(v) if v == "--help" || v == "-h" => Start::Help,
         Some(v) if v == "--opds" => Start::Opds(
             args.next()
@@ -258,19 +261,18 @@ fn bookorbit_shelf(
     server: Option<String>,
     notices: &mut Vec<String>,
 ) -> Result<()> {
-    let settings = connection::Connection::load();
-    let warning = settings
-        .as_ref()
-        .err()
-        .map(|e| format!("Could not read connection settings: {e}"));
-    let settings = settings
-        .unwrap_or_default()
-        .with_server(server.or_else(|| env::var("BOTUI_SERVER").ok()));
-    let mut shelf = shelf::Shelf::new(settings.server, settings.username);
-    shelf.grid_view = !settings.list_view;
-    if let Some(warning) = warning {
-        shelf.set_error(warning);
-    }
+    let connection = settings::Settings::load()?.bookorbit;
+    let address = server
+        .or_else(|| env::var("BOTUI_SERVER").ok())
+        .unwrap_or_else(|| connection.server.clone());
+    let user = if address.trim_end_matches('/') == connection.server.trim_end_matches('/') {
+        connection.username.clone()
+    } else {
+        String::new()
+    };
+    let mut shelf = shelf::Shelf::new(address, user);
+    shelf.grid_view = !connection.list_view;
+    shelf.credentials = Some(connection);
     loop {
         match shelf.choose(term)? {
             shelf::Selection::Quit => {
@@ -329,12 +331,11 @@ fn run() -> Result<()> {
         print!("{HELP}");
         return Ok(());
     }
-    let settings = if settings::path()?.exists() {
-        settings::Settings::load()?
-    } else {
-        settings::Settings::update(|_| ())?
-    };
-    settings.activate();
+    settings::Settings::initialize()?;
+    if matches!(start, Start::ConfigPath) {
+        println!("{}", settings::path()?.display());
+        return Ok(());
+    }
     let path = match &start {
         Start::File(p) => Some(p.clone()),
         _ => None,

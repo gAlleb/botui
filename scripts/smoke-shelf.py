@@ -2,8 +2,10 @@
 """Run the BookOrbit shelf against a private loopback HTTP fixture and a tmux terminal."""
 
 import io
+import tomllib
 import json
 import os
+import re
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 import shlex
@@ -96,6 +98,9 @@ class Handler(BaseHTTPRequestHandler):
         total = TOTAL if self.server.has_collections else 2
         catalogs = {API + "/books/query": range(total), API + "/libraries/31/books": [0],
                     API + "/libraries/32/books": range(1, total)}
+        if self.path == API + "/dashboard/widgets/batch" and self.headers.get("Authorization") == f"Bearer {self.server.token}":
+            return self.reply(200, {"items":[{"type":"reading-streak","failed":False,"data":{"currentStreak":4,"longestStreak":9}},
+                                  {"type":"monthly-challenge","failed":False,"data":{"title":"Streak Builder","progress":4,"target":5}}]})
         if self.path in catalogs:
             if self.headers.get("Authorization") != f"Bearer {self.server.token}":
                 return self.reply(401, {"statusCode": 401})
@@ -160,6 +165,27 @@ class Handler(BaseHTTPRequestHandler):
         if self.headers.get("Authorization") != f"Bearer {self.server.token}":
             return self.reply(401, {"statusCode": 401})
         url = urlsplit(self.path)
+        query = parse_qs(url.query)
+        page = int(query.get("page", [0])[0])
+        size = int(query.get("size", [24])[0])
+        def send_page(items):
+            return self.reply(200, {"items":items[page*size:(page+1)*size], "total":len(items), "page":page, "size":size})
+        if url.path.startswith(API + "/dashboard/scrollers/"):
+            key = url.path.rsplit("/", 1)[1]
+            indexes = {"continue-reading":[1], "recently-added":[0,1], "random":[0]}[key]
+            items = [self.server.card(i) for i in indexes]
+            return self.reply(200, items if key == "random" else {"books":items, "total":len(items)})
+        for endpoint, total, target in [("authors",410,"Роджер Желязны"),("series",49,"Хроники Амбера")]:
+            if url.path == f"{API}/{endpoint}":
+                assert query["sort"] == ["name"] and query["order"] == ["asc"]
+                groups = [{"id":n,"name":target if n==total else f"Group {n:04}", "bookCount":2}
+                          for n in range(1,total+1)]
+                q = query.get("q", [""])[0].casefold()
+                return send_page([g for g in groups if q in g["name"].casefold()])
+            if url.path == f"{API}/{endpoint}/{total}/books":
+                assert query["sort"] == (["title"] if endpoint=="authors" else ["seriesIndex"])
+                assert query["order"] == ["asc"] and (endpoint=="series" or query["collapseSeries"] == ["false"])
+                return send_page([self.server.card(i) for i in ([0,1] if endpoint=="authors" else [1,0])])
         if url.path == API + "/books/200/bookmarks":
             return self.reply(200,self.server.marks.get(int(parse_qs(url.query)["readerFileId"][0]),[]))
         if url.path == API + "/reading-progress":
@@ -236,7 +262,12 @@ class Terminal:
 
 
 def login(term, url, wrong_password=False):
-    term.see("Connect to BookOrbit")
+    home = term.see("Connect to BookOrbit")
+    assert "Your TUI book reader." in home and "██████╗" in home
+    term.keys("Down")
+    term.see("Browse a folder on this device")
+    term.keys("Up")
+    term.see("Sign in to a BookOrbit server")
     term.keys("Enter")
     form = term.see("Password")
     assert url in form, form
@@ -252,7 +283,9 @@ def login(term, url, wrong_password=False):
         term.keys("C-u")
     term.type(PASSWORD)
     term.keys("Enter")
-    return term.wait("После входа открыты все книги", lambda frame: BOOK in frame and OTHER_BOOK in frame)
+    term.wait("Account dashboard", lambda frame:"Discover something new" in frame and "Continue reading" in frame and "37%" in frame)
+    term.keys("1")
+    return term.wait("All books", lambda frame: BOOK in frame and OTHER_BOOK in frame)
 
 
 def formats(term):
@@ -280,8 +313,8 @@ def check_collections(tmp, binary, fixture):
         term.see("[V Grid]")
         term.keys("/");term.see("Search all books");term.type("том 99");term.keys("Enter")
         term.see("Архивный том 99")
-        term.keys("4");term.see("37%");assert OTHER_BOOK in term.see("Currently reading")
-        term.keys("5");term.see(f"Архивный том {TOTAL}")
+        term.keys("2");term.see("37%");assert OTHER_BOOK in term.see("Currently reading")
+        term.keys("3");term.see(f"Архивный том {TOTAL}")
         term.keys("1");term.see(BOOK)
         term.click("[V Grid]", term.see("[V Grid]"))
         term.see("▀")
@@ -289,7 +322,7 @@ def check_collections(tmp, binary, fixture):
         term.wait("Сетка: соседняя книга", lambda s: OTHER_BOOK in s and BOOK not in s)
         term.keys("Escape")
         term.see("[V List]")
-        term.keys("3")
+        term.keys("5")
         term.see(COLLECTION)
         term.keys("Enter")
         term.see(BOOK)
@@ -321,7 +354,7 @@ def check_collections(tmp, binary, fixture):
         term.click(OTHER_BOOK, shelf)
         missing_cover = term.wait("Оттиск без обложки", lambda s: OTHER_BOOK in s and "PDF" in s and BOOK not in s)
         term.click("PDF", missing_cover)
-        term.wait("Карточка PDF без обложки", lambda s: "Open the original pages" in s and "▀" not in s)
+        term.wait("Карточка PDF без обложки", lambda s: "Open the original pages" in s and OTHER_BOOK in s and "───" in s)
         term.keys("Escape")
         term.keys("Escape")
         term.see(BOOK)
@@ -339,8 +372,8 @@ def check_collections(tmp, binary, fixture):
             (API + "/auth/login", 401), (API + "/auth/login", 200),
             (API + "/auth/refresh", 200), (API + "/auth/logout", 200)
         ], requests
-        config = json.loads((tmp / "config/botui/connection.json").read_text())
-        assert config == {"server": url, "username": USER}, "Проверьте сохраняемые поля подключения"
+        config = tomllib.loads((tmp / "config/botui/config.toml").read_text())["bookorbit"]
+        assert config == {"server": url, "username": USER, "list_view": False}, "Проверьте сохраняемые поля подключения"
     finally:
         term.run("kill-server", required=False)
 
@@ -350,8 +383,48 @@ def check_without_collections(tmp, binary, fixture):
     term = Terminal(tmp, binary, url)
     try:
         all_books = login(term, url)
+        term.run("resize-window","-t","shelf","-x","148","-y","38")
+        names = ["0 Dashboard","1 All books","2 Currently reading","3 Recently added","4 Libraries","5 Collections","6 Authors","7 Series"]
+        def totals(frame):
+            return re.search(r"6 Authors +410",frame) and re.search(r"7 Series +49",frame)
+        wide = term.wait("Totals before opening directories",totals)
+        assert [wide.index(v) for v in names] == sorted(wide.index(v) for v in names)
+        term.keys("0")
+        dash = term.wait("Widgets and account shelves",lambda f:"Streak Builder" in f and "Continue reading" in f and "37%" in f)
+        term.click("6 Authors",dash)
+        term.see("Group 0001")
+        term.keys("End")
+        term.wait("Directory auto-pagination",lambda f:any(f"page=1&" in path and "/authors?" in path for _,path,_ in fixture.requests))
+        term.keys("/")
+        term.see("Search authors")
+        term.type("Желязны");term.keys("Enter")
+        term.wait("Filtered directory retains global count",lambda f:"Роджер Желязны" in f and totals(f))
+        term.keys("Enter")
+        term.see(BOOK)
+        term.keys("Enter")
+        term.click("EPUB",formats(term));term.see(EPUB_MARK)
+        term.keys("q");formats(term);term.keys("Escape");term.see(BOOK)
+        term.keys("Escape");term.see("Роджер Желязны")
+        term.keys("7");term.see("Group 0001");term.keys("/");term.see("Search series")
+        term.type("Амбера");term.keys("Enter");term.see("Хроники Амбера");term.keys("Enter")
+        term.see(OTHER_BOOK)
+        term.keys("Enter")
+        term.wait("First volume uses server sequence",lambda f:OTHER_BOOK in f and "[D Save offline]" in f)
+        term.keys("1");term.see(BOOK)
+        term.keys("Tab");term.see("37%")
+        term.keys("Tab");term.see(OTHER_BOOK)
+        term.keys("BTab");term.see("37%")
+        term.keys("1");term.see(BOOK)
         # These two titles belong to different libraries. Collections on this account are empty.
         term.run("resize-window","-t","shelf","-x","44","-y","16")
+        narrow = term.wait("Compact navigation uses the same order",lambda f: ("5 C" in f and "410" in f and "49" in f and "[V List]" in f))
+        labels = ["1 All", "2 R", "3 +", "4 L", "5 C"]
+        assert [narrow.index(v) for v in labels] == sorted(narrow.index(v) for v in labels)
+        term.click("2 R",narrow)
+        term.see("37%")
+        term.keys("Tab")
+        term.see(OTHER_BOOK)
+        term.keys("1")
         term.see(BOOK)
         term.keys("Down","Enter")
         term.wait("В узкой сетке открылась вторая книга",lambda s:OTHER_BOOK in s and "[V " not in s)
@@ -365,14 +438,14 @@ def check_without_collections(tmp, binary, fixture):
         formats(term)
         term.keys("Escape")
         term.wait("Возврат ко всем книгам", lambda s: BOOK in s and OTHER_BOOK in s)
-        term.keys("2")
+        term.keys("4")
         for library_id, expected, other in [(31, BOOK, OTHER_BOOK), (32, OTHER_BOOK, BOOK)]:
             listing = term.wait("Выбор библиотеки", lambda s: all(name in s for name in LIBRARIES.values()))
             term.click(LIBRARIES[library_id], listing)
             term.wait(f"Книги библиотеки {library_id}", lambda s: expected in s and other not in s)
             term.keys("Escape")
         term.wait("Возврат к библиотекам", lambda s: all(name in s for name in LIBRARIES.values()))
-        term.keys("3")
+        term.keys("5")
         term.wait("Пустой список коллекций", lambda s: "collections" in s.lower()
                   and ("no personal" in s.lower()) and BOOK not in s)
         term.keys("Escape")

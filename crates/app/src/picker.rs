@@ -15,10 +15,10 @@ use ratatui::{
     Frame,
     layout::{Position, Rect},
     style::{Color, Modifier, Style, Stylize},
-    widgets::{Block, Clear, List, ListItem, ListState, Paragraph},
+    widgets::{Clear, List, ListItem, ListState, Paragraph},
 };
 
-use crate::{AppTerminal, centered};
+use crate::AppTerminal;
 
 #[derive(Clone, PartialEq, Eq)]
 enum LocalView {
@@ -48,6 +48,7 @@ pub struct Picker {
     root_button: Rect,
     path_button: Rect,
     bg_button: Rect,
+    borders_button: Rect,
     up_button: Rect,
     entries: Vec<Entry>,
     list: ListState,
@@ -72,6 +73,7 @@ impl Picker {
             root_button: Rect::default(),
             path_button: Rect::default(),
             bg_button: Rect::default(),
+            borders_button: Rect::default(),
             up_button: Rect::default(),
             entries: Vec::new(),
             list: ListState::default(),
@@ -111,13 +113,9 @@ impl Picker {
 
     fn draw(&mut self, frame: &mut Frame) {
         let area = frame.area();
-        let panel = centered(
-            area,
-            area.width.saturating_sub(4).min(130),
-            area.height.saturating_sub(2),
-        );
+        let panel = area;
         frame.render_widget(Clear, area);
-        let block = Block::bordered().title(" Local library ");
+        let block = crate::appearance::block().title(" Local library ");
         let inner = block.inner(panel);
         frame.render_widget(block, panel);
         self.exit = Rect::default();
@@ -148,7 +146,7 @@ impl Picker {
         );
         frame.render_widget(Paragraph::new(label).cyan(), self.view_button);
         let mut x = inner.x;
-        for (i, label) in ["1 Folders", "4 Currently reading", "5 Recently added"]
+        for (i, label) in ["1 Folders", "2 Currently reading", "3 Recently added"]
             .iter()
             .enumerate()
         {
@@ -234,6 +232,7 @@ impl Picker {
             self.search_button = button("[/ Search]");
             self.root_button = button("[R Set library here]");
             self.bg_button = button("[F Background]");
+            self.borders_button = button("[U Borders]");
             if let Some(error) = &self.error {
                 frame.render_widget(
                     Paragraph::new(error.as_str()).fg(Color::Yellow),
@@ -406,6 +405,14 @@ impl Picker {
                 }
                 continue;
             }
+            if matches!(key, Some(KeyCode::Char('u' | 'U')))
+                || click.is_some_and(|p| self.borders_button.contains(p))
+            {
+                if let Err(e) = crate::appearance::cycle() {
+                    self.error = Some(e.to_string());
+                }
+                continue;
+            }
             if matches!(key, Some(KeyCode::Char('f' | 'F')))
                 || click.is_some_and(|p| self.bg_button.contains(p))
             {
@@ -433,8 +440,8 @@ impl Picker {
                 .map_or(self.rows.height as isize, |g| g.len() as isize);
             let tab = match key {
                 Some(KeyCode::Char('1')) => Some(0),
-                Some(KeyCode::Char('4')) => Some(1),
-                Some(KeyCode::Char('5')) => Some(2),
+                Some(KeyCode::Char('2')) => Some(1),
+                Some(KeyCode::Char('3')) => Some(2),
                 _ => click.and_then(|p| self.shelves.iter().position(|r| r.contains(p))),
             };
             if let Some(i) = tab {

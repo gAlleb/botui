@@ -1,4 +1,5 @@
 pub(crate) mod bookmarks;
+mod layout;
 mod navigation;
 pub(crate) mod notes;
 mod resources;
@@ -20,29 +21,17 @@ use ratatui::{
     Frame,
     layout::{Position, Rect},
     style::Modifier,
-    widgets::{Block, Clear, List, ListState, Paragraph},
+    widgets::{Block, Clear, Paragraph, Row, Table, TableState},
 };
 
 use crate::{AppTerminal, centered, theme::Theme};
-
-fn text_area(area: Rect, mode: LayoutMode, margin: i8) -> Rect {
-    let side = (area.width / 22)
-        .min(8)
-        .saturating_add_signed(2 * i16::from(margin))
-        .min(area.width.saturating_sub(12) / 2);
-    let vertical = (area.height / 13).min(2);
-    let width = area.width.saturating_sub(side * 2).min(match mode {
-        LayoutMode::Single => 78u16.saturating_add_signed(-6 * i16::from(margin)),
-        LayoutMode::Spread => 160u16.saturating_add_signed(-12 * i16::from(margin)),
-    });
-    centered(area, width, area.height.saturating_sub(vertical * 2))
-}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum Action {
     Menu,
     Zen,
     Background,
+    Borders,
     Sidebar(Edit),
     Focus,
     JumpBack,
@@ -62,6 +51,8 @@ enum Action {
     NavEdit(Edit),
     Mark,
     Margin(i8),
+    Gap(i8),
+    Layout,
     Close,
     Up,
     Down,
@@ -79,10 +70,10 @@ const COMMANDS: [Action; 22] = [
     Action::Navigate(Kind::Search),
     Action::Mark,
     Action::Navigate(Kind::Marks),
-    Action::Margin(-1),
-    Action::Margin(1),
+    Action::Layout,
     Action::Zen,
     Action::Background,
+    Action::Borders,
     Action::Note,
     Action::Navigate(Kind::Notes),
     Action::Export,
@@ -106,10 +97,12 @@ struct Reader {
     doc: Document,
     pager: Pager,
     mode: LayoutMode,
-    area: Rect,
+    layout_panel: Option<layout::Panel>,
+    page_width: u16,
+    gap: u16,
     theme: Theme,
     palette: Option<theme_picker::Picker>,
-    menu: Option<ListState>,
+    menu: Option<TableState>,
     menu_rows: Rect,
     nav: Option<navigation::Navigation>,
     marks: Vec<botui_core::Anchor>,
@@ -127,12 +120,17 @@ impl Reader {
             LayoutMode::Spread
         };
         let margin = saved.as_ref().map_or(0, |s| s.margin);
-        let text = text_area(area, mode, margin);
+        let page_width = settings
+            .page_width
+            .unwrap_or_else(|| 78u16.saturating_add_signed(-6 * i16::from(margin)))
+            .clamp(32, 240);
+        let gap = settings.column_gap.unwrap_or(4).min(32);
+        let (text, mode_for_size, _) = layout::geometry(area, mode, page_width, gap);
         let mut pager = Pager::with_reflow(
             &doc,
             text.width,
             text.height,
-            mode,
+            mode_for_size,
             !settings.preserve_printed_lines,
         );
         let marks = saved.as_ref().map(|s| s.marks.clone()).unwrap_or_default();
@@ -159,7 +157,9 @@ impl Reader {
             doc,
             pager,
             mode,
-            area: text,
+            page_width,
+            gap,
+            layout_panel: None,
             theme,
             palette: None,
             menu: None,
@@ -187,39 +187,9 @@ impl Reader {
                 self.sidebar_focus = false;
             }
         }
-        let pair = self.mode == LayoutMode::Spread && page.width >= 76;
-        let pane_width = if pair {
-            (page.width - 4) / 2
-        } else {
-            page.width
-        };
-        let pane = Rect {
-            width: pane_width,
-            ..page
-        };
-        let text = text_area(pane, LayoutMode::Single, self.margin);
-        let logical_width = if pair { 2 * text.width + 4 } else { text.width };
-        let actual = if pair && text.width >= 32 {
-            LayoutMode::Spread
-        } else {
-            LayoutMode::Single
-        };
-        let text = if pair && actual == LayoutMode::Single {
-            text_area(page, LayoutMode::Single, self.margin)
-        } else {
-            text
-        };
-        self.pager.relayout(
-            &self.doc,
-            if actual == LayoutMode::Spread {
-                logical_width
-            } else {
-                text.width
-            },
-            text.height,
-            actual,
-        );
-        self.area = text;
+        let (text, actual, gap) = layout::geometry(page, self.mode, self.page_width, self.gap);
+        self.pager
+            .relayout_with_gap(&self.doc, text.width, text.height, actual, gap);
         let style = self
             .palette
             .as_ref()
@@ -227,7 +197,9 @@ impl Reader {
             .style();
         frame.render_widget(Block::new().style(style), screen);
         for c in 0..self.pager.columns() {
-            let x = text.x.saturating_add(c as u16 * (pane_width + 4));
+            let x = text
+                .x
+                .saturating_add(c as u16 * (self.pager.column_width() + self.pager.gutter()));
             for (y, line) in self
                 .pager
                 .lines(c)
@@ -287,6 +259,17 @@ impl Reader {
                 Rect::new(foot.x, foot.y, right - cw - foot.x, foot.height),
             );
         }
+        if let Some(panel) = &mut self.layout_panel {
+            panel.draw(
+                frame,
+                style,
+                self.pager.column_width(),
+                self.page_width,
+                self.gap,
+                (self.pager.columns() == 2).then(|| self.pager.gutter()),
+            );
+            return;
+        }
         if let Some(picker) = &mut self.palette {
             picker.draw(frame);
             return;
@@ -296,9 +279,13 @@ impl Reader {
             return;
         }
         let Some(list) = &mut self.menu else { return };
-        let popup = centered(screen, 54, 24 + u16::from(notice.is_some()));
+        let popup = centered(
+            screen,
+            54,
+            COMMANDS.len() as u16 + 3 + u16::from(notice.is_some()),
+        );
         frame.render_widget(Clear, popup);
-        let block = Block::bordered().title(" Reading ").style(style);
+        let block = crate::appearance::block().title(" Reading ").style(style);
         let inner = block.inner(popup);
         frame.render_widget(block, popup);
         let header = inner.height.min(1);
@@ -324,62 +311,86 @@ impl Reader {
             inner.width,
             inner.height.saturating_sub(header + status),
         );
-        let single = if self.mode == LayoutMode::Single {
-            "✓"
-        } else {
-            " "
-        };
-        let wide = if self.mode == LayoutMode::Spread {
-            "✓"
-        } else {
-            " "
-        };
-        let entries = [
-            "   Resume                 Esc".to_owned(),
-            "   Previous page           ←".into(),
-            "   Next page               →".into(),
-            format!(" {single} Single page             1"),
-            format!(" {wide} Two-page spread         2"),
-            format!("   Theme: {}     T", self.theme.name()),
-            "   Contents                O".into(),
-            "   Find in book            /".into(),
-            format!(
-                "   {}          B",
-                if self.remote_marked || self.marks.contains(&self.pager.anchor()) {
-                    "Remove bookmark"
-                } else {
-                    "Add bookmark"
-                }
-            ),
-            "   Bookmarks               G".into(),
-            "   Narrower margins        [".into(),
-            "   Wider margins           ]".into(),
-            format!(
-                "   {}                   Z",
-                if self.zen {
-                    "Show contents sidebar"
-                } else {
-                    "Enter zen mode"
-                }
-            ),
-            format!(
-                "   Background: {}       F",
-                if self.opaque { "Opaque" } else { "Terminal" }
-            ),
-            "   Edit passage note       N".into(),
-            "   Reading notes           A".into(),
-            "   Export notes to Markdown E".into(),
-            "   Reading statistics      S".into(),
-            format!(
-                "   Links & illustrations ({})  I",
-                self.doc.references.len()
-            ),
-            "   Jump back              ,".into(),
-            "   Jump forward           .".into(),
-            "   Close book              Q".into(),
-        ];
+        let rows = COMMANDS.iter().map(|action| {
+            let marked = matches!(
+                (action, self.mode),
+                (Action::Single, LayoutMode::Single) | (Action::Spread, LayoutMode::Spread)
+            );
+            let (label, shortcut): (std::borrow::Cow<'_, str>, _) = match action {
+                Action::Resume => ("Resume".into(), "Esc"),
+                Action::Previous => ("Previous page".into(), "←"),
+                Action::Next => ("Next page".into(), "→"),
+                Action::Single => ("Single page".into(), "1"),
+                Action::Spread => ("Two-page spread".into(), "2"),
+                Action::Theme => (format!("Theme · {}", self.theme.name()).into(), "T"),
+                Action::Navigate(Kind::Contents) => ("Contents".into(), "O"),
+                Action::Navigate(Kind::Search) => ("Find in book".into(), "/"),
+                Action::Mark => (
+                    (if self.remote_marked || self.marks.contains(&self.pager.anchor()) {
+                        "Remove bookmark"
+                    } else {
+                        "Add bookmark"
+                    })
+                    .into(),
+                    "B",
+                ),
+                Action::Navigate(Kind::Marks) => ("Bookmarks".into(), "G"),
+                Action::Layout => ("Page width & column gap".into(), "W"),
+                Action::Zen => (
+                    (if self.zen {
+                        "Show contents sidebar"
+                    } else {
+                        "Enter zen mode"
+                    })
+                    .into(),
+                    "Z",
+                ),
+                Action::Borders => (
+                    format!(
+                        "Borders · {}",
+                        crate::appearance::BordersStyle::current().label()
+                    )
+                    .into(),
+                    "U",
+                ),
+                Action::Background => (
+                    format!(
+                        "Background · {}",
+                        if self.opaque { "Opaque" } else { "Terminal" }
+                    )
+                    .into(),
+                    "F",
+                ),
+                Action::Note => ("Edit passage note".into(), "N"),
+                Action::Navigate(Kind::Notes) => ("Reading notes".into(), "A"),
+                Action::Export => ("Export notes to Markdown".into(), "E"),
+                Action::Statistics => ("Reading statistics".into(), "S"),
+                Action::Resources => (
+                    format!("Links & illustrations ({})", self.doc.references.len()).into(),
+                    "I",
+                ),
+                Action::JumpBack => ("Jump back".into(), ","),
+                Action::JumpForward => ("Jump forward".into(), "."),
+                Action::Close => ("Close book".into(), "Q"),
+                _ => unreachable!("visible reader menu command"),
+            };
+            Row::new([
+                ratatui::text::Line::from(if marked { "✓" } else { "" }),
+                ratatui::text::Line::from(label),
+                ratatui::text::Line::from(shortcut).right_aligned(),
+            ])
+        });
+        use ratatui::layout::Constraint;
         frame.render_stateful_widget(
-            List::new(entries).highlight_style(style.add_modifier(Modifier::REVERSED)),
+            Table::new(
+                rows,
+                [
+                    Constraint::Length(2),
+                    Constraint::Fill(1),
+                    Constraint::Length(4),
+                ],
+            )
+            .row_highlight_style(style.add_modifier(Modifier::REVERSED)),
             self.menu_rows,
             list,
         );
@@ -401,6 +412,7 @@ impl Reader {
             {
                 Some(Action::Close)
             }
+            _ if self.layout_panel.is_some() => self.layout_panel.as_ref()?.input(event),
             _ if self.nav.is_some() => self.nav.as_ref()?.input(event).map(Action::NavEdit),
             _ if self.palette.is_some() => self.palette.as_ref()?.input(event).map(Action::Pick),
             Event::Key(k)
@@ -450,8 +462,12 @@ impl Reader {
                 KeyCode::Char('e' | 'E') => Some(Action::Export),
                 KeyCode::Char(',') => Some(Action::JumpBack),
                 KeyCode::Char('.') => Some(Action::JumpForward),
+                KeyCode::Char('u' | 'U') => Some(Action::Borders),
                 KeyCode::Char('z' | 'Z') => Some(Action::Zen),
                 KeyCode::Char('f' | 'F') => Some(Action::Background),
+                KeyCode::Char('w' | 'W') => Some(Action::Layout),
+                KeyCode::Char('{') => Some(Action::Gap(-1)),
+                KeyCode::Char('}') => Some(Action::Gap(1)),
                 KeyCode::Char('[') => Some(Action::Margin(-1)),
                 KeyCode::Char(']') => Some(Action::Margin(1)),
                 KeyCode::Char('o' | 'O') => Some(Action::Navigate(Kind::Contents)),
@@ -565,6 +581,7 @@ impl Reader {
                 self.sidebar_focus = false;
                 self.menu = None;
             }
+            Action::Borders => {}
             Action::Background => {
                 self.opaque = !self.opaque;
                 self.menu = None;
@@ -586,7 +603,23 @@ impl Reader {
                     self.nav = None;
                 }
             }
+            Action::Layout => {
+                self.menu = None;
+                self.layout_panel = if self.layout_panel.is_some() {
+                    None
+                } else {
+                    Some(layout::Panel::default())
+                };
+            }
+            Action::Gap(d) => {
+                self.gap = self.gap.saturating_add_signed(i16::from(d)).min(32);
+            }
             Action::Margin(d) => {
+                self.page_width = self
+                    .pager
+                    .column_width()
+                    .saturating_add_signed(-2 * i16::from(d))
+                    .clamp(32, 240);
                 self.margin = (self.margin + d).clamp(-2, 4);
                 self.dirty = true;
                 self.menu = None;
@@ -607,7 +640,7 @@ impl Reader {
                 self.menu = if self.menu.is_some() {
                     None
                 } else {
-                    Some(ListState::default().with_selected(Some(0)))
+                    Some(TableState::default().with_selected(Some(0)))
                 };
             }
             Action::Resume => self.menu = None,
@@ -642,8 +675,6 @@ impl Reader {
                 };
                 if self.mode != mode {
                     self.mode = mode;
-                    // Force layout even when both modes use an identical viewport.
-                    self.area = Rect::default();
                     self.dirty = true;
                 }
                 self.menu = None;
@@ -694,17 +725,7 @@ impl Reader {
 }
 
 fn bindings() -> io::Result<std::collections::HashMap<char, Action>> {
-    use std::{collections::HashMap, fs::File, io::Read};
-    let path = crate::connection::settings_file()?.with_file_name("reader-keys.json");
-    let f = match File::open(path) {
-        Ok(f) => f,
-        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(HashMap::new()),
-        Err(e) => return Err(e),
-    };
-    if f.metadata()?.len() > 16384 {
-        return Err(io::Error::other("reader-keys.json is too large"));
-    }
-    let raw: HashMap<char, String> = serde_json::from_reader(f.take(16385))?;
+    let raw = crate::settings::Settings::load()?.keys;
     raw.into_iter()
         .map(|(key, name)| {
             let action = match name.as_str() {
@@ -713,6 +734,7 @@ fn bindings() -> io::Result<std::collections::HashMap<char, Action>> {
                 "menu" => Action::Menu,
                 "zen" => Action::Zen,
                 "background" => Action::Background,
+                "borders" => Action::Borders,
                 "resources" => Action::Resources,
                 "statistics" => Action::Statistics,
                 "note" => Action::Note,
@@ -727,8 +749,11 @@ fn bindings() -> io::Result<std::collections::HashMap<char, Action>> {
                 "bookmarks" => Action::Navigate(Kind::Marks),
                 "single" => Action::Single,
                 "spread" => Action::Spread,
-                "wider-margins" => Action::Margin(1),
-                "narrower-margins" => Action::Margin(-1),
+                "page-layout" => Action::Layout,
+                "wider-gap" => Action::Gap(1),
+                "narrower-gap" => Action::Gap(-1),
+                "wider-margins" | "narrower-page" => Action::Margin(1),
+                "narrower-margins" | "wider-page" => Action::Margin(-1),
                 "close" => Action::Close,
                 _ => return Err(io::Error::other(format!("Unknown command {name}"))),
             };
@@ -860,7 +885,7 @@ pub fn read_server(
                 })();
                 if let Err(e) = action_result {
                     notices.push(e.to_string());
-                    reader.menu = Some(ListState::default().with_selected(Some(0)));
+                    reader.menu = Some(TableState::default().with_selected(Some(0)));
                 }
                 continue;
             }
@@ -874,7 +899,7 @@ pub fn read_server(
                     Ok(None) => (),
                     Err(e) => {
                         notices.push(e.to_string());
-                        reader.menu = Some(ListState::default().with_selected(Some(0)));
+                        reader.menu = Some(TableState::default().with_selected(Some(0)));
                     }
                 }
                 continue;
@@ -902,7 +927,7 @@ pub fn read_server(
                     Ok(()) => reader.menu = None,
                     Err(e) => {
                         notices.push(format!("Could not update bookmark: {e}"));
-                        reader.menu = Some(ListState::default().with_selected(Some(0)));
+                        reader.menu = Some(TableState::default().with_selected(Some(0)));
                     }
                 }
                 continue;
@@ -914,6 +939,11 @@ pub fn read_server(
                         .any(|(a, _)| *a == Some(reader.pager.anchor()))
                 });
             }
+            if action == Action::Borders
+                && let Err(e) = crate::appearance::cycle()
+            {
+                notices.push(e.to_string());
+            }
             reader.apply(action);
             if action == Action::Navigate(Kind::Marks)
                 && let (Some(m), Some(nav)) = (remote.as_deref(), reader.nav.as_mut())
@@ -922,9 +952,15 @@ pub fn read_server(
             }
             if matches!(
                 action,
-                Action::Zen | Action::Background | Action::Pick(theme_picker::Edit::Accept(_))
+                Action::Zen
+                    | Action::Background
+                    | Action::Gap(_)
+                    | Action::Margin(_)
+                    | Action::Pick(theme_picker::Edit::Accept(_))
             ) {
                 let result = crate::settings::Settings::update(|s| match action {
+                    Action::Gap(_) => s.column_gap = Some(reader.gap),
+                    Action::Margin(_) => s.page_width = Some(reader.page_width),
                     Action::Zen => s.zen = reader.zen,
                     Action::Background => s.opaque_background = reader.opaque,
                     _ => s.theme = Some(reader.theme.id()),

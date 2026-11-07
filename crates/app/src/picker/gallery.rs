@@ -4,8 +4,8 @@ use crate::shelf::gallery::{Grid, book_face};
 use ratatui::{
     Frame,
     layout::Rect,
-    style::{Color, Style, Stylize},
-    widgets::{Block, BorderType, Paragraph, Wrap},
+    style::Stylize,
+    widgets::{Paragraph, Wrap},
 };
 use std::{
     hash::{DefaultHasher, Hash, Hasher},
@@ -25,13 +25,7 @@ impl Picker {
         );
         for &(i, area) in &grid.cells {
             let entry = &self.entries[i];
-            let border = Block::bordered()
-                .border_type(BorderType::Rounded)
-                .border_style(if i == selected {
-                    Style::new().fg(Color::Cyan).bold()
-                } else {
-                    Style::new().dim()
-                });
+            let border = crate::appearance::card(i == selected);
             let inner = border.inner(area);
             f.render_widget(border, area);
             if inner.is_empty() {

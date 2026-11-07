@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Select a folder in the UI, find a nested book, read it and reopen the saved library."""
 import importlib.util
-import json
+import tomllib
 from pathlib import Path
 import shutil
 import tempfile
@@ -21,7 +21,14 @@ def check(tmp):
     shutil.copyfile(ROOT / "examples/first-light.fb2", chapter / filename)
     t = shelf.Terminal(tmp, ROOT / "target/debug/botui", args=["--local"])
     try:
-        t.click("P Folder", t.see("P Folder"))
+        frame = t.see("Local library")
+        assert frame.startswith("╭") and frame.splitlines()[0].endswith("╮"),frame
+        t.click("U Borders",frame)
+        t.wait("Square shelf corners",lambda f:f.startswith("┌") and f.splitlines()[0].endswith("┐"))
+        t.keys("u")
+        t.wait("Borderless shelf",lambda f:"Local library" in f.splitlines()[0] and not any(c in f for c in "╭╮┌┐"))
+        t.keys("u")
+        t.click("P Folder", t.wait("Rounded shelf restored",lambda f:f.startswith("╭")))
         t.see("Open library folder")
         t.type(str(lib))
         t.keys("Enter")
@@ -37,24 +44,24 @@ def check(tmp):
         t.see("Почта на пристани")
         t.keys("Right", "q")
         t.see("[V List]")
-        t.keys("v", "4")
+        t.keys("v", "2")
         t.see(filename)
         t.see("%")
-        t.keys("5")
+        t.keys("3")
         t.see(filename)
         t.keys("q")
         for _ in range(100):
             if t.run("has-session",required=False).returncode:
                 break
             time.sleep(.03)
-        settings = json.loads((tmp / "config/botui/config.json").read_text())
+        settings = tomllib.loads((tmp / "config/botui/config.toml").read_text())
         assert settings["library_root"] == str(lib), settings
         t = shelf.Terminal(tmp, ROOT / "target/debug/botui", args=["--local"])
         t.see(str(lib))
         t.click("Fiction/", t.see("Fiction/"))
         t.click("R Set library", t.see("R Set library"))
         t.see("Library saved")
-        assert Path(json.loads((tmp / "config/botui/config.json").read_text())["library_root"]) == lib / "Fiction"
+        assert Path(tomllib.loads((tmp / "config/botui/config.toml").read_text())["library_root"]) == lib / "Fiction"
     finally:
         t.run("kill-server", required=False)
 

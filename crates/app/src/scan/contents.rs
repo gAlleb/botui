@@ -3,7 +3,7 @@ use ratatui::{
     Frame,
     layout::{Position, Rect},
     style::Stylize,
-    widgets::{Block, Paragraph},
+    widgets::Paragraph,
 };
 
 #[derive(Default)]
@@ -31,7 +31,7 @@ impl Contents {
             self.focus = false;
             return;
         }
-        let border = Block::bordered().title(if self.items.is_empty() {
+        let border = crate::appearance::block().title(if self.items.is_empty() {
             " Pages "
         } else {
             " Contents "

@@ -1,86 +1,144 @@
 use serde::{Deserialize, Serialize};
 use std::{
-    env, fs,
-    io::{self, Read},
-    path::{Path, PathBuf},
+    io,
+    process::{Command, Stdio},
+    sync::atomic::{AtomicBool, Ordering},
+    time::{Duration, Instant},
 };
-use tempfile::NamedTempFile;
 
-#[derive(Default, Deserialize, Serialize)]
+#[derive(Clone, Default, Deserialize, Serialize)]
+#[serde(default)]
 pub(crate) struct Connection {
-    #[serde(default)]
-    pub(crate) server: String,
-    #[serde(default)]
-    pub(crate) username: String,
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    pub(crate) list_view: bool,
+    pub server: String,
+    pub username: String,
+    pub list_view: bool,
+    pub password: Option<String>,
+    pub password_command: Option<PasswordCommand>,
 }
 
-pub(crate) fn settings_file() -> io::Result<PathBuf> {
-    let config = env::var_os("XDG_CONFIG_HOME")
-        .map(PathBuf::from)
-        .filter(|p| p.is_absolute())
-        .or_else(|| {
-            env::var_os("HOME")
-                .map(PathBuf::from)
-                .filter(|p| p.is_absolute())
-                .map(|p| p.join(".config"))
-        })
-        .ok_or_else(|| {
-            io::Error::new(
-                io::ErrorKind::NotFound,
-                "Cannot locate the botui settings directory",
-            )
-        })?;
-    Ok(config.join("botui/connection.json"))
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(untagged)]
+pub(crate) enum PasswordCommand {
+    Argv(Vec<String>),
+    Shell(String),
 }
 
 impl Connection {
-    pub(crate) fn load() -> io::Result<Self> {
-        let file = match fs::File::open(settings_file()?) {
-            Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(Self::default()),
-            other => other?,
-        };
-        const LIMIT: usize = 16 * 1024;
-        let mut bytes = Vec::new();
-        file.take((LIMIT + 1) as u64).read_to_end(&mut bytes)?;
-        if bytes.len() > LIMIT {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                "Connection settings file is too large",
-            ));
-        }
-        Ok(serde_json::from_slice(&bytes)?)
+    pub fn has_credentials(&self) -> bool {
+        self.password_command.is_some() || self.password.as_ref().is_some_and(|p| !p.is_empty())
     }
-    pub(crate) fn with_server(mut self, server: Option<String>) -> Self {
-        if let Some(server) = server {
-            if self.server.trim_end_matches('/') != server.trim_end_matches('/') {
-                self.username.clear();
+    pub fn matches(&self, server: &str, username: &str) -> bool {
+        !self.server.trim().is_empty()
+            && !self.username.trim().is_empty()
+            && self.server.trim().trim_end_matches('/') == server.trim().trim_end_matches('/')
+            && self.username.trim() == username.trim()
+    }
+    pub fn resolve(&self, cancel: &AtomicBool) -> io::Result<String> {
+        match &self.password_command {
+            Some(command) => command.run(cancel),
+            None => self
+                .password
+                .clone()
+                .filter(|v| !v.is_empty())
+                .ok_or_else(|| io::Error::other("Enter your BookOrbit password.")),
+        }
+    }
+}
+
+impl PasswordCommand {
+    fn run(&self, cancel: &AtomicBool) -> io::Result<String> {
+        use std::io::Read;
+        use std::os::{fd::OwnedFd, unix::net::UnixStream};
+        let mut command = match self {
+            Self::Argv(args) if args.first().is_some_and(|s| !s.is_empty()) => {
+                let mut cmd = Command::new(&args[0]);
+                cmd.args(&args[1..]);
+                cmd
             }
-            self.server = server;
+            Self::Shell(script) if !script.trim().is_empty() => {
+                let mut cmd = Command::new("sh");
+                cmd.args(["-c", script]);
+                cmd
+            }
+            _ => return Err(io::Error::other("bookorbit.password_command is empty")),
+        };
+        let (mut output, writer) = UnixStream::pair()?;
+        output.set_nonblocking(true)?;
+        let mut child = command
+            .stdin(Stdio::null())
+            .stderr(Stdio::null())
+            .stdout(Stdio::from(OwnedFd::from(writer)))
+            .spawn()
+            .map_err(|_| io::Error::other("Could not start bookorbit.password_command"))?;
+        drop(command);
+        let start = Instant::now();
+        let mut first = Vec::new();
+        let mut complete = false;
+        let mut buf = [0; 4096];
+        let result = (|| {
+            loop {
+                if cancel.load(Ordering::Acquire) || start.elapsed() > Duration::from_secs(120) {
+                    return Err(io::Error::other(
+                        "BookOrbit password command cancelled or timed out",
+                    ));
+                }
+                match output.read(&mut buf) {
+                    Ok(0) => {
+                        if let Some(status) = child.try_wait()? {
+                            break status;
+                        }
+                    }
+                    Ok(n) => {
+                        if !complete {
+                            let line = &buf[..n];
+                            let end = line.iter().position(|b| *b == b'\n');
+                            first.extend_from_slice(&line[..end.unwrap_or(n)]);
+                            if first.len() > 16384 {
+                                return Err(io::Error::other(
+                                    "Password command returned an overlong first line",
+                                ));
+                            }
+                            complete = end.is_some();
+                        }
+                        continue;
+                    }
+                    Err(e) if e.kind() == io::ErrorKind::WouldBlock => (),
+                    Err(e) => return Err(e),
+                }
+                std::thread::sleep(Duration::from_millis(15));
+            }
+            .success()
+            .then_some(())
+            .ok_or_else(|| io::Error::other("BookOrbit password command failed"))?;
+            if first.last() == Some(&b'\r') {
+                first.pop();
+            }
+            String::from_utf8(first)
+                .ok()
+                .filter(|s| !s.is_empty() && !s.contains('\0'))
+                .ok_or_else(|| {
+                    io::Error::other(
+                        "Password command must return a nonempty UTF-8 password on its first line",
+                    )
+                })
+        })();
+        if result.is_err() {
+            let _ = child.kill();
+            let _ = child.wait();
         }
-        self
+        result
     }
 }
 
-// Persist only the address and username. Credentials belong to the live session.
 pub(crate) fn remember(server: &str, username: &str, list_view: bool) -> io::Result<()> {
-    let path = settings_file()?;
-    save(
-        &path,
-        &Connection {
-            server: server.into(),
-            username: username.into(),
-            list_view,
-        },
-    )
-}
-
-fn save(path: &Path, data: &Connection) -> io::Result<()> {
-    let dir = path.parent().ok_or(io::ErrorKind::InvalidInput)?;
-    fs::create_dir_all(dir)?;
-    let mut partial = NamedTempFile::new_in(dir)?;
-    serde_json::to_writer(partial.as_file_mut(), data)?;
-    partial.persist(path)?;
+    crate::settings::Settings::update(|s| {
+        let c = &mut s.bookorbit;
+        // A login typed for another account must never rebind an existing password.
+        if !c.has_credentials() || c.matches(server, username) {
+            c.server = server.to_owned();
+            c.username = username.to_owned();
+        }
+        c.list_view = list_view;
+    })?;
     Ok(())
 }

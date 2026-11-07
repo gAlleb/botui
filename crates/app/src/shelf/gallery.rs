@@ -4,8 +4,8 @@ use crate::centered;
 use ratatui::{
     Frame,
     layout::{Position, Rect},
-    style::{Color, Modifier, Style},
-    widgets::{Block, BorderType, Paragraph, Wrap},
+    style::{Color, Style},
+    widgets::{Block, Paragraph, Wrap},
 };
 
 pub(crate) struct Grid {
@@ -170,6 +170,18 @@ fn jacket(frame: &mut Frame, slot: Rect, book: &Book) {
             line(field, field.height - 1, 1),
         );
     }
+    if crate::appearance::BordersStyle::current() == crate::appearance::BordersStyle::Rounded
+        && area.width >= 6
+    {
+        for x in [area.x, area.right() - 1] {
+            for (y, symbol) in [(area.y, '▄'), (area.bottom() - 1, '▀')] {
+                frame.buffer_mut()[(x, y)]
+                    .set_char(symbol)
+                    .set_fg(Color::Rgb(r, g, b))
+                    .set_bg(Color::Reset);
+            }
+        }
+    }
 }
 impl Shelf {
     pub(super) fn artwork(&self, frame: &mut Frame, slot: Rect, book: &Book) {
@@ -200,16 +212,7 @@ impl Shelf {
         for &(i, cell) in &grid.cells {
             let row = &self.current().rows[i];
             let active = selected == i;
-            let mut border = Block::bordered()
-                .border_type(BorderType::Rounded)
-                .border_style(if active {
-                    Style::new().fg(Color::Cyan).bold()
-                } else {
-                    Style::new().add_modifier(Modifier::DIM)
-                });
-            if active {
-                border = border.title(" ▸ ");
-            }
+            let border = crate::appearance::card(active);
             let inner = border.inner(cell);
             frame.render_widget(border, cell);
             if inner.is_empty() {
@@ -232,6 +235,7 @@ impl Shelf {
                     let n = match scope {
                         Scope::Library(l) => l.book_count,
                         Scope::Collection(c) => Some(c.book_count),
+                        Scope::Group(_, g) => Some(g.book_count),
                         _ => None,
                     };
                     frame.render_widget(

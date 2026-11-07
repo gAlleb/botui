@@ -16,7 +16,7 @@ use crossterm::event::{
 use ratatui::{
     layout::{Position, Rect},
     style::Stylize,
-    widgets::{Block, Clear, Paragraph},
+    widgets::{Clear, Paragraph},
 };
 use std::{io, path::Path, sync::mpsc::TryRecvError, time::Duration};
 
@@ -211,7 +211,7 @@ pub fn read_server(
             }
             if menu {
                 let panel = centered(screen, 48, 20);
-                let block = Block::bordered().title(format!(
+                let block = crate::appearance::block().title(format!(
                     " {} · {} / {} ",
                     kind.label(),
                     n,
@@ -221,49 +221,56 @@ pub fn read_server(
                 f.render_widget(Clear, panel);
                 f.render_widget(block, panel);
                 let labels = [
-                    "Resume                   Esc",
-                    "Previous page             ←",
-                    "Next page                 →",
-                    "Single page               1",
-                    "Two-page spread           2",
-                    "Close book                Q",
-                    "First page                Home",
-                    "Last page                 End",
-                    "Zoom in                   +",
-                    "Zoom out                  −",
-                    "Pan left                  ←",
-                    "Pan right                 →",
-                    "Pan up                    ↑",
-                    "Pan down                  ↓",
-                    "Toggle zen mode           Z",
-                    "Toggle opaque background  F",
-                    "Find in text layer        /",
-                    "Next matching page        N",
-                    "Toggle page bookmark      B",
-                    "Page bookmarks            G",
-                    "Edit page note            I",
-                    "Page notes                A",
-                    "Export notes to Markdown  E",
-                    "Reading statistics        S",
-                    "Go to page number         O",
+                    ("Resume", "Esc"),
+                    ("Previous page", "←"),
+                    ("Next page", "→"),
+                    ("Single page", "1"),
+                    ("Two-page spread", "2"),
+                    ("Close book", "Q"),
+                    ("First page", "Home"),
+                    ("Last page", "End"),
+                    ("Zoom in", "+"),
+                    ("Zoom out", "−"),
+                    ("Pan left", "←"),
+                    ("Pan right", "→"),
+                    ("Pan up", "↑"),
+                    ("Pan down", "↓"),
+                    ("Toggle zen mode", "Z"),
+                    ("Toggle opaque background", "F"),
+                    ("Find in text layer", "/"),
+                    ("Next matching page", "N"),
+                    ("Toggle page bookmark", "B"),
+                    ("Page bookmarks", "G"),
+                    ("Edit page note", "I"),
+                    ("Page notes", "A"),
+                    ("Export notes to Markdown", "E"),
+                    ("Reading statistics", "S"),
+                    ("Go to page number", "O"),
+                    ("Change borders", "U"),
                 ];
                 let offset = focus
                     .saturating_add(1)
                     .saturating_sub(usize::from(inner.height));
-                for (i, label) in labels
+                for (i, (label, shortcut)) in labels
                     .iter()
                     .skip(offset)
                     .enumerate()
                     .take(inner.height as usize)
                 {
                     let r = Rect::new(inner.x, inner.y + i as u16, inner.width, 1);
+                    let style = if i + offset == focus {
+                        ratatui::style::Style::new().reversed()
+                    } else {
+                        Default::default()
+                    };
+                    let key_width = r.width.min(5);
                     f.render_widget(
-                        Paragraph::new(*label).style(if i + offset == focus {
-                            ratatui::style::Style::new().reversed()
-                        } else {
-                            Default::default()
-                        }),
-                        r,
+                        Paragraph::new(*label).style(style),
+                        Rect::new(r.x, r.y, r.width - key_width, 1),
+                    );
+                    f.render_widget(
+                        Paragraph::new(*shortcut).right_aligned().style(style),
+                        Rect::new(r.right() - key_width, r.y, key_width, 1),
                     );
                     hits.push((r, i + offset));
                 }
@@ -294,10 +301,11 @@ pub fn read_server(
                     continue;
                 }
                 KeyCode::Down | KeyCode::Tab if menu => {
-                    focus = (focus + 1).min(24);
+                    focus = (focus + 1).min(25);
                     continue;
                 }
                 KeyCode::Enter if menu => focus,
+                KeyCode::Char('u' | 'U') => 25,
                 KeyCode::Char('b' | 'B') => 18,
                 KeyCode::Char('g' | 'G') => 19,
                 KeyCode::Char('i' | 'I') => 20,
@@ -335,7 +343,7 @@ pub fn read_server(
                     continue;
                 }
                 MouseEventKind::ScrollDown if menu => {
-                    focus = (focus + 1).min(24);
+                    focus = (focus + 1).min(25);
                     continue;
                 }
                 MouseEventKind::ScrollUp if crop.level > 0 => 12,
@@ -404,6 +412,12 @@ pub fn read_server(
                 ) {
                     message = e.to_string();
                 }
+            }
+            25 => {
+                if let Err(e) = crate::appearance::cycle() {
+                    message = e.to_string();
+                }
+                continue;
             }
             24 => {
                 if let Some(count) = total

@@ -1,5 +1,7 @@
 //! Password sign-in, catalog navigation and reading individual files from BookOrbit.
 pub mod bookmarks;
+pub mod browse;
+pub mod dashboard;
 mod model;
 pub mod progress;
 mod session;
@@ -22,6 +24,10 @@ pub type Result<T> = std::result::Result<T, Box<dyn Error + Send + Sync>>;
 
 pub fn is_unauthorized(err: &(dyn Error + 'static)) -> bool {
     has_status(err, StatusCode::UNAUTHORIZED)
+}
+
+pub fn missing_route(err: &(dyn Error + 'static)) -> bool {
+    has_status(err, StatusCode::NOT_FOUND) || has_status(err, StatusCode::METHOD_NOT_ALLOWED)
 }
 
 pub fn is_forbidden(err: &(dyn Error + 'static)) -> bool {

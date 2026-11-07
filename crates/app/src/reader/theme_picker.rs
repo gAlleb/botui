@@ -58,7 +58,7 @@ impl Picker {
         let style = self.preview().style();
         f.render_widget(Clear, popup);
         let block = if popup.height >= 5 && popup.width >= 16 {
-            Block::bordered().title(" Reader theme ")
+            crate::appearance::block().title(" Reader theme ")
         } else {
             Block::new()
         }
