@@ -53,6 +53,7 @@ pub(super) fn read_book(reader: impl Read + Seek, fallback: &str) -> Result<Docu
     let mut blocks = Vec::<Block>::new();
     let mut starts = HashMap::new();
     let mut ids = HashMap::new();
+    let mut raw = vec![];
     for item in spine
         .children()
         .filter(|n| tag(*n, "itemref") && n.attribute("linear") != Some("no"))
@@ -77,9 +78,12 @@ pub(super) fn read_book(reader: impl Read + Seek, fallback: &str) -> Result<Docu
         let html = read_member(&mut archive, &member, &mut remaining)?;
         let start = blocks.len();
         starts.insert(member.clone(), start);
-        for (id, block) in xhtml::append_blocks(&html, &mut blocks) {
+        let mut links = vec![];
+        for (id, block) in xhtml::append_blocks(&html, &mut blocks, &mut links) {
             ids.entry((member.clone(), id)).or_insert(block);
         }
+        let member: std::sync::Arc<str> = member.into();
+        raw.extend(links.into_iter().map(|v| (member.clone(), v)));
         super::locations::epub(&html, &spine_path, start, &blocks[start..], &mut locations);
     }
     if blocks.is_empty() {
@@ -112,7 +116,73 @@ pub(super) fn read_book(reader: impl Read + Seek, fallback: &str) -> Result<Docu
             }
         }
     }
+    use botui_core::{Anchor, Reference, Target};
+    let resources: HashMap<_, _> = items
+        .values()
+        .filter_map(|n| {
+            Some((
+                member_path(&package_path, n.attribute("href")?).ok()?,
+                n.attribute("media-type")?,
+            ))
+        })
+        .collect();
+    let references = raw
+        .into_iter()
+        .filter_map(|(base, link)| {
+            let label = if link.label.trim().is_empty() {
+                link.href
+                    .rsplit('/')
+                    .next()
+                    .unwrap_or(&link.href)
+                    .to_owned()
+            } else {
+                link.label
+            };
+            let target = if super::resources::web(&link.href) && !link.image {
+                Target::Web(link.href)
+            } else {
+                let (part, id) = link.href.split_once('#').unwrap_or((&link.href, ""));
+                let member = if part.is_empty() {
+                    base.to_string()
+                } else {
+                    member_path(&base, part).ok()?
+                };
+                let id = percent_decode_str(id).decode_utf8().ok()?.into_owned();
+                let mime = resources.get(&member)?;
+                if link.image || mime.starts_with("image/") {
+                    if !mime.starts_with("image/") {
+                        return None;
+                    }
+                    Target::Image(member)
+                } else if !matches!(*mime, "application/xhtml+xml" | "text/html") {
+                    return None;
+                } else if let Some(block) = if id.is_empty() {
+                    starts.get(&member)
+                } else {
+                    ids.get(&(member.clone(), id.clone()))
+                }
+                .filter(|&&b| b < blocks.len())
+                {
+                    Target::Passage(Anchor {
+                        block: *block,
+                        byte: 0,
+                    })
+                } else {
+                    Target::Supplement {
+                        member,
+                        fragment: id,
+                    }
+                }
+            };
+            Some(Reference {
+                source: link.block.min(blocks.len() - 1),
+                label,
+                target,
+            })
+        })
+        .collect();
     Ok(Document {
+        references,
         contents,
         title,
         blocks,

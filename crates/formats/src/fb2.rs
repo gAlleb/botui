@@ -44,13 +44,38 @@ pub(super) fn parse(bytes: &[u8], fallback: &str) -> Result<Document> {
         .unwrap_or_else(|| clean(fallback));
     let mut locations = botui_core::Locations::default();
     let mut blocks = Vec::new();
+    let mut raw = vec![];
+    let mut ids = std::collections::HashMap::new();
+    let mut note_targets = std::collections::HashMap::new();
     for body in root.children().filter(|n| n.has_tag_name("body")) {
         if matches!(body.attribute("name"), Some(name) if name.eq_ignore_ascii_case("notes") || name.eq_ignore_ascii_case("comments"))
         {
+            for section in body.descendants().filter(|n| n.has_tag_name("section")) {
+                if let Some(id) = section.attribute("id") {
+                    note_targets.insert(id, section);
+                }
+            }
             continue;
         }
         let paths = super::locations::FbPaths::new(body);
         for node in body.descendants().filter(|n| n.is_element()) {
+            if let Some(id) = node.attribute("id") {
+                ids.insert(id, blocks.len());
+            }
+            if matches!(node.tag_name().name(), "a" | "image") {
+                if let Some(attr) = node.attributes().find(|a| a.name() == "href") {
+                    let parent_is_block = node.ancestors().skip(1).any(|n| {
+                        n.has_tag_name("p") || n.has_tag_name("v") || n.has_tag_name("subtitle")
+                    });
+                    let block = if parent_is_block {
+                        blocks.len().saturating_sub(1)
+                    } else {
+                        blocks.len()
+                    };
+                    raw.push((block, node.has_tag_name("image"), text(node), attr.value()));
+                }
+                continue;
+            }
             let heading = match node.tag_name().name() {
                 "title"
                     if !node
@@ -81,7 +106,45 @@ pub(super) fn parse(bytes: &[u8], fallback: &str) -> Result<Document> {
     if blocks.is_empty() {
         return Err(invalid("No readable text in this FB2").into());
     }
+    use botui_core::{Anchor, Reference, Target};
+    let references = raw
+        .into_iter()
+        .filter_map(|(source, image, label, href)| {
+            let label = if label.is_empty() {
+                href.trim_start_matches('#').into()
+            } else {
+                label
+            };
+            let target = if let Some(id) = href.strip_prefix('#') {
+                if image {
+                    Target::Image(id.into())
+                } else if let Some(n) = note_targets.get(id) {
+                    let parts: Vec<_> = n
+                        .descendants()
+                        .filter(|n| n.has_tag_name("p"))
+                        .map(text)
+                        .collect();
+                    Target::Note(parts.join("\n\n"))
+                } else {
+                    Target::Passage(Anchor {
+                        block: *ids.get(id)?,
+                        byte: 0,
+                    })
+                }
+            } else if super::resources::web(href) && !image {
+                Target::Web(href.into())
+            } else {
+                return None;
+            };
+            Some(Reference {
+                source: source.min(blocks.len() - 1),
+                label,
+                target,
+            })
+        })
+        .collect();
     Ok(Document {
+        references,
         contents: vec![],
         title,
         blocks,

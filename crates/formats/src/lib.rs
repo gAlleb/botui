@@ -5,6 +5,8 @@ mod epub;
 pub use cover::cover;
 mod fb2;
 mod locations;
+mod resources;
+pub use resources::{illustration, supplement};
 #[cfg(test)]
 mod tests;
 mod toc;

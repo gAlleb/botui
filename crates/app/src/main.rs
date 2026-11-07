@@ -9,6 +9,7 @@ mod reader;
 mod scan;
 mod settings;
 mod shelf;
+mod stats;
 mod theme;
 
 use std::env;

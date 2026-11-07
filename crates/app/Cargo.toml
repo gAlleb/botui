@@ -10,7 +10,7 @@ botui-core = { path = "../core" }
 botui-formats = { path = "../formats" }
 botui-store = { path = "../store" }
 crossterm = "0.29"
-ratatui = { version = "0.30.2", default-features = false, features = ["crossterm_0_29"] }
+ratatui = { version = "0.30.2", default-features = false, features = ["crossterm_0_29","unstable-rendered-line-info"] }
 botui-bookorbit = { path = "../bookorbit" }
 tempfile = "3"
 serde = { version = "1", features = ["derive"] }

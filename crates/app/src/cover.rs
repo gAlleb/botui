@@ -59,6 +59,12 @@ impl Picture {
     }
 
     pub fn cover(bytes: Vec<u8>) -> Option<Self> {
+        Self::decode(bytes, 240, 360)
+    }
+    pub fn illustration(bytes: Vec<u8>) -> Option<Self> {
+        Self::decode(bytes, 2048, 2048)
+    }
+    fn decode(bytes: Vec<u8>, width: u32, height: u32) -> Option<Self> {
         let mut decoder = ImageReader::new(Cursor::new(bytes))
             .with_guessed_format()
             .ok()?;
@@ -67,7 +73,7 @@ impl Picture {
         limits.max_image_height = Some(4096);
         limits.max_alloc = Some(32 << 20);
         decoder.limits(limits);
-        Some(Self::new(decoder.decode().ok()?.thumbnail(240, 360)))
+        Some(Self::new(decoder.decode().ok()?.thumbnail(width, height)))
     }
 
     pub fn draw(&self, frame: &mut Frame, area: Rect, picker: &Picker) {

@@ -54,7 +54,17 @@ fn flush(buffer: &mut String, is_heading: bool, blocks: &mut Vec<Block>) {
     buffer.clear();
 }
 
-pub(super) fn append_blocks(html: &str, blocks: &mut Vec<Block>) -> Vec<(String, usize)> {
+pub(super) struct RawLink {
+    pub block: usize,
+    pub image: bool,
+    pub label: String,
+    pub href: String,
+}
+pub(super) fn append_blocks(
+    html: &str,
+    blocks: &mut Vec<Block>,
+    links: &mut Vec<RawLink>,
+) -> Vec<(String, usize)> {
     let dom = Html::parse_document(html);
     let Some(body) = dom
         .root_element()
@@ -81,6 +91,29 @@ pub(super) fn append_blocks(html: &str, blocks: &mut Vec<Block>) -> Vec<(String,
                         || el.attr("hidden").is_some()
                     {
                         hidden = Some(node.id());
+                    } else if matches!(name, "a" | "img") {
+                        let image = name == "img";
+                        if let Some(href) = el
+                            .attr(if image { "src" } else { "href" })
+                            .filter(|v| !v.trim().is_empty())
+                        {
+                            let label = if image {
+                                el.attr("alt")
+                                    .or_else(|| el.attr("title"))
+                                    .unwrap_or("")
+                                    .to_owned()
+                            } else {
+                                scraper::ElementRef::wrap(node)
+                                    .map(|e| clean(&e.text().collect::<String>()))
+                                    .unwrap_or_default()
+                            };
+                            links.push(RawLink {
+                                block: blocks.len(),
+                                image,
+                                label,
+                                href: href.to_owned(),
+                            });
+                        }
                     } else if boundary(name) {
                         flush(&mut buffer, is_heading, blocks);
                         if heading(name) {

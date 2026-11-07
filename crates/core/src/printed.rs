@@ -41,19 +41,7 @@ pub(super) fn wrap(lines: &mut Vec<PageLine>, blocks: &[Block], start: usize, wi
         wrap_block(lines, &blocks[0], start, width);
         return;
     }
-    let mut text = String::new();
-    let mut offsets = Vec::new();
-    for (i, block) in blocks.iter().enumerate() {
-        if i > 0 {
-            if split_word(&text, &block.text) {
-                text.pop();
-            } else {
-                text.push(' ');
-            }
-        }
-        offsets.push(text.len());
-        text.push_str(&block.text);
-    }
+    let (text, offsets) = join(blocks);
     let before = lines.len();
     wrap_block(
         lines,
@@ -72,4 +60,33 @@ pub(super) fn wrap(lines: &mut Vec<PageLine>, blocks: &[Block], start: usize, wi
             byte: byte - offsets[i],
         };
     }
+}
+
+pub(super) fn join(blocks: &[Block]) -> (String, Vec<usize>) {
+    let mut text = String::new();
+    let mut offsets = Vec::new();
+    for (i, block) in blocks.iter().enumerate() {
+        if i > 0 {
+            if split_word(&text, &block.text) {
+                text.pop();
+            } else {
+                text.push(' ');
+            }
+        }
+        offsets.push(text.len());
+        text.push_str(&block.text);
+    }
+    (text, offsets)
+}
+
+pub(super) fn end(blocks: &[Block], printed: &[bool], start: usize) -> usize {
+    let mut end = start;
+    while end + 1 < printed.len()
+        && printed[end]
+        && printed[end + 1]
+        && continues(&blocks[end], &blocks[end + 1])
+    {
+        end += 1;
+    }
+    end
 }

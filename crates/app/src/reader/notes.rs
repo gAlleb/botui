@@ -5,7 +5,7 @@ use std::{
     io::{self, Write},
     path::PathBuf,
 };
-pub fn export(doc: &Document, notes: &[Note]) -> io::Result<PathBuf> {
+pub fn export(title: &str, doc: Option<&Document>, notes: &[Note]) -> io::Result<PathBuf> {
     if notes.is_empty() {
         return Err(io::Error::other("This book has no notes to export"));
     }
@@ -15,10 +15,13 @@ pub fn export(doc: &Document, notes: &[Note]) -> io::Result<PathBuf> {
         .prefix("Reading notes - ")
         .suffix(".md")
         .tempfile_in(dir)?;
-    writeln!(file, "# {}\n", doc.title)?;
+    writeln!(file, "# {title}\n")?;
     for note in notes {
         let a = note.anchor();
-        if let Some(block) = doc.blocks.get(a.block) {
+        if doc.is_none() {
+            writeln!(file, "## Page {}\n", a.block.saturating_add(1))?;
+        }
+        if let Some(block) = doc.and_then(|d| d.blocks.get(a.block)) {
             let quote = block
                 .text
                 .get(a.byte..)

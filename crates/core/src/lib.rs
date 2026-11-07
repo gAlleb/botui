@@ -2,12 +2,17 @@
 
 mod location;
 mod printed;
+mod reference;
+pub use reference::{Reference, Target};
+mod search;
 pub use location::{Locations, Run};
+pub use search::SearchIndex;
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 
 #[derive(Clone, Debug, Default)]
 pub struct Document {
+    pub references: Vec<Reference>,
     pub contents: Vec<(Anchor, String)>,
     pub locations: Locations,
     pub title: String,
@@ -186,14 +191,7 @@ fn wrap_document(doc: &Document, width: u16, printed: &[bool]) -> Vec<PageLine> 
     }
     let mut start = 0;
     while start < doc.blocks.len() {
-        let mut end = start;
-        while end + 1 < printed.len()
-            && printed[end]
-            && printed[end + 1]
-            && printed::continues(&doc.blocks[end], &doc.blocks[end + 1])
-        {
-            end += 1;
-        }
+        let end = printed::end(&doc.blocks, printed, start);
         let block = &doc.blocks[end];
         let before = lines.len();
         printed::wrap(
@@ -289,6 +287,7 @@ mod tests {
     fn document(paragraphs: &[&str]) -> Document {
         Document {
             title: "Книга".into(),
+            references: vec![],
             contents: vec![],
             locations: Locations::default(),
             blocks: paragraphs

@@ -1,4 +1,5 @@
 //! A fixed page is addressed by its printed page index, never by a text offset.
+mod annotations;
 mod contents;
 mod pages;
 use crate::{
@@ -68,6 +69,8 @@ pub fn read_server(
     if let Some(page) = base.and_then(|p| p.text.page) {
         n = page.max(1);
     }
+    let opened = std::time::Instant::now();
+    let mut marks = saved.as_ref().map(|s| s.marks.clone()).unwrap_or_default();
     let start = n;
     let mut spread = saved.is_some_and(|s| s.spread);
     let mut search_job: Option<crate::shelf::background::Ticket<io::Result<Vec<u32>>>> = None;
@@ -236,6 +239,13 @@ pub fn read_server(
                     "Toggle opaque background  F",
                     "Find in text layer        /",
                     "Next matching page        N",
+                    "Toggle page bookmark      B",
+                    "Page bookmarks            G",
+                    "Edit page note            I",
+                    "Page notes                A",
+                    "Export notes to Markdown  E",
+                    "Reading statistics        S",
+                    "Go to page number         O",
                 ];
                 let offset = focus
                     .saturating_add(1)
@@ -284,10 +294,17 @@ pub fn read_server(
                     continue;
                 }
                 KeyCode::Down | KeyCode::Tab if menu => {
-                    focus = (focus + 1).min(17);
+                    focus = (focus + 1).min(24);
                     continue;
                 }
                 KeyCode::Enter if menu => focus,
+                KeyCode::Char('b' | 'B') => 18,
+                KeyCode::Char('g' | 'G') => 19,
+                KeyCode::Char('i' | 'I') => 20,
+                KeyCode::Char('a' | 'A') => 21,
+                KeyCode::Char('e' | 'E') => 22,
+                KeyCode::Char('s' | 'S') => 23,
+                KeyCode::Char('o' | 'O') => 24,
                 KeyCode::Char('/') => 16,
                 KeyCode::Char('n' | 'N') => 17,
                 KeyCode::Char('z' | 'Z') => 14,
@@ -318,7 +335,7 @@ pub fn read_server(
                     continue;
                 }
                 MouseEventKind::ScrollDown if menu => {
-                    focus = (focus + 1).min(17);
+                    focus = (focus + 1).min(24);
                     continue;
                 }
                 MouseEventKind::ScrollUp if crop.level > 0 => 12,
@@ -362,6 +379,51 @@ pub fn read_server(
             11 => crop.x = crop.x.saturating_add(64),
             12 => crop.y = crop.y.saturating_sub(64),
             13 => crop.y = crop.y.saturating_add(64),
+            18..=22 => {
+                if let Some(store) = store.as_ref() {
+                    match annotations::open(term, action, store, path, n, &mut marks) {
+                        Ok((page, msg)) => {
+                            if let Some(page) = page {
+                                n = page.min(total.unwrap_or(page)).max(1);
+                            }
+                            message = msg;
+                            dirty |= action == 18;
+                        }
+                        Err(e) => message = e.to_string(),
+                    }
+                } else {
+                    message = "Local reading state unavailable".into();
+                }
+            }
+            23 => {
+                if let Err(e) = crate::stats::show(
+                    term,
+                    store.as_ref(),
+                    opened,
+                    total.map_or(0., |v| f64::from(n) * 100. / f64::from(v)),
+                ) {
+                    message = e.to_string();
+                }
+            }
+            24 => {
+                if let Some(count) = total
+                    && let Some(input) = crate::prompt::edit(
+                        term,
+                        &format!("Go to page · 1–{count}"),
+                        "[ Go ↵ ]",
+                        "",
+                        |_| {},
+                    )?
+                {
+                    if let Ok(page) = input.parse::<u32>()
+                        && (1..=count).contains(&page)
+                    {
+                        n = page;
+                    } else {
+                        message = format!("Enter a page from 1 to {count}");
+                    }
+                }
+            }
             16 => {
                 if let Some(text) =
                     crate::prompt::edit(term, "Find in text layer", "[ Search ↵ ]", &query, |_| {})?
@@ -402,6 +464,7 @@ pub fn read_server(
         menu = false;
         dirty |= old != (n, spread);
     }
+    crate::stats::finish(store.as_ref(), opened, notices);
     if dirty
         && let Some(store) = store
         && let Err(e) = store.save(&Saved {
@@ -412,7 +475,7 @@ pub fn read_server(
             spread,
             theme: "terminal".into(),
             margin: 0,
-            marks: vec![],
+            marks,
         })
     {
         notices.push(e.to_string());

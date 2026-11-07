@@ -111,6 +111,8 @@ def check(tmp):
         assert record["spread"] and record["theme"] == "sepia-dark" and record["margin"] == 1 and record["block"] > 0, record
         open_book()
         wait_for("Возврат на прочитанное место", lambda s: s == page)
+        keys("s");wait_for("Statistics persist across sessions",lambda s:"Sessions on this device  2" in s)
+        keys("Escape");wait_for("Return from statistics",lambda s:"Total time book open" not in s)
         close_book()
     finally:
         tmux("kill-server", required=False)

@@ -24,6 +24,7 @@ pub(super) enum Edit {
     Erase,
 }
 pub(super) struct Navigation {
+    pub(super) index: Option<botui_core::SearchIndex>,
     kind: Kind,
     query: String,
     items: Vec<(Anchor, String)>,
@@ -53,6 +54,7 @@ impl Navigation {
         let state = ListState::default().with_selected((!items.is_empty()).then_some(i));
         Self {
             kind,
+            index: None,
             unavailable: vec![],
             items,
             state,
@@ -200,7 +202,7 @@ impl Navigation {
             _ => None,
         }
     }
-    pub fn edit(&mut self, doc: &Document, e: Edit) -> Option<Anchor> {
+    pub fn edit(&mut self, e: Edit) -> Option<Anchor> {
         match e {
             Edit::Choose(i) => return self.items.get(i).map(|v| v.0),
             Edit::Move(d) => {
@@ -212,39 +214,29 @@ impl Navigation {
                 }
                 return None;
             }
-            Edit::Type(c) if self.query.len() < 256 => self.query.push(c),
+            Edit::Type(c) if self.query.chars().count() < 256 => self.query.push(c),
             Edit::Erase => {
                 self.query.pop();
             }
             _ => return None,
         }
-        self.items.clear();
-        if !self.query.is_empty() {
-            let q = self.query.to_lowercase();
-            for (i, b) in doc.blocks.iter().enumerate() {
-                let lower = b.text.to_lowercase();
-                if let Some(pos) = lower.find(&q) {
-                    // Unicode lowercasing may change UTF-8 lengths (İ etc).
-                    let byte = b
-                        .text
-                        .char_indices()
-                        .scan(0, |offset, (idx, c)| {
-                            let start = *offset;
-                            *offset += c.to_lowercase().map(char::len_utf8).sum::<usize>();
-                            Some((start, idx))
-                        })
-                        .take_while(|(s, _)| *s <= pos)
-                        .last()
-                        .map_or(0, |(_, i)| i);
-                    self.items.push((
-                        Anchor { block: i, byte },
-                        b.text[byte..].chars().take(120).collect(),
-                    ));
-                }
-            }
-        }
-        self.state = ListState::default().with_selected((!self.items.is_empty()).then_some(0));
+        self.refresh_results();
         None
+    }
+    pub fn paste(&mut self, value: &str) {
+        if self.kind == Kind::Search {
+            let room = 256usize.saturating_sub(self.query.chars().count());
+            self.query
+                .extend(value.chars().filter(|c| !c.is_control()).take(room));
+            self.refresh_results();
+        }
+    }
+    fn refresh_results(&mut self) {
+        self.items = self
+            .index
+            .as_ref()
+            .map_or_else(Vec::new, |index| index.find(&self.query));
+        self.state = ListState::default().with_selected((!self.items.is_empty()).then_some(0));
     }
 }
 

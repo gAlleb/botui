@@ -1,6 +1,7 @@
 pub(crate) mod bookmarks;
 mod navigation;
-mod notes;
+pub(crate) mod notes;
+mod resources;
 mod theme_picker;
 use navigation::{Edit, Kind};
 
@@ -48,6 +49,8 @@ enum Action {
     JumpForward,
     Note,
     Export,
+    Statistics,
+    Resources,
     Resume,
     Previous,
     Next,
@@ -65,7 +68,7 @@ enum Action {
     Resize,
 }
 
-const COMMANDS: [Action; 20] = [
+const COMMANDS: [Action; 22] = [
     Action::Resume,
     Action::Previous,
     Action::Next,
@@ -83,6 +86,8 @@ const COMMANDS: [Action; 20] = [
     Action::Note,
     Action::Navigate(Kind::Notes),
     Action::Export,
+    Action::Statistics,
+    Action::Resources,
     Action::JumpBack,
     Action::JumpForward,
     Action::Close,
@@ -364,6 +369,11 @@ impl Reader {
             "   Edit passage note       N".into(),
             "   Reading notes           A".into(),
             "   Export notes to Markdown E".into(),
+            "   Reading statistics      S".into(),
+            format!(
+                "   Links & illustrations ({})  I",
+                self.doc.references.len()
+            ),
             "   Jump back              ,".into(),
             "   Jump forward           .".into(),
             "   Close book              Q".into(),
@@ -434,6 +444,8 @@ impl Reader {
                     self.bindings.get(&c).copied()
                 }
                 KeyCode::Char('n' | 'N') => Some(Action::Note),
+                KeyCode::Char('i' | 'I') => Some(Action::Resources),
+                KeyCode::Char('s' | 'S') => Some(Action::Statistics),
                 KeyCode::Char('a' | 'A') => Some(Action::Navigate(Kind::Notes)),
                 KeyCode::Char('e' | 'E') => Some(Action::Export),
                 KeyCode::Char(',') => Some(Action::JumpBack),
@@ -542,7 +554,7 @@ impl Reader {
             Action::Focus => self.sidebar_focus = !self.sidebar_focus,
             Action::Sidebar(edit) => {
                 self.sidebar_focus = true;
-                if let Some(pos) = self.sidebar.edit(&self.doc, edit) {
+                if let Some(pos) = self.sidebar.edit(edit) {
                     self.jump_to(pos);
                     self.dirty = true;
                     self.sidebar_focus = false;
@@ -559,16 +571,16 @@ impl Reader {
             }
             Action::Navigate(kind) => {
                 self.menu = None;
-                self.nav = Some(navigation::Navigation::new(
-                    kind,
-                    &self.doc,
-                    self.pager.anchor(),
-                    &self.marks,
-                ));
+                let mut nav =
+                    navigation::Navigation::new(kind, &self.doc, self.pager.anchor(), &self.marks);
+                if kind == Kind::Search {
+                    nav.index = Some(self.pager.search_index(&self.doc));
+                }
+                self.nav = Some(nav);
             }
             Action::NavEdit(Edit::Back) => self.nav = None,
             Action::NavEdit(e) => {
-                if let Some(place) = self.nav.as_mut().and_then(|n| n.edit(&self.doc, e)) {
+                if let Some(place) = self.nav.as_mut().and_then(|n| n.edit(e)) {
                     self.jump_to(place);
                     self.dirty = true;
                     self.nav = None;
@@ -651,7 +663,12 @@ impl Reader {
                     picker.edit(edit);
                 }
             }
-            Action::Note | Action::Export | Action::Resize | Action::Close => (),
+            Action::Resources
+            | Action::Statistics
+            | Action::Note
+            | Action::Export
+            | Action::Resize
+            | Action::Close => {}
         }
     }
 
@@ -696,6 +713,11 @@ fn bindings() -> io::Result<std::collections::HashMap<char, Action>> {
                 "menu" => Action::Menu,
                 "zen" => Action::Zen,
                 "background" => Action::Background,
+                "resources" => Action::Resources,
+                "statistics" => Action::Statistics,
+                "note" => Action::Note,
+                "notes" => Action::Navigate(Kind::Notes),
+                "export-notes" => Action::Export,
                 "jump-back" => Action::JumpBack,
                 "jump-forward" => Action::JumpForward,
                 "theme" => Action::Theme,
@@ -767,6 +789,7 @@ pub fn read_server(
             notices.push("BookOrbit has no exact text location. Using the local position.".into());
         }
     }
+    let opened = Instant::now();
     let start = reader.pager.anchor();
     let mut last_save = Instant::now();
     let result: io::Result<()> = (|| {
@@ -783,7 +806,14 @@ pub fn read_server(
                         last_save = Instant::now();
                     }
                 }
-                if let Some(action) = reader.input(event::read()?) {
+                let e = event::read()?;
+                if let Event::Paste(value) = &e
+                    && let Some(nav) = reader.nav.as_mut()
+                {
+                    nav.paste(value);
+                    break Action::Resize;
+                }
+                if let Some(action) = reader.input(e) {
                     break action;
                 }
             };
@@ -815,7 +845,7 @@ pub fn read_server(
                             }
                         }
                         Action::Export => {
-                            let path = notes::export(&reader.doc, &notes)?;
+                            let path = notes::export(&reader.doc.title, Some(&reader.doc), &notes)?;
                             notices.push(format!("Saved {}", path.display()));
                             reader.apply(Action::Menu);
                         }
@@ -831,6 +861,33 @@ pub fn read_server(
                 if let Err(e) = action_result {
                     notices.push(e.to_string());
                     reader.menu = Some(ListState::default().with_selected(Some(0)));
+                }
+                continue;
+            }
+            if action == Action::Resources {
+                reader.menu = None;
+                match resources::open(term, path, &reader.doc, reader.pager.anchor()) {
+                    Ok(Some(a)) => {
+                        reader.jump_to(a);
+                        reader.dirty = true;
+                    }
+                    Ok(None) => (),
+                    Err(e) => {
+                        notices.push(e.to_string());
+                        reader.menu = Some(ListState::default().with_selected(Some(0)));
+                    }
+                }
+                continue;
+            }
+            if action == Action::Statistics {
+                reader.menu = None;
+                if let Err(e) = crate::stats::show(
+                    term,
+                    state.as_ref(),
+                    opened,
+                    reader.doc.text_percentage(reader.pager.anchor()),
+                ) {
+                    notices.push(e.to_string());
                 }
                 continue;
             }
@@ -880,6 +937,7 @@ pub fn read_server(
         Ok(())
     })();
     reader.flush(&mut state, notices);
+    crate::stats::finish(state.as_ref(), opened, notices);
     result?;
     let a = reader.pager.anchor();
     let percent = reader.doc.text_percentage(a);

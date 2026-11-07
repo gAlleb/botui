@@ -1,9 +1,11 @@
 //! Device-local resume points. A display anchor is never a BookOrbit CFI.
 mod notes;
+mod stats;
 use botui_core::Anchor;
 pub use notes::Note;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+pub use stats::Stats;
 use std::{
     env, fs, io,
     path::{Path, PathBuf},

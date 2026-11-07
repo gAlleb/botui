@@ -75,6 +75,11 @@ def scan(tmp,path):
         t.keys('+');t.wait('Увеличенная страница',lambda s:'▄' in s or '▀' in s);t.keys('Down','-');t.keys('m');t.see('2 / 3');t.click('Two-page spread',t.see('Two-page spread'))
         t.wait('Возврат из меню в разворот',lambda s:'Two-page spread' not in s and ('▀' in s or '▄' in s))
         t.keys('Home','/');t.see('Find in text layer');t.type('lighthouse');t.keys('Enter');t.see('1 matching page')
+        t.keys('b');t.see('Page bookmarked');t.keys('i');t.see('Page note');t.type('Watch the lighthouse');t.keys('Enter')
+        t.keys('Home','g');t.see('Page bookmarks');t.see('Page 2');t.keys('Enter')
+        t.keys('a');t.see('Watch the lighthouse');t.keys('Enter','e');t.see('Saved ')
+        exports=tmp/'.local/share/botui/exports';assert any('## Page 2' in p.read_text() and 'Watch the lighthouse' in p.read_text() for p in exports.glob('*.md'))
+        t.keys('s');t.see('Total time book open');t.keys('Escape');t.wait('Statistics closed',lambda s:'Total time book open' not in s)
         t.keys('m');t.see('2 / 3');t.keys('q')
         import time
         for _ in range(100):
@@ -82,7 +87,7 @@ def scan(tmp,path):
             time.sleep(.025)
     finally:t.run('kill-server',required=False)
     t=Term(tmp,path)
-    try:t.see('P Read');t.keys('p');t.wait('Восстановление скана',lambda s:'▀' in s or '▄' in s);t.keys('m');t.see('2 / 3')
+    try:t.see('P Read');t.keys('p');t.wait('Восстановление скана',lambda s:'▀' in s or '▄' in s);t.keys('g');t.see('Page bookmarks');t.see('Page 2');t.keys('Enter');t.keys('s');frame=t.see('Sessions on this device');assert 'Sessions on this device  2' in frame,frame
     finally:t.run('kill-server',required=False)
 
 if __name__=='__main__':
