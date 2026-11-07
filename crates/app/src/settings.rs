@@ -78,9 +78,17 @@ pub(crate) fn scan_colors() -> ([u8; 3], [u8; 3]) {
         Some(Color::Rgb(r, g, b)) => Some([r, g, b]),
         _ => None,
     };
-    let (fg, bg, _) = interface_palette().colors();
-    let bg = rgb(t.bg).or(rgb(Some(bg))).unwrap_or([30, 30, 46]);
-    let fg = rgb(t.fg).or(rgb(Some(fg))).unwrap_or([222, 224, 230]);
+    let index = SHELL_THEME.get();
+    let (ink, fallback, _) = crate::shell_theme::ALL[index].colors();
+    // The same surface that paint_with places behind the sheet. In transparent
+    // mode the cells keep SGR default, so use the emulator's actual background.
+    let surface = if opaque() {
+        Some(solid_surface(index))
+    } else {
+        t.bg
+    };
+    let bg = rgb(surface).or(rgb(Some(fallback))).unwrap_or([30, 30, 46]);
+    let fg = rgb(if index == 0 { t.fg } else { Some(ink) }).unwrap_or([222, 224, 230]);
     let lum = |v: [u8; 3]| {
         let [r, g, b] = v.map(|c| {
             let f = f64::from(c) / 255.;
@@ -291,19 +299,23 @@ pub(crate) fn interface_palette() -> crate::shell_theme::Palette {
 pub fn paint_interface(frame: &mut Frame) {
     paint_with(frame, SHELL_THEME.get());
 }
+fn solid_surface(index: usize) -> Color {
+    let term = TERMINAL.get();
+    let color = if index == 0 {
+        SOLID_COLOR.get().or(term.bg).unwrap_or(Color::Rgb(0, 0, 0))
+    } else {
+        crate::shell_theme::ALL[index].colors().1
+    };
+    term.solid(color)
+}
 fn paint_with(frame: &mut Frame, index: usize) {
     let solid = opaque();
     if !solid && index == 0 {
         return;
     }
     let term = TERMINAL.get();
-    let (fg, bg, accent) = crate::shell_theme::ALL[index].colors();
-    let paper = if index == 0 {
-        SOLID_COLOR.get().or(term.bg).unwrap_or(Color::Black)
-    } else {
-        bg
-    };
-    let paper = term.solid(paper);
+    let (fg, _, accent) = crate::shell_theme::ALL[index].colors();
+    let paper = solid_surface(index);
     for cell in &mut frame.buffer_mut().content {
         if index != 0 {
             let named = |c| match c {

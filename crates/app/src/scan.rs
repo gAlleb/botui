@@ -7,6 +7,7 @@ mod history;
 mod menu;
 mod overlay;
 mod pages;
+mod paper;
 mod search;
 use crate::{
     AppTerminal, centered,
@@ -47,7 +48,7 @@ pub fn read_server(
     base: Option<&botui_bookorbit::progress::Progress>,
 ) -> io::Result<(Option<botui_bookorbit::progress::Move>, Option<f64>)> {
     let _uploads = crate::cover::ScanGraphics;
-    let picker = graphics();
+    let mut picker = graphics();
     let worker = Worker::new();
     let p = path.to_owned();
     let count_job = worker.start(move |cancel| botui_fixed::page_count(&p, kind, cancel));
@@ -199,10 +200,13 @@ pub fn read_server(
             .clamp(240, 1600);
         let side = (u32::from(side) * u32::from(crop.percent.max(100)) / 100).min(1920) as u16;
         let appearance = checkpoint.scan_appearance;
-        pages.configure(
-            appearance,
-            appearance.terminal_paper.then(crate::settings::scan_colors),
-        );
+        let paper = appearance
+            .terminal_paper
+            .then(|| paper::Paper::for_reader(picker.protocol_type()));
+        // A scaled page may end partway through a terminal cell. The block
+        // renderer drops alpha there, so pad that fraction with the same paper.
+        picker.set_background_color(paper.and_then(|p| p.cell_padding(picker.protocol_type())));
+        pages.configure(appearance, paper);
         pages.poll();
         let view = flow::Viewport {
             side,
@@ -342,6 +346,11 @@ pub fn read_server(
                         pages::draw_error(f, slot, page_number, error);
                     }
                 }
+            }
+            if let Some(paper) = paper
+                && paper.cell_background
+            {
+                paper.clear_cells(f, area);
             }
             if pages.get(shown, side).is_none()
                 && pages.error(shown, side).is_none()
@@ -673,7 +682,7 @@ pub fn read_server(
                     "{}° · {}",
                     u16::from(appearance.quarter_turns) * 90,
                     if appearance.terminal_paper {
-                        "Terminal paper"
+                        "Match background"
                     } else if appearance.inverted {
                         "Inverted colors"
                     } else {

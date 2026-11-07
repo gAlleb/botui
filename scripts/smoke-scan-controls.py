@@ -71,7 +71,7 @@ with tempfile.TemporaryDirectory(prefix="botui-width-") as tmp:
         term.keys("R")
         term.see("0° · Inverted colors")
         term.keys("v")
-        term.see("0° · Terminal paper")
+        term.see("0° · Match background")
         term.keys("v")
         term.see("0° · Original colors")
         scroll.stop(term)

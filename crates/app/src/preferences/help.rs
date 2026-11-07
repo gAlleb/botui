@@ -108,7 +108,7 @@ pub(super) fn entries(ctx: Context, p: &Settings) -> Vec<Entry> {
                         "r / Shift+R",
                         "Rotate the document clockwise / counterclockwise",
                     ),
-                    ("V", "Cycle original, inverted and terminal paper"),
+                    ("V", "Cycle original, inverted and match background"),
                     ("Home / End", "First / last page"),
                     ("/", "Find in the text layer"),
                     (

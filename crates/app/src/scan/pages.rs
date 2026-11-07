@@ -9,7 +9,7 @@ use image::DynamicImage;
 use lru::LruCache;
 use std::{io, num::NonZeroUsize, path::Path, sync::mpsc::TryRecvError};
 type Key = (u32, u16);
-type Ink = ([u8; 3], [u8; 3]);
+use super::paper::Paper;
 struct Lane {
     renderer: std::sync::Arc<std::sync::Mutex<botui_fixed::PageReader>>,
     worker: Worker,
@@ -17,7 +17,7 @@ struct Lane {
 }
 pub(super) struct Pages {
     appearance: ScanAppearance,
-    colors: Option<Ink>,
+    colors: Option<Paper>,
     lanes: [Lane; 2],
     last: u32,
     backward: bool,
@@ -40,7 +40,7 @@ impl Pages {
             cache: LruCache::new(NonZeroUsize::new(8).unwrap()),
         }
     }
-    pub fn configure(&mut self, appearance: ScanAppearance, colors: Option<Ink>) {
+    pub fn configure(&mut self, appearance: ScanAppearance, colors: Option<Paper>) {
         if self.appearance == appearance && self.colors == colors {
             return;
         }
@@ -149,7 +149,7 @@ impl Pages {
 fn apply_appearance(
     image: DynamicImage,
     appearance: ScanAppearance,
-    colors: Option<Ink>,
+    colors: Option<Paper>,
 ) -> DynamicImage {
     let mut image = match appearance.quarter_turns % 4 {
         1 => image.rotate90(),
@@ -157,29 +157,8 @@ fn apply_appearance(
         3 => image.rotate270(),
         _ => image,
     };
-    if let Some((bg, fg)) = colors {
-        let tone: [[u8; 3]; 256] = std::array::from_fn(|i| {
-            std::array::from_fn(|k| {
-                ((u32::from(fg[k]) * (255 - i as u32) + u32::from(bg[k]) * i as u32 + 127) / 255)
-                    as u8
-            })
-        });
-        let mut rgb = image.into_rgb8();
-        for pixel in rgb.pixels_mut() {
-            let [r, g, b] = pixel.0;
-            let saturation = r.max(g).max(b) - r.min(g).min(b);
-            if saturation >= 48 {
-                continue;
-            } // Keep colored diagrams and illustrations.
-            let grey =
-                (54 * usize::from(r) + 183 * usize::from(g) + 19 * usize::from(b) + 128) / 256;
-            let mapped = tone[grey];
-            let keep = u32::from(saturation.saturating_sub(12));
-            pixel.0 = std::array::from_fn(|k| {
-                ((u32::from(mapped[k]) * (36 - keep) + u32::from(pixel.0[k]) * keep) / 36) as u8
-            });
-        }
-        return DynamicImage::ImageRgb8(rgb);
+    if let Some(paper) = colors {
+        return paper.apply(image);
     }
     if appearance.inverted {
         image.invert();
