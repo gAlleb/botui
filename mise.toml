@@ -25,11 +25,14 @@ sha256sum -c SHA256SUMS
 """
 
 [tasks.install]
-description = "Install botui in ~/.local/bin (override with PREFIX)"
+description = "Install the host executable in ./dist (or PREFIX/bin if set)"
 depends = ["build"]
 run = """
 set -eu
-dest="${PREFIX:-$HOME/.local}/bin"
+dest=./dist
+if [ -n "${PREFIX:-}" ]; then
+  dest="$PREFIX/bin"
+fi
 mkdir -p "$dest"
 if ! test target/release/botui -ef "$dest/botui"; then
   install -m 755 target/release/botui "$dest/botui"
