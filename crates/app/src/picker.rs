@@ -578,6 +578,16 @@ impl Picker {
                         self.move_selection(step);
                         None
                     }
+                    KeyCode::Home | KeyCode::End => {
+                        if !self.entries.is_empty() {
+                            self.list.select(Some(if key.code == KeyCode::Home {
+                                0
+                            } else {
+                                self.entries.len() - 1
+                            }));
+                        }
+                        None
+                    }
                     KeyCode::PageUp => {
                         self.move_selection(-page);
                         None

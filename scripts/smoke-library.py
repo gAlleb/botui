@@ -75,6 +75,9 @@ def check(tmp):
             if t.run("has-session",required=False).returncode:
                 break
             time.sleep(.03)
+        t = shelf.Terminal(tmp, binary, args=["--resume"])
+        t.see("Z Zen");t.keys("q")
+        t.run("kill-server",required=False)
         settings = tomllib.loads((tmp / "config/botui/config.toml").read_text())
         assert settings["library_root"] == str(lib), settings
         t = shelf.Terminal(tmp, ROOT / "target/debug/botui", args=["--local"])

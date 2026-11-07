@@ -35,7 +35,7 @@ use ratatui::{Terminal, backend::CrosstermBackend, layout::Rect};
 type AppTerminal = Terminal<CrosstermBackend<io::Stdout>>;
 type Result<T> = std::result::Result<T, Box<dyn Error>>;
 
-const HELP: &str = "botui [FILE | DIRECTORY | --local [DIRECTORY] | --library DIRECTORY | --server URL | --opds URL]\n\nOpen a book or remember a local library folder. With no arguments, choose a source. F2 settings, ? shortcuts. Use --config-path to locate config.toml or --check-bookmarks TITLE to inspect server bookmarks without editing them.\nBookOrbit: 0 dashboard, 1 all books, 2 reading, 3 recent, 4 libraries, 5 collections, 6 authors, 7 series. / search, V grid/list, U borders.\nIn EPUB or FB2: 1/2/3 single/spread/scroll, arrows or wheel to read, W page layout, [/] width, {/} column gap, Z zen, O contents, T theme, F background, B/G bookmarks, M menu, Q close.\nPDF and DjVu: 1/2/3 single/spread/scroll, P go to page (Ctrl+G also works), / find text, N next match, +/- zoom, Z zen, G bookmarks.\n";
+const HELP: &str = "botui [FILE | DIRECTORY | --local [DIRECTORY] | --resume | --library DIRECTORY | --server URL | --opds URL]\n\nOpen a book or remember a local library folder. Use --resume for the last unfinished local book or offline download. With no arguments, choose a source. F2 settings, ? shortcuts. Use --config-path to locate config.toml or --check-bookmarks TITLE to inspect server bookmarks without editing them.\nBookOrbit: 0 dashboard, 1 all books, 2 reading, 3 recent, 4 libraries, 5 collections, 6 authors, 7 series. / search, V grid/list, U borders.\nIn EPUB or FB2: 1/2/3 single/spread/scroll, arrows or wheel to read, W page layout, [/] width, {/} column gap, Z zen, O contents, T theme, F background, B/G bookmarks, M menu, Q close.\nPDF and DjVu: 1/2/3 single/spread/scroll, P go to page (Ctrl+G also works), / find text, N next match, +/- zoom, Z zen, G bookmarks.\n";
 
 struct Screen;
 
@@ -87,6 +87,7 @@ enum Start {
     Opds(String),
     Local(Option<PathBuf>),
     File(PathBuf),
+    Resume,
     Help,
     ConfigPath,
     CheckBookmarks(String),
@@ -96,6 +97,7 @@ fn arguments() -> Result<Start> {
     let mut args = env::args_os().skip(1);
     let start = match args.next() {
         None => Start::Shelf(None),
+        Some(v) if v == "--resume" => Start::Resume,
         Some(v) if v == "--check-bookmarks" => Start::CheckBookmarks(
             args.next()
                 .ok_or("Supply a book title after --check-bookmarks")?
@@ -351,6 +353,13 @@ fn run() -> Result<()> {
         println!("{}", settings::path()?.display());
         return Ok(());
     }
+    let start = if matches!(start, Start::Resume) {
+        let entry = botui_store::HistoryEntry::last_unfinished()?
+            .ok_or("No unfinished local books. Open a file or choose a local library first.")?;
+        Start::File(entry.path)
+    } else {
+        start
+    };
     let path = match &start {
         Start::File(p) => Some(p.clone()),
         _ => None,

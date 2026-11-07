@@ -94,7 +94,13 @@ impl HistoryEntry {
         Ok(())
     }
     pub fn for_root(root: &Path) -> io::Result<Vec<Self>> {
-        let root = root.canonicalize()?;
+        Self::unfinished(Some(&root.canonicalize()?))
+    }
+    /// Only durable local paths are recorded; never reopen a server's temporary download.
+    pub fn last_unfinished() -> io::Result<Option<Self>> {
+        Ok(Self::unfinished(None)?.into_iter().next())
+    }
+    fn unfinished(root: Option<&Path>) -> io::Result<Vec<Self>> {
         let dir = state_dir()?.join("botui/history");
         let files = match fs::read_dir(dir) {
             Ok(v) => v,
@@ -106,7 +112,7 @@ impl HistoryEntry {
             .filter_map(|f| serde_json::from_reader(fs::File::open(f.path()).ok()?).ok())
             .filter(|v: &Self| {
                 v.percent < 100
-                    && v.path.starts_with(&root)
+                    && root.is_none_or(|r| v.path.starts_with(r))
                     && v.path.is_file()
                     && v.path.metadata().and_then(|m| m.modified()).ok() == v.modified
             })
