@@ -53,6 +53,7 @@ botui                                      # choose a source
 botui --library "$HOME/Books"              # remember a local library folder
 botui --local                              # reopen the saved folder
 botui "./examples/first-light.fb2"         # open a file directly
+botui --resume                             # continue your last unfinished local book
 botui --server https://books.example.org   # BookOrbit installation root
 botui --opds https://books.example.org/opds
 botui --config-path                        # create or locate the config file
@@ -62,9 +63,11 @@ On the start screen, move the selection to see the description and controls for 
 
 ![Source chooser with its keyboard guide](docs/images/start.png)
 
-**F2** opens Settings: Appearance, Reader, Library, BookOrbit and Keys. **?** or **F1** goes straight to the shortcuts for the current screen. The footer shortcuts are clickable. **Q** closes the book, **Q** on the shelf returns to the source chooser, and **Q** there exits. **Esc** goes up one catalog level. When launched with a single file path, closing that file ends the command.
+**F2** opens Settings: Appearance, Reader, Library, BookOrbit, Keys and About. **?** or **F1** opens the shortcut guide for the current screen. Use **[ / ]** to switch groups or type **/** to find a key or command. The footer shortcuts are clickable. **Q** closes the book, **Q** on the shelf returns to the source chooser, and **Q** there exits. **Esc** goes up one catalog level. When launched with a single file path, closing that file ends the command.
 
-**Local library** uses your saved root, then `~/Books`, then the current directory. Click **P Folder…** to paste a path. **R Set library here** remembers the folder currently on screen. **/** searches file and folder names recursively. **2** opens reading history with percentages and **3** shows recent files by creation time, falling back to modification time.
+**Local library** uses your saved root, then `~/Books`, then the current directory. Click **P Folder…** to paste a path. **R Set library here** remembers the folder currently on screen. **/** searches subfolders in the background. It matches the path, plus the embedded title, author and series of EPUB and FB2 files; the filename may be just a number. **2** opens reading history with percentages and **3** shows recent files by creation time, falling back to modification time.
+
+In a wide terminal the left pane shows the folder tree, currently reading and recently added. Click a folder name to display its books on the right; click its arrow to fold or expand it. **F6** switches focus, **← / →** fold or expand, and **Enter** opens a folder. Drag the divider to resize it. Small windows keep the numbered tabs. [See the local library in Kitty](docs/images/local-library.png).
 
 ## BookOrbit
 
@@ -89,6 +92,8 @@ Before opening an edition, its card shows the author, series, synopsis, publishe
 
 See the [book details before reading](docs/images/book-details.png) and [navigation with the libraries folded](docs/images/navigation-folded.png).
 
+**L Reading log** opens sessions recorded by BookOrbit, with dates, devices, time and progress. **B Related books** opens the author or series. The local timer under **S** counts time in BOTUI on this device.
+
 **OPDS** accepts OPDS 1 Atom and OPDS 2 JSON. Browse navigation, groups and facets; choose an edition, search through an advertised template or OpenSearch, and download direct acquisitions. Use HTTPS for HTTP Basic accounts. Loan-only and DRM entries remain catalog information. Positions and notes are local.
 
 ## Reading
@@ -112,13 +117,19 @@ See the [book details before reading](docs/images/book-details.png) and [navigat
 
 Width and spacing are in terminal cells. Extra room sits outside the spread. A narrow window shows one page. Resize or adjust either value while reading to reflow both pages around the current text position. In scanned EPUB/FB2 text, botui can join printed line breaks and split words. Set `preserve_printed_lines = true` for editions where those breaks are intentional.
 
-For **PDF and DjVu**, choose **P Read pages** on the file card or **R Read** on the book card. **1 / 2 / 3** select one page, facing pages or scroll. Scrolling shows the end of one sheet and the start of the next together. The device remembers the offset within the sheet; BookOrbit stores a page number. **+ / −** zoom, **P** (or **Ctrl+G**) jumps straight to a page by number, **/** searches its text layer, **N** advances through matches, **B / G** manage bookmarks, and **I / A / E** manage and export page notes. There is no OCR step. **Z** hides the controls for the full window width. [A PDF at reading width in Kitty](docs/images/pdf-scroll.png).
+In EPUB and FB2, click an underlined reference or press **F6** to follow a link on the visible page. If several are visible, choose one. When you visit a note or glossary entry at the end of the book, **Esc** or **Back** restores your reading position; **Enter · Read here** makes an in-book destination your new reading position. Supplementary notes open over the current page. **I** still lists resources from the whole book.
+
+For **PDF and DjVu**, press **Enter** or click the edition to start reading. **1 / 2 / 3** select single page, spread or continuous scroll. At **100%**, a scrolling sheet fits the reading pane. Press **−** once for **90%**, again for **80%**, or **+** to enlarge it. **0** restores fit. **W** opens the same controls for the mouse; the chosen zoom is saved when you close the book. **Z** hides the contents and footer. **P** or **Ctrl+G** opens a small page-number dialog over the document. **/** searches the text layer; **F3 / F4 / F5** open the next match, previous match, or results. **B / G** manage bookmarks; **I / A / E** manage and export notes. Local resume remembers your position within a sheet; BookOrbit syncs the page number. Image-only scans have no searchable text without OCR. [PDF in Kitty](docs/images/pdf-scroll.png).
 
 Embedded raster illustrations appear in the text; **I** also opens the separate viewer. Tables adapt to the available width. Set **F2 → Reader → Illustrations** to viewer only if desired. **S** displays book statistics; **F2 → Library → Reading statistics** shows totals on this device.
+
+Across all four formats, **F3 / F4** move to the next / previous search result; **F5** reopens the list. EPUB/FB2 highlight the selected phrase. For scans the list shows page numbers and text excerpts; **, / .** retrace jumps. In **G Bookmarks**, press **Delete** on the selection or click **[×]** beside an entry, then confirm.
 
 ## Configuration
 
 Run `botui --config-path` to print the exact path. The default is `~/.config/botui/config.toml`. The same TOML file holds the library root, interface, reader bindings and BookOrbit account. The default UI language is English. See the [commented configuration](config.example.toml).
+
+On first launch the interface uses **Gruvbox Dark**; existing theme choices are preserved. **F2 → Reader → First-line indent** accepts 0–8 cells for the first line of prose (0 turns it off). Drag the right edge of the navigation or contents panel to resize it, or set the width in Settings. **F2 → Library → Download limit** sets the maximum size per edition for BookOrbit and OPDS: **4096 MiB** by default, **0** for unlimited. Downloads stream to disk. [Keyboard help](docs/images/help.png).
 
 **F2 → Appearance** sets the interface palette independently of the reading paper (**T**). Terminal uses the default foreground, background and ANSI slots, so changes to the emulator’s palette appear without restarting. Opaque paper follows the emulator’s OSC 11 response; if it cannot report RGB, botui uses ANSI black or your explicit `opaque_color`. Neither pywal nor matugen is required. Built-in themes include Gruvbox, Catppuccin, Nord, Dracula, Tokyo Night, Solarized, One Dark, Kanagawa, Rosé Pine and Everforest. A named palette stays fixed; transparency lets the window background show through. Set borders and jacket corners to Rounded, Square or None here.
 
@@ -126,13 +137,16 @@ Run `botui --config-path` to print the exact path. The default is `~/.config/bot
 
 ```toml
 library_root = "/path/to/books"
-interface_theme = "terminal"
+interface_theme = "gruvbox-dark"
 theme = "terminal"
 reading_layout = "auto"    # auto, single, spread, scroll
 borders = "rounded"        # rounded, square, none
 opaque_background = false
 page_width = 78
 column_gap = 4
+paragraph_indent = 0
+max_download_mib = 4096
+scan_zoom = 100
 
 [bookorbit]
 server = "https://books.example.org"
@@ -166,4 +180,8 @@ mise run smoke
 
 `check` runs rustfmt, Clippy and the workspace tests. `smoke` builds the debug binaries and exercises real terminal sessions with private tmux sockets, temporary configuration and loopback HTTP fixtures. It requires Python 3.11+, tmux, PDF and DjVu rendering support, and the DjVu fixture tools `c44` and `djvm`.
 
-The Rust workspace separates the BookOrbit and OPDS adapters, ebook parsing, text layout, fixed-page rendering, local storage and the terminal application. The repository also includes [architecture notes](docs/architecture.md) and the [verification checklist](docs/checklist.md), both in Russian.
+The Rust workspace separates the BookOrbit and OPDS adapters, ebook parsing, text layout, fixed-page rendering, local storage and the terminal application. The repository also includes [architecture notes](docs/architecture.md) and the [verification checklist](docs/checklist.md), both in Russian. [Upstream comparison and known gaps](docs/upstream-audit.md).
+
+## License
+
+Original BOTUI code is [GPL-3.0-or-later](LICENSE). The adapted BookOrbit cover artwork retains its [own license and notices](licenses/NOTICE.md). Open **F2 → About** in the app, or run **botui --license** for the full texts.
