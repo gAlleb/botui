@@ -397,7 +397,8 @@ impl Picture {
 fn rounded_cover(source: &DynamicImage) -> DynamicImage {
     let mut pixels = source.to_rgba8();
     let (w, h) = pixels.dimensions();
-    let radius = (w.min(h) / 14).min(18);
+    // Scale the bend with the jacket so thumbnails and the detail view match.
+    let radius = w.min(h) / 10;
     for y in 0..radius {
         for x in 0..radius {
             let dx = (radius - x) as f32 - 0.5;

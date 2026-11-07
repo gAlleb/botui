@@ -66,11 +66,21 @@ def check(tmp):
         t.see(str(lib))
         for query, expected in [("Пелевин Желтая", "Жёлтая стрела"), ("северное депо", "a015.fb2"), ("Nova map", "b018.epub")]:
             t.keys("/");t.see("Search local library");t.type(query)
-            t.see(expected);t.keys("Escape");t.see(str(lib))
+            t.wait(expected, lambda f: expected in shelf.search_body(f, "Search local library") and query in f)
+            t.keys("Escape");t.wait("Back on shelf", lambda f: str(lib) in f and "Search local library" not in f)
         t.keys("/")
         t.see("Search local library")
+        heading = "Search local library"
         t.type("8")
         t.wait("first character filters before Enter", lambda f: "1 result" in f and "b018.epub" in f and filename not in f)
+        for width, height in [(52, 16), (115, 30)]:
+            t.run("resize-window", "-t", "shelf", "-x", str(width), "-y", str(height))
+            frame = t.wait("Resized search keeps its query and visible shelf",
+                           lambda f: len(f.splitlines()) == height and len(f.splitlines()[0]) == width
+                           and "1 result" in shelf.search_body(f, heading)
+                           and " / 8" in shelf.search_body(f, heading) and "Local library" in f.splitlines()[0])
+            left, top, right, bottom = shelf.search_box(frame, heading)
+            assert 0 < left and 0 < top and abs(left - (width - right)) <= 1 and abs(top - (height - bottom)) <= 1, frame
         t.keys("BSpace")
         t.type("з")
         t.see(filename)  # first keystroke, no submit
@@ -84,7 +94,7 @@ def check(tmp):
         t.see("Почта на пристани")
         t.keys("Right", "q")
         t.see(filename)
-        t.keys("Escape"); t.see(str(lib))
+        t.keys("Escape"); t.wait("Back on shelf", lambda f: str(lib) in f and "Search local library" not in f)
         t.keys("2")
         t.see(filename)
         t.see("%")

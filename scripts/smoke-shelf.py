@@ -290,6 +290,27 @@ class Handler(BaseHTTPRequestHandler):
         self.reply(404, {"path": self.path, "statusCode": 404})
 
 
+def search_box(frame, heading):
+    rows = frame.splitlines()
+    for top, row in enumerate(rows):
+        start = row.find("╭ " + heading)
+        if start < 0:
+            continue
+        right = row.find("╮", start)
+        for bottom in range(top + 1, len(rows)):
+            if rows[bottom][start:start+1] == "╰" and rows[bottom][right:right+1] == "╯":
+                return start, top, right + 1, bottom + 1
+    return None
+
+
+def search_body(frame, heading):
+    bounds = search_box(frame, heading)
+    if not bounds:
+        return ""
+    left, top, right, bottom = bounds
+    return "\n".join(row[left + 1:right - 1] for row in frame.splitlines()[top + 1:bottom - 1])
+
+
 class Terminal:
     sessions = itertools.count()
 
@@ -389,9 +410,16 @@ def check_collections(tmp, binary, fixture):
         term.see("▀")  # Before opening files: real cover on the shelf.
         term.keys("v")
         term.see("[V Grid]")
+        term.keys("/")
+        frame = term.see("Search all books")
+        # Both the search dialog and its original shelf remain on screen.
+        assert "[V Grid]" in frame and frame.index("BookOrbit") < frame.index("Search all books"), frame
+        term.click("[V Grid]", frame)
+        term.wait("Outside click dismisses search without switching the shelf view",
+                  lambda f: "Search all books" not in f and "[V Grid]" in f)
         term.keys("/");term.see("Search all books")
         term.type("9")
-        term.wait("First character filters as you type", lambda f: "Архивный том 99" in f and BOOK not in f)
+        term.wait("First character filters as you type", lambda f: "Архивный том 99" in search_body(f, "Search all books") and BOOK not in search_body(f, "Search all books"))
         term.keys("C-u")
         term.type("arhv 101")
         term.wait("Transliterated fuzzy result beyond page one", lambda f: "1 result" in f and "Архивный том 101" in f)
@@ -399,7 +427,7 @@ def check_collections(tmp, binary, fixture):
         term.keys("BSpace","BSpace","BSpace");term.see("Архивный том 101")
         term.keys("Enter");term.see("Editions")
         term.keys("Escape");term.wait("Back restores the query", lambda f:"arhv 101" in f and "Архивный том 101" in f)
-        term.keys("Escape");term.see("[V Grid]")
+        term.keys("Escape");term.wait("Return to list", lambda f: "Search all books" not in f and "[V Grid]" in f)
         term.keys("2");term.see("37%");assert OTHER_BOOK in term.see("Currently reading")
         term.keys("3");term.see(f"Архивный том {TOTAL}")
         term.keys("1");term.see(BOOK)

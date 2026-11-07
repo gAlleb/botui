@@ -455,11 +455,11 @@ impl Picker {
             }
         }
         loop {
-            if let Some(search) = &mut self.search {
-                if let Some(path) = search.choose(term)? {
-                    return Ok(Some(path));
-                }
-                self.search = None;
+            if let Some(mut search) = self.search.take()
+                && let Some(path) = search.choose(term, |frame| self.draw(frame))?
+            {
+                self.search = Some(search);
+                return Ok(Some(path));
             }
             self.collect();
             term.draw(|frame| {

@@ -45,7 +45,7 @@ const MARKS: &[char] = &[
     '\u{1D188}', '\u{1D189}', '\u{1D1AA}', '\u{1D1AB}', '\u{1D1AC}', '\u{1D1AD}', '\u{1D242}', '\u{1D243}',
     '\u{1D244}',
 ];
-pub(super) fn paint(f: &mut Frame, panel: Rect, draw: impl FnOnce(&mut Frame)) {
+pub(crate) fn paint(f: &mut Frame, panel: Rect, draw: impl FnOnce(&mut Frame)) {
     let buf = f.buffer_mut();
     let mut transmissions = vec![];
     for y in panel.y..panel.bottom() {

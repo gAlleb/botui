@@ -5,7 +5,6 @@ mod controls;
 mod flow;
 mod history;
 mod menu;
-mod overlay;
 mod pages;
 mod paper;
 mod search;
@@ -369,7 +368,7 @@ pub fn read_server(
             }
             if menu {
                 let panel = centered(area, 48, 20);
-                overlay::paint(f, panel, |f| {
+                crate::overlay::paint(f, panel, |f| {
                     let block = crate::appearance::block().title(format!(
                         " {} · {} / {} ",
                         kind.label(),

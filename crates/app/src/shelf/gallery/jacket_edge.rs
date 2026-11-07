@@ -22,7 +22,7 @@ thread_local! {
 }
 
 fn corner((r, g, b): Ink, w: u16, h: u16, i: u8) -> DynamicImage {
-    let radius = (f32::from(w.min(h)) * 0.80).max(1.0);
+    let radius = f32::from(w.min(h)).max(1.0);
     DynamicImage::ImageRgba8(RgbaImage::from_fn(w.into(), h.into(), |x, y| {
         let x = if i & 1 == 0 { x } else { u32::from(w) - 1 - x };
         let y = if i & 2 == 0 { y } else { u32::from(h) - 1 - y };

@@ -1,8 +1,14 @@
 //! Editable, ranked results shared by the filesystem and BookOrbit catalogs.
 use crate::{AppTerminal, prompt::LineInput};
 use crossterm::event::{Event, KeyCode, KeyEventKind, MouseButton, MouseEventKind};
-use ratatui::{layout::Rect, style::Stylize, widgets::Paragraph};
-use std::{collections::HashMap, hash::Hash, io, time::Duration};
+use ratatui::{
+    Frame,
+    layout::Rect,
+    style::Stylize,
+    widgets::{Clear, Padding, Paragraph},
+};
+use std::{borrow::Cow, collections::HashMap, hash::Hash, io, time::Duration};
+use unicode_truncate::UnicodeTruncateStr;
 
 mod matcher;
 use matcher::{Words, fold, roman};
@@ -27,6 +33,9 @@ pub(crate) trait Source {
     type Action: Clone;
     fn collect(&mut self, batch: &mut Vec<Item<Self::Key, Self::Action>>) -> io::Result<()>;
     fn busy(&self) -> bool;
+    fn detail(_action: &Self::Action) -> Option<Cow<'_, str>> {
+        None
+    }
 }
 
 pub(crate) struct Search<S: Source> {
@@ -89,7 +98,114 @@ impl<S: Source> Search<S> {
             .and_then(|id| self.hits.iter().position(|i| *i == id))
             .unwrap_or(0);
     }
-    pub fn choose(&mut self, term: &mut AppTerminal) -> io::Result<Option<S::Action>> {
+    fn draw(&mut self, f: &mut Frame, popup: Rect) -> (Rect, Rect) {
+        let panel = crate::appearance::block()
+            .padding(Padding::horizontal(1))
+            .title(format!(" {} ", self.title));
+        let inner = panel.inner(popup);
+        f.render_widget(Clear, popup);
+        f.render_widget(panel, popup);
+        let (x, y, w, h) = (inner.x, inner.y, inner.width, inner.height);
+        if h < 3 || w == 0 {
+            return (Rect::default(), Rect::default());
+        }
+        f.render_widget(
+            Paragraph::new(format!(
+                " / {}",
+                self.input.display(w.saturating_sub(3), false)
+            ))
+            .cyan(),
+            Rect::new(x, y, w, 1),
+        );
+        let status = if self.source.busy() {
+            " · indexing…"
+        } else {
+            ""
+        };
+        f.render_widget(
+            Paragraph::new(self.error.clone().unwrap_or_else(|| {
+                format!(
+                    " {} result{}{status}",
+                    self.hits.len(),
+                    if self.hits.len() == 1 { "" } else { "s" }
+                )
+            }))
+            .dim(),
+            Rect::new(x, y + 1, w, 1),
+        );
+        let detail = self
+            .hits
+            .get(self.cursor)
+            .filter(|_| h >= 6)
+            .and_then(|id| S::detail(&self.items[*id].action));
+        let rows = Rect::new(
+            x,
+            y + 2,
+            w,
+            h.saturating_sub(3 + u16::from(detail.is_some())),
+        );
+        if let Some(detail) = detail {
+            let (tail, _) = detail.unicode_truncate_start(w.into());
+            let text = if tail.len() == detail.len() {
+                detail
+            } else {
+                let (tail, _) = detail.unicode_truncate_start(usize::from(w - 1));
+                Cow::Owned(format!("…{tail}"))
+            };
+            f.render_widget(
+                Paragraph::new(text).dim(),
+                Rect::new(x, rows.bottom(), w, 1),
+            );
+        }
+        self.first = self
+            .first
+            .min(self.cursor)
+            .max((self.cursor + 1).saturating_sub(usize::from(rows.height)))
+            .min(self.hits.len().saturating_sub(rows.height.into()));
+        for (i, &id) in self
+            .hits
+            .iter()
+            .enumerate()
+            .skip(self.first)
+            .take(rows.height.into())
+        {
+            let label = &self.items[id].label;
+            let (shown, _) = label.unicode_truncate(w.into());
+            let row = if shown.len() == label.len() {
+                Paragraph::new(shown)
+            } else {
+                let (shown, _) = label.unicode_truncate(usize::from(w - 1));
+                Paragraph::new(format!("{shown}…"))
+            };
+            f.render_widget(
+                if i == self.cursor {
+                    row.reversed()
+                } else {
+                    row
+                },
+                Rect::new(x, rows.y + (i - self.first) as u16, w, 1),
+            );
+        }
+        if self.hits.is_empty() && !self.source.busy() && self.error.is_none() {
+            f.render_widget(Paragraph::new(" No matches.").dim(), rows);
+        }
+        let close = Rect::new(x, inner.bottom() - 1, w.min(10), 1);
+        f.render_widget(
+            Paragraph::new(if w >= 35 {
+                "[Esc Back]   ↑↓ Select   Enter Open"
+            } else {
+                "[Esc Back]  ↑↓  Enter Open"
+            })
+            .cyan(),
+            Rect::new(x, close.y, w, 1),
+        );
+        (rows, close)
+    }
+    pub fn choose(
+        &mut self,
+        term: &mut AppTerminal,
+        mut shelf: impl FnMut(&mut Frame),
+    ) -> io::Result<Option<S::Action>> {
         loop {
             let mut batch = vec![];
             if let Err(e) = self.source.collect(&mut batch) {
@@ -114,69 +230,18 @@ impl<S: Source> Search<S> {
             }
             let mut rows = Rect::default();
             let mut close = Rect::default();
+            let mut popup = Rect::default();
             term.draw(|f| {
-                let panel = crate::appearance::block().title(format!(" {} ", self.title));
-                let inner = panel.inner(f.area());
-                f.render_widget(panel, f.area());
-                let (x, y, w, h) = (inner.x, inner.y, inner.width, inner.height);
-                if h < 3 || w == 0 {
-                    return;
-                }
-                f.render_widget(
-                    Paragraph::new(format!(
-                        " / {}",
-                        self.input.display(w.saturating_sub(3), false)
-                    ))
-                    .cyan(),
-                    Rect::new(x, y, w, 1),
-                );
-                let status = if self.source.busy() {
-                    " · indexing…"
-                } else {
-                    ""
-                };
-                f.render_widget(
-                    Paragraph::new(self.error.clone().unwrap_or_else(|| {
-                        format!(
-                            " {} result{}{status}",
-                            self.hits.len(),
-                            if self.hits.len() == 1 { "" } else { "s" }
-                        )
-                    }))
-                    .dim(),
-                    Rect::new(x, y + 1, w, 1),
-                );
-                rows = Rect::new(x, y + 2, w, h.saturating_sub(3));
-                self.first = self
-                    .first
-                    .min(self.cursor)
-                    .max((self.cursor + 1).saturating_sub(usize::from(rows.height)))
-                    .min(self.hits.len().saturating_sub(rows.height.into()));
-                for (i, &id) in self
-                    .hits
-                    .iter()
-                    .enumerate()
-                    .skip(self.first)
-                    .take(rows.height.into())
-                {
-                    let row = Paragraph::new(self.items[id].label.as_str());
-                    f.render_widget(
-                        if i == self.cursor {
-                            row.reversed()
-                        } else {
-                            row
-                        },
-                        Rect::new(x, rows.y + (i - self.first) as u16, w, 1),
-                    );
-                }
-                if self.hits.is_empty() && !self.source.busy() && self.error.is_none() {
-                    f.render_widget(Paragraph::new(" No matches.").dim(), rows);
-                }
-                close = Rect::new(x, inner.bottom() - 1, w.min(10), 1);
-                f.render_widget(
-                    Paragraph::new("[Esc Back]   ↑↓ Select   Enter Open").cyan(),
-                    Rect::new(x, close.y, w, 1),
-                );
+                shelf(f);
+                let area = f.area();
+                // Keep some shelf visible, even on a narrow terminal.
+                let width = area.width.saturating_sub(area.width / 6).clamp(38, 80);
+                let height = area.height.saturating_sub(area.height / 3).clamp(7, 16);
+                popup =
+                    crate::centered(area, width.min(area.width.saturating_sub(2).max(1)), height);
+                crate::overlay::paint(f, popup, |f| {
+                    (rows, close) = self.draw(f, popup);
+                });
                 crate::settings::paint_interface(f);
             })?;
             let Some(e) = crate::settings::read_event_for(
@@ -208,7 +273,8 @@ impl<S: Source> Search<S> {
                 },
                 Event::Mouse(m) => match m.kind {
                     MouseEventKind::Down(MouseButton::Left)
-                        if close.contains((m.column, m.row).into()) =>
+                        if !popup.contains((m.column, m.row).into())
+                            || close.contains((m.column, m.row).into()) =>
                     {
                         return Ok(None);
                     }
@@ -223,8 +289,8 @@ impl<S: Source> Search<S> {
                         }
                         continue;
                     }
-                    MouseEventKind::ScrollUp => -3,
-                    MouseEventKind::ScrollDown => 3,
+                    MouseEventKind::ScrollUp if popup.contains((m.column, m.row).into()) => -3,
+                    MouseEventKind::ScrollDown if popup.contains((m.column, m.row).into()) => 3,
                     _ => 0,
                 },
                 _ => 0,

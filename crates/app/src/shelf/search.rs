@@ -160,20 +160,23 @@ impl Shelf {
         if self.pending.is_some() || self.login.is_some() {
             return Ok(false);
         }
-        let Some(panel) = &mut self.current_mut().live_search else {
-            return Ok(false);
-        };
-        if !panel.active {
+        if !self
+            .current()
+            .live_search
+            .as_ref()
+            .is_some_and(|p| p.active)
+        {
             return Ok(false);
         }
         if let Some(notice) = self.notice.take() {
             crate::prompt::message(term, "BookOrbit", &notice)?;
         }
-        let panel = self.current_mut().live_search.as_mut().unwrap();
-        if let Some(cmd) = panel.results.choose(term)? {
+        let mut panel = self.current_mut().live_search.take().unwrap();
+        let action = panel.results.choose(term, |frame| self.draw(frame))?;
+        panel.active = action.is_some();
+        self.current_mut().live_search = Some(panel);
+        if let Some(cmd) = action {
             self.apply(cmd);
-        } else {
-            panel.active = false;
         }
         Ok(true)
     }

@@ -83,7 +83,7 @@ impl Dialog {
         };
         let block = crate::appearance::block().title(title);
         let inner = block.inner(outer);
-        super::overlay::paint(f, outer, |f| {
+        crate::overlay::paint(f, outer, |f| {
             f.render_widget(Clear, outer);
             f.render_widget(block, outer);
             if inner.is_empty() {

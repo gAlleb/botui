@@ -8,6 +8,9 @@ impl Source for Index {
     type Key = PathBuf;
     type Action = PathBuf;
 
+    fn detail(path: &PathBuf) -> Option<std::borrow::Cow<'_, str>> {
+        Some(path.to_string_lossy())
+    }
     fn busy(&self) -> bool {
         Index::busy(self)
     }
@@ -16,7 +19,11 @@ impl Source for Index {
         let result = Index::collect(self, &mut files);
         for entry in files {
             let mut text = entry.name.clone();
-            let mut label = String::new();
+            let mut label = entry
+                .path
+                .file_name()
+                .map(|s| s.to_string_lossy().into_owned())
+                .unwrap_or_else(|| entry.name.clone());
             if let Some(meta) = &entry.meta {
                 for field in std::iter::once(&meta.title)
                     .chain(&meta.authors)
@@ -26,10 +33,13 @@ impl Source for Index {
                     text.push_str(field);
                 }
                 if !meta.title.is_empty() {
-                    label = format!("{} · {}  —  ", meta.title, meta.authors.join(", "));
+                    label = meta.title.clone();
+                    if !meta.authors.is_empty() {
+                        label.push_str(" · ");
+                        label.push_str(&meta.authors.join(", "));
+                    }
                 }
             }
-            label.push_str(&entry.name);
             batch.push(Item {
                 key: entry.path.clone(),
                 action: entry.path,

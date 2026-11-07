@@ -7,6 +7,7 @@ mod cover_viewer;
 mod diagnostic;
 mod live_search;
 mod offline;
+mod overlay;
 mod picker;
 mod preferences;
 mod prompt;
