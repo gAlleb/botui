@@ -36,9 +36,21 @@ pub(super) fn continues(left: &Block, right: &Block) -> bool {
                 && !left.text.ends_with(['.', '!', '?', '…', ':'])))
 }
 
-pub(super) fn wrap(lines: &mut Vec<PageLine>, blocks: &[Block], start: usize, width: usize) {
+pub(super) fn wrap(
+    lines: &mut Vec<PageLine>,
+    blocks: &[Block],
+    start: usize,
+    width: usize,
+    indent: u8,
+) {
     if blocks.len() == 1 {
-        wrap_block(lines, &blocks[0], start, width);
+        wrap_block(
+            lines,
+            &blocks[0],
+            start,
+            width,
+            if blocks[0].heading { 0 } else { indent },
+        );
         return;
     }
     let (text, offsets) = join(blocks);
@@ -51,6 +63,7 @@ pub(super) fn wrap(lines: &mut Vec<PageLine>, blocks: &[Block], start: usize, wi
         },
         start,
         width,
+        indent,
     );
     for line in &mut lines[before..] {
         let byte = line.start.byte;

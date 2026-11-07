@@ -13,7 +13,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use botui_core::{Document, LayoutMode, Pager};
+use botui_core::{Document, LayoutMode, Pager, ReflowOptions};
 use botui_store::{LocalState, Saved};
 use crossterm::event::{
     self, Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind,
@@ -149,13 +149,16 @@ impl Reader {
             .clamp(32, 240);
         let gap = settings.column_gap.unwrap_or(4).min(32);
         let (text, mode_for_size, _) = layout::geometry(area, mode, page_width, gap);
-        let mut pager = Pager::with_media(
+        let mut pager = Pager::with_options(
             &doc,
             text.width,
             text.height,
             mode_for_size,
-            !settings.preserve_printed_lines,
-            !settings.hide_inline_images,
+            ReflowOptions {
+                repair_printed: !settings.preserve_printed_lines,
+                inline_images: !settings.hide_inline_images,
+                paragraph_indent: settings.paragraph_indent,
+            },
         );
         let marks = saved.as_ref().map(|s| s.marks.clone()).unwrap_or_default();
         if let Some(state) = &saved {
@@ -241,7 +244,12 @@ impl Reader {
                 .take(usize::from(text.height))
                 .enumerate()
             {
-                let rect = Rect::new(x, text.y + y as u16, self.pager.column_width(), 1);
+                let rect = Rect::new(
+                    x + line.indent,
+                    text.y + y as u16,
+                    self.pager.column_width() - line.indent,
+                    1,
+                );
                 if let Some(image) = line.image {
                     if let Some((id, area)) = figures.last_mut() as Option<&mut (usize, Rect)>
                         && *id == image
@@ -1129,19 +1137,25 @@ pub fn read_server(
                 }
                 if old.preserve_printed_lines != new.preserve_printed_lines
                     || old.hide_inline_images != new.hide_inline_images
+                    || old.paragraph_indent != new.paragraph_indent
                 {
                     let focus = reader.pager.anchor();
                     let size = term.size()?;
-                    reader.pager = Pager::with_media(
+                    reader.pager = Pager::with_options(
                         &reader.doc,
                         size.width,
                         size.height,
                         reader.mode,
-                        !new.preserve_printed_lines,
-                        !new.hide_inline_images,
+                        ReflowOptions {
+                            repair_printed: !new.preserve_printed_lines,
+                            inline_images: !new.hide_inline_images,
+                            paragraph_indent: new.paragraph_indent,
+                        },
                     );
                     reader.pager.seek(focus);
-                    reader.search = Default::default();
+                    if old.preserve_printed_lines != new.preserve_printed_lines {
+                        reader.search = Default::default();
+                    }
                 }
                 continue;
             }

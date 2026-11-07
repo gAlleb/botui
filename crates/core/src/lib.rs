@@ -45,6 +45,8 @@ pub enum LayoutMode {
 
 #[derive(Debug)]
 pub struct PageLine {
+    /// Leading cells on the first visual line of a prose paragraph.
+    pub indent: u16,
     pub image: Option<usize>,
     pub table_header: bool,
     pub text: String,
@@ -80,7 +82,15 @@ impl Layout {
     }
 }
 
+#[derive(Clone, Copy)]
+pub struct ReflowOptions {
+    pub repair_printed: bool,
+    pub inline_images: bool,
+    pub paragraph_indent: u8,
+}
+
 pub struct Pager {
+    paragraph_indent: u8,
     printed: Vec<bool>,
     inline_images: bool,
     layout: Layout,
@@ -111,6 +121,30 @@ impl Pager {
         repair_printed: bool,
         inline_images: bool,
     ) -> Self {
+        Self::with_options(
+            doc,
+            width,
+            height,
+            mode,
+            ReflowOptions {
+                repair_printed,
+                inline_images,
+                paragraph_indent: 0,
+            },
+        )
+    }
+    pub fn with_options(
+        doc: &Document,
+        width: u16,
+        height: u16,
+        mode: LayoutMode,
+        options: ReflowOptions,
+    ) -> Self {
+        let ReflowOptions {
+            repair_printed,
+            inline_images,
+            paragraph_indent,
+        } = options;
         let mut printed = if repair_printed {
             printed::printed_lines(&doc.blocks)
         } else {
@@ -133,9 +167,10 @@ impl Pager {
             }
         }
         let layout = Layout::new(width, height, mode, SPREAD_GAP);
-        let lines = wrap_document(doc, layout.width, &printed, inline_images);
+        let lines = wrap_document(doc, layout.width, &printed, inline_images, paragraph_indent);
         Self {
             layout,
+            paragraph_indent,
             inline_images,
             printed,
             lines,
@@ -161,7 +196,13 @@ impl Pager {
             return;
         }
         if self.layout.width != layout.width {
-            self.lines = wrap_document(doc, layout.width, &self.printed, self.inline_images);
+            self.lines = wrap_document(
+                doc,
+                layout.width,
+                &self.printed,
+                self.inline_images,
+                self.paragraph_indent,
+            );
         }
         self.layout = layout;
         self.seek(self.focus);
@@ -248,6 +289,7 @@ fn wrap_document(
     width: u16,
     printed: &[bool],
     inline_images: bool,
+    paragraph_indent: u8,
 ) -> Vec<PageLine> {
     let mut lines = Vec::new();
     if width == 0 {
@@ -275,6 +317,7 @@ fn wrap_document(
             for &id in ids {
                 for _ in 0..(width / 7).clamp(3, 9) {
                     lines.push(PageLine {
+                        indent: 0,
                         text: String::new(),
                         heading: false,
                         start: anchor,
@@ -308,10 +351,12 @@ fn wrap_document(
             &doc.blocks[start..=end],
             start,
             usize::from(width),
+            paragraph_indent,
         );
         start = end + 1;
         if lines.len() > before {
             lines.push(PageLine {
+                indent: 0,
                 image: None,
                 table_header: false,
                 text: String::new(),
@@ -337,13 +382,16 @@ fn breaks_word(c: char) -> bool {
     c.is_control() || (c.is_whitespace() && !matches!(c, '\u{00a0}' | '\u{202f}' | '\u{2007}'))
 }
 
-fn wrap_block(lines: &mut Vec<PageLine>, block: &Block, index: usize, width: usize) {
+fn wrap_block(lines: &mut Vec<PageLine>, block: &Block, index: usize, width: usize, indent: u8) {
     let mut rest = block.text.as_str();
     let mut row = String::new();
     let mut row_start = 0;
-    let mut used = 0;
-    let emit = |lines: &mut Vec<PageLine>, row: &mut String, byte| {
+    // Leave at least two cells for a wide grapheme in a narrow viewport.
+    let mut indent = usize::from(indent.min(8)).min(width.saturating_sub(2));
+    let mut used = indent;
+    let emit = |lines: &mut Vec<PageLine>, row: &mut String, byte, indent: &mut usize| {
         lines.push(PageLine {
+            indent: std::mem::take(indent) as u16,
             image: None,
             table_header: false,
             text: std::mem::take(row),
@@ -363,7 +411,7 @@ fn wrap_block(lines: &mut Vec<PageLine>, block: &Block, index: usize, width: usi
         rest = remaining;
         let cells = word.width();
         if !row.is_empty() && used + 1 + cells > width {
-            emit(lines, &mut row, row_start);
+            emit(lines, &mut row, row_start, &mut indent);
             used = 0;
         }
         if row.is_empty() {
@@ -372,7 +420,7 @@ fn wrap_block(lines: &mut Vec<PageLine>, block: &Block, index: usize, width: usi
             row.push(' ');
             used += 1;
         }
-        if cells <= width {
+        if used + cells <= width {
             row.push_str(word);
             used += cells;
             continue;
@@ -386,7 +434,7 @@ fn wrap_block(lines: &mut Vec<PageLine>, block: &Block, index: usize, width: usi
             };
             let cells = glyph.width();
             if !row.is_empty() && used + cells > width {
-                emit(lines, &mut row, row_start);
+                emit(lines, &mut row, row_start, &mut indent);
                 row_start = byte + offset;
                 used = 0;
             }
@@ -395,7 +443,7 @@ fn wrap_block(lines: &mut Vec<PageLine>, block: &Block, index: usize, width: usi
         }
     }
     if !row.is_empty() {
-        emit(lines, &mut row, row_start);
+        emit(lines, &mut row, row_start, &mut indent);
     }
 }
 
@@ -417,6 +465,49 @@ mod tests {
                     heading: false,
                 })
                 .collect(),
+        }
+    }
+
+    #[test]
+    fn first_line_indent_reserves_cells_without_changing_source_addresses() {
+        let mut doc = document(&["A heading", "зима море берег ветер", "новый абзац"]);
+        doc.blocks[0].heading = true;
+        let mut pager = Pager::with_options(
+            &doc,
+            10,
+            14,
+            LayoutMode::Single,
+            ReflowOptions {
+                repair_printed: false,
+                inline_images: true,
+                paragraph_indent: 4,
+            },
+        );
+        let lines = pager.lines(0);
+        assert_eq!(
+            lines
+                .iter()
+                .filter(|l| l.indent > 0)
+                .map(|l| l.text.as_str())
+                .collect::<Vec<_>>(),
+            ["зима", "новый"]
+        );
+        let anchor = Anchor {
+            block: 1,
+            byte: "зима ".len(),
+        };
+        pager.seek(anchor);
+        assert!(pager.lines(0)[0].text.starts_with("море"));
+        for (width, mode) in [(1, LayoutMode::Scroll), (90, LayoutMode::Spread)] {
+            pager.relayout(&doc, width, 14, mode);
+            assert_eq!(pager.anchor(), anchor);
+            assert!(
+                pager
+                    .lines(0)
+                    .iter()
+                    .all(|line| line.text.width() + usize::from(line.indent)
+                        <= usize::from(pager.column_width()))
+            );
         }
     }
 

@@ -28,6 +28,7 @@ pub(super) fn table(lines: &mut Vec<PageLine>, start: usize, row: &TableRow, wid
                 },
                 start,
                 width,
+                0,
             );
             for mut l in buf {
                 l.start = anchor;
@@ -49,6 +50,7 @@ pub(super) fn table(lines: &mut Vec<PageLine>, start: usize, row: &TableRow, wid
                 },
                 start,
                 cell_width,
+                0,
             );
             buf
         })
@@ -70,6 +72,7 @@ pub(super) fn table(lines: &mut Vec<PageLine>, start: usize, row: &TableRow, wid
             }
         }
         lines.push(PageLine {
+            indent: 0,
             text: line,
             heading: false,
             start: anchor,
