@@ -15,9 +15,7 @@ mod view;
 use crate::catalog::{Book, BookFile};
 use botui_bookorbit::progress::{Move, Progress};
 use botui_bookorbit::{BookOrbit, BooksPage, Collection, Library, Session};
-use crossterm::event::{
-    self, Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind,
-};
+use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind};
 use native::{book_rows, fetch_books};
 use ratatui::{
     layout::{Position, Rect},
@@ -1594,16 +1592,16 @@ impl Shelf {
                 crate::settings::paint_interface(frame)
             })?;
             self.prefetch();
-            if (self.pending.is_some()
+            let busy = self.pending.is_some()
                 || self.current().tail.is_some()
                 || self.covers.busy()
                 || self.rail.busy()
-                || self.card.busy())
-                && !event::poll(Duration::from_millis(80))?
-            {
+                || self.card.busy();
+            let timeout = busy.then(|| Duration::from_millis(80));
+            let event = crate::settings::read_event_for(timeout)?;
+            let Some(e) = event else {
                 continue;
-            }
-            let e = crate::settings::read_event()?;
+            };
             if let Some(result) = self.rail.splitter.input(&e) {
                 if let Err(err) = result {
                     self.notice = Some(err.to_string());

@@ -16,9 +16,7 @@ use std::{
 
 use botui_core::{Document, LayoutMode, Pager, ReflowOptions};
 use botui_store::{LocalState, Saved};
-use crossterm::event::{
-    self, Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind,
-};
+use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind};
 use ratatui::{
     Frame,
     layout::{Position, Rect},
@@ -1038,19 +1036,24 @@ pub fn read_server(
                 )
             })?;
             let action = loop {
-                if reader.dirty {
-                    let remaining = Duration::from_millis(600).saturating_sub(last_save.elapsed());
-                    if remaining.is_zero() || !event::poll(remaining)? {
-                        reader.flush(&mut state, notices);
-                        last_save = Instant::now();
+                let remaining = Duration::from_millis(600).saturating_sub(last_save.elapsed());
+                if reader.dirty && remaining.is_zero() {
+                    reader.flush(&mut state, notices);
+                    last_save = Instant::now();
+                }
+                let images = reader.illustrations.as_ref().is_some_and(|p| p.busy());
+                let timeout = reader
+                    .dirty
+                    .then_some(remaining)
+                    .into_iter()
+                    .chain(images.then_some(Duration::from_millis(70)))
+                    .min();
+                let Some(e) = crate::settings::read_event_for(timeout)? else {
+                    if images {
+                        break Action::Resize;
                     }
-                }
-                if reader.illustrations.as_ref().is_some_and(|p| p.busy())
-                    && !event::poll(Duration::from_millis(70))?
-                {
-                    break Action::Resize;
-                }
-                let e = crate::settings::read_event()?;
+                    continue;
+                };
                 if reader.menu.is_none()
                     && reader.nav.is_none()
                     && reader.palette.is_none()

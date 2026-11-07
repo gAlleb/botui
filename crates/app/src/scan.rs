@@ -16,9 +16,7 @@ use crate::{
 use botui_core::Anchor;
 use botui_formats::FileKind;
 use botui_store::{LocalState, Saved};
-use crossterm::event::{
-    self, Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind,
-};
+use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind};
 use history::Location;
 use ratatui::{
     layout::{Position, Rect},
@@ -355,12 +353,12 @@ pub fn read_server(
             }
             crate::settings::paint_interface(f);
         })?;
-        if (search.busy() || outline_job.is_some() || total.is_none() || pages.busy())
-            && !event::poll(Duration::from_millis(60))?
-        {
+        let busy = search.busy() || outline_job.is_some() || total.is_none() || pages.busy();
+        let timeout = busy.then(|| Duration::from_millis(60));
+        let event = crate::settings::read_event_for(timeout)?;
+        let Some(e) = event else {
             continue;
-        }
-        let e = crate::settings::read_event()?;
+        };
         let previous = Location {
             page: n,
             offset,

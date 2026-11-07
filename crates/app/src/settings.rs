@@ -59,7 +59,12 @@ pub(crate) fn detect_terminal() {
     TERMINAL.set(crate::shell_theme::TerminalPaper::detect());
 }
 pub(crate) fn read_event() -> io::Result<crossterm::event::Event> {
-    crate::terminal_input::read(&TERMINAL)
+    Ok(read_event_for(None)?.expect("a blocking read returns an event"))
+}
+pub(crate) fn read_event_for(
+    timeout: Option<std::time::Duration>,
+) -> io::Result<Option<crossterm::event::Event>> {
+    crate::terminal_input::read(&TERMINAL, timeout)
 }
 pub(crate) fn opaque() -> bool {
     OPAQUE.load(Ordering::Relaxed)

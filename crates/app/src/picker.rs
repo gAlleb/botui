@@ -9,9 +9,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use crossterm::event::{
-    self, Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind,
-};
+use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind};
 use ratatui::{
     Frame,
     layout::{Position, Rect},
@@ -392,14 +390,13 @@ impl Picker {
                 self.draw(frame);
                 crate::settings::paint_interface(frame)
             })?;
-            if (self.covers.busy() || self.index.busy())
-                && !event::poll(std::time::Duration::from_millis(60))?
-            {
-                self.covers.collect();
-                continue;
-            }
+            let busy = self.covers.busy() || self.index.busy();
+            let timeout = busy.then(|| std::time::Duration::from_millis(60));
+            let event = crate::settings::read_event_for(timeout)?;
             self.covers.collect();
-            let e = crate::settings::read_event()?;
+            let Some(e) = event else {
+                continue;
+            };
             if let Some(open) = self.prefs_buttons.event(&e) {
                 let old = crate::settings::Settings::load()?.library_root;
                 crate::preferences::show(term, open, crate::preferences::Context::Local)?;

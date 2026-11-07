@@ -23,14 +23,22 @@ struct Input {
     queried: bool,
     unanswered: u8,
 }
-pub(crate) fn read(paper: &'static LocalKey<Cell<TerminalPaper>>) -> io::Result<Event> {
-    INPUT.with_borrow_mut(|s| s.read(paper))
+pub(crate) fn read(
+    paper: &'static LocalKey<Cell<TerminalPaper>>,
+    timeout: Option<Duration>,
+) -> io::Result<Option<Event>> {
+    let deadline = timeout.map(|t| Instant::now() + t);
+    INPUT.with_borrow_mut(|s| s.read(paper, deadline))
 }
 impl Input {
-    fn read(&mut self, paper: &'static LocalKey<Cell<TerminalPaper>>) -> io::Result<Event> {
+    fn read(
+        &mut self,
+        paper: &'static LocalKey<Cell<TerminalPaper>>,
+        deadline: Option<Instant>,
+    ) -> io::Result<Option<Event>> {
         loop {
             if let Some(e) = self.queued.pop_front() {
-                return Ok(e);
+                return Ok(Some(e));
             }
             if !crate::settings::opaque() || paper.get().bg.is_none() {
                 self.next = None;
@@ -50,15 +58,20 @@ impl Input {
                         },
                     );
                 }
-                if let Some(deadline) = self.next
-                    && !event::poll(deadline.saturating_duration_since(Instant::now()))?
-                {
-                    continue;
+            }
+            // An unchanged OSC 11 reply is consumed here. Keep the caller's original
+            // deadline while waiting for a real key or a background result to repaint.
+            if let Some(wake) = self.next.into_iter().chain(deadline).min()
+                && !event::poll(wake.saturating_duration_since(Instant::now()))?
+            {
+                if deadline.is_some_and(|d| Instant::now() >= d) {
+                    return Ok(None);
                 }
+                continue;
             }
             let first = event::read()?;
             if !self.queried || !(alt(&first, ']') || esc(&first)) {
-                return Ok(first);
+                return Ok(Some(first));
             }
             let mut sequence = vec![first];
             let mut payload = String::new();
@@ -87,7 +100,7 @@ impl Input {
                             p.bg = Some(color);
                             paper.set(p);
                             let (w, h) = crossterm::terminal::size()?;
-                            return Ok(Event::Resize(w, h));
+                            return Ok(Some(Event::Resize(w, h)));
                         }
                         sequence.clear();
                     }
