@@ -47,6 +47,12 @@ pub struct BooksPage {
 
 fn read_percent<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<u8>, D::Error> {
     Ok(Option::<f64>::deserialize(d)?
-        .filter(|v| v.is_finite() && *v > 0.)
-        .map(|v| v.round().clamp(1., 100.) as u8))
+        .filter(|v| v.is_finite() && *v >= 0.)
+        .map(|v| {
+            if v >= 100. {
+                100
+            } else {
+                v.round().clamp(0., 99.) as u8
+            }
+        }))
 }

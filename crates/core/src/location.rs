@@ -102,29 +102,47 @@ impl Document {
         if value.len() > 8192 {
             return None;
         }
-        let mut parts = Vec::new();
-        let mut start = 0;
+        let mut clean = String::new();
         let mut escaped = false;
-        let mut in_assertion = false;
-        for (i, c) in value.char_indices() {
+        let mut bracket = false;
+        for c in value.chars() {
             if escaped {
                 escaped = false;
                 continue;
             }
             match c {
-                '^' => escaped = true,
-                '[' => in_assertion = true,
-                ']' => in_assertion = false,
-                ',' if !in_assertion => {
-                    parts.push(&value[start..i]);
-                    start = i + 1;
-                }
-                _ => (),
+                '^' if bracket => escaped = true,
+                '[' if !bracket => bracket = true,
+                ']' if bracket => bracket = false,
+                _ if bracket => (),
+                _ => clean.push(c),
             }
         }
-        if parts.len() != 2 {
+        if bracket || escaped {
             return None;
         }
-        self.resolve_cfi(&format!("epubcfi({}{})", parts[0], parts[1]))
+        let parts: Vec<_> = clean.split(',').collect();
+        let path = match parts.as_slice() {
+            [point] => point.to_string(),
+            [common, first, _] => format!("{common}{first}"),
+            _ => return None,
+        };
+        if path.contains(':') {
+            return self.resolve_cfi(&format!("epubcfi({path})"));
+        }
+        // An element dog-ear targets the first mapped text inside that exact element.
+        let last = path.rsplit('/').next()?.parse::<u32>().ok()?;
+        if !last.is_multiple_of(2) {
+            return self.resolve_cfi(&format!("epubcfi({path}:0)"));
+        }
+        let prefix = format!("{path}/");
+        self.locations.0.iter().find_map(|(&block, runs)| {
+            runs.iter()
+                .find(|r| r.path.starts_with(&prefix))
+                .map(|r| Anchor {
+                    block,
+                    byte: r.byte,
+                })
+        })
     }
 }

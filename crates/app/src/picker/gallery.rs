@@ -1,0 +1,92 @@
+use super::{Entry, Picker};
+use crate::catalog::{Book, BookFile};
+use crate::shelf::gallery::{Grid, book_face};
+use ratatui::{
+    Frame,
+    layout::Rect,
+    style::{Color, Style, Stylize},
+    widgets::{Block, BorderType, Paragraph, Wrap},
+};
+use std::{
+    hash::{DefaultHasher, Hash, Hasher},
+    sync::atomic::AtomicBool,
+};
+
+impl Picker {
+    pub(super) fn gallery(&mut self, f: &mut Frame) {
+        let selected = self.list.selected().unwrap_or(0);
+        let books = self.entries.iter().any(|e| e.kind.is_some());
+        let grid = Grid::new(
+            self.rows,
+            books,
+            self.entries.len(),
+            selected,
+            self.list.offset_mut(),
+        );
+        for &(i, area) in &grid.cells {
+            let entry = &self.entries[i];
+            let border = Block::bordered()
+                .border_type(BorderType::Rounded)
+                .border_style(if i == selected {
+                    Style::new().fg(Color::Cyan).bold()
+                } else {
+                    Style::new().dim()
+                });
+            let inner = border.inner(area);
+            f.render_widget(border, area);
+            if inner.is_empty() {
+                continue;
+            }
+            let Some(kind) = entry.kind else {
+                f.render_widget(
+                    Paragraph::new(format!("{}/", entry.name))
+                        .bold()
+                        .wrap(Wrap { trim: true }),
+                    Rect {
+                        y: inner.y + inner.height / 3,
+                        height: inner.height - inner.height / 3,
+                        ..inner
+                    },
+                );
+                continue;
+            };
+            let book = card(entry, kind);
+            let path = entry.path.clone();
+            self.covers.request(book.id, move || {
+                if kind.readable() {
+                    return Ok(botui_formats::cover(&path).unwrap_or(None));
+                }
+                let page = botui_fixed::page(&path, kind, 1, 240, &AtomicBool::new(false))?;
+                let mut out = std::io::Cursor::new(Vec::new());
+                page.write_to(&mut out, image::ImageFormat::Png)?;
+                Ok(Some(out.into_inner()))
+            });
+            book_face(f, inner, &book, self.covers.image(book.id), &self.graphics);
+        }
+        self.grid = Some(grid);
+    }
+}
+fn card(e: &Entry, kind: botui_formats::FileKind) -> Book {
+    let mut h = DefaultHasher::new();
+    e.path.hash(&mut h);
+    let id = h.finish();
+    let name = e.path.file_stem().unwrap_or_default().to_string_lossy();
+    let (author, title) = name.split_once(" - ").unwrap_or(("", name.as_ref()));
+    Book {
+        id,
+        title: Some(title.into()),
+        authors: if author.is_empty() {
+            vec![]
+        } else {
+            vec![author.into()]
+        },
+        files: vec![BookFile {
+            id,
+            format: Some(kind.label().into()),
+            role: "primary".into(),
+            size_bytes: None,
+        }],
+        has_cover: None,
+        progress: e.percent,
+    }
+}

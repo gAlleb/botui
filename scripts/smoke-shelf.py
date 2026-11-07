@@ -52,6 +52,7 @@ class Fixture(ThreadingHTTPServer):
         self.expired_once = False
         self.progress = {}
         self.saved = []
+        self.marks = {}
         self.files = {
             301: ("epub", "application/epub+zip", epub()),
             302: ("fb2", "application/x-fictionbook+xml", (ROOT / "examples/first-light.fb2").read_bytes()),
@@ -68,7 +69,7 @@ class Fixture(ThreadingHTTPServer):
             files = [{"id": 4000 + index, "format": "pdf", "role": "primary", "sizeBytes": 1000}]
         return {"id": 200 + index, "title": title,
                 "authors": ["Марина Лоцман"], "libraryId": 31 if index == 0 else 32, "status": "present", "files": files,
-                "hasCover": index == 0, "coverVersion": "1", "readingProgress": None}
+                "hasCover": index == 0, "coverVersion": "1", "readingProgress": 37 if index == 1 else None}
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -103,14 +104,28 @@ class Handler(BaseHTTPRequestHandler):
             if (not isinstance(page, int) or page < 0 or not isinstance(size, int) or
                     not 1 <= size <= 100 or self.headers.get_content_type() != "application/json"):
                 return self.reply(400, {"message": "Invalid catalog query"})
-            ids = catalogs[self.path]
+            ids = list(catalogs[self.path])
+            if q := data.get("q"):
+                ids = [i for i in ids if q.casefold() in self.server.card(i)["title"].casefold() or q.casefold() in "марина лоцман"]
+            if "filter" in data:
+                assert data["filter"]["rules"][0]["value"] == ["reading", "rereading"]
+                assert data["sort"][0] == {"field": "lastReadAt", "dir": "desc"}
+                ids = [i for i in ids if i == 1]
+            if data.get("sort") == [{"field": "addedAt", "dir": "desc"}]: ids.reverse()
             return self.reply(200, {"page": page, "size": size, "total": len(ids),
                                     "items": [self.server.card(i) for i in ids[page * size:(page + 1) * size]]})
+        if self.path == API + "/books/200/bookmarks" and self.headers.get("Authorization") == f"Bearer {self.server.token}":
+            marks = self.server.marks.setdefault(data["bookFileId"], [])
+            row = dict(id=max((m["id"] for m in marks),default=0)+1,cfi=data["cfi"],title=data["title"])
+            marks.append(row)
+            return self.reply(201,row)
         if self.path == API + "/auth/login":
             if (data.get("username"), data.get("password")) != (USER, PASSWORD):
                 return self.reply(401, {"statusCode": 401, "message": "Invalid credentials"})
             if data.get("clientKind") != "native":
                 return self.reply(400, {"message": "Expected native client"})
+            if self.server.token is None:
+                self.server.token, self.server.refresh = TOKEN, "a"*64
             return self.reply(200, {**self.credentials(), "user": {"id": 7, "username": USER}})
         if self.path in (API + "/auth/refresh", API + "/auth/logout"):
             if data != {"refreshToken": self.server.refresh}:
@@ -121,6 +136,13 @@ class Handler(BaseHTTPRequestHandler):
             self.server.token, self.server.refresh = None, None
             return self.reply(200, {})
         self.reply(404, {"path": self.path})
+
+    def do_DELETE(self):
+        if self.path.startswith(API + "/books/200/bookmarks/") and self.headers.get("Authorization") == f"Bearer {self.server.token}":
+            ident = int(self.path.rsplit("/",1)[1])
+            for marks in self.server.marks.values(): marks[:] = [m for m in marks if m["id"] != ident]
+            return self.reply(204,{})
+        return self.reply(404,{})
 
     def do_PUT(self):
         if self.path != API + "/reading-progress" or self.headers.get("Authorization") != f"Bearer {self.server.token}":
@@ -138,6 +160,8 @@ class Handler(BaseHTTPRequestHandler):
         if self.headers.get("Authorization") != f"Bearer {self.server.token}":
             return self.reply(401, {"statusCode": 401})
         url = urlsplit(self.path)
+        if url.path == API + "/books/200/bookmarks":
+            return self.reply(200,self.server.marks.get(int(parse_qs(url.query)["readerFileId"][0]),[]))
         if url.path == API + "/reading-progress":
             ident=int(parse_qs(url.query)["fileId"][0])
             return self.reply(200,{"items":[self.server.progress.get(ident,dict(fileId=ident,updatedAt=None,percentage=0,text={"cfi":None,"page":None}))]})
@@ -173,13 +197,13 @@ class Handler(BaseHTTPRequestHandler):
 
 
 class Terminal:
-    def __init__(self, tmp, binary, url):
+    def __init__(self, tmp, binary, url=None, args=None):
         self.base = ["tmux", "-f", "/dev/null", "-S", str(tmp / "tmux.sock")]
         self.env = {"HOME": str(tmp), "PATH": os.environ["PATH"], "LC_ALL": "C.UTF-8",
                     "XDG_CONFIG_HOME": str(tmp / "config"), "XDG_STATE_HOME": str(tmp / "state"),
                     "XDG_CACHE_HOME": str(tmp / "cache")}
         self.run("new-session", "-d", "-s", "shelf", "-c", str(tmp), "-x", "115", "-y", "30",
-                 shlex.join((str(binary), "--server", url)))
+                 shlex.join([str(binary), *(args if args is not None else ["--server",url])]))
 
     def run(self, *args, required=True):
         return subprocess.run(self.base + list(args), env=self.env, text=True, capture_output=True, check=required)
@@ -212,18 +236,19 @@ class Terminal:
 
 
 def login(term, url, wrong_password=False):
-    term.see("Подключиться к BookOrbit")
+    term.see("Connect to BookOrbit")
     term.keys("Enter")
-    form = term.see("Пароль")
+    form = term.see("Password")
     assert url in form, form
     term.keys("Tab")
+    term.keys("C-u")
     term.type(USER)
     term.keys("Tab")
     if wrong_password:
         term.type("incorrect")
         term.keys("Enter")
         term.wait("Отказ при ошибке входа", lambda s: "401" in s or "неверн" in s.lower())
-        term.click("Пароль", term.see("Пароль"))
+        term.click("Password", term.see("Password"))
         term.keys("C-u")
     term.type(PASSWORD)
     term.keys("Enter")
@@ -252,33 +277,42 @@ def check_collections(tmp, binary, fixture):
         login(term, url, wrong_password=True)
         term.see("▀")  # Before opening files: real cover on the shelf.
         term.keys("v")
-        term.see("[V Сетка]")
-        term.click("[V Сетка]", term.see("[V Сетка]"))
+        term.see("[V Grid]")
+        term.keys("/");term.see("Search all books");term.type("том 99");term.keys("Enter")
+        term.see("Архивный том 99")
+        term.keys("4");term.see("37%");assert OTHER_BOOK in term.see("Currently reading")
+        term.keys("5");term.see(f"Архивный том {TOTAL}")
+        term.keys("1");term.see(BOOK)
+        term.click("[V Grid]", term.see("[V Grid]"))
         term.see("▀")
         term.keys("Right","Enter")
         term.wait("Сетка: соседняя книга", lambda s: OTHER_BOOK in s and BOOK not in s)
         term.keys("Escape")
-        term.see("[V Список]")
+        term.see("[V List]")
         term.keys("3")
         term.see(COLLECTION)
         term.keys("Enter")
         term.see(BOOK)
         term.keys("PageDown")
         term.wait("Следующая страница полки", lambda s: "Архивный том" in s and BOOK not in s)
-        term.keys("PageUp")
+        for _ in range(8):
+            term.keys("PageDown")
+            time.sleep(0.05)
+        term.wait("Collection scrolled past first batch", lambda s: any(f"Архивный том {n}" in s for n in range(25,80)))
+        term.keys("Home")
         term.see(BOOK)
         term.keys("Enter")
 
         formats(term)
         frame = term.see("▀")
         term.click("PDF", frame)
-        term.wait("Сведения о PDF", lambda s: "PDF" in s and "просмотр" in s.lower())
+        term.wait("Сведения о PDF", lambda s: "PDF" in s and "Open the original pages" in s)
         term.keys("Escape")
         for label, heading in [("FB2", FB2_MARK), ("EPUB", EPUB_MARK)]:
             term.click(label, formats(term))
             term.see(heading)
             if label == "FB2":
-                term.keys("o");term.see("Разделов:");term.keys("End","Enter")
+                term.keys("z");term.wait("Zen",lambda s:"Z Zen" not in s);term.keys("o");term.see("Chapters:");term.keys("End","Enter")
                 term.wait("Конец книги FB2",lambda s:s.strip().startswith("Обратный рейс"))
             term.keys("q")
             formats(term)
@@ -287,7 +321,7 @@ def check_collections(tmp, binary, fixture):
         term.click(OTHER_BOOK, shelf)
         missing_cover = term.wait("Оттиск без обложки", lambda s: OTHER_BOOK in s and "PDF" in s and BOOK not in s)
         term.click("PDF", missing_cover)
-        term.wait("Карточка PDF без обложки", lambda s: "просмотр" in s.lower() and "▀" not in s)
+        term.wait("Карточка PDF без обложки", lambda s: "Open the original pages" in s and "▀" not in s)
         term.keys("Escape")
         term.keys("Escape")
         term.see(BOOK)
@@ -321,7 +355,7 @@ def check_without_collections(tmp, binary, fixture):
         term.see(BOOK)
         term.keys("Down","Enter")
         term.wait("В узкой сетке открылась вторая книга",lambda s:OTHER_BOOK in s and "[V " not in s)
-        term.keys("Escape");term.see("[V Список]")
+        term.keys("Escape");term.see("[V List]")
         term.run("resize-window","-t","shelf","-x","115","-y","30")
         all_books=term.wait("После расширения видны обе книги",lambda s:BOOK in s and OTHER_BOOK in s)
         term.click(BOOK, all_books)
@@ -339,8 +373,8 @@ def check_without_collections(tmp, binary, fixture):
             term.keys("Escape")
         term.wait("Возврат к библиотекам", lambda s: all(name in s for name in LIBRARIES.values()))
         term.keys("3")
-        term.wait("Пустой список коллекций", lambda s: "коллекц" in s.lower()
-                  and ("нет" in s.lower() or "пуст" in s.lower()) and BOOK not in s)
+        term.wait("Пустой список коллекций", lambda s: "collections" in s.lower()
+                  and ("no personal" in s.lower()) and BOOK not in s)
         term.keys("Escape")
         term.wait("Книги доступны после выхода из пустых коллекций", lambda s: BOOK in s and OTHER_BOOK in s)
         quit_shelf(term)

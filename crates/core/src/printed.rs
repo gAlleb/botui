@@ -32,7 +32,7 @@ pub(super) fn continues(left: &Block, right: &Block) -> bool {
         && !right.heading
         && (split_word(&left.text, &right.text)
             || (left.text.chars().count() >= 26
-                && right.text.starts_with(char::is_lowercase)
+                && right.text.starts_with(char::is_alphabetic)
                 && !left.text.ends_with(['.', '!', '?', '…', ':'])))
 }
 

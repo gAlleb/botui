@@ -1,4 +1,5 @@
 //! A fixed page is addressed by its printed page index, never by a text offset.
+mod contents;
 mod pages;
 use crate::{
     AppTerminal, centered,
@@ -13,6 +14,7 @@ use crossterm::event::{
 };
 use ratatui::{
     layout::{Position, Rect},
+    style::Stylize,
     widgets::{Block, Clear, Paragraph},
 };
 use std::{io, path::Path, sync::mpsc::TryRecvError, time::Duration};
@@ -23,7 +25,13 @@ pub fn read(
     kind: FileKind,
     notices: &mut Vec<String>,
 ) -> io::Result<()> {
-    read_server(term, path, kind, notices, None).map(|_| ())
+    let (_, percent) = read_server(term, path, kind, notices, None)?;
+    if let Some(p) = percent
+        && let Err(e) = botui_store::HistoryEntry::record(path, p)
+    {
+        notices.push(e.to_string());
+    }
+    Ok(())
 }
 pub fn read_server(
     term: &mut AppTerminal,
@@ -31,11 +39,17 @@ pub fn read_server(
     kind: FileKind,
     notices: &mut Vec<String>,
     base: Option<&botui_bookorbit::progress::Progress>,
-) -> io::Result<Option<botui_bookorbit::progress::Move>> {
+) -> io::Result<(Option<botui_bookorbit::progress::Move>, Option<f64>)> {
     let picker = graphics();
     let worker = Worker::new();
     let p = path.to_owned();
     let count_job = worker.start(move |cancel| botui_fixed::page_count(&p, kind, cancel));
+    let prefs = crate::settings::Settings::load()?;
+    let mut zen = prefs.zen;
+    let mut sidebar = contents::Contents::default();
+    let outline_path = path.to_owned();
+    let mut outline_job =
+        Some(worker.start(move |cancel| botui_fixed::outline(&outline_path, kind, cancel)));
     let mut total = None;
     let mut pages = pages::Pages::new();
     let mut crop = Crop::default();
@@ -56,6 +70,10 @@ pub fn read_server(
     }
     let start = n;
     let mut spread = saved.is_some_and(|s| s.spread);
+    let mut search_job: Option<crate::shelf::background::Ticket<io::Result<Vec<u32>>>> = None;
+    let mut found: Vec<u32> = vec![];
+    let mut query = String::new();
+    let mut message = String::new();
     let mut menu = false;
     let mut focus: usize = 0;
     let mut dirty = false;
@@ -70,18 +88,62 @@ pub fn read_server(
                 }
                 Err(TryRecvError::Empty) => (),
                 Err(TryRecvError::Disconnected) => {
-                    return Err(io::Error::other("Подсчёт страниц прерван"));
+                    return Err(io::Error::other("Page count interrupted"));
+                }
+            }
+        }
+        if let Some(job) = &outline_job {
+            match job.receiver.try_recv() {
+                Ok(result) => {
+                    sidebar.items = result.unwrap_or_default();
+                    outline_job = None;
+                }
+                Err(TryRecvError::Disconnected) => outline_job = None,
+                Err(TryRecvError::Empty) => (),
+            }
+        }
+        if let Some(job) = &search_job {
+            let result = match job.receiver.try_recv() {
+                Ok(r) => Some(r),
+                Err(TryRecvError::Empty) => None,
+                Err(_) => Some(Err(io::Error::other("Search interrupted"))),
+            };
+            if let Some(r) = result {
+                search_job = None;
+                match r {
+                    Ok(v) => {
+                        found = v;
+                        if found.is_empty() {
+                            message = "No matches in the embedded text".into();
+                        } else {
+                            n = found.iter().copied().find(|p| *p >= n).unwrap_or(found[0]);
+                            dirty = true;
+                            crop = Crop::default();
+                            message = if found.len() == 1 {
+                                "1 matching page".to_owned()
+                            } else {
+                                format!("{} matching pages · N next", found.len())
+                            };
+                        }
+                    }
+                    Err(e) => message = e.to_string(),
                 }
             }
         }
         let screen = term.size()?;
-        let cols = if spread && total != Some(1) && screen.width >= 68 {
+        let rail = if !zen && screen.width >= 78 {
+            (screen.width / 5).clamp(22, 32)
+        } else {
+            0
+        };
+        let available = screen.width - rail;
+        let cols = if spread && total != Some(1) && available >= 68 {
             2u16
         } else {
             1
         };
         let size = picker.font_size();
-        let side = (screen.width / cols)
+        let side = (available / cols)
             .saturating_mul(size.width)
             .max(screen.height.saturating_mul(size.height))
             .clamp(240, 1600);
@@ -91,7 +153,31 @@ pub fn read_server(
         }
         let mut hits = vec![];
         term.draw(|f| {
-            let area = f.area();
+            let screen = f.area();
+            sidebar.draw(
+                f,
+                Rect::new(screen.x, screen.y, rail, screen.height),
+                n,
+                total.unwrap_or(0),
+            );
+            let area = Rect::new(
+                screen.x + rail,
+                screen.y,
+                available,
+                screen.height.saturating_sub(u16::from(!zen)),
+            );
+            if !zen && screen.height > 0 {
+                f.render_widget(
+                    Paragraph::new(format!(
+                        " {}   ·   {} / {}   ·   Z Zen   M Menu",
+                        kind.label(),
+                        n,
+                        total.unwrap_or(0)
+                    ))
+                    .dim(),
+                    Rect::new(area.x, screen.bottom() - 1, area.width, 1),
+                );
+            }
             for i in 0..cols {
                 let Some(page) = pages.get(n.saturating_add(u32::from(i)), side) else {
                     continue;
@@ -110,12 +196,18 @@ pub fn read_server(
             }
             if pages.get(n, side).is_none() {
                 f.render_widget(
-                    Paragraph::new("Готовим страницу…").centered(),
+                    Paragraph::new("Rendering page…").centered(),
                     centered(area, 36, 1),
                 );
             }
+            if !message.is_empty() && area.height > 0 {
+                f.render_widget(
+                    Paragraph::new(message.as_str()).reversed(),
+                    Rect::new(area.x, area.bottom() - 1, area.width, 1),
+                );
+            }
             if menu {
-                let panel = centered(area, 48, 16);
+                let panel = centered(screen, 48, 20);
                 let block = Block::bordered().title(format!(
                     " {} · {} / {} ",
                     kind.label(),
@@ -126,20 +218,24 @@ pub fn read_server(
                 f.render_widget(Clear, panel);
                 f.render_widget(block, panel);
                 let labels = [
-                    "Продолжить чтение       Esc",
-                    "Предыдущая страница      ←",
-                    "Следующая страница       →",
-                    "Одна страница            1",
-                    "Разворот                 2",
-                    "Закрыть книгу            Q",
-                    "К началу                 Home",
-                    "К концу                  End",
-                    "Увеличить                +",
-                    "Уменьшить                −",
-                    "Сдвиг влево              ←",
-                    "Сдвиг вправо             →",
-                    "Сдвиг вверх              ↑",
-                    "Сдвиг вниз               ↓",
+                    "Resume                   Esc",
+                    "Previous page             ←",
+                    "Next page                 →",
+                    "Single page               1",
+                    "Two-page spread           2",
+                    "Close book                Q",
+                    "First page                Home",
+                    "Last page                 End",
+                    "Zoom in                   +",
+                    "Zoom out                  −",
+                    "Pan left                  ←",
+                    "Pan right                 →",
+                    "Pan up                    ↑",
+                    "Pan down                  ↓",
+                    "Toggle zen mode           Z",
+                    "Toggle opaque background  F",
+                    "Find in text layer        /",
+                    "Next matching page        N",
                 ];
                 let offset = focus
                     .saturating_add(1)
@@ -162,11 +258,25 @@ pub fn read_server(
                     hits.push((r, i + offset));
                 }
             }
+            crate::settings::paint(f);
         })?;
-        if (total.is_none() || pages.busy()) && !event::poll(Duration::from_millis(60))? {
+        if (search_job.is_some() || outline_job.is_some() || total.is_none() || pages.busy())
+            && !event::poll(Duration::from_millis(60))?
+        {
             continue;
         }
-        let action = match event::read()? {
+        let e = event::read()?;
+        if !menu && let Some(target) = sidebar.input(&e, total.unwrap_or(0)) {
+            if let Some(target) = target
+                && let Some(count) = total
+            {
+                n = target.clamp(1, count);
+                crop = Crop::default();
+                dirty = true;
+            }
+            continue;
+        }
+        let action = match e {
             Event::Key(k) if k.kind != KeyEventKind::Release => match k.code {
                 KeyCode::Char('c') if k.modifiers.contains(KeyModifiers::CONTROL) => 5,
                 KeyCode::Up | KeyCode::BackTab if menu => {
@@ -174,10 +284,14 @@ pub fn read_server(
                     continue;
                 }
                 KeyCode::Down | KeyCode::Tab if menu => {
-                    focus = (focus + 1).min(13);
+                    focus = (focus + 1).min(17);
                     continue;
                 }
                 KeyCode::Enter if menu => focus,
+                KeyCode::Char('/') => 16,
+                KeyCode::Char('n' | 'N') => 17,
+                KeyCode::Char('z' | 'Z') => 14,
+                KeyCode::Char('f' | 'F') => 15,
                 KeyCode::Char('q' | 'Q') => 5,
                 KeyCode::Esc if !menu => 5,
                 KeyCode::Char('m' | 'M' | '?') | KeyCode::Esc | KeyCode::Enter => 0,
@@ -204,7 +318,7 @@ pub fn read_server(
                     continue;
                 }
                 MouseEventKind::ScrollDown if menu => {
-                    focus = (focus + 1).min(13);
+                    focus = (focus + 1).min(17);
                     continue;
                 }
                 MouseEventKind::ScrollUp if crop.level > 0 => 12,
@@ -221,6 +335,7 @@ pub fn read_server(
             },
             _ => continue,
         };
+        message.clear();
         let old = (n, spread);
         match action {
             0 => {
@@ -247,6 +362,37 @@ pub fn read_server(
             11 => crop.x = crop.x.saturating_add(64),
             12 => crop.y = crop.y.saturating_sub(64),
             13 => crop.y = crop.y.saturating_add(64),
+            16 => {
+                if let Some(text) =
+                    crate::prompt::edit(term, "Find in text layer", "[ Search ↵ ]", &query, |_| {})?
+                    && !text.is_empty()
+                {
+                    query = text.clone();
+                    let path = path.to_owned();
+                    found.clear();
+                    message = "Searching…".into();
+                    search_job = Some(
+                        worker.start(move |cancel| botui_fixed::search(&path, kind, &text, cancel)),
+                    );
+                }
+            }
+            17 => {
+                if let Some(first) = found.first() {
+                    n = found.iter().copied().find(|p| *p > n).unwrap_or(*first);
+                    message = if found.len() == 1 {
+                        "1 matching page".to_owned()
+                    } else {
+                        format!("{} matching pages · N next", found.len())
+                    };
+                }
+            }
+            14 => {
+                zen = !zen;
+                crate::settings::Settings::update(|s| s.zen = zen)?;
+            }
+            15 => {
+                crate::settings::Settings::update(|s| s.opaque_background = !s.opaque_background)?;
+            }
             _ => (),
         }
         if old.0 != n {
@@ -271,7 +417,7 @@ pub fn read_server(
     {
         notices.push(e.to_string());
     }
-    Ok(
+    Ok((
         if base.is_some_and(|p| p.text.cfi.is_none()) && n != start {
             total.map(|count| botui_bookorbit::progress::Move {
                 target: botui_bookorbit::progress::Target::Page(n),
@@ -280,5 +426,6 @@ pub fn read_server(
         } else {
             None
         },
-    )
+        total.map(|count| f64::from(n) * 100. / f64::from(count)),
+    ))
 }

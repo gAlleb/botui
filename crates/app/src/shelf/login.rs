@@ -42,9 +42,9 @@ impl Login {
     pub fn draw(&mut self, f: &mut Frame, notice: Option<&str>) {
         let box_area = centered(f.area(), 72, 15);
         let panel = Block::bordered().title(if self.opds {
-            " Каталог OPDS · логин и пароль необязательны "
+            " OPDS catalog · credentials optional "
         } else {
-            " Вход в BookOrbit "
+            " Sign in to BookOrbit "
         });
         let area = panel.inner(box_area);
         f.render_widget(Clear, box_area);
@@ -73,9 +73,9 @@ impl Login {
             let rect = Rect::new(area.x.saturating_add(1), y, area.width.saturating_sub(2), 1);
             self.hits[index] = rect;
             let line = if index == 3 {
-                "[ Войти ]".to_owned()
+                "[ Sign in ]".to_owned()
             } else {
-                let label = ["Адрес", "Логин", "Пароль"][index];
+                let label = ["Address", "Username", "Password"][index];
                 format!("{label}   {}", values[index])
             };
             let style = if self.focus == index {
@@ -88,14 +88,17 @@ impl Login {
         if area.height >= 6 {
             let bottom = area.bottom() - 1;
             self.back = Rect::new(area.x, bottom, area.width.min(10), 1);
-            f.render_widget(Paragraph::new("[ Назад ]"), self.back);
+            f.render_widget(Paragraph::new("[ Back ]"), self.back);
             let tail = Rect::new(
                 self.back.right(),
                 bottom,
                 area.width.saturating_sub(self.back.width),
                 1,
             );
-            f.render_widget(Paragraph::new("  Tab — поле   ·   Enter — далее"), tail);
+            f.render_widget(
+                Paragraph::new("  Tab · next field   Enter · continue"),
+                tail,
+            );
             if let Some(message) = notice {
                 let rect = Rect::new(area.x, bottom.saturating_sub(2), area.width, 2);
                 f.render_widget(

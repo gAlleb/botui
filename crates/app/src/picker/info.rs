@@ -54,7 +54,7 @@ impl FileInfo {
                 .collect(),
             format: detected
                 .map(str::to_owned)
-                .unwrap_or_else(|| format!("{} (по расширению)", kind.label())),
+                .unwrap_or_else(|| format!("{} (from extension)", kind.label())),
             size,
         }
     }
@@ -62,20 +62,20 @@ impl FileInfo {
     fn draw(&self, frame: &mut Frame) -> Rect {
         let area = frame.area();
         let panel = centered(area, 72, 10);
-        let block = Block::bordered().title(" Информация о книге ");
+        let block = Block::bordered().title(" Book details ");
         let inner = block.inner(panel);
         frame.render_widget(Clear, area);
         frame.render_widget(block, panel);
         let mut lines = vec![
             Line::from(self.name.as_str()).bold(),
-            Line::from(format!("Формат: {}", self.format)),
+            Line::from(format!("Format: {}", self.format)),
         ];
         if let Some(size) = self.size {
-            lines.push(Line::from(format!("Размер: {size} Б")));
+            lines.push(Line::from(format!("Size: {size} bytes")));
         }
         lines.push(Line::from(""));
         lines.push(Line::from(
-            "Терминал без пиксельной графики покажет уменьшенные страницы.",
+            "This terminal displays pages using character graphics.",
         ));
         let body = Rect {
             height: inner.height.saturating_sub(1),
@@ -88,11 +88,11 @@ impl FileInfo {
             inner.width.min(15),
             inner.height.min(1),
         );
-        frame.render_widget(Paragraph::new("[ Назад · Esc ]").reversed(), back);
+        frame.render_widget(Paragraph::new("[ Back · Esc ]").reversed(), back);
         let open = open_button(back, inner.right());
-        frame.render_widget(Paragraph::new("[ P Просмотр ]"), open);
+        frame.render_widget(Paragraph::new("[ P Read ]"), open);
         let external = external_button(open, inner.right());
-        frame.render_widget(Paragraph::new("[ X Системный просмотр ]"), external);
+        frame.render_widget(Paragraph::new("[ X External viewer ]"), external);
         back
     }
 }
@@ -133,6 +133,7 @@ pub(crate) fn show_info(term: &mut AppTerminal, path: &Path, kind: FileKind) -> 
         let mut external = Rect::default();
         term.draw(|f| {
             back = info.draw(f);
+            crate::settings::paint(f);
             let right = centered(f.area(), 72, 10).right().saturating_sub(1);
             open = open_button(back, right);
             external = external_button(open, right);
@@ -188,8 +189,8 @@ mod tests {
             .collect();
         assert!(
             screen.contains("Скан.djv")
-                && screen.contains("Формат: DjVu")
-                && screen.contains("Размер: 100 Б")
+                && screen.contains("Format: DjVu")
+                && screen.contains("Size: 100 bytes")
         );
         let click = |row| {
             Event::Mouse(MouseEvent {

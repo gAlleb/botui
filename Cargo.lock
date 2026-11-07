@@ -118,6 +118,7 @@ dependencies = [
  "ratatui-image",
  "serde",
  "serde_json",
+ "sha2",
  "tempfile",
  "unicode-truncate",
 ]
@@ -152,6 +153,7 @@ dependencies = [
 name = "botui-formats"
 version = "0.1.0"
 dependencies = [
+ "base64",
  "botui-core",
  "ego-tree",
  "encoding_rs",

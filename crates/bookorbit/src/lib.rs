@@ -1,4 +1,5 @@
 //! Password sign-in, catalog navigation and reading individual files from BookOrbit.
+pub mod bookmarks;
 mod model;
 pub mod progress;
 mod session;
@@ -30,6 +31,13 @@ pub fn is_forbidden(err: &(dyn Error + 'static)) -> bool {
 fn has_status(err: &(dyn Error + 'static), status: StatusCode) -> bool {
     err.downcast_ref::<HttpFailure>()
         .is_some_and(|e| e.status == status)
+}
+
+#[derive(Clone, Copy)]
+pub enum CatalogOrder {
+    Title,
+    Reading,
+    Recent,
 }
 
 #[derive(Clone)]
@@ -82,14 +90,48 @@ impl BookOrbit {
     }
 
     fn query_page(&self, token: &str, path: &str, page: u32, size: u32) -> Result<BooksPage> {
+        self.query_options(token, path, page, size, CatalogOrder::Title, None)
+    }
+
+    pub fn catalog_query(
+        &self,
+        token: &str,
+        library: Option<u64>,
+        page: u32,
+        size: u32,
+        order: CatalogOrder,
+        search: Option<&str>,
+    ) -> Result<BooksPage> {
+        let path = library.map_or_else(
+            || "books/query".into(),
+            |id| format!("libraries/{id}/books"),
+        );
+        self.query_options(token, &path, page, size, order, search)
+    }
+
+    fn query_options(
+        &self,
+        token: &str,
+        path: &str,
+        page: u32,
+        size: u32,
+        order: CatalogOrder,
+        search: Option<&str>,
+    ) -> Result<BooksPage> {
         if !(1..=200).contains(&size) {
-            return Err("Размер страницы каталога должен быть от 1 до 200.".into());
+            return Err("Catalog page size must be between 1 and 200.".into());
         }
-        let query = serde_json::json!({
+        let mut query = serde_json::json!({
             "pagination": {"page":page,"size":size},
-            "sort": [{"field":"title","dir":"asc"}],
+            "sort": [match order {CatalogOrder::Title => serde_json::json!({"field":"title","dir":"asc"}), CatalogOrder::Reading => serde_json::json!({"field":"lastReadAt","dir":"desc"}), CatalogOrder::Recent => serde_json::json!({"field":"addedAt","dir":"desc"})}],
             "collapseSeries":false,
         });
+        if let Some(q) = search {
+            query["q"] = q.into();
+        }
+        if matches!(order, CatalogOrder::Reading) {
+            query["filter"] = serde_json::json!({"type":"group","join":"AND","rules":[{"type":"rule","field":"readStatus","operator":"includesAny","value":["reading","rereading"]}]});
+        }
         read_json(
             self.authorized(Method::POST, path, token)?
                 .header(CONTENT_TYPE, "application/json")
@@ -106,7 +148,7 @@ impl BookOrbit {
         size: u32,
     ) -> Result<BooksPage> {
         if !(1..=100).contains(&size) {
-            return Err("Размер страницы должен быть от 1 до 100.".into());
+            return Err("Page size must be between 1 and 100.".into());
         }
         let path = format!(
             "collections/{collection_id}/books?page={page}&size={size}&collapseSeries=false"
@@ -131,20 +173,20 @@ impl BookOrbit {
                 .map_err(|e| e.without_url())?,
         )?;
         if response.status() != StatusCode::OK {
-            return Err("BookOrbit вернул неполный файл.".into());
+            return Err("BookOrbit returned an incomplete file.".into());
         }
         if is_html(&response) {
             return Err(
-                "BookOrbit вернул веб-страницу вместо файла книги. Проверьте адрес и вход.".into(),
+                "BookOrbit returned HTML instead of a book. Check the address and sign-in.".into(),
             );
         }
         let length = response.content_length();
         if length.is_some_and(|n| n > limit) {
-            return Err("Файл превышает установленное ограничение размера.".into());
+            return Err("File exceeds the size limit.".into());
         }
         let count = copy_bounded(response, writer, limit)?;
         if length.is_some_and(|n| n != count) || count == 0 {
-            return Err("Файл получен не полностью.".into());
+            return Err("Incomplete file download.".into());
         }
         Ok(count)
     }
@@ -160,14 +202,14 @@ impl BookOrbit {
         }
         let response = checked(response)?;
         if is_html(&response) {
-            return Err("BookOrbit вернул веб-страницу вместо обложки.".into());
+            return Err("BookOrbit returned HTML instead of cover art.".into());
         }
         Ok(Some(raw_bounded(response, 2 * 1024 * 1024)?))
     }
 
     fn authorized(&self, method: Method, path: &str, token: &str) -> Result<RequestBuilder> {
         if !valid_token(token) {
-            return Err("Требуется временный Bearer-токен без пробелов и переносов строки.".into());
+            return Err("Expected a temporary bearer token without whitespace.".into());
         }
         Ok(self
             .client

@@ -129,14 +129,26 @@ impl Rail {
             y += 1;
         };
         draw(
-            "1 Все книги".into(),
+            "1 All books".into(),
             active == Tab::All,
             true,
             Command::OpenTab(Tab::All),
         );
+        draw(
+            "4 Currently reading".into(),
+            active == Tab::Reading,
+            true,
+            Command::OpenTab(Tab::Reading),
+        );
+        draw(
+            "5 Recently added".into(),
+            active == Tab::Recent,
+            true,
+            Command::OpenTab(Tab::Recent),
+        );
         for (tab, name) in [
-            (Tab::Libraries, "2 Библиотеки"),
-            (Tab::Collections, "3 Коллекции"),
+            (Tab::Libraries, "2 Libraries"),
+            (Tab::Collections, "3 Collections"),
         ] {
             draw(
                 name.into(),
@@ -146,7 +158,7 @@ impl Rail {
             );
             if let Some(groups) = &self.groups {
                 let max = if tab == Tab::Libraries {
-                    area.height.saturating_sub(5) as usize
+                    area.height.saturating_sub(7) as usize
                 } else {
                     area.height as usize
                 };

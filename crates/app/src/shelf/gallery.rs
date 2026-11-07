@@ -8,12 +8,18 @@ use ratatui::{
     widgets::{Block, BorderType, Paragraph, Wrap},
 };
 
-pub(super) struct Grid {
+pub(crate) struct Grid {
     pub cols: usize,
-    cells: Vec<(usize, Rect)>,
+    pub(crate) cells: Vec<(usize, Rect)>,
 }
 impl Grid {
-    fn new(area: Rect, books: bool, count: usize, selected: usize, offset: &mut usize) -> Self {
+    pub(crate) fn new(
+        area: Rect,
+        books: bool,
+        count: usize,
+        selected: usize,
+        offset: &mut usize,
+    ) -> Self {
         let cols = (area.width / if books { 27 } else { 29 }).clamp(1, 6) as usize;
         let rows = ((area.height / if books { 16 } else { 4 }).max(1) as usize)
             .min(count.div_ceil(cols).max(1));
@@ -39,6 +45,9 @@ impl Grid {
             ));
         }
         Self { cols, cells }
+    }
+    pub fn len(&self) -> usize {
+        self.cells.len()
     }
     pub fn hit(&self, pos: Position) -> Option<usize> {
         self.cells
@@ -67,15 +76,7 @@ fn line(area: Rect, y: u16, height: u16) -> Rect {
     )
 }
 fn amount(n: u64) -> String {
-    let noun = if (11..=14).contains(&(n % 100)) {
-        "книг"
-    } else {
-        match n % 10 {
-            1 => "книга",
-            2..=4 => "книги",
-            _ => "книг",
-        }
-    };
+    let noun = if n == 1 { "book" } else { "books" };
     format!("{n} {noun}")
 }
 
@@ -108,7 +109,7 @@ pub(super) fn caption(text: &str, width: u16, max_lines: usize) -> String {
 /// A cloth binding and foil ornament drawn as terminal cells. The same title
 /// and author always get the same jacket, independent of sorting and resizing.
 fn jacket(frame: &mut Frame, slot: Rect, book: &Book) {
-    let title = single_line(book.title.clone().unwrap_or_else(|| "Без названия".into()));
+    let title = single_line(book.title.clone().unwrap_or_else(|| "Untitled".into()));
     let author = single_line(book.authors.join(", "));
     let seed = title
         .bytes()
@@ -219,39 +220,12 @@ impl Shelf {
                     if book.has_cover != Some(false) {
                         wanted.push(book.id);
                     }
-                    let meta = if inner.height >= 7 { 4 } else { 2 };
-                    let art = inner.height.saturating_sub(meta);
-                    let title =
-                        single_line(book.title.clone().unwrap_or_else(|| "Без названия".into()));
-                    self.artwork(frame, line(inner, 0, art), book);
-                    frame.render_widget(
-                        Paragraph::new(caption(&title, inner.width, if meta == 4 { 2 } else { 1 }))
-                            .centered()
-                            .style(Style::new().bold())
-                            .wrap(Wrap { trim: true }),
-                        line(inner, art, meta - 1),
-                    );
-                    if meta == 4 {
-                        frame.render_widget(
-                            Paragraph::new(caption(
-                                &single_line(book.authors.join(", ")),
-                                inner.width,
-                                1,
-                            ))
-                            .centered()
-                            .dim(),
-                            line(inner, art + 2, 1),
-                        );
-                    }
-                    frame.render_widget(
-                        Paragraph::new(if let Some(p) = book.progress {
-                            format!("{}  ·  {p}%", formats(book))
-                        } else {
-                            formats(book)
-                        })
-                        .centered()
-                        .style(Style::new().fg(Color::Cyan)),
-                        line(inner, inner.height - 1, 1),
+                    book_face(
+                        frame,
+                        inner,
+                        book,
+                        self.covers.image(book.id),
+                        &self.graphics,
                     );
                 }
                 Command::Books(scope, _) => {
@@ -285,3 +259,50 @@ impl Shelf {
     }
 }
 use ratatui::style::Stylize;
+
+pub(crate) fn book_face(
+    frame: &mut Frame,
+    inner: Rect,
+    book: &Book,
+    picture: Option<&crate::cover::Picture>,
+    graphics: &ratatui_image::picker::Picker,
+) {
+    let meta = if inner.height >= 7 { 4 } else { 2 };
+    let art = inner.height.saturating_sub(meta);
+    let title = single_line(book.title.clone().unwrap_or_else(|| "Untitled".into()));
+    let area = line(inner, 0, art);
+    if let Some(pic) = picture {
+        pic.draw(frame, area, graphics);
+    } else if !area.is_empty() {
+        jacket(frame, area, book);
+    }
+    frame.render_widget(
+        Paragraph::new(caption(&title, inner.width, if meta == 4 { 2 } else { 1 }))
+            .centered()
+            .style(Style::new().bold())
+            .wrap(Wrap { trim: true }),
+        line(inner, art, meta - 1),
+    );
+    if meta == 4 {
+        frame.render_widget(
+            Paragraph::new(caption(
+                &single_line(book.authors.join(", ")),
+                inner.width,
+                1,
+            ))
+            .centered()
+            .dim(),
+            line(inner, art + 2, 1),
+        );
+    }
+    frame.render_widget(
+        Paragraph::new(if let Some(p) = book.progress {
+            format!("{}  ·  {p}%", formats(book))
+        } else {
+            formats(book)
+        })
+        .centered()
+        .style(Style::new().fg(Color::Cyan)),
+        line(inner, inner.height - 1, 1),
+    );
+}

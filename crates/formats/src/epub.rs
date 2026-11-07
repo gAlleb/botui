@@ -155,7 +155,7 @@ pub(super) fn member_path(base: &str, href: &str) -> Result<String> {
     Ok(parts.join("/"))
 }
 
-fn read_member<R: Read + Seek>(
+pub(super) fn read_member<R: Read + Seek>(
     archive: &mut ZipArchive<R>,
     path: &str,
     remaining: &mut u64,

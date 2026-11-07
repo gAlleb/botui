@@ -58,7 +58,7 @@ impl Picker {
         let style = self.preview().style();
         f.render_widget(Clear, popup);
         let block = if popup.height >= 5 && popup.width >= 16 {
-            Block::bordered().title(" Тема чтения ")
+            Block::bordered().title(" Reader theme ")
         } else {
             Block::new()
         }
@@ -79,13 +79,13 @@ impl Picker {
         let dark_x = light_x + self.swatch_width;
         if header > 0 {
             f.render_widget(
-                Paragraph::new("↑↓ Палитра"),
+                Paragraph::new("↑↓ Palette"),
                 Rect::new(body.x, body.y, light_x - body.x, 1),
             );
             let labels = if self.swatch_width >= 7 {
-                ["Светлая", "Тёмная"]
+                ["Light", "Dark"]
             } else {
-                ["С", "Т"]
+                ["L", "D"]
             };
             for (x, label) in [light_x, dark_x].into_iter().zip(labels) {
                 f.render_widget(
@@ -131,13 +131,13 @@ impl Picker {
                 let sample = if self.swatch_width >= 4 {
                     Line::from(vec![
                         Span::styled(cursor, theme.style().fg(theme.link())),
-                        Span::raw("Аа"),
+                        Span::raw("Aa"),
                     ])
                 } else {
                     Line::raw(if current && self.dark == dark {
                         "›"
                     } else {
-                        "А"
+                        "A"
                     })
                 };
                 f.render_widget(
@@ -149,7 +149,7 @@ impl Picker {
         if footer > 0 {
             let half = self.footer.width / 2;
             let labels = if body.width >= 31 {
-                ["✓ Выбрать (Enter)", "× Отмена (Esc)"]
+                ["✓ Apply (Enter)", "× Cancel (Esc)"]
             } else if body.width >= 17 {
                 ["✓ Enter", "× Esc"]
             } else {

@@ -90,3 +90,26 @@ fn fb2_decodes_cyrillic_and_only_displays_reading_bodies() {
         ]
     );
 }
+
+#[test]
+fn bookmarks_resolve_element_or_range_starts_without_guessing_another_chapter() {
+    let book = super::fb2::parse(br#"<FictionBook><body><section><title><p>Chapter</p></title><p>Amber at dawn.</p></section></body></FictionBook>"#, "").unwrap();
+    let a = botui_core::Anchor { block: 1, byte: 0 };
+    let cfi = book.cfi(a).expect("a mapped FB2 paragraph");
+    let path = cfi
+        .strip_prefix("epubcfi(")
+        .unwrap()
+        .strip_suffix(":0)")
+        .unwrap();
+    let (element, node) = path.rsplit_once('/').unwrap();
+    assert_eq!(
+        book.bookmark_anchor(&format!("epubcfi({element})")),
+        Some(a)
+    );
+    assert_eq!(book.bookmark_anchor(&format!("epubcfi({path})")), Some(a));
+    assert_eq!(
+        book.bookmark_anchor(&format!("epubcfi({element}[id^,1],/{node}:2,/{node}:7)")),
+        Some(botui_core::Anchor { byte: 2, ..a })
+    );
+    assert_eq!(book.bookmark_anchor("epubcfi(/9998/12)"), None);
+}

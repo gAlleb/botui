@@ -84,7 +84,7 @@ fn loopback_get_and_redirect_rejection() {
             "200 OK" => assert_eq!(result.unwrap()[0].book_count, 10),
             _ => assert_eq!(
                 result.unwrap_err().to_string(),
-                format!("BookOrbit вернул HTTP {}.", &status[..3])
+                format!("BookOrbit returned HTTP {}.", &status[..3])
             ),
         }
     }

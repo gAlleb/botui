@@ -13,6 +13,8 @@ fn heading() -> Style {
 
 impl Shelf {
     pub(super) fn draw(&mut self, frame: &mut Frame) {
+        self.keep_button = Rect::default();
+        self.search_button = Rect::default();
         self.scan_button = Rect::default();
         self.rail.clear_hits();
         self.grid = None;
@@ -20,7 +22,7 @@ impl Shelf {
         self.back_button = Rect::default();
         self.file_button = Rect::default();
         self.list_area = Rect::default();
-        self.tab_buttons = [Rect::default(); 3];
+        self.tab_buttons = [Rect::default(); 5];
         if let Some(job) = &self.pending {
             let panel = centered(frame.area(), 54, 7);
             let border =
@@ -35,7 +37,7 @@ impl Shelf {
             frame.render_widget(border, panel);
             frame.render_widget(Paragraph::new(job.title).style(heading()), inner);
             if !job.closing {
-                self.draw_buttons(frame, inner, "[ Отмена ]", true);
+                self.draw_buttons(frame, inner, "[ Cancel ]", true);
             }
             return;
         }
@@ -109,7 +111,7 @@ impl Shelf {
                     inner.height.saturating_sub(3),
                 ),
             );
-            self.draw_buttons(frame, inner, "[ Назад ]", false);
+            self.draw_buttons(frame, inner, "[ Back ]", false);
             if self.scan_file.is_some() && inner.height >= 2 {
                 let x = self.back_button.right().saturating_add(1);
                 self.scan_button = Rect::new(
@@ -119,7 +121,7 @@ impl Shelf {
                     1,
                 );
                 frame.render_widget(
-                    Paragraph::new("[ P Читать скан ]").style(heading()),
+                    Paragraph::new("[ P Read pages ]").style(heading()),
                     self.scan_button,
                 );
             }
@@ -170,13 +172,27 @@ impl Shelf {
             Paragraph::new(self.current().title.as_str()).style(heading()),
             Rect::new(left.x + 1, left.y, left.width.saturating_sub(2), top),
         );
+        if detail.is_some() && left.width >= 30 {
+            self.keep_button = Rect::new(left.right() - 16, left.y, 16, 1);
+            frame.render_widget(
+                Paragraph::new("[D Save offline]").style(heading()),
+                self.keep_button,
+            );
+        }
         if self.view_available() && left.width >= 19 {
             let label = if self.grid_view {
-                "[V Список]"
+                "[V List]"
             } else {
-                "[V Сетка]"
+                "[V Grid]"
             };
             let w = label.chars().count() as u16;
+            if (self.session.is_some() || self.links.search.is_some()) && left.width >= 30 {
+                self.search_button = Rect::new(left.right() - w - 12, left.y, 11, 1);
+                frame.render_widget(
+                    Paragraph::new("[/ Search]").style(Style::new().fg(Color::Cyan)),
+                    self.search_button,
+                );
+            }
             self.view_button = Rect::new(left.right() - w, left.y, w, 1);
             frame.render_widget(
                 Paragraph::new(label).style(Style::new().fg(Color::Cyan)),
@@ -199,6 +215,12 @@ impl Shelf {
                 .saturating_sub(top + gap + bottom + notice_rows),
         );
         let list_area = self.list_area;
+        if !self.grid_view && gap > 0 && matches!(self.current().section, Section::Books { .. }) {
+            frame.render_widget(
+                Paragraph::new(book_line(None, list_area.width)).style(Style::new().dim()),
+                Rect::new(left.x, list_area.y - 1, left.width, 1),
+            );
+        }
         if self.grid_view
             && self.view_available()
             && !self.current().rows.is_empty()
@@ -209,30 +231,31 @@ impl Shelf {
         } else if self.current().rows.is_empty() {
             let pane = self.current();
             let empty = match pane.section {
-                Section::Collections => "Личных коллекций пока нет.",
-                Section::Libraries => "Сервер не вернул доступных библиотек для этого аккаунта.",
-                Section::Files(_) => "У книги нет доступных файлов.",
+                Section::Collections => "No personal collections yet.",
+                Section::Libraries => "No libraries available to this account.",
+                Section::Files(_) => "No files available for this book.",
                 Section::Books {
                     scope: Scope::All, ..
-                } => "В доступном каталоге пока нет книг.",
+                } => "No books available yet.",
                 Section::Books {
                     scope: Scope::Library(_),
                     ..
-                } => "В этой библиотеке пока нет книг.",
+                } => "This library is empty.",
                 Section::Books {
                     scope: Scope::Collection(_),
                     ..
-                } => "В этой коллекции пока нет книг.",
+                } => "This collection is empty.",
+                Section::Books { .. } => "No books on this shelf.",
                 Section::Home => "",
-                Section::Feed { .. } => "В этом разделе нет доступных книг или подразделов.",
+                Section::Feed { .. } => "No books or catalog entries here.",
             };
             frame.render_widget(Paragraph::new(empty).wrap(Wrap { trim: true }), list_area);
         } else {
             let pane = self.current_mut();
-            let rows = pane
-                .rows
-                .iter()
-                .map(|row| ListItem::new(format!(" {}", row.label)));
+            let rows = pane.rows.iter().map(|row| match &row.action {
+                super::Command::Files(b) => ListItem::new(book_line(Some(b), list_area.width)),
+                _ => ListItem::new(format!(" {}", row.label)),
+            });
             frame.render_stateful_widget(
                 List::new(rows).highlight_style(Style::new().add_modifier(Modifier::REVERSED)),
                 list_area,
@@ -262,20 +285,26 @@ impl Shelf {
             );
         }
         let (back, local) = if matches!(self.current().section, Section::Home) {
-            ("[ Выход ]", false)
+            ("[ Quit ]", false)
         } else {
-            ("[ Назад ]", true)
+            ("[ Back ]", true)
         };
         self.draw_buttons(frame, inner, back, local);
     }
 
     fn draw_tabs(&mut self, frame: &mut Frame, area: Rect) {
-        let labels = if area.width >= 41 {
-            ["1 Все книги", "2 Библиотеки", "3 Коллекции"]
-        } else if area.width >= 24 {
-            ["1 Книги", "2 Библ.", "3 Колл."]
+        let labels = if area.width >= 76 {
+            [
+                "1 All books",
+                "2 Libraries",
+                "3 Collections",
+                "4 Currently reading",
+                "5 Recently added",
+            ]
+        } else if area.width >= 42 {
+            ["1 Books", "2 Libs", "3 Lists", "4 Reading", "5 New"]
         } else {
-            ["1 Все", "2 Б", "3 К"]
+            ["1 All", "2 L", "3 C", "4 R", "5 +"]
         };
         let active = self.active_tab();
         let mut x = area.x;
@@ -302,7 +331,7 @@ impl Shelf {
         self.back_button = Rect::new(inner.x, y, back_width, 1);
         frame.render_widget(Paragraph::new(back), self.back_button);
         if local {
-            let label = "[ Локальный файл ]";
+            let label = "[ Local library ]";
             let x = self.back_button.right().saturating_add(2);
             self.file_button = Rect::new(
                 x,
@@ -314,9 +343,9 @@ impl Shelf {
         }
         if self.pending.is_none() && self.info.is_none() && inner.width > 54 {
             let help = if matches!(self.current().section, Section::Books { .. }) {
-                "PgUp/PgDn · Enter / щелчок"
+                "PgUp/PgDn · Enter or click"
             } else {
-                "Enter / щелчок — открыть"
+                "Enter or click to open"
             };
             let x = inner.right().saturating_sub(help.chars().count() as u16);
             if !self.back_button.contains(Position::new(x, y))
@@ -329,4 +358,42 @@ impl Shelf {
             }
         }
     }
+}
+
+fn book_line(b: Option<&super::Book>, width: u16) -> ratatui::text::Line<'static> {
+    use super::gallery::{caption, formats};
+    use ratatui::text::{Line, Span};
+    let available = width.saturating_sub(2);
+    let format = if available >= 40 { 10 } else { 0 };
+    let progress = if available >= 26 { 5 } else { 0 };
+    let author = if available >= 50 {
+        (available - format - progress) / 3
+    } else {
+        0
+    };
+    let title = available - format - author - progress;
+    let cell = |text: &str, w: u16| {
+        if w == 0 {
+            return String::new();
+        }
+        let text = caption(text, w - 1, 1);
+        let used = Line::from(text.as_str()).width();
+        format!("{}{}", text, " ".repeat((w as usize).saturating_sub(used)))
+    };
+    let (ext, name, by, pct) = match b {
+        Some(b) => (
+            formats(b),
+            super::single_line(b.title.clone().unwrap_or_else(|| "Untitled".into())),
+            super::single_line(b.authors.join(", ")),
+            b.progress.map(|n| format!("{n:>3}%")).unwrap_or_default(),
+        ),
+        None => ("Format".into(), "Title".into(), "Author".into(), "%".into()),
+    };
+    Line::from(vec![
+        Span::raw(" "),
+        Span::styled(cell(&ext, format), Style::new().fg(Color::Cyan)),
+        Span::raw(cell(&name, title)),
+        Span::raw(cell(&by, author)),
+        Span::raw(if progress > 0 { pct } else { String::new() }),
+    ])
 }

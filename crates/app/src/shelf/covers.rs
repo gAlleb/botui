@@ -18,7 +18,7 @@ enum Entry {
     Missing,
     RetryAfter(Instant),
 }
-pub(super) struct Covers {
+pub(crate) struct Covers {
     images: LruCache<u64, Entry>,
     slots: [Slot; 2],
 }

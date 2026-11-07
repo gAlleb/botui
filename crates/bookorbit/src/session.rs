@@ -34,14 +34,14 @@ fn valid_refresh(token: &str) -> bool {
 fn expired() -> HttpFailure {
     HttpFailure {
         status: StatusCode::UNAUTHORIZED,
-        description: Some("Войдите в BookOrbit снова."),
+        description: Some("Sign in to BookOrbit again."),
     }
 }
 
 impl BookOrbit {
     pub fn sign_in(&self, username: &str, password: &str) -> Result<Session> {
         if username.trim().is_empty() || password.is_empty() {
-            return Err("Введите имя пользователя и пароль BookOrbit.".into());
+            return Err("Enter your BookOrbit username and password.".into());
         }
         let body = serde_json::json!({"username":username,"password":password,"clientKind":"native","deviceLabel":"botui"});
         let tokens = parse_login(self.auth_post("auth/login", &body, Duration::from_secs(15))?)?;
@@ -97,7 +97,7 @@ impl Session {
     fn lock(&self) -> Result<MutexGuard<'_, Option<Arc<Tokens>>>> {
         self.credentials
             .lock()
-            .map_err(|_| "Сессия BookOrbit недоступна.".into())
+            .map_err(|_| "BookOrbit session unavailable.".into())
     }
 
     /// Run an operation with the current credentials. Only a 401 is retried, once.
@@ -182,15 +182,15 @@ fn parse_login(response: Response) -> Result<Tokens> {
         let code = reply.as_ref().and_then(|v| v.error_code.as_deref());
         let description = match code {
             Some("password_auth_disabled") => {
-                Some("Вход по паролю отключён. Для OIDC требуется вход через браузер.")
+                Some("Password sign-in disabled. OIDC requires a browser.")
             }
             Some("account_locked") => {
-                Some("Учётная запись временно заблокирована после неудачных попыток входа.")
+                Some("Account temporarily locked after failed sign-in attempts.")
             }
             _ if status.is_redirection() || html => {
-                Some("Сервер запросил вход через браузер (OIDC или внешний провайдер).")
+                Some("The server requires browser sign-in (OIDC or external provider).")
             }
-            _ if status == StatusCode::UNAUTHORIZED => Some("Проверьте имя пользователя и пароль."),
+            _ if status == StatusCode::UNAUTHORIZED => Some("Check the username and password."),
             _ => None,
         };
         return Err(HttpFailure {
@@ -201,10 +201,10 @@ fn parse_login(response: Response) -> Result<Tokens> {
     }
     if html {
         return Err(
-            "Сервер вернул страницу входа. Для OIDC или внешней проверки требуется браузер.".into(),
+            "The server returned a login page. External authentication requires a browser.".into(),
         );
     }
-    let missing = "Сервер не выдал токен BookOrbit. Для OIDC или дополнительной проверки входа требуется браузер.";
+    let missing = "BookOrbit did not issue a token. Additional sign-in steps require a browser.";
     let reply = reply.ok_or(missing)?;
     Ok(Tokens {
         access: reply

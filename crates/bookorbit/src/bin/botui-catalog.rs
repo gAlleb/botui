@@ -5,7 +5,7 @@ use std::io::{self, IsTerminal, Read, Write};
 use std::process::ExitCode;
 
 const USAGE: &str =
-    "botui-catalog <URL-сервера>\nПередайте временный Bearer-токен через канал стандартного ввода.";
+    "botui-catalog <server-url>\nSupply a temporary bearer token on standard input.";
 
 fn run() -> Result<()> {
     let mut args = std::env::args_os().skip(1);
@@ -19,9 +19,9 @@ fn run() -> Result<()> {
         println!("{USAGE}");
         return Ok(());
     }
-    let adapter = BookOrbit::new(server.to_str().ok_or("Некорректный адрес BookOrbit.")?)?;
+    let adapter = BookOrbit::new(server.to_str().ok_or("Invalid BookOrbit address.")?)?;
     if io::stdin().is_terminal() {
-        return Err("Передайте Bearer-токен через канал или перенаправленный stdin.".into());
+        return Err("Supply a bearer token through a pipe or redirected stdin.".into());
     }
     const MAX_TOKEN: usize = 16 * 1024;
     let mut token = String::new();
@@ -30,7 +30,7 @@ fn run() -> Result<()> {
         .take((MAX_TOKEN + 1) as u64)
         .read_to_string(&mut token)?;
     if token.len() > MAX_TOKEN {
-        return Err("Слишком длинный токен.".into());
+        return Err("Token too long.".into());
     }
     let token = token
         .strip_suffix("\r\n")

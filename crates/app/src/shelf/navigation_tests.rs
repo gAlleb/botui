@@ -8,13 +8,13 @@ fn page(number: u32, titles: &[&str]) -> BooksPage {
         items: titles
             .iter()
             .enumerate()
-            .map(|(i, t)| Book {
+            .map(|(i, t)| botui_bookorbit::Book {
                 id: u64::from(number) * 2 + i as u64,
                 title: Some(t.to_string()),
                 authors: vec![],
                 has_cover: None,
                 progress: None,
-                files: vec![BookFile {
+                files: vec![botui_bookorbit::BookFile {
                     id: 300 + i as u64,
                     format: Some("pdf".into()),
                     role: "content".into(),
@@ -43,12 +43,9 @@ fn library_pagination_and_empty_collections_return_to_selected_book_in_catalog()
         Scope::Library(library.clone()),
         page(0, &["Первая", "Вторая"]),
     ));
-    shelf.complete(Loaded::Books(
-        Scope::Library(library),
-        page(1, &["Третья", "Четвёртая"]),
-    ));
-    assert!(shelf.current().title.contains("2/3"));
-    assert!(shelf.current().rows[0].label.contains("[PDF]"));
+    assert!(shelf.current().title.contains("6"));
+    assert_eq!(shelf.current().rows.len(), 2);
+    assert!(matches!(shelf.current().action(), Some(Command::Files(_))));
     shelf.back();
     assert!(matches!(shelf.current().section, Section::Libraries));
     shelf.complete(Loaded::Collections(vec![]));

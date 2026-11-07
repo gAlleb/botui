@@ -70,6 +70,7 @@ impl Layout {
 }
 
 pub struct Pager {
+    printed: Vec<bool>,
     layout: Layout,
     lines: Vec<PageLine>,
     first: usize,
@@ -79,10 +80,25 @@ pub struct Pager {
 impl Pager {
     /// Width and height refer to the area available after the frontend's margins.
     pub fn new(doc: &Document, width: u16, height: u16, mode: LayoutMode) -> Self {
+        Self::with_reflow(doc, width, height, mode, true)
+    }
+    pub fn with_reflow(
+        doc: &Document,
+        width: u16,
+        height: u16,
+        mode: LayoutMode,
+        repair_printed: bool,
+    ) -> Self {
+        let printed = if repair_printed {
+            printed::printed_lines(&doc.blocks)
+        } else {
+            vec![false; doc.blocks.len()]
+        };
         let layout = Layout::new(width, height, mode);
-        let lines = wrap_document(doc, layout.width);
+        let lines = wrap_document(doc, layout.width, &printed);
         Self {
             layout,
+            printed,
             lines,
             first: 0,
             focus: Anchor::default(),
@@ -96,7 +112,7 @@ impl Pager {
             return;
         }
         if self.layout.width != layout.width {
-            self.lines = wrap_document(doc, layout.width);
+            self.lines = wrap_document(doc, layout.width, &self.printed);
         }
         self.layout = layout;
         self.seek(self.focus);
@@ -163,12 +179,11 @@ impl Pager {
     }
 }
 
-fn wrap_document(doc: &Document, width: u16) -> Vec<PageLine> {
+fn wrap_document(doc: &Document, width: u16, printed: &[bool]) -> Vec<PageLine> {
     let mut lines = Vec::new();
     if width == 0 {
         return lines;
     }
-    let printed = printed::printed_lines(&doc.blocks);
     let mut start = 0;
     while start < doc.blocks.len() {
         let mut end = start;

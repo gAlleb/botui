@@ -1,5 +1,7 @@
 //! Device-local resume points. A display anchor is never a BookOrbit CFI.
+mod notes;
 use botui_core::Anchor;
+pub use notes::Note;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
@@ -33,24 +35,75 @@ pub struct LocalState {
     path: PathBuf,
 }
 
+fn state_dir() -> io::Result<PathBuf> {
+    env::var_os("XDG_STATE_HOME")
+        .map(PathBuf::from)
+        .filter(|p| p.is_absolute())
+        .or_else(|| {
+            env::var_os("HOME")
+                .map(PathBuf::from)
+                .filter(|p| p.is_absolute())
+                .map(|p| p.join(".local/state"))
+        })
+        .ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::NotFound,
+                "Cannot locate the reading state directory",
+            )
+        })
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct HistoryEntry {
+    pub path: PathBuf,
+    pub percent: u8,
+    pub modified: Option<std::time::SystemTime>,
+    pub read_at: std::time::SystemTime,
+}
+impl HistoryEntry {
+    pub fn record(path: &Path, percent: f64) -> io::Result<()> {
+        let path = path.canonicalize()?;
+        let dir = state_dir()?.join("botui/history");
+        fs::create_dir_all(&dir)?;
+        let key = Sha256::digest(path.as_os_str().as_encoded_bytes());
+        let modified = path.metadata()?.modified().ok();
+        let entry = Self {
+            path,
+            percent: percent.round().clamp(0., 100.) as u8,
+            modified,
+            read_at: std::time::SystemTime::now(),
+        };
+        let mut tmp = NamedTempFile::new_in(&dir)?;
+        serde_json::to_writer(tmp.as_file_mut(), &entry)?;
+        tmp.persist(dir.join(format!("{key:x}.json")))?;
+        Ok(())
+    }
+    pub fn for_root(root: &Path) -> io::Result<Vec<Self>> {
+        let root = root.canonicalize()?;
+        let dir = state_dir()?.join("botui/history");
+        let files = match fs::read_dir(dir) {
+            Ok(v) => v,
+            Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(vec![]),
+            Err(e) => return Err(e),
+        };
+        let mut items: Vec<Self> = files
+            .flatten()
+            .filter_map(|f| serde_json::from_reader(fs::File::open(f.path()).ok()?).ok())
+            .filter(|v: &Self| {
+                v.percent < 100
+                    && v.path.starts_with(&root)
+                    && v.path.is_file()
+                    && v.path.metadata().and_then(|m| m.modified()).ok() == v.modified
+            })
+            .collect();
+        items.sort_by_key(|v| std::cmp::Reverse(v.read_at));
+        Ok(items)
+    }
+}
 impl LocalState {
     /// Identical files share a resume point even after a move; revised editions do not.
     pub fn for_file(path: &Path) -> io::Result<Self> {
-        let state = env::var_os("XDG_STATE_HOME")
-            .map(PathBuf::from)
-            .filter(|p| p.is_absolute())
-            .or_else(|| {
-                env::var_os("HOME")
-                    .map(PathBuf::from)
-                    .filter(|p| p.is_absolute())
-                    .map(|p| p.join(".local/state"))
-            })
-            .ok_or_else(|| {
-                io::Error::new(
-                    io::ErrorKind::NotFound,
-                    "Нет каталога для сохранения места чтения",
-                )
-            })?;
+        let state = state_dir()?;
         Self::in_directory(path, &state.join("botui").join("positions"))
     }
 
@@ -71,14 +124,14 @@ impl LocalState {
         if file.metadata()?.len() > 256 * 1024 {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
-                "Слишком большой файл позиции",
+                "Reading state file is too large",
             ));
         }
         let record: Record = serde_json::from_reader(file)?;
         if record.version != 1 {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
-                "Неизвестная версия сохранённой позиции",
+                "Unknown reading state version",
             ));
         }
         Ok(Some(Saved {

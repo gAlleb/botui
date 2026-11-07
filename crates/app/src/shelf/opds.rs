@@ -5,6 +5,7 @@ use std::{collections::HashMap, sync::Arc};
 
 #[derive(Default)]
 pub(super) struct Links {
+    pub search: Option<botui_opds::Search>,
     ids: HashMap<Address, u64>,
     files: HashMap<u64, Address>,
     pub covers: HashMap<u64, Address>,
@@ -32,33 +33,54 @@ impl Shelf {
         let address = form.server.trim().to_owned();
         let user = form.username.clone();
         let pass = std::mem::take(&mut form.password);
-        self.fetch("Открываем каталог OPDS…", move |_| {
+        self.fetch("Opening OPDS catalog…", move |_| {
             let cat = Arc::new(Catalog::new(&address, user, pass)?);
-            let feed = cat.feed(cat.root())?;
-            Ok(Loaded::Feed(cat, feed, false))
+            let href = cat.root();
+            let feed = cat.feed(href.clone())?;
+            Ok(Loaded::Feed(cat, Box::new(feed), href))
         });
     }
-    pub(super) fn fetch_feed(&mut self, href: Address, replace: bool) {
+    pub(super) fn search_feed(&mut self, query: String) {
+        let (Some(cat), Some(search)) = (self.catalog.clone(), self.links.search.clone()) else {
+            return;
+        };
+        self.fetch("Searching OPDS…", move |_| {
+            let href = cat.search_url(&search, &query)?;
+            let mut feed = cat.feed(href.clone())?;
+            feed.title = format!("Search · {query}");
+            Ok(Loaded::Feed(cat, Box::new(feed), href))
+        });
+    }
+    pub(super) fn fetch_feed(&mut self, href: Address) {
         let Some(cat) = self.catalog.clone() else {
             return;
         };
-        self.fetch("Загружаем раздел OPDS…", move |_| {
-            let feed = cat.feed(href)?;
-            Ok(Loaded::Feed(cat, feed, replace))
+        self.fetch("Loading OPDS feed…", move |_| {
+            let feed = cat.feed(href.clone())?;
+            Ok(Loaded::Feed(cat, Box::new(feed), href))
         });
     }
-    pub(super) fn show_feed(&mut self, cat: Arc<Catalog>, feed: Feed, replace: bool) {
+    pub(super) fn show_feed(&mut self, cat: Arc<Catalog>, feed: Feed, href: Address) {
         self.login = None;
         self.catalog = Some(cat);
-        if replace && self.stack.len() > 1 {
-            self.stack.pop();
+        if feed.search.is_some() {
+            self.links.search = feed.search;
         }
+        let rows = self.feed_rows(feed.items);
+        self.stack.push(Pane::new(
+            Section::Feed {
+                next: feed.next,
+                visited: [href].into_iter().collect(),
+            },
+            feed.title,
+            rows,
+        ));
+    }
+    pub(super) fn feed_rows(&mut self, items: Vec<Entry>) -> Vec<Row> {
         let mut rows = vec![];
-        for e in feed.items {
+        for e in items {
             match e {
-                Entry::Directory(name, href) => {
-                    rows.push(Row::new(name, Command::Feed(href, false)))
-                }
+                Entry::Directory(name, href) => rows.push(Row::new(name, Command::Feed(href))),
                 Entry::Book {
                     title,
                     authors,
@@ -103,19 +125,6 @@ impl Shelf {
                 }
             }
         }
-        if let Some(prev) = feed.previous.clone() {
-            rows.push(Row::new("‹ Предыдущая страница", Command::Feed(prev, true)));
-        }
-        if let Some(next) = feed.next.clone() {
-            rows.push(Row::new("Следующая страница ›", Command::Feed(next, true)));
-        }
-        self.stack.push(Pane::new(
-            Section::Feed {
-                next: feed.next,
-                prev: feed.previous,
-            },
-            feed.title,
-            rows,
-        ));
+        rows
     }
 }

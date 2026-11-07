@@ -1,6 +1,8 @@
 //! Read a local book as text, independent of its catalog and of the terminal.
 
+mod cover;
 mod epub;
+pub use cover::cover;
 mod fb2;
 mod locations;
 #[cfg(test)]

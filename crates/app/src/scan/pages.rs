@@ -53,7 +53,7 @@ impl Pages {
                 result => {
                     let err = match result {
                         Ok(Err(e)) => e,
-                        _ => io::Error::other("Подготовка страницы прервана"),
+                        _ => io::Error::other("Page rendering interrupted"),
                     };
                     if k.0 <= visible_end {
                         return Err(err);

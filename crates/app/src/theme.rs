@@ -22,18 +22,18 @@ const fn palette(id: &'static str, name: &'static str, light: Colors, dark: Colo
 
 #[rustfmt::skip]
 const PALETTES: &[Palette] = &[
-    palette("default", "По умолчанию", Colors(0x000000, 0xffffff, 0x0066cc), Colors(0xe0e0e0, 0x222222, 0x77bbee)),
-    palette("gray", "Серая", Colors(0x222222, 0xe0e0e0, 0x4488cc), Colors(0xc6c6c6, 0x444444, 0x88ccee)),
-    palette("sepia", "Сепия", Colors(0x5b4636, 0xf1e8d0, 0x008b8b), Colors(0xffd595, 0x342e25, 0x48d1cc)),
-    palette("crimson", "Багряная", Colors(0x2f1f25, 0xfdf1f4, 0xdd0031), Colors(0xf3dbe2, 0x3a252d, 0xff5a86)),
-    palette("meadow", "Луговая", Colors(0x232c16, 0xd7dbbd, 0x177b4d), Colors(0xd8deba, 0x333627, 0xa6d608)),
-    palette("rosewood", "Палисандр", Colors(0x4e1609, 0xf0d1d5, 0xde3838), Colors(0xe5c4c8, 0x462f32, 0xff646e)),
-    palette("azure", "Лазурь", Colors(0x262d48, 0xcedef5, 0x2d53e5), Colors(0xbabee1, 0x282e47, 0xff646e)),
-    palette("dawnlight", "Рассвет", Colors(0x586e75, 0xfdf6e3, 0x268bd2), Colors(0x93a1a1, 0x002b36, 0x268bd2)),
-    palette("ember", "Янтарь", Colors(0x3c3836, 0xfbf1c7, 0x076678), Colors(0xebdbb2, 0x282828, 0x83a598)),
-    palette("aurora", "Аврора", Colors(0x2e3440, 0xeceff4, 0x5e81ac), Colors(0xd8dee9, 0x2e3440, 0x88c0d0)),
-    palette("ocean", "Океан", Colors(0x0a4d4d, 0xe0f7fa, 0x00838f), Colors(0xb2dfdb, 0x263238, 0x4dd0e1)),
-    palette("mist", "Туман", Colors(0x4a148c, 0xf3e5f5, 0x7b1fa2), Colors(0xc7b6dd, 0x3a3150, 0xb39ddb)),
+    palette("default", "Default", Colors(0x000000, 0xffffff, 0x0066cc), Colors(0xe0e0e0, 0x222222, 0x77bbee)),
+    palette("gray", "Gray", Colors(0x222222, 0xe0e0e0, 0x4488cc), Colors(0xc6c6c6, 0x444444, 0x88ccee)),
+    palette("sepia", "Sepia", Colors(0x5b4636, 0xf1e8d0, 0x008b8b), Colors(0xffd595, 0x342e25, 0x48d1cc)),
+    palette("crimson", "Crimson", Colors(0x2f1f25, 0xfdf1f4, 0xdd0031), Colors(0xf3dbe2, 0x3a252d, 0xff5a86)),
+    palette("meadow", "Meadow", Colors(0x232c16, 0xd7dbbd, 0x177b4d), Colors(0xd8deba, 0x333627, 0xa6d608)),
+    palette("rosewood", "Rosewood", Colors(0x4e1609, 0xf0d1d5, 0xde3838), Colors(0xe5c4c8, 0x462f32, 0xff646e)),
+    palette("azure", "Azure", Colors(0x262d48, 0xcedef5, 0x2d53e5), Colors(0xbabee1, 0x282e47, 0xff646e)),
+    palette("dawnlight", "Dawnlight", Colors(0x586e75, 0xfdf6e3, 0x268bd2), Colors(0x93a1a1, 0x002b36, 0x268bd2)),
+    palette("ember", "Ember", Colors(0x3c3836, 0xfbf1c7, 0x076678), Colors(0xebdbb2, 0x282828, 0x83a598)),
+    palette("aurora", "Aurora", Colors(0x2e3440, 0xeceff4, 0x5e81ac), Colors(0xd8dee9, 0x2e3440, 0x88c0d0)),
+    palette("ocean", "Ocean", Colors(0x0a4d4d, 0xe0f7fa, 0x00838f), Colors(0xb2dfdb, 0x263238, 0x4dd0e1)),
+    palette("mist", "Mist", Colors(0x4a148c, 0xf3e5f5, 0x7b1fa2), Colors(0xc7b6dd, 0x3a3150, 0xb39ddb)),
     palette("amoled", "AMOLED", Colors(0x000000, 0xffffff, 0x0066cc), Colors(0xffffff, 0x000000, 0x77bbee)),
 ];
 
@@ -93,7 +93,7 @@ impl Theme {
         )
     }
     pub(crate) fn palette_name(self) -> &'static str {
-        self.palette().map_or("Терминал", |p| p.name)
+        self.palette().map_or("Terminal", |p| p.name)
     }
     pub(crate) fn name(self) -> String {
         if self == Self::TERMINAL {
@@ -102,11 +102,7 @@ impl Theme {
         format!(
             "{} · {}",
             self.palette_name(),
-            if self.dark {
-                "тёмная"
-            } else {
-                "светлая"
-            }
+            if self.dark { "dark" } else { "light" }
         )
     }
     fn colors(self) -> Option<Colors> {

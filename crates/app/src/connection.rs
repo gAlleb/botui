@@ -27,7 +27,10 @@ pub(crate) fn settings_file() -> io::Result<PathBuf> {
                 .map(|p| p.join(".config"))
         })
         .ok_or_else(|| {
-            io::Error::new(io::ErrorKind::NotFound, "Не найден каталог настроек botui")
+            io::Error::new(
+                io::ErrorKind::NotFound,
+                "Cannot locate the botui settings directory",
+            )
         })?;
     Ok(config.join("botui/connection.json"))
 }
@@ -44,7 +47,7 @@ impl Connection {
         if bytes.len() > LIMIT {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
-                "Слишком большой файл настроек подключения",
+                "Connection settings file is too large",
             ));
         }
         Ok(serde_json::from_slice(&bytes)?)

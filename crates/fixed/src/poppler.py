@@ -6,6 +6,10 @@ gi.require_version("Poppler","0.18")
 from gi.repository import Poppler
 import cairo
 doc=Poppler.Document.new_from_file(Path(sys.argv[1]).as_uri(),None)
+if sys.argv[2] == "text":
+    for index in range(doc.get_n_pages()):
+        sys.stdout.write((doc.get_page(index).get_text() or "") + "\f")
+    sys.exit(0)
 n=int(sys.argv[2])
 if not n:
     print("Pages:",doc.get_n_pages())

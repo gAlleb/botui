@@ -5,6 +5,7 @@ edition.workspace = true
 publish.workspace = true
 
 [dependencies]
+sha2 = "0.10"
 botui-core = { path = "../core" }
 botui-formats = { path = "../formats" }
 botui-store = { path = "../store" }

@@ -1,4 +1,5 @@
 //! An OPDS 1.x/Atom source: no BookOrbit routes, tokens or identifiers.
+mod search;
 pub use reqwest::Url as Address;
 use reqwest::{
     Url,
@@ -6,6 +7,7 @@ use reqwest::{
     redirect::Policy,
 };
 use roxmltree::Node;
+pub use search::Search;
 use std::{
     error::Error,
     io::{self, Read, Write},
@@ -21,6 +23,7 @@ pub struct Catalog {
     auth: Option<(String, String)>,
 }
 pub struct Feed {
+    pub search: Option<Search>,
     pub title: String,
     pub items: Vec<Entry>,
     pub previous: Option<Url>,
@@ -42,9 +45,9 @@ pub struct File {
 }
 fn validated(mut u: Url) -> Result<Url> {
     if !u.username().is_empty() || u.password().is_some() {
-        return Err("Учётные данные нужно вводить отдельно от адреса.".into());
+        return Err("Enter credentials separately from the feed address.".into());
     }
-    let h = u.host_str().ok_or("Нужен сетевой адрес OPDS.")?;
+    let h = u.host_str().ok_or("Expected an OPDS network address.")?;
     if u.scheme() == "http" && h == "localhost" {
         u.set_host(Some("127.0.0.1"))?;
     } else if u.scheme() != "https"
@@ -53,7 +56,7 @@ fn validated(mut u: Url) -> Result<Url> {
                 .parse::<IpAddr>()
                 .is_ok_and(|i| i.is_loopback()))
     {
-        return Err("Нужен HTTPS либо локальный HTTP.".into());
+        return Err("Use HTTPS or local HTTP.".into());
     }
     u.set_fragment(None);
     Ok(u)
@@ -65,7 +68,7 @@ impl Catalog {
                 .redirect(Policy::none())
                 .connect_timeout(Duration::from_secs(6))
                 .build()?,
-            origin: validated(Url::parse(address).map_err(|_| "Некорректный адрес OPDS")?)?,
+            origin: validated(Url::parse(address).map_err(|_| "Invalid OPDS address")?)?,
             auth: (!user.is_empty()).then_some((user, pass)),
         })
     }
@@ -91,19 +94,17 @@ impl Catalog {
                     response
                         .headers()
                         .get("location")
-                        .ok_or("Пустой редирект OPDS")?
+                        .ok_or("Empty OPDS redirect")?
                         .to_str()?,
                 )?;
                 continue;
             }
             if !response.status().is_success() {
-                return Err(
-                    format!("Каталог OPDS вернул HTTP {}.", response.status().as_u16()).into(),
-                );
+                return Err(format!("OPDS returned HTTP {}.", response.status().as_u16()).into());
             }
             return Ok(response);
         }
-        Err("Слишком много перенаправлений OPDS".into())
+        Err("Too many OPDS redirects".into())
     }
     pub fn feed(&self, href: Url) -> Result<Feed> {
         let response = self.get(href, "application/atom+xml, application/xml;q=0.8", 20)?;
@@ -119,7 +120,7 @@ impl Catalog {
         let expected = resp.content_length();
         let limit = 512 << 20;
         if expected.is_some_and(|n| n > limit) {
-            return Err("Файл превышает 512 МиБ".into());
+            return Err("File exceeds 512 MiB".into());
         }
         let mut src = resp.take(limit + 1);
         let mut buf = [0; 32768];
@@ -138,14 +139,14 @@ impl Catalog {
             }
             writer.write_all(&buf[..n])?;
         }
-        Err("Загрузка OPDS прервана или размер не совпал.".into())
+        Err("OPDS transfer interrupted or content length mismatch.".into())
     }
 }
 fn bounded(r: Response, limit: u64) -> Result<Vec<u8>> {
     let mut bytes = Vec::new();
     r.take(limit + 1).read_to_end(&mut bytes)?;
     if bytes.len() as u64 > limit {
-        return Err(io::Error::other("Ответ OPDS слишком велик").into());
+        return Err(io::Error::other("OPDS response too large").into());
     }
     Ok(bytes)
 }
@@ -175,7 +176,7 @@ fn parse(base: &Url, xml: &str) -> Result<Feed> {
     let dom = roxmltree::Document::parse(xml)?;
     let root = dom.root_element();
     if !root.has_tag_name((ATOM, "feed")) {
-        return Err("Ожидалась лента OPDS 1.x (Atom)".into());
+        return Err("Expected an OPDS 1.x Atom feed".into());
     }
     let link = |rel| {
         root.children()
@@ -217,7 +218,7 @@ fn parse(base: &Url, xml: &str) -> Result<Feed> {
                         .and_then(|v| v.rsplit_once('.'))
                         .map(|(_, ext)| ext)
                         .filter(|v| v.len() <= 12)
-                        .unwrap_or("файл"),
+                        .unwrap_or("file"),
                 }
                 .to_owned();
                 files.push(File {
@@ -246,6 +247,7 @@ fn parse(base: &Url, xml: &str) -> Result<Feed> {
         }
     }
     Ok(Feed {
+        search: search::advertised(base, root),
         title: label(root, "title"),
         items,
         next: link("next"),

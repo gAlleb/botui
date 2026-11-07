@@ -13,6 +13,7 @@ pub(super) enum Kind {
     Contents,
     Search,
     Marks,
+    Notes,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum Edit {
@@ -26,6 +27,7 @@ pub(super) struct Navigation {
     kind: Kind,
     query: String,
     items: Vec<(Anchor, String)>,
+    unavailable: Vec<String>,
     state: ListState,
     rows: Rect,
     back: Rect,
@@ -33,6 +35,7 @@ pub(super) struct Navigation {
 impl Navigation {
     pub fn new(kind: Kind, doc: &Document, place: Anchor, marks: &[Anchor]) -> Self {
         let items: Vec<_> = match kind {
+            Kind::Contents if !doc.contents.is_empty() => doc.contents.clone(),
             Kind::Contents => doc
                 .blocks
                 .iter()
@@ -44,14 +47,13 @@ impl Navigation {
                 .iter()
                 .filter_map(|&a| Some((a, doc.blocks.get(a.block)?.text.get(a.byte..)?.to_owned())))
                 .collect(),
-            Kind::Search => vec![],
+            Kind::Notes | Kind::Search => vec![],
         };
-        let i = items
-            .partition_point(|(a, _)| *a <= place)
-            .saturating_sub(1);
+        let i = current(&items, place);
         let state = ListState::default().with_selected((!items.is_empty()).then_some(i));
         Self {
             kind,
+            unavailable: vec![],
             items,
             state,
             rows: Rect::default(),
@@ -59,28 +61,63 @@ impl Navigation {
             query: String::new(),
         }
     }
+    pub fn add_notes(&mut self, notes: &[botui_store::Note]) {
+        self.items = notes.iter().map(|n| (n.anchor(), n.body.clone())).collect();
+        self.state.select((!self.items.is_empty()).then_some(0));
+    }
+    pub fn add_server_marks(&mut self, marks: Vec<(Option<Anchor>, String)>) {
+        for (place, label) in marks {
+            let label = label.replace(char::is_control, " ");
+            if let Some(place) = place {
+                self.items.push((place, label));
+            } else {
+                self.unavailable
+                    .push(format!("{label} · unavailable in this file"));
+            }
+        }
+        if !self.items.is_empty() || !self.unavailable.is_empty() {
+            self.state.select(Some(0));
+        }
+    }
     pub fn draw(&mut self, f: &mut Frame, style: Style) {
         let area = centered(f.area(), 72, 22);
+        self.draw_at(f, style, area, true);
+    }
+    pub fn follow(&mut self, place: Anchor) {
+        if !self.items.is_empty() {
+            self.state.select(Some(current(&self.items, place)));
+        }
+    }
+    pub fn draw_at(&mut self, f: &mut Frame, style: Style, area: Rect, popup: bool) {
         let title = match self.kind {
-            Kind::Contents => " Оглавление ",
-            Kind::Marks => " Закладки ",
-            Kind::Search => " Поиск по книге ",
+            Kind::Contents => " Contents ",
+            Kind::Marks => " Bookmarks ",
+            Kind::Notes => " Reading notes ",
+            Kind::Search => " Find in book ",
         };
-        let panel = Block::bordered().title(title).style(style);
+        let panel = if popup {
+            Block::bordered().border_type(ratatui::widgets::BorderType::Rounded)
+        } else {
+            Block::new().borders(ratatui::widgets::Borders::RIGHT)
+        }
+        .title(title)
+        .style(style);
         let inner = panel.inner(area);
         f.render_widget(Clear, area);
         f.render_widget(panel, area);
         let heading = if self.kind == Kind::Search {
-            format!(" Найти: {}▏", self.query)
+            format!(" Find: {}▏", self.query)
         } else {
             format!(
                 " {}: {}",
                 if self.kind == Kind::Contents {
-                    "Разделов"
+                    "Chapters"
+                } else if self.kind == Kind::Notes {
+                    "Notes"
                 } else {
-                    "Закладок"
+                    "Bookmarks"
                 },
-                self.items.len()
+                self.items.len() + self.unavailable.len()
             )
         };
         f.render_widget(
@@ -93,12 +130,13 @@ impl Navigation {
             inner.width,
             inner.height.saturating_sub(2),
         );
-        if self.items.is_empty() {
+        if self.items.is_empty() && self.unavailable.is_empty() {
             let help = match self.kind {
-                Kind::Contents => "В тексте нет заголовков.",
-                Kind::Marks => "B на странице — поставить закладку.",
-                Kind::Search if self.query.is_empty() => "Введите слово или фразу.",
-                Kind::Search => "Совпадений нет.",
+                Kind::Contents => "No chapter headings in this text.",
+                Kind::Notes => "Press N on a passage to write a note.",
+                Kind::Marks => "Press B on a page to bookmark it.",
+                Kind::Search if self.query.is_empty() => "Type a word or phrase.",
+                Kind::Search => "No matches.",
             };
             f.render_widget(Paragraph::new(help).style(style), self.rows);
         } else {
@@ -106,7 +144,8 @@ impl Navigation {
                 .items
                 .iter()
                 .enumerate()
-                .map(|(i, (_, label))| format!(" {:>2}  {}", i + 1, label));
+                .map(|(i, (_, label))| format!(" {:>2}  {}", i + 1, label))
+                .chain(self.unavailable.iter().map(|s| format!("  –  {s}")));
             f.render_stateful_widget(
                 List::new(entries)
                     .style(style)
@@ -121,7 +160,11 @@ impl Navigation {
             inner.width.min(9),
             1.min(inner.height),
         );
-        f.render_widget(Paragraph::new("[ Назад ]").style(style), self.back);
+        if popup {
+            f.render_widget(Paragraph::new("[ Back ]").style(style), self.back);
+        } else {
+            self.back = Rect::default();
+        }
     }
     pub fn input(&self, e: Event) -> Option<Edit> {
         match e {
@@ -162,8 +205,10 @@ impl Navigation {
             Edit::Choose(i) => return self.items.get(i).map(|v| v.0),
             Edit::Move(d) => {
                 if let Some(i) = self.state.selected() {
-                    self.state
-                        .select(Some(i.saturating_add_signed(d).min(self.items.len() - 1)));
+                    self.state.select(Some(
+                        i.saturating_add_signed(d)
+                            .min(self.items.len() + self.unavailable.len() - 1),
+                    ));
                 }
                 return None;
             }
@@ -201,4 +246,13 @@ impl Navigation {
         self.state = ListState::default().with_selected((!self.items.is_empty()).then_some(0));
         None
     }
+}
+
+fn current(items: &[(Anchor, String)], place: Anchor) -> usize {
+    items
+        .iter()
+        .enumerate()
+        .filter(|(_, (a, _))| *a <= place)
+        .max_by_key(|(_, (a, _))| *a)
+        .map_or(0, |(i, _)| i)
 }
