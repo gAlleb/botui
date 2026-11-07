@@ -28,6 +28,10 @@ pub fn is_unauthorized(err: &(dyn Error + 'static)) -> bool {
     has_status(err, StatusCode::UNAUTHORIZED)
 }
 
+pub fn is_not_found(err: &(dyn Error + 'static)) -> bool {
+    has_status(err, StatusCode::NOT_FOUND)
+}
+
 pub fn missing_route(err: &(dyn Error + 'static)) -> bool {
     has_status(err, StatusCode::NOT_FOUND) || has_status(err, StatusCode::METHOD_NOT_ALLOWED)
 }

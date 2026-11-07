@@ -18,27 +18,60 @@ impl ServerMarks {
             items,
         })
     }
-    pub fn entries(&self, doc: &Document) -> Vec<(Option<Anchor>, String)> {
+    pub fn entries(&self, doc: &Document) -> Vec<(u64, Option<Anchor>, String)> {
         self.items
             .iter()
             .map(|b| {
                 (
+                    b.id,
                     b.cfi.as_deref().and_then(|c| doc.bookmark_anchor(c)),
                     b.title.clone(),
                 )
             })
             .collect()
     }
-    pub fn toggle(&mut self, doc: &Document, place: Anchor) -> botui_bookorbit::Result<()> {
-        if let Some(i) = self
+    pub fn remove(&mut self, id: u64) -> botui_bookorbit::Result<()> {
+        let index = self
             .items
             .iter()
-            .position(|b| b.cfi.as_deref().and_then(|c| doc.bookmark_anchor(c)) == Some(place))
+            .position(|b| b.id == id)
+            .ok_or("Bookmark is no longer in this list.")?;
+        match self
+            .session
+            .with_token(|api, t| api.remove_bookmark(t, self.book, id))
         {
-            let id = self.items[i].id;
-            self.session
-                .with_token(|api, t| api.remove_bookmark(t, self.book, id))?;
-            self.items.remove(i);
+            Ok(()) => {
+                self.items.remove(index);
+            }
+            Err(e) if botui_bookorbit::is_not_found(e.as_ref()) => {
+                // The book or route can also return 404. Only a fresh list proves that
+                // another device already removed this particular bookmark.
+                let current = self
+                    .session
+                    .with_token(|api, t| api.bookmarks(t, self.book, self.file))?;
+                if current.iter().any(|b| b.id == id) {
+                    return Err(e);
+                }
+                self.items = current;
+            }
+            Err(e) => return Err(e),
+        }
+        Ok(())
+    }
+    pub fn toggle(&mut self, doc: &Document, place: Anchor) -> botui_bookorbit::Result<()> {
+        let mut matches = self
+            .items
+            .iter()
+            .filter(|b| b.cfi.as_deref().and_then(|c| doc.bookmark_anchor(c)) == Some(place));
+        if let Some(bookmark) = matches.next() {
+            let id = bookmark.id;
+            if matches.next().is_some() {
+                return Err(
+                    "Several bookmarks share this position. Press G and select the one to delete."
+                        .into(),
+                );
+            }
+            self.remove(id)?;
         } else {
             let cfi = doc
                 .cfi(place)

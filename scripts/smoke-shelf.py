@@ -149,6 +149,10 @@ class Handler(BaseHTTPRequestHandler):
     def do_DELETE(self):
         if self.path.startswith(API + "/books/200/bookmarks/") and self.headers.get("Authorization") == f"Bearer {self.server.token}":
             ident = int(self.path.rsplit("/",1)[1])
+            if ident in getattr(self.server, "denied_marks", set()):
+                return self.reply(403,{})
+            if not any(m["id"] == ident for marks in self.server.marks.values() for m in marks):
+                return self.reply(404,{})
             for marks in self.server.marks.values(): marks[:] = [m for m in marks if m["id"] != ident]
             return self.reply(204,{})
         return self.reply(404,{})
