@@ -6,7 +6,7 @@ use ratatui::{
 };
 use ratatui_image::{
     Image, Resize,
-    picker::{Picker, ProtocolType},
+    picker::{Picker, ProtocolType, cap_parser::QueryStdioOptions},
     protocol::Protocol,
 };
 use std::{cell::RefCell, io::Cursor};
@@ -27,12 +27,28 @@ fn detect() -> Picker {
     if !monochrome()
         && direct
         && candidate
-        && let Ok(p) = Picker::from_query_stdio()
+        && let Ok(p) = Picker::from_query_stdio_with_options(graphics_options())
         && p.protocol_type() != ProtocolType::Halfblocks
     {
         return p;
     }
     Picker::halfblocks()
+}
+
+fn graphics_options() -> QueryStdioOptions {
+    QueryStdioOptions {
+        // Enable the fast path only when the emulator can open a probe on the
+        // same host. Its successful reply selects SHM for subsequent images.
+        #[cfg(unix)]
+        kitty_shared_memory_object: if std::env::var_os("SSH_CONNECTION").is_none()
+            && std::env::var_os("SSH_TTY").is_none()
+        {
+            QueryStdioOptions::probe_kitty_smo()
+        } else {
+            None
+        },
+        ..Default::default()
+    }
 }
 
 fn monochrome() -> bool {
