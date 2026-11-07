@@ -128,7 +128,10 @@ pub(super) fn read_book(reader: impl Read + Seek, fallback: &str) -> Result<Docu
         // fragment offsets for a multi-plate chapter which contains no text anchors.
         ids.retain(|(member, _), pos| {
             plates.get(member).is_some_and(|(start, count)| {
-                *pos = *start;
+                *pos = botui_core::Anchor {
+                    block: *start,
+                    byte: 0,
+                };
                 *count == 1
             })
         });
@@ -194,25 +197,40 @@ pub(super) fn read_book(reader: impl Read + Seek, fallback: &str) -> Result<Docu
                     Target::Image(member)
                 } else if !matches!(*mime, "application/xhtml+xml" | "text/html") {
                     return None;
-                } else if let Some(block) = if id.is_empty() {
-                    starts.get(&member)
-                } else {
-                    ids.get(&(member.clone(), id.clone()))
-                }
-                .filter(|&&b| b < blocks.len())
-                {
-                    Target::Passage(Anchor {
+                } else if let Some(anchor) = if id.is_empty() {
+                    starts.get(&member).map(|block| Anchor {
                         block: *block,
                         byte: 0,
                     })
                 } else {
+                    ids.get(&(member.clone(), id.clone())).copied()
+                }
+                .filter(|a| a.block < blocks.len())
+                {
+                    Target::Passage(anchor)
+                } else {
                     Target::Supplement {
                         member,
                         fragment: id,
+                        origin: link.id.map(|id| (base, id)),
                     }
                 }
             };
+            let bytes = (!link.image)
+                .then(|| {
+                    let tail = blocks.get(link.block)?.text.get(link.byte..)?;
+                    // Leading whitespace in an anchor is collapsed into the surrounding prose.
+                    let start = link.byte + tail.len() - tail.trim_start().len();
+                    blocks[link.block]
+                        .text
+                        .get(start..)?
+                        .starts_with(&label)
+                        .then_some(start..start + label.len())
+                })
+                .flatten();
             Some(Reference {
+                bytes,
+                backlink: link.backlink,
                 source: if link.image {
                     link.block.min(blocks.len())
                 } else {

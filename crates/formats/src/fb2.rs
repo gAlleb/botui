@@ -204,6 +204,7 @@ pub(super) fn parse(bytes: &[u8], fallback: &str) -> Result<Document> {
         }
     }
     use botui_core::{Anchor, Reference, Target};
+    let mut previous = (usize::MAX, 0);
     let references = raw
         .into_iter()
         .filter_map(|(source, image, label, href)| {
@@ -233,7 +234,19 @@ pub(super) fn parse(bytes: &[u8], fallback: &str) -> Result<Document> {
             } else {
                 return None;
             };
+            let bytes = (!image)
+                .then(|| {
+                    let text = &blocks.get(source)?.text;
+                    let start = if previous.0 == source { previous.1 } else { 0 };
+                    let from = start + text.get(start..)?.find(&label)?;
+                    let range = from..from + label.len();
+                    previous = (source, range.end);
+                    Some(range)
+                })
+                .flatten();
             Some(Reference {
+                bytes,
+                backlink: false,
                 source: if image {
                     source.min(blocks.len())
                 } else {

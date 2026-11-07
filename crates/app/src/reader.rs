@@ -1,5 +1,6 @@
 pub(crate) mod bookmarks;
 mod layout;
+mod links;
 mod mark_list;
 mod navigation;
 pub(crate) mod notes;
@@ -42,6 +43,10 @@ enum Action {
     Export,
     Statistics,
     Resources,
+    VisibleLinks,
+    Follow(usize),
+    ReturnLink,
+    KeepLink,
     Settings,
     Help,
     Resume,
@@ -103,9 +108,10 @@ struct Reader {
     sidebar: navigation::Navigation,
     sidebar_rect: Rect,
     splitter: crate::splitter::Splitter,
-    footer: [Rect; 5],
+    footer: [Rect; 6],
     remote_marked: bool,
     sidebar_focus: bool,
+    links: links::Links,
     history: Vec<botui_core::Anchor>,
     future: Vec<botui_core::Anchor>,
     source: std::path::PathBuf,
@@ -170,6 +176,7 @@ impl Reader {
             .as_deref()
             .or_else(|| saved.as_ref().map(|s| s.theme.as_str()))
             .map_or(Theme::TERMINAL, Theme::from_id);
+        let links = links::Links::new(&doc);
         let sidebar = navigation::Navigation::new(Kind::Contents, &doc, pager.anchor());
         Self {
             zen: settings.zen,
@@ -180,9 +187,10 @@ impl Reader {
                 crate::splitter::Pane::Contents,
                 settings.contents_width,
             ),
-            footer: [Rect::default(); 5],
+            footer: [Rect::default(); 6],
             remote_marked: false,
             sidebar_focus: false,
+            links,
             history: vec![],
             future: vec![],
             source: source.into(),
@@ -210,7 +218,8 @@ impl Reader {
     fn draw(&mut self, frame: &mut Frame, notice: Option<&str>) {
         let screen = frame.area();
         let mut page = screen;
-        if !self.zen {
+        self.links.clear();
+        if !self.zen || self.links.visiting() {
             page.height = page.height.saturating_sub(1);
         }
         (self.sidebar_rect, page) = self.splitter.layout(page, !self.zen && screen.width >= 78);
@@ -272,9 +281,11 @@ impl Reader {
                     para = para.centered().style(style.add_modifier(Modifier::BOLD));
                 }
                 frame.render_widget(para, rect);
+                self.links.mark_line(frame, &self.doc, line, rect);
             }
         }
         for (id, area) in figures {
+            self.links.image(area, id);
             let entry = &self.doc.references[id];
             if let botui_core::Target::Image(member) = &entry.target {
                 let pictures = self
@@ -324,6 +335,11 @@ impl Reader {
                 " M Menu ",
                 " F2 Settings ",
                 " ? Help ",
+                if self.links.has_visible() {
+                    " F6 Links "
+                } else {
+                    ""
+                },
             ]
             .into_iter()
             .enumerate()
@@ -358,6 +374,16 @@ impl Reader {
                     .style(style.add_modifier(Modifier::DIM)),
                 Rect::new(foot.x, foot.y, right - cw - foot.x, foot.height),
             );
+        }
+        if self.links.visiting() {
+            let footer = Rect::new(
+                screen.x,
+                screen.bottom().saturating_sub(1),
+                screen.width.min(37),
+                screen.height.min(1),
+            );
+            frame.render_widget(Clear, footer);
+            self.links.controls(frame, footer, style);
         }
         if let Some(panel) = &mut self.layout_panel {
             panel.draw(
@@ -554,6 +580,15 @@ impl Reader {
                 self.sidebar.input(Event::Key(k)).map(Action::Sidebar)
             }
             Event::Key(k) if k.kind != KeyEventKind::Release => match k.code {
+                KeyCode::Esc | KeyCode::Char(',' | 'q' | 'Q')
+                    if self.links.visiting() && self.menu.is_none() =>
+                {
+                    Some(Action::ReturnLink)
+                }
+                KeyCode::Enter if self.links.visiting() && self.menu.is_none() => {
+                    Some(Action::KeepLink)
+                }
+                KeyCode::F(6) if self.menu.is_none() => Some(Action::VisibleLinks),
                 KeyCode::F(2) => Some(Action::Settings),
                 KeyCode::F(5) => Some(Action::SearchResults),
                 KeyCode::F(4) => Some(Action::FindAgain(false)),
@@ -625,6 +660,13 @@ impl Reader {
                 _ => None,
             },
             Event::Mouse(m)
+                if self.menu.is_none()
+                    && m.kind == MouseEventKind::Down(MouseButton::Left)
+                    && self.links.hit(Position::new(m.column, m.row)).is_some() =>
+            {
+                self.links.hit(Position::new(m.column, m.row))
+            }
+            Event::Mouse(m)
                 if !self.zen
                     && self.menu.is_none()
                     && m.kind == MouseEventKind::Down(MouseButton::Left)
@@ -643,6 +685,7 @@ impl Reader {
                             Action::Menu,
                             Action::Settings,
                             Action::Help,
+                            Action::VisibleLinks,
                         ][i]
                     })
             }
@@ -694,6 +737,17 @@ impl Reader {
     }
     fn apply(&mut self, action: Action) {
         match action {
+            Action::ReturnLink => {
+                if let Some(a) = self.links.back() {
+                    self.pager.seek(a);
+                }
+            }
+            Action::KeepLink => {
+                self.history.push(self.links.origin(self.pager.anchor()));
+                self.future.clear();
+                self.links.keep();
+                self.dirty = true;
+            }
             Action::JumpBack | Action::JumpForward => {
                 let (from, to) = if action == Action::JumpBack {
                     (&mut self.history, &mut self.future)
@@ -847,7 +901,7 @@ impl Reader {
                     }
                 };
                 self.dirty |= old != self.pager.anchor();
-                if forward && self.pager.at_end() && !self.finished {
+                if forward && !self.links.visiting() && self.pager.at_end() && !self.finished {
                     self.finished = true;
                     self.dirty = true;
                 }
@@ -881,6 +935,8 @@ impl Reader {
                 }
             }
             Action::Resources
+            | Action::VisibleLinks
+            | Action::Follow(_)
             | Action::Bookmarks
             | Action::Settings
             | Action::Help
@@ -894,7 +950,7 @@ impl Reader {
 
     fn snapshot(&self) -> Saved {
         Saved {
-            anchor: self.pager.anchor(),
+            anchor: self.links.origin(self.pager.anchor()),
             spread: self.mode == LayoutMode::Spread,
             scrolling: self.mode == LayoutMode::Scroll,
             scan_offset: 0,
@@ -1181,17 +1237,34 @@ pub fn read_server(
                 }
                 continue;
             }
-            if action == Action::Resources {
+            if matches!(
+                action,
+                Action::Resources | Action::VisibleLinks | Action::Follow(_)
+            ) {
                 reader.menu = None;
-                match resources::open(term, path, &reader.doc, reader.pager.anchor()) {
-                    Ok(Some(a)) => {
-                        reader.jump_to(a);
-                        reader.dirty = true;
+                let visible = reader.links.visible();
+                let selected = match action {
+                    Action::Follow(i) => Some(i),
+                    Action::VisibleLinks => {
+                        resources::choose(term, &reader.doc, reader.pager.anchor(), Some(&visible))?
                     }
-                    Ok(None) => (),
-                    Err(e) => {
-                        notices.push(e.to_string());
-                        reader.menu = Some(TableState::default().with_selected(Some(0)));
+                    _ => resources::choose(term, &reader.doc, reader.pager.anchor(), None)?,
+                };
+                if let Some(i) = selected {
+                    let reference = reader.doc.references[i].clone();
+                    match resources::open(term, path, &reference, |f| reader.draw(f, None)) {
+                        Ok(Some(a)) => {
+                            let dest =
+                                reader
+                                    .links
+                                    .destination(reader.pager.anchor(), &reference, a);
+                            reader.pager.seek(dest);
+                        }
+                        Ok(None) => (),
+                        Err(e) => {
+                            notices.push(e.to_string());
+                            reader.menu = Some(TableState::default().with_selected(Some(0)));
+                        }
                     }
                 }
                 continue;
@@ -1268,6 +1341,8 @@ pub fn read_server(
         }
         Ok(())
     })();
+    let origin = reader.links.origin(reader.pager.anchor());
+    reader.pager.seek(origin);
     reader.flush(&mut state, notices);
     crate::stats::finish(state.as_ref(), opened, notices);
     result?;

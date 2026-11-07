@@ -9,7 +9,7 @@ pub fn read(
     xml: &str,
     is_ncx: bool,
     starts: &HashMap<String, usize>,
-    ids: &HashMap<(String, String), usize>,
+    ids: &HashMap<(String, String), Anchor>,
     count: usize,
 ) -> Vec<(Anchor, String)> {
     let mut entries = Vec::new();
@@ -24,7 +24,10 @@ pub fn read(
             return;
         };
         let block = if fragment.is_empty() {
-            starts.get(&file).copied()
+            starts.get(&file).map(|block| Anchor {
+                block: *block,
+                byte: 0,
+            })
         } else {
             percent_encoding::percent_decode_str(fragment)
                 .decode_utf8()
@@ -33,11 +36,11 @@ pub fn read(
         };
         let title = clean(&label);
         if let Some(block) = block
-            && block < count
+            && block.block < count
             && !title.is_empty()
-            && seen.insert((block, title.clone()))
+            && seen.insert((block.block, block.byte, title.clone()))
         {
-            entries.push((Anchor { block, byte: 0 }, title));
+            entries.push((block, title));
         }
     };
     if is_ncx {

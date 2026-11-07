@@ -54,6 +54,25 @@ pub struct PageLine {
     start: Anchor,
 }
 
+impl PageLine {
+    pub fn anchor(&self) -> Anchor {
+        self.start
+    }
+    pub fn link_range(&self, doc: &Document, link: &Reference) -> Option<std::ops::Range<usize>> {
+        if link.source != self.start.block || self.text.is_empty() {
+            return None;
+        }
+        let bytes = link.bytes.as_ref()?;
+        let from = self.start.byte;
+        let end = from + self.text.len();
+        if doc.blocks.get(self.start.block)?.text.get(from..end)? != self.text {
+            return None;
+        }
+        let a = bytes.start.max(from);
+        let b = bytes.end.min(end);
+        (a < b).then(|| a - from..b - from)
+    }
+}
 const MIN_COLUMN: u16 = 32;
 const SPREAD_GAP: u16 = 4;
 
@@ -160,9 +179,7 @@ impl Pager {
             }
         }
         for r in &doc.references {
-            if matches!(r.target, Target::Image(_))
-                && let Some(p) = printed.get_mut(r.source)
-            {
+            if let Some(p) = printed.get_mut(r.source) {
                 *p = false;
             }
         }

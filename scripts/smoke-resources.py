@@ -23,16 +23,17 @@ def check(tmp):
     with ZipFile(epub, "w") as z:
         z.writestr("META-INF/container.xml", '<container><rootfile full-path="a.opf"/></container>')
         z.writestr("a.opf", '<package><metadata><title>Atlas</title></metadata><manifest><item id="a" href="chap.xhtml" media-type="application/xhtml+xml"/><item id="n" href="notes.xhtml" media-type="application/xhtml+xml"/><item id="p" href="map.jpg" media-type="image/jpeg"/></manifest><spine><itemref idref="a"/><itemref idref="n" linear="no"/></spine></package>')
-        z.writestr("chap.xhtml", '<html><body><h1>Harbour</h1><p>See <a href="#end">Next chapter</a>, <a href="notes.xhtml#memo">Source note</a> and <a href="https://example.org/map">Publisher website</a>.</p><p><img src="map.jpg" alt="Map plate"/></p><table><tr><th>Port</th><th>Tide</th></tr><tr><td>Whitby</td><td>High</td></tr></table>' + '<p>Walking along the bay.</p>' * 100 + '<h1 id="end">Observatory</h1><p>Last passage.</p></body></html>')
-        z.writestr("notes.xhtml", '<html><body><p id="memo">In 1812 the harbour moved.</p></body></html>')
+        z.writestr("chap.xhtml", '<html><body><h1>Harbour</h1><p>See <a href="#end">Next chapter</a>, <a id="source-note" href="notes.xhtml#memo">Source note</a> and <a href="https://example.org/map">Publisher website</a>.</p><p><img src="map.jpg" alt="Map plate"/></p><table><tr><th>Port</th><th>Tide</th></tr><tr><td>Whitby</td><td>High</td></tr></table>' + '<p>Walking along the bay.</p>' * 100 + '<h1 id="end">Observatory</h1><p>Last passage.</p></body></html>')
+        z.writestr("notes.xhtml", '<html><body><aside id="memo"><p>In 1812 the harbour moved.</p></aside><p><a href="chap.xhtml#source-note" role="doc-backlink">Return to citation</a></p><aside id="other">Content of adjacent note</aside></body></html>')
         z.writestr("map.jpg", pic)
     t = shelf.Terminal(tmp, BINARY, args=[str(epub)])
     try:
         page=t.wait("inline illustration in reading flow",lambda f:"Harbour" in f and ("▀" in f or "▄" in f) and "Whitby" in f)
         assert any("Whitby" in line and "│" in line and "High" in line for line in page.splitlines()),page
         select(t, "Source note")
-        t.see("In 1812 the harbour moved.")
-        t.keys("Escape")
+        note=t.see("In 1812 the harbour moved.")
+        assert "Content of adjacent note" not in note
+        t.click("[ Return to citation ]",t.see("[ Return to citation ]"))
         t.wait("closed note", lambda f: "In 1812" not in f)
         select(t,"Map plate")
         t.wait("rendered embedded JPEG",lambda f:"[ Back · Esc ]" in f and ("▀" in f or "▄" in f))
@@ -60,7 +61,65 @@ def check(tmp):
     finally:
         t.run("kill-server", required=False)
 
+def check_reference_return(tmp):
+    import json
+    import time
+    book = tmp / "Glossary.epub"
+    with ZipFile(book, "w") as z:
+        z.writestr("META-INF/container.xml", '<container><rootfile full-path="a.opf"/></container>')
+        z.writestr("a.opf", '<package><metadata><title>Tide tables</title></metadata><manifest>' +
+                   ''.join(f'<item id="{n}" href="{n}.xhtml" media-type="application/xhtml+xml"/>' for n in ('text','glossary','extra')) +
+                   '</manifest><spine><itemref idref="text"/><itemref idref="glossary"/></spine></package>')
+        z.writestr("text.xhtml", '<html><body>' + ''.join(f'<p>Coast waypoint {i:03}.</p>' for i in range(40)) +
+                   '<p>Return marker: coast and <a id="ref" href="glossary.xhtml#term">ebb tide</a>; see also ' +
+                   '<a href="extra.xhtml#datum">tidal datum</a>.</p>' +
+                   ''.join(f'<p>Other waypoint {i:03}.</p>' for i in range(70)) + '</body></html>')
+        z.writestr("glossary.xhtml", '<html><body><h1>Glossary</h1><p id="term">Water moves seaward.</p>' +
+                   '<p>Return to the <a href="text.xhtml#ref" role="doc-backlink">original citation</a>.</p></body></html>')
+        z.writestr("extra.xhtml", '<html><body><dl><dt id="datum">Datum</dt>' +
+                   '<dd>Height relative to the tide gauge. <a role="doc-backlink" href="text.xhtml#ref">↩</a></dd>' +
+                   '<dt>Next unrelated entry</dt><dd>Wrong definition.</dd></dl></body></html>')
+    t=shelf.Terminal(tmp,BINARY,args=[str(book)])
+    try:
+        t.see("Coast waypoint 000")
+        t.keys("3", "/"); t.see("Find:"); t.type("Coast waypoint 038"); t.see("1 match"); t.keys("Enter")
+        source=t.wait("Reading before the cited paragraph",lambda f:"Find:" not in f and "Coast waypoint 038" in f and "Return marker" in f)
+        t.click("ebb tide",source)
+        note=t.see("Water moves seaward.")
+        assert "[ Back · Esc ]" in note
+        t.click("original citation",note)
+        t.wait("Publisher backlink restores the exact viewport",lambda f:f==source)
+        t.keys("F6");links=t.see("Links on this page")
+        assert "tidal datum" in links and "original citation" not in links,links
+        t.click("tidal datum",links)
+        definition=t.see("Height relative to the tide gauge.")
+        assert "Wrong definition" not in definition and "↩" in definition
+        t.click("[ Back · Esc ]",definition)
+        t.wait("Non-spine glossary keeps both the term and its definition",lambda f:f==source)
+        t.keys("2");spread=t.see("ebb tide"); t.click("ebb tide",spread)
+        t.see("Water moves seaward.")
+        t.run("resize-window","-t","shelf","-x","155","-y","31")
+        t.click("[ Back · Esc ]",t.see("[ Back · Esc ]"))
+        t.wait("Spread reflows around original reading point",lambda f:"Coast waypoint 038" in f and "Return marker" in f and "Read here" not in f)
+        t.keys("3"); t.click("ebb tide",t.see("ebb tide")); t.see("Water moves seaward.")
+        t.keys("PageDown"); time.sleep(.8); t.keys("C-c")
+        deadline=time.monotonic()+5
+        while t.run("has-session","-t","shelf",required=False).returncode==0 and time.monotonic()<deadline:
+            time.sleep(.05)
+        records=[json.loads(f.read_text()) for f in (tmp/'state').rglob('*.json')]
+        assert any(r.get("block")==38 and not r.get("finished") for r in records),records
+        t.run("kill-server",required=False)
+        t=shelf.Terminal(tmp,BINARY,args=[str(book)])
+        t.wait("Closing from a footnote resumes reading at the source",lambda f:"Coast waypoint 038" in f and "Water moves seaward." not in f)
+        t.click("ebb tide",t.see("ebb tide"));t.see("Water moves seaward.")
+        t.keys("Enter");t.wait("Explicitly continue from the destination",lambda f:"Water moves seaward." in f and "Read here" not in f)
+    finally:
+        t.run("kill-server",required=False)
+
+
 if __name__ == "__main__":
     with TemporaryDirectory(prefix="botui-resources-") as folder:
         check(Path(folder))
-    print("Passed links, jump back, non-spine EPUB note, FB2 footnote and actual embedded image rendering.")
+    with TemporaryDirectory(prefix="botui-reference-return-") as folder:
+        check_reference_return(Path(folder))
+    print("Passed on-page links, publisher backlinks, glossary definitions, exact reference return through resize and reopen, jump back, non-spine EPUB note, FB2 footnote and actual embedded image rendering.")

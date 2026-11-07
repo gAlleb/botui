@@ -8,7 +8,7 @@ pub use cover::cover;
 mod fb2;
 mod locations;
 mod resources;
-pub use resources::{illustration, supplement};
+pub use resources::{Supplement, illustration, supplement, supplementary_note};
 #[cfg(test)]
 mod tests;
 mod toc;

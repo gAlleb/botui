@@ -4,20 +4,26 @@ use scraper::{Html, Node};
 
 /// Collapse book whitespace and remove control bytes before text reaches a terminal.
 pub(super) fn clean(input: &str) -> String {
-    let mut output = String::new();
-    let mut space = false;
-    for ch in input.chars() {
+    let mut out = String::new();
+    append_text(&mut out, input);
+    if out.ends_with(' ') {
+        out.pop();
+    }
+    out
+}
+
+// Keep one pending ASCII space. Its byte position is also the beginning of
+// the next inline run, so extracting thousands of offsets stays linear.
+fn append_text(out: &mut String, text: &str) {
+    for ch in text.chars() {
         if ch.is_whitespace() {
-            space = !output.is_empty();
-        } else if !ch.is_control() {
-            if space {
-                output.push(' ');
-                space = false;
+            if !out.is_empty() && !out.ends_with(' ') {
+                out.push(' ');
             }
-            output.push(ch);
+        } else if !ch.is_control() {
+            out.push(ch);
         }
     }
-    output
 }
 
 fn heading(name: &str) -> bool {
@@ -44,18 +50,22 @@ fn boundary(name: &str) -> bool {
 }
 
 fn flush(buffer: &mut String, is_heading: bool, blocks: &mut Vec<Block>) {
-    let text = clean(buffer);
-    if !text.is_empty() {
+    if buffer.ends_with(' ') {
+        buffer.pop();
+    }
+    if !buffer.is_empty() {
         blocks.push(Block {
-            text,
+            text: std::mem::take(buffer),
             heading: is_heading,
         });
     }
-    buffer.clear();
 }
 
 pub(super) struct RawLink {
     pub block: usize,
+    pub byte: usize,
+    pub backlink: bool,
+    pub id: Option<String>,
     pub image: bool,
     pub label: String,
     pub href: String,
@@ -65,7 +75,7 @@ pub(super) fn append_blocks(
     blocks: &mut Vec<Block>,
     links: &mut Vec<RawLink>,
     tables: &mut std::collections::BTreeMap<usize, botui_core::TableRow>,
-) -> Vec<(String, usize)> {
+) -> Vec<(String, botui_core::Anchor)> {
     let dom = Html::parse_document(html);
     let Some(body) = dom
         .root_element()
@@ -99,6 +109,9 @@ pub(super) fn append_blocks(
                             {
                                 links.push(RawLink {
                                     block: blocks.len(),
+                                    byte: 0,
+                                    backlink: false,
+                                    id: None,
                                     image: true,
                                     label: String::new(),
                                     href: href.into(),
@@ -123,10 +136,19 @@ pub(super) fn append_blocks(
                                 .collect::<Vec<_>>(),
                         ));
                     }
-                    if let Some(id) = el.attr("id").or_else(|| el.attr("name")) {
+                    if el.attr("hidden").is_none()
+                        && !matches!(name, "script" | "style" | "template" | "noscript")
+                        && let Some(id) = el.attr("id").or_else(|| el.attr("name"))
+                    {
                         let next =
                             blocks.len() + usize::from(boundary(name) && !buffer.trim().is_empty());
-                        ids.push((id.to_owned(), next));
+                        ids.push((
+                            id.to_owned(),
+                            botui_core::Anchor {
+                                block: next,
+                                byte: if boundary(name) { 0 } else { buffer.len() },
+                            },
+                        ));
                     }
                     if matches!(name, "script" | "style" | "template" | "svg" | "noscript")
                         || el.attr("hidden").is_some()
@@ -150,6 +172,13 @@ pub(super) fn append_blocks(
                             };
                             links.push(RawLink {
                                 block: blocks.len(),
+                                byte: buffer.len(),
+                                id: el.attr("id").or_else(|| el.attr("name")).map(str::to_owned),
+                                backlink: ["epub:type", "role"]
+                                    .iter()
+                                    .filter_map(|attr| el.attr(attr))
+                                    .flat_map(str::split_ascii_whitespace)
+                                    .any(|v| matches!(v, "backlink" | "doc-backlink")),
                                 image,
                                 label,
                                 href: href.to_owned(),
@@ -164,7 +193,7 @@ pub(super) fn append_blocks(
                         buffer.push(' ');
                     }
                 }
-                Node::Text(text) => buffer.push_str(text),
+                Node::Text(text) => append_text(&mut buffer, text),
                 _ => {}
             },
             Edge::Close(node) => {
