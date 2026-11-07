@@ -6,12 +6,12 @@ use std::{fs::File, io::Read, path::Path};
 pub(super) fn open(path: &Path) -> Result<Document> {
     let file = File::open(path)?;
     if file.metadata()?.len() > MAX_TEXT_BYTES {
-        return Err(invalid("Превышен лимит размера FB2").into());
+        return Err(invalid("FB2 exceeds the size limit").into());
     }
     let mut bytes = Vec::new();
     file.take(MAX_TEXT_BYTES + 1).read_to_end(&mut bytes)?;
     if bytes.len() as u64 > MAX_TEXT_BYTES {
-        return Err(invalid("Превышен лимит размера FB2").into());
+        return Err(invalid("FB2 exceeds the size limit").into());
     }
     parse(
         &bytes,
@@ -32,7 +32,7 @@ pub(super) fn parse(bytes: &[u8], fallback: &str) -> Result<Document> {
     let doc = Xml::parse(&xml)?;
     let root = doc.root_element();
     if !root.has_tag_name("FictionBook") {
-        return Err(invalid("Не найден корневой элемент FictionBook").into());
+        return Err(invalid("Missing FictionBook root element").into());
     }
     let title = root
         .children()
@@ -79,9 +79,10 @@ pub(super) fn parse(bytes: &[u8], fallback: &str) -> Result<Document> {
         }
     }
     if blocks.is_empty() {
-        return Err(invalid("В FB2 не найден текст для чтения").into());
+        return Err(invalid("No readable text in this FB2").into());
     }
     Ok(Document {
+        contents: vec![],
         title,
         blocks,
         locations,

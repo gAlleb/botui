@@ -54,15 +54,16 @@ fn flush(buffer: &mut String, is_heading: bool, blocks: &mut Vec<Block>) {
     buffer.clear();
 }
 
-pub(super) fn append_blocks(html: &str, blocks: &mut Vec<Block>) {
+pub(super) fn append_blocks(html: &str, blocks: &mut Vec<Block>) -> Vec<(String, usize)> {
     let dom = Html::parse_document(html);
     let Some(body) = dom
         .root_element()
         .child_elements()
         .find(|e| e.value().name() == "body")
     else {
-        return;
+        return vec![];
     };
+    let mut ids = Vec::new();
     let mut buffer = String::new();
     let mut is_heading = false;
     let mut hidden = None;
@@ -71,6 +72,11 @@ pub(super) fn append_blocks(html: &str, blocks: &mut Vec<Block>) {
             Edge::Open(node) if hidden.is_none() => match node.value() {
                 Node::Element(el) => {
                     let name = el.name();
+                    if let Some(id) = el.attr("id").or_else(|| el.attr("name")) {
+                        let next =
+                            blocks.len() + usize::from(boundary(name) && !buffer.trim().is_empty());
+                        ids.push((id.to_owned(), next));
+                    }
                     if matches!(name, "script" | "style" | "template" | "svg" | "noscript")
                         || el.attr("hidden").is_some()
                     {
@@ -104,4 +110,5 @@ pub(super) fn append_blocks(html: &str, blocks: &mut Vec<Block>) {
         }
     }
     flush(&mut buffer, is_heading, blocks);
+    ids
 }

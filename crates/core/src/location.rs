@@ -90,3 +90,41 @@ impl Document {
         None
     }
 }
+
+impl Document {
+    /// Foliate also emits range CFIs for dog-ears. Navigate to the start of
+    /// the range. Escaped commas inside an assertion do not delimit a range.
+    pub fn bookmark_anchor(&self, cfi: &str) -> Option<Anchor> {
+        if let Some(place) = self.resolve_cfi(cfi) {
+            return Some(place);
+        }
+        let value = cfi.strip_prefix("epubcfi(")?.strip_suffix(')')?;
+        if value.len() > 8192 {
+            return None;
+        }
+        let mut parts = Vec::new();
+        let mut start = 0;
+        let mut escaped = false;
+        let mut in_assertion = false;
+        for (i, c) in value.char_indices() {
+            if escaped {
+                escaped = false;
+                continue;
+            }
+            match c {
+                '^' => escaped = true,
+                '[' => in_assertion = true,
+                ']' => in_assertion = false,
+                ',' if !in_assertion => {
+                    parts.push(&value[start..i]);
+                    start = i + 1;
+                }
+                _ => (),
+            }
+        }
+        if parts.len() != 2 {
+            return None;
+        }
+        self.resolve_cfi(&format!("epubcfi({}{})", parts[0], parts[1]))
+    }
+}

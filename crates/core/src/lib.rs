@@ -1,12 +1,14 @@
 //! Text pagination shared by every source and terminal frontend.
 
 mod location;
+mod printed;
 pub use location::{Locations, Run};
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 
 #[derive(Clone, Debug, Default)]
 pub struct Document {
+    pub contents: Vec<(Anchor, String)>,
     pub locations: Locations,
     pub title: String,
     pub blocks: Vec<Block>,
@@ -166,15 +168,32 @@ fn wrap_document(doc: &Document, width: u16) -> Vec<PageLine> {
     if width == 0 {
         return lines;
     }
-    for (block_index, block) in doc.blocks.iter().enumerate() {
+    let printed = printed::printed_lines(&doc.blocks);
+    let mut start = 0;
+    while start < doc.blocks.len() {
+        let mut end = start;
+        while end + 1 < printed.len()
+            && printed[end]
+            && printed[end + 1]
+            && printed::continues(&doc.blocks[end], &doc.blocks[end + 1])
+        {
+            end += 1;
+        }
+        let block = &doc.blocks[end];
         let before = lines.len();
-        wrap_block(&mut lines, block, block_index, usize::from(width));
+        printed::wrap(
+            &mut lines,
+            &doc.blocks[start..=end],
+            start,
+            usize::from(width),
+        );
+        start = end + 1;
         if lines.len() > before {
             lines.push(PageLine {
                 text: String::new(),
                 heading: false,
                 start: Anchor {
-                    block: block_index,
+                    block: end,
                     byte: block.text.len(),
                 },
             });
@@ -255,6 +274,7 @@ mod tests {
     fn document(paragraphs: &[&str]) -> Document {
         Document {
             title: "Книга".into(),
+            contents: vec![],
             locations: Locations::default(),
             blocks: paragraphs
                 .iter()

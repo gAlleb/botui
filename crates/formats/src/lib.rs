@@ -5,6 +5,7 @@ mod fb2;
 mod locations;
 #[cfg(test)]
 mod tests;
+mod toc;
 mod xhtml;
 
 use botui_core::Document;
@@ -65,12 +66,8 @@ pub fn open_document(path: &Path) -> Result<Document> {
     match FileKind::from_path(path) {
         Some(FileKind::Epub) => open_epub(path),
         Some(FileKind::Fb2) => fb2::open(path),
-        Some(kind) => Err(invalid(format!(
-            "Встроенный просмотр {} пока недоступен",
-            kind.label()
-        ))
-        .into()),
-        None => Err(invalid("Для чтения выберите файл EPUB или FB2").into()),
+        Some(kind) => Err(invalid(format!("No built-in viewer for {}", kind.label())).into()),
+        None => Err(invalid("Choose an EPUB or FB2 file").into()),
     }
 }
 
@@ -99,7 +96,7 @@ fn decode_xml(bytes: &[u8]) -> Result<Cow<'_, str>> {
             });
         let encoding = match declared {
             Some(label) => Encoding::for_label(label.as_bytes())
-                .ok_or_else(|| invalid(format!("Неизвестная кодировка XML {label:?}")))?,
+                .ok_or_else(|| invalid(format!("Unknown XML encoding {label:?}")))?,
             None => UTF_8,
         };
         (encoding, 0)
@@ -108,7 +105,7 @@ fn decode_xml(bytes: &[u8]) -> Result<Cow<'_, str>> {
         .decode_without_bom_handling_and_without_replacement(&bytes[skip..])
         .ok_or_else(|| {
             invalid(format!(
-                "Текст книги повреждён или не соответствует кодировке {}",
+                "Book text is damaged or does not match encoding {}",
                 encoding.name()
             ))
             .into()
