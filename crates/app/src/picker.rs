@@ -1,3 +1,4 @@
+mod collections;
 mod gallery;
 mod index;
 mod info;
@@ -23,6 +24,7 @@ use crate::AppTerminal;
 
 #[derive(Clone, PartialEq, Eq)]
 enum LocalView {
+    Collection(String),
     Directory,
     Reading,
     Recent,
@@ -52,6 +54,9 @@ pub struct Picker {
     shelves: [Rect; 3],
     search_button: Rect,
     info_button: Rect,
+    remove_button: Rect,
+    collections_button: Rect,
+    membership_button: Rect,
     root_button: Rect,
     path_button: Rect,
     prefs_buttons: crate::preferences::Buttons,
@@ -93,6 +98,9 @@ impl Picker {
             shelves: [Rect::default(); 3],
             search_button: Rect::default(),
             info_button: Rect::default(),
+            remove_button: Rect::default(),
+            collections_button: Rect::default(),
+            membership_button: Rect::default(),
             root_button: Rect::default(),
             path_button: Rect::default(),
             prefs_buttons: Default::default(),
@@ -172,6 +180,7 @@ impl Picker {
         frame.render_widget(
             Paragraph::new(match &self.view {
                 LocalView::Reading => "Currently reading".into(),
+                LocalView::Collection(name) => format!("Collection · {name}"),
                 LocalView::Recent => "Recently added".into(),
                 LocalView::Directory => {
                     use unicode_truncate::UnicodeTruncateStr;
@@ -283,6 +292,7 @@ impl Picker {
             } else {
                 match self.view {
                     LocalView::Reading => "No books currently being read.",
+                    LocalView::Collection(_) => "This collection is empty.",
                     _ if self.source.is_some() => "No saved books yet.",
                     _ => "No books or folders here.",
                 }
@@ -309,8 +319,20 @@ impl Picker {
             self.source.is_none().then_some("[P Folder…]"),
             Some("[/ Search]"),
             directory.then_some("[R Set library here]"),
+            (self.source.is_some() && self.list.selected().is_some())
+                .then_some("[Del Remove download]"),
+            (self.source.is_none() && !self.navigation.visible_panel())
+                .then_some("[4 Collections]"),
+            (self.source.is_none()
+                && self
+                    .list
+                    .selected()
+                    .and_then(|i| self.entries.get(i))
+                    .and_then(|e| e.kind)
+                    .is_some())
+            .then_some("[A Collections]"),
         ];
-        let mut rects = [Rect::default(); 7];
+        let mut rects = [Rect::default(); 10];
         let (mut x, mut line) = (0, 0);
         for (rect, label) in rects.iter_mut().zip(actions) {
             let Some(label) = label else { continue };
@@ -332,7 +354,21 @@ impl Picker {
         for rect in rects.iter_mut().filter(|r| !r.is_empty()) {
             rect.y += inner.bottom() - height;
         }
-        let [back, prefs, info, up, folder, search, root] = rects;
+        let [
+            back,
+            prefs,
+            info,
+            up,
+            folder,
+            search,
+            root,
+            remove,
+            collections,
+            membership,
+        ] = rects;
+        self.collections_button = collections;
+        self.membership_button = membership;
+        self.remove_button = remove;
         self.exit = back;
         self.info_button = info;
         self.up_button = up;
@@ -353,6 +389,9 @@ impl Picker {
     }
 
     fn browse(&mut self, view: LocalView) -> io::Result<()> {
+        if let LocalView::Collection(name) = view {
+            return self.show_collection(name);
+        }
         if matches!(&view, LocalView::Directory) {
             return self.load(&self.dir.clone());
         }
@@ -491,6 +530,7 @@ impl Picker {
                 let result = result.and_then(|action| match action {
                     Some(navigation::Node::Folder(path)) => self.load(&path),
                     Some(navigation::Node::Folders) => self.browse(LocalView::Directory),
+                    Some(navigation::Node::Collections) => self.collections_menu(term, None),
                     Some(navigation::Node::Reading) => self.browse(LocalView::Reading),
                     Some(navigation::Node::Recent) => self.browse(LocalView::Recent),
                     _ => Ok(()),
@@ -532,6 +572,50 @@ impl Picker {
                 Event::Key(k) if k.kind != KeyEventKind::Release => Some(k.code),
                 _ => None,
             };
+            if self.source.is_none() {
+                let browse = key == Some(KeyCode::Char('4'))
+                    || click.is_some_and(|p| self.collections_button.contains(p));
+                let edit = matches!(key, Some(KeyCode::Char('a' | 'A')))
+                    || click.is_some_and(|p| self.membership_button.contains(p));
+                if browse || edit {
+                    let book = self
+                        .list
+                        .selected()
+                        .and_then(|i| self.entries.get(i))
+                        .filter(|e| e.kind.is_some())
+                        .map(|e| e.path.canonicalize().unwrap_or_else(|_| e.path.clone()));
+                    if (browse || book.is_some())
+                        && let Err(e) =
+                            self.collections_menu(term, if browse { None } else { book })
+                    {
+                        self.error = Some(e.to_string());
+                    }
+                    continue;
+                }
+            }
+            if let Some(source) = self.source
+                && (key == Some(KeyCode::Delete)
+                    || click.is_some_and(|p| self.remove_button.contains(p)))
+                && let Some(entry) = self.list.selected().and_then(|i| self.entries.get(i))
+            {
+                let path = entry.path.clone();
+                let name = path.file_name().unwrap_or_default().to_string_lossy();
+                if crate::prompt::choose(
+                    term,
+                    "Remove from this device?",
+                    &["Cancel".into(), format!("Remove {name}")],
+                    0,
+                )? == Some(1)
+                {
+                    let result = crate::offline::remove_download(&path, source);
+                    self.allowed = Some(std::sync::Arc::new(source.files(&self.root)?));
+                    self.browse(self.view.clone())?;
+                    if let Err(e) = result {
+                        self.error = Some(e.to_string());
+                    }
+                }
+                continue;
+            }
             if (matches!(key, Some(KeyCode::Char('i' | 'I')))
                 || click.is_some_and(|p| self.info_button.contains(p)))
                 && let Some((path, kind)) = self.selected_scan()

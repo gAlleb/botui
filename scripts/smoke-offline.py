@@ -45,6 +45,8 @@ with tempfile.TemporaryDirectory() as name, shelf.Fixture(False) as server:
         term.wait("Contents overlay", lambda f:"[ Back ]" in f and "Chapters:" in f)
         term.keys("End", "Enter", "q")
         term.see("BookOrbit offline downloads")
+        term.keys("DC"); term.see("Remove from this device?"); term.keys("Down", "Enter")
+        term.wait("Book removed, queued move kept", lambda f: not list(downloads.glob("*.fb2")) and "Remove from this device?" not in f)
         term.keys("q")
         term.see("BookOrbit offline downloads")
         shelf.quit_shelf(term)
@@ -180,6 +182,38 @@ with tempfile.TemporaryDirectory() as name, shelf.Fixture(False) as server:
         assert json.loads(meta.read_text())["pending"] is None
         assert [code for _, p, code in server.requests if p.endswith("/301/serve")] == served
 
+        # The server is still in chapter 8 but its marker changed since the
+        # download. Opening online must expose both positions before reading.
+        local_move = {"target": pending["target"], "percentage": pending["percentage"]}
+        conflict = json.loads(meta.read_text())
+        conflict["pending"] = local_move
+        meta.write_text(json.dumps(conflict))
+        server.progress[301]["updatedAt"] = "2026-11-07T12:00:00.000Z"
+        before = len(server.saved)
+        term.keys("b"); term.see("Continue reading"); term.keys("1")
+        term.see(shelf.BOOK); term.keys("Enter")
+        term.click("EPUB", shelf.formats(term)); term.see("Use offline position")
+        term.keys("Escape"); shelf.formats(term)
+        assert len(server.saved) == before and json.loads(meta.read_text())["pending"] == local_move
+        term.click("EPUB", shelf.formats(term))
+        term.click("Use offline position", term.see("Use offline position"))
+        term.wait("Reconciliation opens offline chapter seven", lambda f: f.strip().startswith("Chapter 7"))
+        assert server.progress[301]["text"]["cfi"] == local_move["target"]["Text"]
+        assert json.loads(meta.read_text())["pending"] is None and len(server.saved) == before + 1
+        term.keys("q"); shelf.formats(term)
+        conflict = json.loads(meta.read_text())
+        conflict["pending"] = local_move
+        meta.write_text(json.dumps(conflict))
+        server.progress[301]["text"] = {"cfi": move["target"]["Text"]}
+        server.progress[301]["percentage"] = move["percentage"]
+        server.progress[301]["updatedAt"] = "2026-11-07T13:00:00.000Z"
+        term.click("EPUB", shelf.formats(term))
+        term.click("Use BookOrbit position", term.see("Use BookOrbit position"))
+        term.wait("Choosing BookOrbit opens chapter eight", lambda f: f.strip().startswith("Chapter 8"))
+        assert len(server.saved) == before + 1 and json.loads(meta.read_text())["pending"] is None
+        term.keys("q"); shelf.formats(term)
+        term.keys("q"); term.see("Choose a library")
+
         # A different revision of the same length must replace the cached edition.
         updated = chapter_book("shore")
         assert len(updated) == len(epub.read_bytes())
@@ -194,6 +228,14 @@ with tempfile.TemporaryDirectory() as name, shelf.Fixture(False) as server:
         index, = (downloads / ".editions").glob("*/301.json")
         assert (downloads / json.loads(index.read_text())["name"]).read_bytes() == updated
         assert [code for _, p, code in server.requests if p.endswith("/301/serve")] == [200, 304, 200]
+        term.keys("q"); term.see("Choose a library"); term.keys("d")
+        term.see(shelf.BOOK); term.keys("DC"); term.see("Remove from this device?")
+        copies = set(downloads.glob("*.epub"))
+        assert len(copies) >= 1
+        term.keys("Escape"); assert set(downloads.glob("*.epub")) == copies
+        term.keys("DC"); term.see("Remove from this device?"); term.keys("Down","Enter")
+        term.wait("Selected download disappears", lambda f: len(set(downloads.glob("*.epub"))) == len(copies) - 1 and "Remove from this device?" not in f)
+        assert (downloads / "Only from OPDS.fb2").is_file()
         shelf.quit_shelf(term)
     finally:
         term.run("kill-server", required=False)

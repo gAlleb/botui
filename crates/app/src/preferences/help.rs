@@ -52,6 +52,11 @@ pub(super) fn entries(ctx: Context, p: &Settings) -> Vec<Entry> {
                         "Open the cover in your image viewer from the book card",
                     ),
                     ("D", "Save the selected file offline"),
+                    (
+                        "A / N",
+                        "Book card: manage collections / Collections: create one",
+                    ),
+                    ("Del", "Remove the selected copy from a download shelf"),
                     ("L / B", "Reading log / related books on the book card"),
                 ],
             ),
@@ -66,6 +71,11 @@ pub(super) fn entries(ctx: Context, p: &Settings) -> Vec<Entry> {
                     ("P / R", "Choose a folder / use this folder as the library"),
                     ("I", "File info and external viewer for PDF or DjVu"),
                     ("1 / 2 / 3", "Folders / currently reading / recently added"),
+                    (
+                        "4 / A",
+                        "Browse local collections / add or remove the selected book",
+                    ),
+                    ("Del", "Remove the selected file on a download shelf"),
                     ("/", "Live fuzzy search · type to filter, Enter to open"),
                     ("V / U / F", "Grid or list / borders / background"),
                 ],

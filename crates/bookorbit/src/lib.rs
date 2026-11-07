@@ -1,6 +1,7 @@
 //! Password sign-in, catalog navigation and reading individual files from BookOrbit.
 pub mod bookmarks;
 pub mod browse;
+pub mod collections;
 pub mod dashboard;
 pub mod detail;
 mod model;

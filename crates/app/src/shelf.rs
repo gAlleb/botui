@@ -1,4 +1,5 @@
 pub(crate) mod background;
+mod collections;
 pub(crate) mod covers;
 mod dashboard;
 mod detail;
@@ -136,6 +137,11 @@ enum Command {
     Feed(botui_opds::Address),
     InlineFeed(String, Arc<Vec<botui_opds::Entry>>),
     NoAcquisition,
+    Membership {
+        book: u64,
+        collection: u64,
+        add: bool,
+    },
     SessionDetail(String),
     Connect,
     OpenTab(Tab),
@@ -163,6 +169,7 @@ impl Row {
 }
 
 enum Section {
+    Memberships(u64),
     ReadingLog {
         book: u64,
         next: Option<u32>,
@@ -197,6 +204,7 @@ enum Tail {
 }
 
 struct Pane {
+    collection_changed: bool,
     live_search: Option<Box<search::Panel>>,
     section: Section,
     title: String,
@@ -211,6 +219,7 @@ impl Pane {
         let selection = ListState::default().with_selected((!rows.is_empty()).then_some(0));
         Self {
             section,
+            collection_changed: false,
             live_search: None,
             tail: None,
             tail_error: false,
@@ -263,6 +272,8 @@ impl Pane {
 }
 
 enum Loaded {
+    Memberships(u64, Vec<botui_bookorbit::collections::Membership>),
+    CollectionChanged(Option<u64>),
     ReadingLog(u64, botui_bookorbit::reading_log::ReadingLog),
     Dashboard(dashboard::Dashboard, Vec<Row>),
     Groups(Directory, String, DirectoryPage),
@@ -352,6 +363,7 @@ pub(crate) struct Shelf {
     home_button: Rect,
     file_button: Rect,
     keep_button: Rect,
+    new_collection_button: Rect,
     tab_buttons: [Rect; Tab::ALL.len()],
     prefs_buttons: crate::preferences::Buttons,
     home_hits: Vec<(Rect, usize)>,
@@ -394,6 +406,7 @@ impl Shelf {
             home_button: Rect::default(),
             file_button: Rect::default(),
             keep_button: Rect::default(),
+            new_collection_button: Rect::default(),
             tab_buttons: [Rect::default(); Tab::ALL.len()],
             prefs_buttons: Default::default(),
             home_hits: vec![],
@@ -877,7 +890,19 @@ impl Shelf {
         {
             self.card = detail::Card::open(book.id, self.session.clone());
         }
-        if self.dirty_shelves[0] && matches!(self.current().section, Section::Dashboard(_)) {
+        if self.current().collection_changed
+            && let Section::Books {
+                scope: scope @ Scope::Collection(_),
+                ..
+            } = &self.current().section
+        {
+            let scope = scope.clone();
+            self.books(scope, 0);
+        } else if self.current().collection_changed
+            && matches!(self.current().section, Section::Collections)
+        {
+            self.open_tab(Tab::Collections);
+        } else if self.dirty_shelves[0] && matches!(self.current().section, Section::Dashboard(_)) {
             self.open_tab(Tab::Dashboard);
         } else if self.dirty_shelves[1]
             && matches!(
@@ -964,6 +989,11 @@ impl Shelf {
             Command::SessionDetail(detail) => {
                 self.info = Some(detail);
             }
+            Command::Membership {
+                book,
+                collection,
+                add,
+            } => self.change_membership(book, collection, add),
             Command::NoAcquisition => {
                 self.notice =
                     Some("This catalog provides no direct download for this edition.".into())
@@ -1052,6 +1082,27 @@ impl Shelf {
                     rows,
                 );
             }
+            Loaded::Memberships(book, items) => self.show_memberships(book, items),
+            Loaded::CollectionChanged(book) => {
+                for pane in &mut self.stack {
+                    pane.collection_changed = matches!(
+                        pane.section,
+                        Section::Collections
+                            | Section::Books {
+                                scope: Scope::Collection(_),
+                                ..
+                            }
+                    );
+                }
+                if let Some(session) = self.session.clone() {
+                    self.rail.refresh(session);
+                }
+                if let Some(book) = book {
+                    self.book_collections(book);
+                } else {
+                    self.open_tab(Tab::Collections);
+                }
+            }
             Loaded::Collections(items) => {
                 let rows = items
                     .into_iter()
@@ -1089,6 +1140,11 @@ impl Shelf {
                     self.stack.truncate(depth);
                 } else if matches!(scope, Scope::Reading | Scope::Recent) {
                     self.stack.truncate(self.root_depth());
+                }
+                if self.current().collection_changed
+                    && matches!(&self.current().section, Section::Books {scope: old, ..} if old == &scope)
+                {
+                    self.stack.pop();
                 }
                 self.stack.push(Pane::new(
                     Section::Books {
@@ -1634,10 +1690,85 @@ impl Shelf {
         action.and_then(|cmd| self.apply(cmd))
     }
 
+    /// A conflict is durable across restarts. Resolve it before the connected
+    /// reader can start at the older position and save another move over it.
+    fn resolve_pending_position(
+        &mut self,
+        term: &mut AppTerminal,
+        path: &std::path::Path,
+        server: &Progress,
+    ) -> io::Result<bool> {
+        let Some(copy) = crate::offline::Copy::open(path)? else {
+            return Ok(false);
+        };
+        let account = crate::offline::account(&self.server, &self.username);
+        let Some(offline) = copy.pending_for(&account, server.file_id) else {
+            return Ok(false);
+        };
+        let labels = [
+            format!(
+                "Use offline position ({:.2}%) and sync to BookOrbit",
+                offline.percentage
+            ),
+            format!(
+                "Use BookOrbit position ({:.2}%) on this device",
+                server.percentage
+            ),
+        ];
+        let Some(choice) = crate::prompt::choose(term, "Choose reading position", &labels, 0)?
+        else {
+            return Ok(true);
+        };
+        let session = self
+            .session
+            .clone()
+            .ok_or_else(|| io::Error::other("Sign in to BookOrbit again."))?;
+        let path = path.to_owned();
+        let shown = server.clone();
+        let marks = self.bookmarks.take();
+        self.fetch("Updating reading position…", move |cancel| {
+            let current = session.with_token(|api, token| api.progress(token, shown.file_id))?;
+            if current != shown {
+                return Err(
+                    "BookOrbit progress changed again. Open the book to see its latest position."
+                        .into(),
+                );
+            }
+            copy.resolve(&path, &current, choice == 0)?;
+            if choice == 0 {
+                crate::offline::reconnect::wake();
+                crate::offline::sync(&session, &account, cancel)?;
+                if crate::offline::Copy::open(&path)?
+                    .is_some_and(|copy| copy.pending_for(&account, shown.file_id).is_some())
+                {
+                    return Err(
+                        "Your offline position is still pending. Reopen the book to retry.".into(),
+                    );
+                }
+            }
+            let saved = session.with_token(|api, token| api.progress(token, shown.file_id))?;
+            Ok(Loaded::NativeFile(path, Some(saved), None, marks))
+        });
+        if let Some(job) = &mut self.pending {
+            job.saving = true;
+        }
+        Ok(true)
+    }
+
     pub fn choose(&mut self, term: &mut AppTerminal) -> io::Result<Selection> {
         self.rail.splitter.preferred = crate::settings::Settings::load()?.sidebar_width;
         loop {
             if let Some(choice) = self.collect_results() {
+                if let Selection::Book(EditionPath::Local(path), Some(server)) = &choice {
+                    match self.resolve_pending_position(term, path, server) {
+                        Ok(true) => continue,
+                        Ok(false) => (),
+                        Err(e) => {
+                            self.notice = Some(e.to_string());
+                            continue;
+                        }
+                    }
+                }
                 return Ok(choice);
             }
             if self.handle_search(term)? {
@@ -1663,6 +1794,19 @@ impl Shelf {
                 if let Err(err) = result {
                     self.notice = Some(err.to_string());
                 }
+                continue;
+            }
+            if self.pending.is_none()
+                && self.login.is_none()
+                && self.info.is_none()
+                && matches!(
+                    self.current().section,
+                    Section::Collections | Section::Memberships(_)
+                )
+                && (matches!(&e, Event::Key(k) if k.kind != KeyEventKind::Release && matches!(k.code, KeyCode::Char('n' | 'N')))
+                    || matches!(&e, Event::Mouse(m) if m.kind == MouseEventKind::Down(MouseButton::Left) && self.new_collection_button.contains(Position::new(m.column, m.row))))
+            {
+                self.new_collection(term)?;
                 continue;
             }
             if self.pending.is_none()

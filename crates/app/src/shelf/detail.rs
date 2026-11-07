@@ -34,6 +34,7 @@ enum Act {
     More,
     Log,
     Related,
+    Collections,
 }
 pub(super) fn status_label(s: &str) -> &str {
     match s {
@@ -187,6 +188,7 @@ impl Shelf {
             "[I Synopsis]",
             "[L Reading log]",
             "[B Related books]",
+            "[A Collections]",
         ] {
             let width = label.len() as u16;
             if used > 0 && used + width > body.width {
@@ -290,6 +292,7 @@ impl Shelf {
         }
         if self.session.is_some() {
             controls.push(("[L Reading log]", Act::Log));
+            controls.push(("[A Collections]", Act::Collections));
         }
         if d.is_some_and(|v| {
             v.authors.iter().any(|a| a.id.is_some())
@@ -362,6 +365,7 @@ impl Shelf {
                     Some(Act::Cover)
                 }
                 KeyCode::Char('b' | 'B') => Some(Act::Related),
+                KeyCode::Char('a' | 'A') if self.session.is_some() => Some(Act::Collections),
                 KeyCode::Char('l' | 'L') if self.session.is_some() => Some(Act::Log),
                 KeyCode::Char('r' | 'R') => Some(Act::Read),
                 KeyCode::Char('h' | 'H') => Some(Act::Hold),
@@ -414,6 +418,10 @@ impl Shelf {
                 }
                 super::gallery::binding::Binding::from(&book).png()
             });
+            return Ok(true);
+        }
+        if matches!(act, Act::Collections) {
+            self.book_collections(self.card.id);
             return Ok(true);
         }
         if matches!(act, Act::Log) {

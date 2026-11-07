@@ -75,6 +75,7 @@ class Fixture(ThreadingHTTPServer):
     def __init__(self, has_collections):
         super().__init__(("127.0.0.1", 0), Handler)
         self.has_collections = has_collections
+        self.personal = {}
         self.requests = []
         self.token = TOKEN
         self.refresh = "a" * 64
@@ -128,6 +129,14 @@ class Handler(BaseHTTPRequestHandler):
         total = TOTAL if self.server.has_collections else 2
         catalogs = {API + "/books/query": range(total), API + "/libraries/31/books": [0],
                     API + "/libraries/32/books": range(1, total)}
+        if self.path == API + "/collections":
+            assert data["icon"] == "FolderOpen" and data["isPublic"] is False
+            ident = 100 + len(self.server.personal)
+            self.server.personal[ident] = (data["name"], set())
+            return self.reply(201, {"id":ident, "name":data["name"], "bookCount":0})
+        if self.path == API + "/collections/100/books":
+            self.server.personal[100][1].update(data["bookIds"])
+            return self.reply(201, {})
         if self.path == API + "/books/201/reset-reading-state" and self.headers.get("Authorization") == f"Bearer {self.server.token}":
             self.server.statuses[201]="unread"
             return self.reply(201,{"readStatus":{"status":"unread","startedAt":None,"finishedAt":None}})
@@ -177,6 +186,11 @@ class Handler(BaseHTTPRequestHandler):
         self.reply(404, {"path": self.path})
 
     def do_DELETE(self):
+        if self.path == API + "/collections/100/books":
+            data = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+            self.server.personal[100][1].difference_update(data["bookIds"])
+            return self.reply(200, {})
+
         if self.path.startswith(API + "/books/200/bookmarks/") and self.headers.get("Authorization") == f"Bearer {self.server.token}":
             ident = int(self.path.rsplit("/",1)[1])
             if ident in getattr(self.server, "denied_marks", set()):
@@ -259,8 +273,14 @@ class Handler(BaseHTTPRequestHandler):
             return self.reply(200, [{"id": i, "name": name, "bookCount": 1 if i == 31 else total - 1}
                                     for i, name in LIBRARIES.items()])
         if url.path == API + "/collections":
+            if self.server.personal or "bookIds" in query:
+                book = int(query.get("bookIds", ["0"])[0])
+                return self.reply(200, [dict(id=i,name=n,bookCount=len(m),memberCount=int(book in m))
+                                        for i,(n,m) in self.server.personal.items()])
             return self.reply(200, [{"id": 91, "userId": 7, "name": COLLECTION, "bookCount": TOTAL}]
                               if self.server.has_collections else [])
+        if url.path == API + "/collections/100/books":
+            return send_page([self.server.card(i - 200) for i in sorted(self.server.personal[100][1])])
         if url.path == API + "/collections/91/books" and self.server.has_collections:
             query = parse_qs(url.query)
             page, size = int(query.get("page", ["0"])[0]), int(query.get("size", ["50"])[0])
@@ -471,7 +491,7 @@ def check_collections(tmp, binary, fixture):
         missing_cover = term.wait("Оттиск без обложки", lambda s: OTHER_BOOK in s and "PDF" in s and BOOK not in s)
         term.click("PDF", missing_cover)
         term.wait("PDF without cover opens from its edition row", lambda s: "PDF" in s and "1 / 3" in s)
-        term.keys("Escape")
+        term.keys("Escape"); term.see("[D Save offline]")
         term.keys("Escape")
         term.see(BOOK)
         term.keys("Escape")
@@ -521,7 +541,7 @@ def check_without_collections(tmp, binary, fixture):
         term.keys("q");formats(term);term.keys("Escape");term.see(BOOK)
         term.keys("Escape");term.see("Роджер Желязны")
         term.keys("Escape");term.wait("Directory totals after live search", totals)
-        term.keys("7");term.see("Group 0001");term.keys("/");term.see("Search series")
+        term.keys("7");term.wait("Series directory", lambda f: "Series  ·  49" in f and "Group 0001" in f);term.keys("/");term.see("Search series")
         term.type("амб");frame = term.see("Хроники Амбера");term.click("Хроники Амбера", frame)
         term.see(OTHER_BOOK)
         term.keys("Enter")
@@ -566,13 +586,28 @@ def check_without_collections(tmp, binary, fixture):
                   and ("no personal" in s.lower()) and BOOK not in s)
         term.keys("Escape")
         term.wait("Книги доступны после выхода из пустых коллекций", lambda s: BOOK in s and OTHER_BOOK in s)
+        term.keys("5"); term.see("[N New collection]"); term.keys("n")
+        term.see("New collection name"); term.type("Winter reading"); term.keys("Enter")
+        term.see("Winter reading")
+        term.keys("1"); term.click(BOOK, term.see(BOOK))
+        term.click("[A Collections]", term.see("[A Collections]"))
+        term.click("Add to Winter reading", term.see("Add to Winter reading"))
+        term.see("Remove from Winter reading")
+        assert fixture.personal[100][1] == {200}
+        term.keys("5"); term.see("[N New collection]"); term.keys("Enter")
+        term.see(BOOK); term.keys("Enter"); formats(term); term.keys("a")
+        term.click("Remove from Winter reading", term.see("Remove from Winter reading"))
+        term.see("Add to Winter reading")
+        term.keys("Escape"); formats(term); term.keys("Escape")
+        term.wait("Collection is empty after removal", lambda f: "Winter reading  ·  0" in f and BOOK not in f)
+        assert not fixture.personal[100][1]
         quit_shelf(term)
         requests = fixture.requests
         for path in ("/books/query", "/libraries/31/books", "/libraries/32/books"):
             assert ("POST", API + path, 200) in requests, requests
         for path in ("/libraries", "/collections", "/books/files/301/serve"):
             assert ("GET", API + path, 200) in requests, requests
-        assert not any("/collections/" in path for _, path, _ in requests), requests
+        assert not any("/collections/91/" in path for _, path, _ in requests), requests
     finally:
         term.run("kill-server", required=False)
 

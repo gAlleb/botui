@@ -16,6 +16,7 @@ use std::{
 
 #[derive(Clone, PartialEq, Eq)]
 pub(super) enum Node {
+    Collections,
     Folders,
     Folder(PathBuf),
     Reading,
@@ -88,6 +89,7 @@ impl Navigation {
     pub fn show_shelf(&mut self, view: &LocalView) {
         self.active = match view {
             LocalView::Reading => Some(Node::Reading),
+            LocalView::Collection(_) => Some(Node::Collections),
             LocalView::Recent => Some(Node::Recent),
             _ => None,
         };
@@ -112,12 +114,20 @@ impl Navigation {
                 self.rows.push((Node::Folder(path), depth));
             }
         }
-        self.rows.extend([(Node::Reading, 0), (Node::Recent, 0)]);
+        self.rows.extend([
+            (Node::Reading, 0),
+            (Node::Recent, 0),
+            (Node::Collections, 0),
+        ]);
         let index = self
             .rows
             .iter()
             .position(|(node, _)| Some(node) == select.as_ref());
         self.cursor = index.unwrap_or(0);
+    }
+
+    pub fn visible_panel(&self) -> bool {
+        !self.viewport.is_empty()
     }
 
     pub fn layout(&mut self, frame: &mut Frame, area: Rect) -> Rect {
@@ -143,9 +153,9 @@ impl Navigation {
         }
         self.viewport = block.inner(nav);
         frame.render_widget(block, nav);
-        // Pin the three section shortcuts while only the folder rows scroll.
-        let folders = self.rows.len().saturating_sub(3);
-        let capacity = usize::from(self.viewport.height.saturating_sub(3));
+        // Pin the section shortcuts while only the folder rows scroll.
+        let folders = self.rows.len().saturating_sub(4);
+        let capacity = usize::from(self.viewport.height.saturating_sub(4));
         self.offset = self.offset.min(folders.saturating_sub(capacity));
         if (1..=folders).contains(&self.cursor) {
             self.offset = self
@@ -157,11 +167,12 @@ impl Navigation {
         self.visible.push(0);
         self.visible
             .extend((1 + self.offset..=folders).take(capacity));
-        self.visible.extend([folders + 1, folders + 2]);
+        self.visible.extend([folders + 1, folders + 2, folders + 3]);
         for (line, &index) in self.visible.iter().enumerate() {
             let (node, depth) = &self.rows[index];
             let (marker, label) = match node {
                 Node::Folders => (if self.show_tree { "▾" } else { "▸" }, "1 Folders".into()),
+                Node::Collections => (" ", "4 Collections".into()),
                 Node::Reading => (
                     " ",
                     if self.viewport.width >= 21 {

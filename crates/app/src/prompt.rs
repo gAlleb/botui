@@ -334,3 +334,11 @@ pub fn confirm_reset(term: &mut AppTerminal, title: &str) -> io::Result<bool> {
 pub fn message(term: &mut AppTerminal, title: &str, body: &str) -> io::Result<()> {
     document_panel(term, title, body, None).map(|_| ())
 }
+
+pub fn collection_name(
+    term: &mut AppTerminal,
+    underneath: impl FnMut(&mut ratatui::Frame),
+) -> io::Result<Option<String>> {
+    let name = edit(term, "New collection name", "[ Create ↵ ]", "", underneath)?;
+    Ok(name.map(|s| s.trim().to_owned()).filter(|s| !s.is_empty()))
+}

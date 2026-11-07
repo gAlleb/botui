@@ -62,7 +62,7 @@ pub(crate) fn fetch(
     Ok(destination.into_temp_path())
 }
 
-pub fn downloads() -> io::Result<std::path::PathBuf> {
+pub fn data_dir() -> io::Result<std::path::PathBuf> {
     let base = std::env::var_os("XDG_DATA_HOME")
         .map(std::path::PathBuf::from)
         .filter(|p| p.is_absolute())
@@ -70,7 +70,11 @@ pub fn downloads() -> io::Result<std::path::PathBuf> {
             std::env::var_os("HOME").map(|h| std::path::PathBuf::from(h).join(".local/share"))
         })
         .ok_or(io::ErrorKind::NotFound)?;
-    Ok(base.join("botui/downloads"))
+    Ok(base.join("botui"))
+}
+
+pub fn downloads() -> io::Result<std::path::PathBuf> {
+    Ok(data_dir()?.join("downloads"))
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

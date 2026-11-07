@@ -97,6 +97,25 @@ pub(super) fn legacy_file(
     Ok(newest.map(|(_, path)| path))
 }
 
+/// Keep an unsent position syncable even when its book no longer takes up disk space.
+pub fn remove_download(book: &Path, source: crate::cache::Source) -> io::Result<()> {
+    let dir = crate::cache::downloads()?.canonicalize()?;
+    let _lock = lock(&dir)?;
+    if book.parent() != Some(dir.as_path()) || !source.files(&dir)?.contains(book) {
+        return Err(io::Error::other(
+            "This file is no longer on the selected download shelf.",
+        ));
+    }
+    let record = sidecar(book);
+    let remove_record = source == crate::cache::Source::BookOrbit
+        && load(&record)?.is_some_and(|copy| copy.pending.is_none());
+    fs::remove_file(book)?;
+    if remove_record {
+        fs::remove_file(record)?;
+    }
+    Ok(())
+}
+
 pub fn associate(book: &Path, account: String, base: Progress) -> io::Result<()> {
     let path = sidecar(book);
     let _lock = lock(book.parent().ok_or(io::ErrorKind::InvalidInput)?)?;
@@ -160,6 +179,33 @@ impl Copy {
             }
         }
         current
+    }
+    pub(crate) fn pending_for(&self, account: &str, file: u64) -> Option<&Move> {
+        self.pending
+            .as_ref()
+            .filter(|_| self.account == account && self.base.file_id == file)
+    }
+
+    /// Apply the user's choice only to the pair of positions they saw.
+    /// The next upload still uses the normal conditional BookOrbit write.
+    pub(crate) fn resolve(
+        mut self,
+        book: &Path,
+        server: &Progress,
+        keep_offline: bool,
+    ) -> io::Result<()> {
+        let _lock = lock(book.parent().ok_or(io::ErrorKind::InvalidInput)?)?;
+        let path = sidecar(book);
+        if load(&path)?.as_ref() != Some(&self) {
+            return Err(io::Error::other(
+                "The offline position changed. Open the book again.",
+            ));
+        }
+        self.base = server.clone();
+        if !keep_offline {
+            self.pending = None;
+        }
+        write(&path, &self)
     }
     pub fn queue(self, path: &Path, m: Move) -> io::Result<()> {
         let _lock = lock(path.parent().ok_or(io::ErrorKind::InvalidInput)?)?;
@@ -318,7 +364,7 @@ pub fn sync(
             }
         } else {
             messages.push(
-                "Another device changed an offline book; kept its local progress.".to_owned(),
+                "Reading positions differ. Open the downloaded edition in BookOrbit to choose which position to keep.".to_owned(),
             );
         }
     }

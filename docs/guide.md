@@ -35,6 +35,8 @@ Results update as you type; use **↑/↓** and **Enter** to open a book, or **E
 
 **2** opens reading history with percentages and **3** shows recent files by creation time, falling back to modification time.
 
+**4 Collections** opens your local collections. Choose **New collection…** to create one. With a file selected, press **A** to add it to a collection or remove it. The same file can belong to several collections and stays in its original folder.
+
 In a wide terminal the left pane shows the folder tree, currently reading and recently added. Click a folder name to display its books on the right; click its arrow to fold or expand it. **F6** switches focus, **← / →** fold or expand, and **Enter** opens a folder.
 
 Drag the divider to resize it. Small windows keep the numbered tabs. [See the local library in Kitty](images/local-library.png).
@@ -52,6 +54,8 @@ Use **0** to revisit and refresh the dashboard.
 | 2 | Currently reading | 6 | Authors |
 | 3 | Recently added | 7 | Series |
 
+In **5 Collections**, press **N** to create a private BookOrbit collection. From a book card, press **A Collections** to add or remove the book. Changes appear in the web library for the same account.
+
 **Authors** and **Series** show account-wide totals and the number of books in each entry. Open an author to see their books, or a series to read its volumes in server order. **/** opens a centered search window. Results update as you type; **Esc** or a click outside closes it.
 
 In **Authors** and **Series** it filters that directory. On the dashboard or a book shelf, it searches your whole BookOrbit catalog by title, author or series. Try `желз` for `Желязны`, or `znak edin` for `Знак Единорога`.
@@ -68,7 +72,9 @@ If BookOrbit reports a changed edition, BOTUI checks the server version before r
 
 Without a connection, select **BookOrbit offline downloads** on the start screen. If you left an EPUB at chapter 5 online and read to chapter 7 offline, closing it queues chapter 7 for the same account and edition.
 
-BOTUI retries while running with an active session or a configured password or password command. Pending progress survives a restart. If you enter your password manually, signing in sends queued progress. A conflicting change on another device is reported and the offline position is kept.
+BOTUI retries while running with an active session or a configured password or password command. Pending progress survives a restart. If you enter your password manually, signing in sends queued progress. If both positions changed, open the downloaded edition in the connected BookOrbit library. Choose **Use offline position** to send your place to BookOrbit, or **Use BookOrbit position** to resume at the server’s place. **Esc** keeps both positions for later.
+
+On either download shelf, select a file and press **Del** to remove its copy from this device. BookOrbit keeps the server edition, and BOTUI keeps queued reading progress for the next sync.
 
 Offline bookmarks are local. **OPDS downloads** has its own shelf and uses device-local progress.
 

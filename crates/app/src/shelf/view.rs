@@ -17,6 +17,7 @@ impl Shelf {
         self.home_hits.clear();
         self.home_controls.clear();
         self.keep_button = Rect::default();
+        self.new_collection_button = Rect::default();
         self.search_button = Rect::default();
         self.rail.clear_hits();
         self.grid = None;
@@ -215,6 +216,27 @@ impl Shelf {
                 self.view_button,
             );
         }
+        if matches!(
+            self.current().section,
+            Section::Collections | Section::Memberships(_)
+        ) {
+            let label = "[N New collection]";
+            let right = if self.search_button.width > 0 {
+                self.search_button.x.saturating_sub(1)
+            } else if self.view_button.width > 0 {
+                self.view_button.x
+            } else {
+                left.right()
+            };
+            if right.saturating_sub(left.x) >= label.len() as u16 {
+                self.new_collection_button =
+                    Rect::new(right - label.len() as u16, left.y, label.len() as u16, 1);
+                frame.render_widget(
+                    Paragraph::new(label).style(heading()),
+                    self.new_collection_button,
+                );
+            }
+        }
         let bottom = u16::from(inner.height >= 3);
         let notice_rows = if self.notice.is_some() {
             inner.height.saturating_sub(top + bottom).min(2)
@@ -253,7 +275,9 @@ impl Shelf {
                     ..
                 } => "No matching authors.",
                 Section::Groups { .. } => "No matching series.",
-                Section::Collections => "No personal collections yet.",
+                Section::Collections | Section::Memberships(_) => {
+                    "No personal collections yet. Press N to create one."
+                }
                 Section::Libraries => "No libraries available to this account.",
                 Section::Files(_) => "No files available for this book.",
                 Section::Books {
