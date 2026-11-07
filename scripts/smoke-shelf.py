@@ -320,7 +320,10 @@ class Terminal:
         # Deliver the complete SGR report in one paste, as a terminal would write it.
         # A synthetic, bytewise Esc under load can be read as the Escape key.
         self.run("set-buffer", "-b", "mouse", seq)
-        self.run("paste-buffer", "-d", "-r", "-b", "mouse", "-t", "shelf")
+        paste = ["paste-buffer", "-d", "-r", "-b", "mouse", "-t", "shelf"]
+        # Newer tmux sanitizes controls by default. Older tmux pastes them verbatim.
+        if self.run(*paste, "-S", required=False).returncode:
+            self.run(*paste)
 
 
 def login(term, url, wrong_password=False):
