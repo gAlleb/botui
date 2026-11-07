@@ -39,6 +39,7 @@ pub enum Entry {
         authors: Vec<String>,
         files: Vec<File>,
         cover: Option<Url>,
+        full_cover: Option<Url>,
     },
 }
 #[derive(Clone)]
@@ -125,6 +126,10 @@ impl Catalog {
     pub fn cover(&self, href: Url) -> Result<Vec<u8>> {
         bounded(self.get(href, "image/*", Some(12))?, 2 << 20)
     }
+    pub fn full_cover(&self, href: Url) -> Result<Vec<u8>> {
+        bounded(self.get(href, "image/*", Some(20))?, 32 << 20)
+    }
+
     pub fn download(
         &self,
         href: Url,
@@ -204,6 +209,7 @@ fn parse(base: &Url, xml: &str) -> Result<Feed> {
         let title = label(entry, "title");
         let mut files = vec![];
         let mut cover = None;
+        let mut original = None;
         let mut sub = None;
         for n in entry.children().filter(|n| n.has_tag_name((ATOM, "link"))) {
             let Some(href) = url(base, n) else { continue };
@@ -215,9 +221,9 @@ fn parse(base: &Url, xml: &str) -> Result<Feed> {
                 .next()
                 .unwrap_or("")
                 .trim();
-            if rel == "http://opds-spec.org/image/thumbnail"
-                || (cover.is_none() && rel == "http://opds-spec.org/image")
-            {
+            if rel == "http://opds-spec.org/image" {
+                original = Some(href);
+            } else if rel == "http://opds-spec.org/image/thumbnail" {
                 cover = Some(href);
             } else if rel == "http://opds-spec.org/acquisition"
                 || rel == "http://opds-spec.org/acquisition/open-access"
@@ -242,7 +248,8 @@ fn parse(base: &Url, xml: &str) -> Result<Feed> {
                 title,
                 authors,
                 files,
-                cover,
+                full_cover: original.clone().or_else(|| cover.clone()),
+                cover: cover.or(original),
             });
         } else if let Some(href) = sub {
             items.push(Entry::Directory(title, href));
@@ -273,4 +280,35 @@ fn format(mime: &str, href: &Url) -> String {
             .unwrap_or("file"),
     }
     .to_owned()
+}
+
+#[cfg(test)]
+mod artwork_tests {
+    use super::*;
+    #[test]
+    fn thumbnail_and_original_survive_both_feed_formats() {
+        let base = Url::parse("https://catalog.invalid/books/").unwrap();
+        let atom = r#"<feed xmlns="http://www.w3.org/2005/Atom"><entry><title>Atlas</title>
+          <link rel="http://opds-spec.org/image/thumbnail" href="small.jpg"/>
+          <link rel="http://opds-spec.org/image" href="large.jpg"/>
+          <link rel="http://opds-spec.org/acquisition" href="atlas.epub"/></entry></feed>"#;
+        let json = r#"{"metadata":{"title":"Maps"},"publications":[{"metadata":{"title":"Atlas"},
+          "links":[{"rel":"download","href":"atlas.epub"}],
+          "images":[{"href":"large.jpg","width":800},{"href":"small.jpg","width":100}]}]}"#;
+        for feed in [
+            parse(&base, atom).unwrap(),
+            json::parse(&base, json).unwrap(),
+        ] {
+            let Entry::Book {
+                cover: Some(thumb),
+                full_cover: Some(full),
+                ..
+            } = &feed.items[0]
+            else {
+                panic!("missing artwork")
+            };
+            assert_eq!(thumb.path(), "/books/small.jpg");
+            assert_eq!(full.path(), "/books/large.jpg");
+        }
+    }
 }

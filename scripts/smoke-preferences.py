@@ -49,12 +49,17 @@ def check(tmp):
         t.click('Find a key or action',guide);t.type('related books')
         t.see('1 match');t.click('[Esc Clear]',t.see('[Esc Clear]'));t.see('Open settings')
         t.run('resize-window','-t','shelf','-x','115','-y','40')
+        # Wait for the wide layout itself; tmux can reflow the old 42-column
+        # frame before BOTUI receives SIGWINCH and recalculates its hit boxes.
+        t.wait('Wide shortcut index restored', lambda f: '▸ General' in f or 'Sections' in f and 'PDF & DjVu' in f)
         t.keys('Escape')
-        t.click('[F2 Settings]',t.see('[F2 Settings]'));t.click('Interface theme',t.see('Interface theme'))
-        t.see('Interface theme · preview');t.click('Catppuccin Mocha',t.see('Catppuccin Mocha'));t.click('[Esc Cancel]',t.see('[Esc Cancel]'));assert cfg()['interface_theme']=='gruvbox-dark'
+        home=t.wait('Wide source chooser',lambda f:'Inside this library' in f and '[F2 Settings]' in f)
+        t.click('[F2 Settings]',home);t.see('Catppuccin Mocha');t.keys('Enter')
+        t.see('Interface theme · preview');t.click('Gruvbox Dark',t.see('Gruvbox Dark'));t.click('[Esc Cancel]',t.see('[Esc Cancel]'));assert cfg()['interface_theme']=='catppuccin-mocha'
         t.keys('Enter');t.click('Nord',t.see('Nord'));t.keys('Enter')
         t.click('Background',t.see('Background'));t.see('Opaque')
         t.click('Borders & covers',t.see('Borders & covers'));t.click('Square',t.see('Square'))
+        t.wait('Square borders applied',lambda f:'Solid terminal color' in f and cfg()['borders']=='square')
         t.keys('Tab');t.click('Column gap',t.see('Column gap'));t.keys('C-u');t.type('10');t.keys('Enter');t.see('10 cells')
         t.click('First-line indent',t.see('First-line indent'));t.keys('C-u');t.type('3');t.keys('Enter');t.see('3 cells')
         assert cfg()['paragraph_indent']==3

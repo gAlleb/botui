@@ -6,38 +6,9 @@ use ratatui::{
     widgets::Paragraph,
 };
 
-const OWL: &[&str] = &[
-    r"       ,_,   ,_,",
-    r"      /   '-'   \",
-    r"     / .-.   .-. \",
-    r"    | ( o ) ( o ) |",
-    r"    |  '-' V '-'  |",
-    r"    | \  v v v  / |",
-    r"     \ '. v v .' /",
-    r"      \  '---'  /",
-    r"    ___\/_____\/___",
-    r"   /  ___   |  ___  \",
-    r"  /  _____  | _____  \",
-    r"  \_________|________/",
-];
-const SMALL: &[&str] = &[
-    r"     /\_ /\",
-    r"    ( o o  )",
-    r"    /  V   \",
-    r"    \     /",
-    r"   ___v_v___",
-    r"  / ___|___ \",
-    r"  \____|____/",
-];
-const WORD: &[&str] = &[
-    "██████╗   ██████╗  ████████╗ ██╗   ██╗ ██╗",
-    "██╔══██╗ ██╔═══██╗ ╚══██╔══╝ ██║   ██║ ██║",
-    "██████╔╝ ██║   ██║    ██║    ██║   ██║ ██║",
-    "██╔══██╗ ██║   ██║    ██║    ██║   ██║ ██║",
-    "██████╔╝ ╚██████╔╝    ██║    ╚██████╔╝ ██║",
-    "╚═════╝   ╚═════╝     ╚═╝     ╚═════╝  ╚═╝",
-];
+mod mark;
 struct Ink {
+    paper: Color,
     feathers: Color,
     amber: Color,
     aqua: Color,
@@ -49,6 +20,7 @@ impl Ink {
     fn current() -> Self {
         if std::env::var_os("NO_COLOR").is_some_and(|v| !v.is_empty()) {
             return Self {
+                paper: Color::Reset,
                 feathers: Color::Reset,
                 amber: Color::Reset,
                 aqua: Color::Reset,
@@ -75,6 +47,7 @@ impl Ink {
             "everforest" => (0xe69875, 0xdbbc7f, 0x83c092, 0xd699b6),
             _ => {
                 return Self {
+                    paper: Color::White,
                     feathers: Color::Red,
                     amber: Color::Yellow,
                     aqua: Color::Cyan,
@@ -95,24 +68,12 @@ impl Ink {
             _ => fg,
         };
         Self {
+            paper: fg,
             feathers: rgb(feathers),
             amber: rgb(amber),
             aqua: rgb(aqua),
             violet: rgb(violet),
             shade,
-        }
-    }
-    fn word(&self, column: usize, glyph: char, split: usize) -> Style {
-        if glyph == '█' || glyph.is_ascii_alphabetic() {
-            Style::new()
-                .fg(if column < split {
-                    self.aqua
-                } else {
-                    self.violet
-                })
-                .bold()
-        } else {
-            Style::new().fg(self.shade)
         }
     }
 }
@@ -125,17 +86,17 @@ fn draw_glyphs(f: &mut Frame, x: u16, y: u16, line: &str, style: impl Fn(usize, 
     }
 }
 
+pub(super) fn illustrated(canvas: Rect) -> bool {
+    canvas.width >= mark::W && canvas.height >= 22
+}
+
 pub(super) fn draw(f: &mut Frame, area: Rect, canvas: Rect) -> u16 {
     let ink = Ink::current();
-    let big = canvas.width >= 70 && canvas.height >= 30;
-    let small = canvas.width >= 64 && canvas.height >= 22;
-    let (art, book_at) = if big { (OWL, 8) } else { (SMALL, 4) };
-    let h = if small { art.len() as u16 } else { 1 };
-    let left = art.iter().map(|s| s.len()).max().unwrap_or(0) as u16;
-    let w = if small {
-        left + 4 + WORD.iter().map(|s| s.chars().count()).max().unwrap_or(0) as u16
+    let illustrated = illustrated(canvas);
+    let (w, h) = if illustrated {
+        (mark::W, mark::H)
     } else {
-        5
+        (5, 1)
     };
     let mark = crate::centered(Rect::new(canvas.x, canvas.y, canvas.width, h), w, h);
     if area.width >= 68 && area.height >= 20 {
@@ -171,33 +132,27 @@ pub(super) fn draw(f: &mut Frame, area: Rect, canvas: Rect) -> u16 {
             }
         }
     }
-    if !small {
+    if !illustrated {
         let name = &"BOTUI"[..usize::from(mark.width.min(5))];
-        draw_glyphs(f, mark.x, mark.y, name, |x, c| ink.word(x, c, 2));
+        draw_glyphs(f, mark.x, mark.y, name, |_, _| {
+            Style::new().fg(ink.violet).bold()
+        });
         return 1;
     }
-    for (i, line) in art.iter().enumerate() {
-        draw_glyphs(f, mark.x, mark.y + i as u16, line, |_, glyph| {
-            if glyph == 'o' || glyph == 'V' {
-                Style::new().fg(ink.amber).bold()
-            } else if i >= book_at {
-                Style::new().fg(if glyph == '|' { ink.violet } else { ink.aqua })
-            } else if matches!(glyph, '\'' | '-' | 'v') {
-                Style::new().fg(ink.amber)
-            } else {
-                Style::new().fg(ink.feathers)
-            }
-        });
-    }
-    let offset = (h - WORD.len() as u16) / 2;
-    for (i, line) in WORD.iter().enumerate() {
-        draw_glyphs(
-            f,
-            mark.x + left + 4,
-            mark.y + offset + i as u16,
-            line,
-            |x, c| ink.word(x, c, 18),
-        );
-    }
+    mark::draw(f, mark.x, mark.y, &ink);
+    let caption = Rect::new(
+        mark.x + mark::TYPE_X,
+        mark.y + 8,
+        mark.width - mark::TYPE_X,
+        1,
+    );
+    f.render_widget(Paragraph::new("Your TUI book reader."), caption);
+    f.render_widget(
+        Paragraph::new("EPUB  ·  FB2  ·  PDF  ·  DjVu").style(Style::new().fg(ink.shade)),
+        Rect {
+            y: caption.y + 1,
+            ..caption
+        },
+    );
     h + 1
 }

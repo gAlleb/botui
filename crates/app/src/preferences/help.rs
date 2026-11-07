@@ -44,6 +44,10 @@ pub(super) fn entries(ctx: Context, p: &Settings) -> Vec<Entry> {
                     ("F6", "Focus navigation; ←/→ fold or expand groups"),
                     ("Q / Esc", "Return to source chooser / back one level"),
                     ("PgUp/PgDn", "Move through the shelf"),
+                    (
+                        "C",
+                        "Open the cover in your image viewer from the book card",
+                    ),
                     ("D", "Save the selected file offline"),
                     ("L / B", "Reading log / related books on the book card"),
                 ],
@@ -67,6 +71,7 @@ pub(super) fn entries(ctx: Context, p: &Settings) -> Vec<Entry> {
                 "EPUB & FB2",
                 &[
                     ("M / Esc", "Reading menu"),
+                    ("C", "Open the embedded cover in your image viewer"),
                     ("← / →", "Previous / next page (or scroll)"),
                     ("1 / 2 / 3", "Single page / spread / continuous scroll"),
                     ("W", "Set page width and column gap"),
@@ -93,6 +98,7 @@ pub(super) fn entries(ctx: Context, p: &Settings) -> Vec<Entry> {
             Context::Scan => (
                 "PDF & DjVu",
                 &[
+                    ("C", "Open the first page in your image viewer"),
                     ("M / Enter", "Reading menu (Esc closes the menu or book)"),
                     ("1 / 2 / 3", "Single page / spread / continuous scroll"),
                     ("W / 0", "Page width controls / reset to fit"),

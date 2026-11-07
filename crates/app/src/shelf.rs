@@ -1319,6 +1319,9 @@ impl Shelf {
         self.covers.collect();
         self.rail.collect();
         self.card.collect();
+        if let Some(msg) = self.card.viewer.collect() {
+            self.notice = Some(msg);
+        }
         if let Some(message) = crate::offline::reconnect::notice() {
             self.notice = Some(message);
         }
@@ -1653,7 +1656,8 @@ impl Shelf {
                 || self.current().tail.is_some()
                 || self.covers.busy()
                 || self.rail.busy()
-                || self.card.busy();
+                || self.card.busy()
+                || self.card.viewer.busy();
             let timeout = busy.then(|| Duration::from_millis(80));
             let event = crate::settings::read_event_for(timeout)?;
             let Some(e) = event else {

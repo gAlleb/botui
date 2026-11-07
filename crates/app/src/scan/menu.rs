@@ -29,6 +29,7 @@ pub(super) const ITEMS: &[(&str, &str, usize)] = &[
     ("Previous matching page", "F4 / [", 37),
     ("Toggle page bookmark", "B", 18),
     ("Page bookmarks", "G", 19),
+    ("View cover (first page)", "C", 44),
     ("Edit page note", "I", 20),
     ("Page notes", "A", 21),
     ("Export notes to Markdown", "E", 22),

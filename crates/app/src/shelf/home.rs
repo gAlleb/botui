@@ -5,7 +5,7 @@ use ratatui::{
     Frame,
     layout::Rect,
     style::{Color, Style, Stylize},
-    text::Line,
+    text::{Line, Span},
     widgets::{Paragraph, Wrap},
 };
 
@@ -19,32 +19,32 @@ fn source(cmd: &Command, connected: bool) -> (&'static str, &'static str, &'stat
         Command::Connect => (
             "B",
             "Sign in to a BookOrbit server to read your books and sync your position and bookmarks.",
-            "0 Dashboard   / Search   6 Authors   7 Series",
+            "0  Dashboard      /  Search",
         ),
         Command::OpenTab(Tab::Dashboard) => (
             "B",
             "Return to your account dashboard, current books and newest additions.",
-            "0 Dashboard   / Search   6 Authors   7 Series",
+            "0  Dashboard      /  Search",
         ),
         Command::Local => (
             "L",
             "Browse a folder on this device. Open an EPUB, FB2, PDF or DjVu and pick up where you left off.",
-            "P Choose folder   / Search folders   V Grid or list",
+            "P  Choose folder      /  Search",
         ),
         Command::Opds => (
             "P",
             "Connect to an OPDS catalog, browse its feeds and choose an edition to read or download.",
-            "Enter Open feed   / Catalog search   Esc Back",
+            "Enter  Open feed      /  Search",
         ),
         Command::Downloads(crate::cache::Source::BookOrbit) => (
             "D",
             "Continue your BookOrbit books offline. Your reading position syncs when your account reconnects.",
-            "Enter Open   / Search downloads   Q Back",
+            "Enter  Open book      /  Search",
         ),
         Command::Downloads(crate::cache::Source::Opds) => (
             "O",
             "Read books you saved from OPDS catalogs. Reading progress is stored on this device.",
-            "Enter Open   / Search downloads   Q Back",
+            "Enter  Open book      /  Search",
         ),
         _ => ("", "", ""),
     }
@@ -59,92 +59,110 @@ impl Shelf {
         if area.is_empty() {
             return;
         }
-        let canvas = crate::centered(
-            area,
-            area.width
-                .saturating_sub(u16::from(area.width > 32) * 4)
-                .min(82),
-            area.height.min(38),
-        );
+        let sources = self.current().rows.len() as u16;
+        // Both halves, the masthead and the footer belong to one reading-width panel.
+        let canvas = crate::centered(area, area.width.min(84), 28 + sources.saturating_sub(5));
         let ink = Style::new().fg(Color::Cyan);
         let row = |y, h| Rect::new(canvas.x, y, canvas.width, h);
         let mut y = canvas.y + masthead::draw(f, area, canvas);
-        if canvas.height >= 12 {
-            let tag =
-                Paragraph::new("Your TUI book reader. BookOrbit/OPDS/PDF/DjVU/EPUB/FB2 compatible")
-                    .centered()
-                    .dim()
-                    .wrap(Wrap { trim: true });
-            let h = (tag.line_count(canvas.width) as u16).min(canvas.height.saturating_sub(9));
-            f.render_widget(tag, row(y, h));
-            y += h + u16::from(canvas.height >= 20);
+        if canvas.height >= 10 && !masthead::illustrated(canvas) {
+            let tagline = if canvas.width >= 64 {
+                "Your TUI book reader.   EPUB · FB2 · PDF · DjVu"
+            } else {
+                "Your TUI book reader."
+            };
+            f.render_widget(Paragraph::new(tagline).centered().dim(), row(y, 1));
+            y += 1 + u16::from(canvas.height >= 16);
         }
-        if y < canvas.bottom() {
-            f.render_widget(Paragraph::new("Choose a library").bold(), row(y, 1));
+        if masthead::illustrated(canvas) && y + 8 < canvas.bottom() {
+            f.render_widget(
+                Paragraph::new("─".repeat(canvas.width.into())).dim(),
+                row(y, 1),
+            );
+            y += 2;
+        }
+        let wide = canvas.width >= 70 && canvas.height >= 17;
+        let footer = row(canvas.bottom().saturating_sub(1), 1);
+        let left = if wide { 35 } else { canvas.width };
+        let guide_x = if wide { canvas.x + left + 3 } else { canvas.x };
+        if y < footer.y {
+            f.render_widget(
+                Paragraph::new("Choose a library").bold(),
+                Rect::new(canvas.x, y, left, 1),
+            );
+            if wide {
+                f.render_widget(
+                    Paragraph::new("Inside this library").bold(),
+                    Rect::new(guide_x, y, canvas.right() - guide_x, 1),
+                );
+            }
             y += 1;
         }
-        let footer_height = if canvas.height >= 18 { 3 } else { 1 };
-        let footer_y = canvas
-            .bottom()
-            .saturating_sub(footer_height)
-            .max(y.min(canvas.bottom()));
-        let help_height = if canvas.height >= 19 {
-            5
-        } else if canvas.height >= 11 {
-            3
-        } else {
-            0
-        };
-        let sources = self.current().rows.len() as u16;
-        let help_height = help_height.min(footer_y.saturating_sub(y).saturating_sub(sources));
-        let detail_y = footer_y.saturating_sub(help_height).max(y.min(footer_y));
-        let pane = self.current_mut();
-        let stride = if detail_y.saturating_sub(y) as usize >= pane.rows.len() * 2 {
-            2
-        } else {
-            1
-        };
-        let slots = (detail_y.saturating_sub(y) / stride) as usize;
-        let selected = pane.selection.selected().unwrap_or(0);
+        let notice_h = u16::from(self.notice.is_some() && footer.y.saturating_sub(y) > sources + 1);
+        let bottom = footer.y.saturating_sub(notice_h);
+        let room = bottom.saturating_sub(y);
+        let stride = if wide && room >= sources * 2 { 2 } else { 1 };
+        let slots = usize::from(room.div_ceil(stride)).min(usize::from(sources));
+        let selected = self.current().selection.selected().unwrap_or(0);
         let first = (selected + 1).saturating_sub(slots);
-        *pane.selection.offset_mut() = first;
-        let pane = self.current();
-        let mut hits = vec![];
-        for (i, r) in pane.rows.iter().enumerate().skip(first).take(slots) {
-            let rect = row(y + (i - first) as u16 * stride, 1);
-            let key = source(&r.action, self.session.is_some()).0;
-            let mark = if selected == i { "▸" } else { " " };
-            let style = if selected == i {
-                ink.reversed().bold()
-            } else {
-                Style::new()
-            };
-            f.render_widget(
-                Paragraph::new(format!(" {mark}  {key}   {}", r.label)).style(style),
-                rect,
-            );
-            hits.push((rect, i));
+        *self.current_mut().selection.offset_mut() = first;
+        self.home_hits.clear();
+        self.list_area = Rect::new(canvas.x, y, left, room.min(sources * stride));
+        for i in first..first + slots {
+            let item = &self.current().rows[i];
+            let rect = Rect::new(canvas.x, y + (i - first) as u16 * stride, left, 1);
+            let key = source(&item.action, self.session.is_some()).0;
+            let active = selected == i;
+            let mark = if active { "▸ " } else { "  " };
+            let line = Line::from(vec![
+                Span::styled(mark, ink),
+                Span::styled(
+                    format!(" {key} "),
+                    if active {
+                        ink.reversed().bold()
+                    } else {
+                        ink.dim()
+                    },
+                ),
+                Span::raw(" "),
+                Span::styled(
+                    item.label.as_str(),
+                    if active {
+                        Style::new().bold()
+                    } else {
+                        Style::new()
+                    },
+                ),
+            ]);
+            f.render_widget(Paragraph::new(line), rect);
+            self.home_hits.push((rect, i));
         }
-        if help_height > 0
-            && let Some(action) = pane.action()
+        let guide_y = if wide {
+            y
+        } else {
+            y + slots as u16 * stride + u16::from(room > sources + 3)
+        };
+        if guide_y < bottom
+            && let Some(action) = self.current().action()
         {
             let (_, description, keys) = source(&action, self.session.is_some());
-            f.render_widget(
-                Paragraph::new(description).wrap(Wrap { trim: true }),
-                row(detail_y, if help_height > 1 { help_height - 1 } else { 1 }),
-            );
-            if help_height > 1 {
-                f.render_widget(Paragraph::new(keys).style(ink), row(footer_y - 1, 1));
+            let w = canvas.right() - guide_x;
+            let guide = Paragraph::new(description).wrap(Wrap { trim: true });
+            let h = (guide.line_count(w) as u16).min(bottom - guide_y);
+            f.render_widget(guide, Rect::new(guide_x, guide_y, w, h));
+            let key_y = guide_y + h + u16::from(wide);
+            if key_y < bottom {
+                f.render_widget(
+                    Paragraph::new(keys).style(ink).wrap(Wrap { trim: true }),
+                    Rect::new(guide_x, key_y, w, bottom - key_y),
+                );
             }
         }
-        if let Some(message) = &self.notice
-            && footer_height >= 2
+        if let Some(msg) = &self.notice
+            && notice_h != 0
         {
-            f.render_widget(Paragraph::new(message.as_str()).yellow(), row(footer_y, 1));
+            f.render_widget(Paragraph::new(msg.as_str()).yellow(), row(bottom, 1));
         }
-        self.home_hits = hits;
-        self.list_area = Rect::new(canvas.x, y, canvas.width, detail_y.saturating_sub(y));
-        let footer = row(canvas.bottom() - 1, 1);
         self.prefs_buttons.draw(f, footer);
         let mut x = footer.x + 23;
         self.home_controls.clear();

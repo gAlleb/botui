@@ -219,7 +219,21 @@ impl BookOrbit {
     }
 
     pub fn thumbnail(&self, token: &str, book_id: u64) -> Result<Option<Vec<u8>>> {
-        let path = format!("books/{book_id}/thumbnail");
+        self.artwork(token, book_id, "thumbnail", 2 << 20)
+    }
+
+    pub fn cover(&self, token: &str, book_id: u64) -> Result<Option<Vec<u8>>> {
+        self.artwork(token, book_id, "cover", 32 << 20)
+    }
+
+    fn artwork(
+        &self,
+        token: &str,
+        book_id: u64,
+        variant: &str,
+        limit: u64,
+    ) -> Result<Option<Vec<u8>>> {
+        let path = format!("books/{book_id}/{variant}");
         let response = self
             .authorized(Method::GET, &path, token)?
             .header(ACCEPT, "image/*")
@@ -231,7 +245,7 @@ impl BookOrbit {
         if is_html(&response) {
             return Err("BookOrbit returned HTML instead of cover art.".into());
         }
-        Ok(Some(raw_bounded(response, 2 * 1024 * 1024)?))
+        Ok(Some(raw_bounded(response, limit)?))
     }
 
     fn authorized(&self, method: Method, path: &str, token: &str) -> Result<RequestBuilder> {

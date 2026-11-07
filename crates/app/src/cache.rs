@@ -13,16 +13,20 @@ pub(crate) fn download_limit() -> io::Result<u64> {
     Ok(u64::from(crate::settings::Settings::load()?.max_download_mib) * botui_transfer::MIB)
 }
 
-/// Large editions are staged in the user's disk cache instead of the system
-/// temporary directory, which is often a small RAM-backed filesystem.
-pub(crate) fn staging(kind: FileKind) -> io::Result<NamedTempFile> {
+pub(crate) fn cache_dir() -> io::Result<std::path::PathBuf> {
     use std::path::PathBuf;
     let root = std::env::var_os("XDG_CACHE_HOME")
         .map(PathBuf::from)
         .filter(|p| p.is_absolute())
         .or_else(|| std::env::var_os("HOME").map(|p| PathBuf::from(p).join(".cache")))
         .ok_or(io::ErrorKind::NotFound)?;
-    let dir = root.join("botui/downloads");
+    Ok(root.join("botui"))
+}
+
+/// Large editions are staged in the user's disk cache instead of the system
+/// temporary directory, which is often a small RAM-backed filesystem.
+pub(crate) fn staging(kind: FileKind) -> io::Result<NamedTempFile> {
+    let dir = cache_dir()?.join("downloads");
     std::fs::create_dir_all(&dir)?;
     Builder::new()
         .prefix("edition-")

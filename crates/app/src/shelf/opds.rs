@@ -8,6 +8,7 @@ pub(super) struct Links {
     ids: HashMap<Address, u64>,
     files: HashMap<u64, Address>,
     pub covers: HashMap<u64, Address>,
+    pub originals: HashMap<u64, Address>,
 }
 impl Links {
     fn id(&mut self, href: &Address) -> u64 {
@@ -91,6 +92,7 @@ impl Shelf {
                     authors,
                     files,
                     cover,
+                    full_cover,
                 } => {
                     let Some(first) = files.first() else {
                         rows.push(Row::new(
@@ -101,6 +103,9 @@ impl Shelf {
                     };
                     let id = self.links.id(&first.href);
                     let has_cover = Some(cover.is_some());
+                    if let Some(href) = full_cover {
+                        self.links.originals.insert(id, href);
+                    }
                     if let Some(href) = cover {
                         self.links.covers.insert(id, href);
                     }

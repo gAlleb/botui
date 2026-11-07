@@ -39,16 +39,33 @@ pub fn draw(f: &mut Frame, area: Rect, offset: &mut usize) -> usize {
     max
 }
 
-pub fn legal(f: &mut Frame, area: Rect, offset: &mut usize) -> (usize, Rect) {
+pub fn legal(f: &mut Frame, area: Rect, offset: &mut usize, artwork_notice: bool) -> (usize, Rect) {
+    if !artwork_notice {
+        let title = Paragraph::new("BOTUI · GNU GPL version 3 or later")
+            .bold()
+            .wrap(Wrap { trim: true });
+        let body = Paragraph::new("Full license texts: botui --license").wrap(Wrap { trim: true });
+        let link = Paragraph::new("Bauhaus fallback covers › Artwork notice")
+            .cyan()
+            .underlined()
+            .wrap(Wrap { trim: true });
+        // On small screens keep the notice reachable by mouse as well as Enter.
+        let link_h = (link.line_count(area.width) as u16).min(area.height);
+        let top_h = (title.line_count(area.width) as u16).min(area.height.saturating_sub(link_h));
+        let mid_h =
+            (body.line_count(area.width) as u16).min(area.height.saturating_sub(top_h + link_h));
+        f.render_widget(title, Rect::new(area.x, area.y, area.width, top_h));
+        f.render_widget(body, Rect::new(area.x, area.y + top_h, area.width, mid_h));
+        let y = (area.y + top_h + mid_h + 1).min(area.bottom() - link_h);
+        let hit = Rect::new(area.x, y, area.width.min(40), link_h);
+        f.render_widget(link, hit);
+        return (0, hit);
+    }
     let text = concat!(
-        "BOTUI ",
-        env!("CARGO_PKG_VERSION"),
-        " · Terminal book reader\n",
-        "Original BOTUI code: GNU GPL version 3 or later.\n\n",
-        "BookOrbit cover artwork · adapted 2026-11-07\n",
+        "Bauhaus fallback cover generator · adapted 2026-11-07\n",
         "Copyright (C) 2025-2026 neon. Additional copyright is held by the respective BookOrbit contributors.\n\n",
         "Licensed under the GNU Affero General Public License, version 3 only, with additional terms. This software is provided without warranty. You may redistribute and modify it under those terms.\n\n",
-        "For the adapted artwork: This is a modified version of BookOrbit and is not an official BookOrbit release.\n\n",
+        "For this component: This is a modified version of BookOrbit and is not an official BookOrbit release.\n\n",
         "Original project: https://github.com/bookorbit/bookorbit\n",
         "Full licenses and notices: botui --license"
     );

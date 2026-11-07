@@ -22,10 +22,12 @@ pub(super) struct Card {
     job: Option<Ticket<botui_bookorbit::Result<Detail>>>,
     error: Option<String>,
     hits: Vec<(Rect, Act)>,
+    pub viewer: crate::cover_viewer::Viewer,
 }
 #[derive(Clone, Copy)]
 enum Act {
     Read,
+    Cover,
     Save,
     Hold,
     Reset,
@@ -90,11 +92,11 @@ impl Shelf {
         let mut body = area;
         if wide {
             let w = (area.width / 5).clamp(15, 24);
-            self.artwork(
-                f,
-                Rect::new(area.x, area.y + 1, w, area.height.saturating_sub(4).min(18)),
-                book,
-            );
+            let cover = Rect::new(area.x, area.y + 1, w, area.height.saturating_sub(4).min(18));
+            self.artwork(f, cover, book);
+            if self.session.is_some() || self.links.originals.contains_key(&book.id) {
+                self.card.hits.push((cover, Act::Cover));
+            }
             body.x += w + 3;
             body.width -= w + 3;
         }
@@ -180,6 +182,7 @@ impl Shelf {
         let mut used = 0;
         for label in [
             "[R Read]",
+            "[C View cover]",
             "[D Save offline]",
             "[H Resume reading]",
             "[X Reset reading state]",
@@ -270,6 +273,9 @@ impl Shelf {
         if has_files {
             controls.extend([("[R Read]", Act::Read), ("[D Save offline]", Act::Save)]);
         }
+        if self.session.is_some() || self.links.originals.contains_key(&book.id) {
+            controls.push(("[C View cover]", Act::Cover));
+        }
         if matches!(status, Some("Reading" | "Rereading" | "On hold")) {
             controls.push((
                 if status == Some("On hold") {
@@ -351,6 +357,14 @@ impl Shelf {
     ) -> io::Result<bool> {
         let action = match e {
             Event::Key(k) if k.kind != KeyEventKind::Release => match k.code {
+                KeyCode::Char('c' | 'C')
+                    if !k.modifiers.intersects(
+                        crossterm::event::KeyModifiers::CONTROL
+                            | crossterm::event::KeyModifiers::ALT,
+                    ) =>
+                {
+                    Some(Act::Cover)
+                }
                 KeyCode::Char('b' | 'B') => Some(Act::Related),
                 KeyCode::Char('l' | 'L') if self.session.is_some() => Some(Act::Log),
                 KeyCode::Char('r' | 'R') => Some(Act::Read),
@@ -376,6 +390,37 @@ impl Shelf {
                     self.open_file(file);
                 }
             }
+            return Ok(true);
+        }
+        if matches!(act, Act::Cover) {
+            let Section::Files(book) = &self.current().section else {
+                return Ok(true);
+            };
+            let book = book.clone();
+            let session = self.session.clone();
+            let catalog = self.catalog.clone();
+            let href = self.links.originals.get(&book.id).cloned();
+            self.card.viewer.start(move |_| {
+                if let Some(s) = session {
+                    if book.has_cover != Some(false)
+                        && let Some(bytes) =
+                            s.with_token(|api, token| match api.cover(token, book.id)? {
+                                Some(bytes) => Ok(Some(bytes)),
+                                None => api.thumbnail(token, book.id),
+                            })?
+                    {
+                        return Ok(bytes);
+                    }
+                    if let Some(img) = super::gallery::bauhaus::original(&book) {
+                        return crate::cover_viewer::png(img);
+                    }
+                } else if let (Some(cat), Some(url)) = (catalog, href) {
+                    return cat
+                        .full_cover(url)
+                        .map_err(|_| "Could not retrieve the OPDS cover.".into());
+                }
+                Err("No cover available for this book.".into())
+            });
             return Ok(true);
         }
         if matches!(act, Act::Log) {

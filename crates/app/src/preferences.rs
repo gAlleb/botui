@@ -213,6 +213,7 @@ pub fn show(term: &mut AppTerminal, start: Open, ctx: Context) -> io::Result<()>
     let mut status = String::new();
     let mut guide_view = help::Guide::default();
     let mut about_offset = 0usize;
+    let mut artwork_notice = false;
     let mut prefs = Settings::load()?;
     loop {
         let labels = rows(tab, &prefs);
@@ -227,11 +228,7 @@ pub fn show(term: &mut AppTerminal, start: Open, ctx: Context) -> io::Result<()>
         let mut back = Rect::default();
         let mut body = Rect::default();
         term.draw(|f| {
-            let area = match tab {
-                4 => crate::centered(f.area(), 106, 34),
-                5 | 6 => crate::centered(f.area(), 82, 24),
-                _ => crate::centered(f.area(), 82, (labels.len() as u16+12).max(16)),
-            };
+            let area = crate::centered(f.area(), 106, 34);
             let block = appearance::block().title(if tab == 4 {
                 " Keyboard shortcuts "
             } else if tab == 5 { " About BOTUI " } else if tab == 6 { " Legal notices " } else {
@@ -274,7 +271,7 @@ pub fn show(term: &mut AppTerminal, start: Open, ctx: Context) -> io::Result<()>
                     .height
                     .saturating_sub(y - inner.y + 2 + gap + u16::from(!status.is_empty())),
             );
-            if tab == 6 { (about_max, website) = about::legal(f, body, &mut about_offset); } else if tab == 5 { about_max = about::draw(f, body, &mut about_offset); } else if tab==4 { guide_view.draw(f,body,&guide); } else {
+            if tab == 6 { (about_max, website) = about::legal(f, body, &mut about_offset, artwork_notice); } else if tab == 5 { about_max = about::draw(f, body, &mut about_offset); } else if tab==4 { guide_view.draw(f,body,&guide); } else {
             f.render_stateful_widget(
                 List::new(labels.iter().map(String::as_str))
                     .highlight_style(Style::new().reversed()),
@@ -322,7 +319,7 @@ pub fn show(term: &mut AppTerminal, start: Open, ctx: Context) -> io::Result<()>
             back = Rect::new(inner.x, inner.bottom() - 1, inner.width.min(back_label.len() as u16), 1);
             f.render_widget(Paragraph::new(back_label).cyan(), back);
             f.render_widget(
-                Paragraph::new(if tab == 6 {"  Enter Website   ↑↓ Scroll"} else if tab == 5 {"  Tab Sections   ↑↓ Scroll"} else if tab == 4 {
+                Paragraph::new(if tab == 6 && !artwork_notice {"  Enter Artwork notice"} else if tab == 6 {"  Enter Website   ↑↓ Scroll"} else if tab == 5 {"  Tab Sections   ↑↓ Scroll"} else if tab == 4 {
                     if inner.width >= 58 { "  ↑↓ Scroll   [ / ] Section   Tab Switch tab" } else { "  ↑↓ Scroll  [ ] Section" }
                 } else {
                     "  Tab Sections   ↑↓ Choose   Enter Edit"
@@ -340,6 +337,12 @@ pub fn show(term: &mut AppTerminal, start: Open, ctx: Context) -> io::Result<()>
         }
         let delta = match event {
             Event::Key(k) if k.kind != KeyEventKind::Release => match k.code {
+                KeyCode::Esc | KeyCode::Char('q') if tab == 6 && artwork_notice => {
+                    artwork_notice = false;
+                    about_offset = 0;
+                    status.clear();
+                    continue;
+                }
                 KeyCode::Esc | KeyCode::Char('q') | KeyCode::F(2) => return Ok(()),
                 KeyCode::Char('?') | KeyCode::F(1) => {
                     select = Some(4);
@@ -373,6 +376,12 @@ pub fn show(term: &mut AppTerminal, start: Open, ctx: Context) -> io::Result<()>
                 let pos = Position::new(m.column, m.row);
                 match m.kind {
                     MouseEventKind::Down(MouseButton::Left) if back.contains(pos) => {
+                        if tab == 6 && artwork_notice {
+                            artwork_notice = false;
+                            about_offset = 0;
+                            status.clear();
+                            continue;
+                        }
                         if tab == 4 && guide_view.filtering() {
                             guide_view.clear_filter();
                             continue;
@@ -398,6 +407,7 @@ pub fn show(term: &mut AppTerminal, start: Open, ctx: Context) -> io::Result<()>
         };
         if let Some(i) = select {
             tab = i;
+            artwork_notice = false;
             guide_view = help::Guide::default();
             about_offset = 0;
             state = ListState::default().with_selected(Some(0));
@@ -406,6 +416,11 @@ pub fn show(term: &mut AppTerminal, start: Open, ctx: Context) -> io::Result<()>
         }
         if tab >= 4 {
             if tab == 6 && opened.is_some() {
+                if !artwork_notice {
+                    artwork_notice = true;
+                    about_offset = 0;
+                    continue;
+                }
                 status = about::open()
                     .err()
                     .map(|e| e.to_string())

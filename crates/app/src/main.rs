@@ -3,6 +3,7 @@ mod cache;
 mod catalog;
 mod connection;
 mod cover;
+mod cover_viewer;
 mod diagnostic;
 mod offline;
 mod picker;

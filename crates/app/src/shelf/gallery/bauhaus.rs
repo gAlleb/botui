@@ -90,6 +90,16 @@ thread_local! {
     static COVERS: RefCell<LruCache<(Design,bool),Rendered>> = RefCell::new(LruCache::new(NonZeroUsize::new(32).unwrap()));
 }
 fn render(d: &Design, cells: bool) -> Option<Rendered> {
+    let (source, cell_text) = raster(d, cells, 1)?;
+    let palette = artwork::palette(d.group);
+    Some(Rendered {
+        picture: Picture::generated_cover(source),
+        cell_text,
+        bg: palette.bg.color(),
+        fg: palette.text.color(),
+    })
+}
+fn raster(d: &Design, cells: bool, scale: u32) -> Option<(DynamicImage, bool)> {
     let palette = artwork::palette(d.group);
     let drawings = artwork::motif(d.item, &palette, d.index.as_deref());
     let mut options = usvg::Options::default();
@@ -108,10 +118,10 @@ fn render(d: &Design, cells: bool) -> Option<Rendered> {
         palette.bg.hex()
     );
     let tree = usvg::Tree::from_str(&svg, &options).ok()?;
-    let mut canvas = tiny_skia::Pixmap::new(W, H)?;
+    let mut canvas = tiny_skia::Pixmap::new(W * scale, H * scale)?;
     resvg::render(
         &tree,
-        tiny_skia::Transform::identity(),
+        tiny_skia::Transform::from_scale(scale as f32, scale as f32),
         &mut canvas.as_mut(),
     );
     let mut pixels = canvas.take();
@@ -128,23 +138,25 @@ fn render(d: &Design, cells: bool) -> Option<Rendered> {
             }
         }
     }
-    let source = DynamicImage::ImageRgba8(RgbaImage::from_raw(W, H, pixels)?);
-    Some(Rendered {
-        picture: Picture::generated_cover(source),
+    Some((
+        DynamicImage::ImageRgba8(RgbaImage::from_raw(W * scale, H * scale, pixels)?),
         cell_text,
-        bg: palette.bg.color(),
-        fg: palette.text.color(),
-    })
+    ))
 }
 
-pub(super) fn draw(
-    f: &mut Frame,
-    slot: Rect,
-    graphics: &Picker,
-    book: &Book,
-    series: Option<&str>,
-    index: Option<&str>,
-) {
+pub(in crate::shelf) fn original(book: &Book) -> Option<DynamicImage> {
+    let crate::catalog::Jacket::Bauhaus { series, index } = &book.jacket else {
+        return None;
+    };
+    raster(
+        &book_design(book, series.as_deref(), index.as_deref()),
+        false,
+        3,
+    )
+    .map(|(img, _)| img)
+}
+
+fn book_design(book: &Book, series: Option<&str>, index: Option<&str>) -> Design {
     let title = book.title.as_deref().unwrap_or("Untitled");
     let mut d = design(
         title,
@@ -157,6 +169,18 @@ pub(super) fn draw(
     } else if book.authors.len() > 2 {
         d.author = format!("{} +{}", d.author, book.authors.len() - 1);
     }
+    d
+}
+
+pub(super) fn draw(
+    f: &mut Frame,
+    slot: Rect,
+    graphics: &Picker,
+    book: &Book,
+    series: Option<&str>,
+    index: Option<&str>,
+) {
+    let d = book_design(book, series, index);
     let mono = std::env::var_os("NO_COLOR").is_some_and(|v| !v.is_empty());
     let key = (
         d,

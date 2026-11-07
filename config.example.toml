@@ -9,7 +9,7 @@ max_download_mib = 4096
 
 # Reader defaults. Use "terminal" to follow your terminal's colors.
 theme = "terminal"
-interface_theme = "gruvbox-dark"
+interface_theme = "catppuccin-mocha"
 # Optional override. By default, solid Terminal paper follows the active terminal background.
 # opaque_color = "#1f2125"
 zen = false

@@ -76,7 +76,7 @@ pub const ALL: &[Palette] = &[
     ),
 ];
 pub fn index(id: Option<&str>) -> usize {
-    let id = id.unwrap_or("gruvbox-dark");
+    let id = id.unwrap_or("catppuccin-mocha");
     ALL.iter().position(|p| p.0 == id).unwrap_or(0)
 }
 fn rgb(n: u32) -> Color {

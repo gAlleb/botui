@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Run the BookOrbit shelf against a private loopback HTTP fixture and a tmux terminal."""
 
+import base64
 import hashlib
 import io
 import itertools
@@ -30,6 +31,14 @@ LIBRARIES = {31: "Главное книгохранилище", 32: "Архив 
 EPUB_MARK = "Электронный атлас пролива"
 FB2_MARK = "Почта на пристани"
 TOTAL = 101
+# A valid full-size PNG distinct from the 24×36 JPEG thumbnail.
+ORIGINAL_COVER = base64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAGAAAACQCAIAAAB4aPl2AAAA/0lEQVR42u3csRFAQBBAUWeEaqALmRKMRAFKU4BE"
+    "G8pQgwJUYAMBM+799LI3u9ndpbYfCt1XIgAECBAgQIAAZVoVnC3TmYnCvNYmyIoBAgQIECBAAgQIECBAgAABEiBA"
+    "gAABAgQIECABelpyR9EEAQIECBAgQIAECBAgQIAAAQIkQIAAAQIECBAgAQIECBAgQIAAARIgQIAAAQIECJAAAQL0"
+    "VtE/is3YZaJwbLsJsmKAAAECBAiQAAECBAgQIECABAgQIECAAAECBEiAAAECBAgQIEACBAgQIECAAAESIECAAAEC"
+    "BAgQIAECBOijolfPwVtgEyRAgAABAgQI0N+7AOpFCtQBnTkqAAAAAElFTkSuQmCC"
+)
 
 
 def pdf(tones=False, width=300, height=440, shades=(0.3, 0.8, 0.5)):
@@ -266,6 +275,8 @@ class Handler(BaseHTTPRequestHandler):
             indexes = range(page * size, min((page + 1) * size, TOTAL))
             return self.reply(200, {"page": page, "size": size, "total": TOTAL,
                                     "items": [self.server.card(i) for i in indexes]})
+        if url.path == API + "/books/200/cover":
+            return self.reply(200, ORIGINAL_COVER, "image/png")
         if url.path == API + "/books/200/thumbnail":
             return self.reply(200, (ROOT / "scripts/fixtures/shelf-cover.jpg").read_bytes(), "image/jpeg")
         if url.path == API + "/books/201/thumbnail":
@@ -328,7 +339,7 @@ class Terminal:
 
 def login(term, url, wrong_password=False):
     home = term.see("Connect to BookOrbit")
-    assert "Your TUI book reader." in home and "██████╗" in home
+    assert "Your TUI book reader." in home and "EPUB  ·  FB2" in home
     term.keys("Down")
     term.see("Browse a folder on this device")
     term.keys("Up")

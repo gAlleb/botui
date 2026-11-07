@@ -118,12 +118,16 @@ pub fn read_server(
     let mut finish_on_arrival = None;
     let mut search = search::Search::default();
     let mut history = history::History::default();
+    let mut viewer = crate::cover_viewer::Viewer::default();
     let mut message = String::new();
     let mut menu = false;
     let mut focus: usize = 0;
     let mut dirty = false;
 
     loop {
+        if let Some(msg) = viewer.collect() {
+            message = msg;
+        }
         if total.is_none() {
             match count_job.receiver.try_recv() {
                 Ok(result) => {
@@ -379,7 +383,11 @@ pub fn read_server(
             }
             crate::settings::paint_interface(f);
         })?;
-        let busy = search.busy() || outline_job.is_some() || total.is_none() || pages.busy();
+        let busy = viewer.busy()
+            || search.busy()
+            || outline_job.is_some()
+            || total.is_none()
+            || pages.busy();
         let timeout = if busy {
             Some(Duration::from_millis(60))
         } else if dirty {
@@ -468,6 +476,7 @@ pub fn read_server(
                     focus = (focus + 1).min(menu::ITEMS.len() - 1);
                     continue;
                 }
+                KeyCode::Char('c' | 'C') => 44,
                 KeyCode::Enter if menu => menu::ITEMS[focus].2,
                 KeyCode::Char('u' | 'U') => 25,
                 KeyCode::Char('b' | 'B') => 18,
@@ -568,6 +577,10 @@ pub fn read_server(
         message.clear();
         let old = (n, spread, scrolling, offset);
         match action {
+            44 => {
+                viewer.document(path, kind);
+                continue;
+            }
             0 => {
                 menu = !menu;
                 focus = 0;

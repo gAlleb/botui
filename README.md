@@ -74,6 +74,8 @@ On the start screen, move the selection to see the description and controls for 
 
 ![Source chooser with its keyboard guide](docs/images/start.png)
 
+Click the cover inside a book card, or press **C**, to open it with your system image viewer. On the shelf, clicking still opens the book card. While reading a local EPUB or FB2, **C** opens the embedded cover; for PDF and DjVu it shows the first page. BOTUI uses the desktop’s image association via `xdg-open`.
+
 **F2** opens Settings: Appearance, Reader, Library, BookOrbit, Keys, About and Legal. **?** or **F1** opens the shortcut guide for the current screen. Use **[ / ]** to switch groups or type **/** to find a key or command. The footer shortcuts are clickable. **Q** closes the book, **Q** on the shelf returns to the source chooser, and **Q** there exits. **Esc** goes up one catalog level. When launched with a single file path, closing that file ends the command.
 
 **Local library** uses your saved root, then `~/Books`, then the current directory. Click **P Folder…** to paste a path. **R Set library here** remembers the folder currently on screen. **/** searches subfolders in the background. It matches the path, plus the embedded title, author and series of EPUB and FB2 files; the filename may be just a number. **2** opens reading history with percentages and **3** shows recent files by creation time, falling back to modification time.
@@ -142,15 +144,15 @@ Across all four formats, **F3 / F4** move to the next / previous search result; 
 
 Run `botui --config-path` to print the exact path. The default is `~/.config/botui/config.toml`. The same TOML file holds the library root, interface, reader bindings and BookOrbit account. The default UI language is English. See the [commented configuration](config.example.toml).
 
-On first launch the interface uses **Gruvbox Dark**; existing theme choices are preserved. **F2 → Reader → First-line indent** accepts 0–8 cells for the first line of prose (0 turns it off). Drag the right edge of the navigation or contents panel to resize it, or set the width in Settings. **F2 → Library → Download limit** sets the maximum size per edition for BookOrbit and OPDS: **4096 MiB** by default, **0** for unlimited. Downloads stream to disk. [Keyboard help](docs/images/help.png).
+On first launch the interface uses **Catppuccin Mocha**; existing theme choices are preserved. **F2 → Reader → First-line indent** accepts 0–8 cells for the first line of prose (0 turns it off). Drag the right edge of the navigation or contents panel to resize it, or set the width in Settings. **F2 → Library → Download limit** sets the maximum size per edition for BookOrbit and OPDS: **4096 MiB** by default, **0** for unlimited. Downloads stream to disk. [Keyboard help](docs/images/help.png).
 
 **F2 → Appearance** sets the interface palette independently of the reading paper (**T**). Terminal uses the default foreground, background and ANSI slots, so changes to the emulator’s palette appear without restarting. Opaque paper follows the emulator’s OSC 11 response; if it cannot report RGB, botui uses ANSI black or your explicit `opaque_color`. Neither pywal nor matugen is required. Built-in themes include Gruvbox, Catppuccin, Nord, Dracula, Tokyo Night, Solarized, One Dark, Kanagawa, Rosé Pine and Everforest. A named palette stays fixed; transparency lets the window background show through. Set borders and jacket corners to Rounded, Square or None here.
 
-![Appearance settings in Gruvbox](docs/images/settings.png)
+![Appearance settings in Catppuccin Mocha](docs/images/settings.png)
 
 ```toml
 library_root = "/path/to/books"
-interface_theme = "gruvbox-dark"
+interface_theme = "catppuccin-mocha"
 theme = "terminal"
 reading_layout = "auto"    # auto, single, spread, scroll
 borders = "rounded"        # rounded, square, none
@@ -197,4 +199,4 @@ The Rust workspace separates the BookOrbit and OPDS adapters, ebook parsing, tex
 
 ## License
 
-Original BOTUI code is [GPL-3.0-or-later](LICENSE). The adapted BookOrbit cover artwork retains its [own license and notices](licenses/NOTICE.md). Open **F2 → Legal** in the app, or run **botui --license** for the full texts.
+Original BOTUI code is [GPL-3.0-or-later](LICENSE). Only the Bauhaus generator for missing BookOrbit covers uses adapted artwork, with its [own license and notices](licenses/NOTICE.md). Open **F2 → Legal** in the app, or run **botui --license** for the full texts.

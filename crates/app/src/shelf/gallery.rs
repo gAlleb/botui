@@ -1,5 +1,5 @@
 //! Geometry is shared by drawing, keyboard navigation and mouse hit testing.
-mod bauhaus;
+pub(super) mod bauhaus;
 mod jacket_edge;
 use super::{Book, Command, Scope, Shelf, single_line};
 use crate::centered;

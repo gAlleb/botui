@@ -43,6 +43,7 @@ enum Action {
     Export,
     Statistics,
     Resources,
+    Cover,
     VisibleLinks,
     Follow(usize),
     ReturnLink,
@@ -71,7 +72,7 @@ enum Action {
     Resize,
 }
 
-const COMMANDS: [Action; 28] = [
+const COMMANDS: [Action; 29] = [
     Action::Resume,
     Action::Previous,
     Action::Next,
@@ -95,6 +96,7 @@ const COMMANDS: [Action; 28] = [
     Action::Export,
     Action::Statistics,
     Action::Resources,
+    Action::Cover,
     Action::JumpBack,
     Action::JumpForward,
     Action::Settings,
@@ -498,6 +500,7 @@ impl Reader {
                 Action::Statistics => ("Reading statistics".into(), "S"),
                 Action::Settings => ("Settings".into(), "F2"),
                 Action::Help => ("Keyboard shortcuts".into(), "?"),
+                Action::Cover => ("View cover".into(), "C"),
                 Action::Resources => (
                     format!("Links & illustrations ({})", self.doc.references.len()).into(),
                     "I",
@@ -605,6 +608,13 @@ impl Reader {
                     self.bindings.get(&c).copied()
                 }
                 KeyCode::Char('n' | 'N') => Some(Action::Note),
+                KeyCode::Char('c' | 'C')
+                    if !k
+                        .modifiers
+                        .intersects(KeyModifiers::ALT | KeyModifiers::CONTROL) =>
+                {
+                    Some(Action::Cover)
+                }
                 KeyCode::Char('i' | 'I') => Some(Action::Resources),
                 KeyCode::Char('s' | 'S') => Some(Action::Statistics),
                 KeyCode::Char('a' | 'A') => Some(Action::Navigate(Kind::Notes)),
@@ -922,6 +932,7 @@ impl Reader {
                 }
             }
             Action::Resources
+            | Action::Cover
             | Action::VisibleLinks
             | Action::Follow(_)
             | Action::Bookmarks
@@ -975,6 +986,7 @@ fn bindings() -> io::Result<std::collections::HashMap<char, Action>> {
                 "zen" => Action::Zen,
                 "background" => Action::Background,
                 "borders" => Action::Borders,
+                "cover" => Action::Cover,
                 "resources" => Action::Resources,
                 "statistics" => Action::Statistics,
                 "note" => Action::Note,
@@ -1026,6 +1038,7 @@ pub fn read_server(
     base: Option<&botui_bookorbit::progress::Progress>,
     mut remote: Option<&mut bookmarks::ServerMarks>,
 ) -> io::Result<(Option<botui_bookorbit::progress::Move>, f64)> {
+    let mut viewer = crate::cover_viewer::Viewer::default();
     let before = notices.len();
     let (mut state, mut saved) = match LocalState::for_file(path).and_then(|store| {
         let saved = store.load()?;
@@ -1070,6 +1083,9 @@ pub fn read_server(
     let mut last_save = Instant::now();
     let result: io::Result<()> = (|| {
         loop {
+            if let Some(message) = viewer.collect() {
+                crate::prompt::message(term, "View cover", &message)?;
+            }
             term.draw(|frame| {
                 reader.draw(frame, notices[before..].last().map(String::as_str));
                 crate::settings::paint_book(
@@ -1086,7 +1102,8 @@ pub fn read_server(
                     reader.flush(&mut state, notices);
                     last_save = Instant::now();
                 }
-                let images = reader.illustrations.as_ref().is_some_and(|p| p.busy());
+                let images =
+                    viewer.busy() || reader.illustrations.as_ref().is_some_and(|p| p.busy());
                 let timeout = reader
                     .dirty
                     .then_some(remaining)
@@ -1164,6 +1181,12 @@ pub fn read_server(
                 if let Err(e) = action_result {
                     notices.push(e.to_string());
                     reader.menu = Some(TableState::default().with_selected(Some(0)));
+                }
+                continue;
+            }
+            if action == Action::Cover {
+                if let Some(kind) = botui_formats::FileKind::from_path(path) {
+                    viewer.document(path, kind);
                 }
                 continue;
             }

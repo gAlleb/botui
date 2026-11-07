@@ -1,20 +1,43 @@
 #!/usr/bin/env python3
 """Visit a native book without starting it, pause it, then cancel and confirm a reset."""
 from pathlib import Path
-import importlib.util, tempfile, threading, tomllib
+import importlib.util, os, tempfile, threading, tomllib
 root=Path(__file__).resolve().parents[1]
 spec=importlib.util.spec_from_file_location("shelf",root/"scripts/smoke-shelf.py");s=importlib.util.module_from_spec(spec);spec.loader.exec_module(s)
 def exercise(tmp, f):
     url=f"http://127.0.0.1:{f.server_port}/reader"
-    t=s.Terminal(tmp,root/"target/debug/botui",url)
+    # Use a recording desktop handler; never open windows on the developer's desktop.
+    opener=tmp/"xdg-open"
+    opener.write_text('#!/bin/sh\nprintf "%s\\n" "$1" >> "$HOME/opened-covers"\n')
+    opener.chmod(0o755)
+    t=s.Terminal(tmp,Path("/usr/bin/env"),args=[f"PATH={tmp}:{os.environ['PATH']}",str(root/"target/debug/botui"),"--server",url])
+    def opened(count):
+        log=tmp/"opened-covers"
+        t.wait("image handed to the configured viewer", lambda _: log.exists() and len(log.read_text().splitlines())>=count)
+        return Path(log.read_text().splitlines()[count-1])
     try:
         s.login(t,url);t.run("resize-window","-t","shelf","-x","148","-y","38")
         frame=t.wait("Expanded Libraries",lambda a:"▾ 4 Libraries" in a and s.LIBRARIES[32] in a)
         t.click("4 Libraries",frame);t.wait("Click folds tree without changing the shelf",lambda a:"▸ 4 Libraries" in a and s.LIBRARIES[32] not in a and s.BOOK in a)
         t.keys("Right");t.see(s.LIBRARIES[32]);t.keys("Left","F6");t.see("▸ 4 Libraries")
         assert tomllib.loads((tmp/"config/botui/config.toml").read_text())["bookorbit"]["libraries_collapsed"]
+        t.click(s.BOOK,t.see(s.BOOK))
+        t.see("[C View cover]")
+        assert not (tmp/"opened-covers").exists()
+        # The halfblock thumbnail is rendered only in the card's cover column.
+        t.click("▀",t.see("▀"))
+        cover=opened(1)
+        assert cover.suffix==".png" and cover.read_bytes()==s.ORIGINAL_COVER
+        t.wait("card is still on the shelf",lambda frame:"Editions" in frame)
+        t.keys("c")
+        assert opened(2)==cover
+        assert not any(path.endswith("/serve") for _,path,_ in f.requests)
+        t.keys("Escape")
         t.keys("2");t.click(s.OTHER_BOOK,t.see(s.OTHER_BOOK))
         t.see("Harbor Press");t.see("Beacon #2");t.see("37% read");t.see("northern lighthouse")
+        t.click("[C View cover]",t.see("[C View cover]"))
+        art=opened(3).read_bytes()
+        assert art.startswith(b"\x89PNG") and int.from_bytes(art[16:20],"big")==720
         t.click("[I Synopsis]",t.see("[I Synopsis]"));t.see("[ Close ]");t.keys("Escape")
         for which, label, title in (("Down", "In series · Beacon", "Beacon  ·  2"), (None, "By author · Марина Лоцман", "Марина Лоцман  ·  2")):
             t.click("[B Related books]",t.see("[B Related books]"));t.see(label)

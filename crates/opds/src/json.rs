@@ -69,7 +69,7 @@ fn publication(base: &Url, p: &V) -> Option<Entry> {
             });
         }
     }
-    let cover = seq(&p["images"])
+    let images: Vec<_> = seq(&p["images"])
         .filter(|v| {
             v["type"]
                 .as_str()
@@ -81,13 +81,18 @@ fn publication(base: &Url, p: &V) -> Option<Entry> {
                 url(base, v)?,
             ))
         })
+        .collect();
+    let cover = images
+        .iter()
         .min_by_key(|(w, _)| *w)
-        .map(|(_, u)| u);
+        .map(|(_, u)| u.clone());
+    let full_cover = images.into_iter().max_by_key(|(w, _)| *w).map(|(_, u)| u);
     Some(Entry::Book {
         title,
         authors,
         files,
         cover,
+        full_cover,
     })
 }
 fn contents(base: &Url, v: &V) -> Vec<Entry> {
