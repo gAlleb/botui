@@ -55,11 +55,56 @@ fn monochrome() -> bool {
     std::env::var_os("NO_COLOR").is_some_and(|s| !s.is_empty())
 }
 
-#[derive(Clone, Copy, Default, Eq, PartialEq)]
+#[derive(Clone, Copy, Eq, PartialEq)]
 pub(crate) struct Crop {
-    pub level: u8,
+    pub percent: u16,
     pub x: u8,
     pub y: u8,
+}
+impl Default for Crop {
+    fn default() -> Self {
+        Self {
+            percent: 100,
+            x: 128,
+            y: 0,
+        }
+    }
+}
+impl Crop {
+    pub fn fit(self, area: Rect, both: bool) -> Rect {
+        let shrink = |n: u16| (u32::from(n) * u32::from(self.percent.min(100)) / 100).max(1) as u16;
+        crate::centered(
+            area,
+            shrink(area.width),
+            if both {
+                shrink(area.height)
+            } else {
+                area.height
+            },
+        )
+    }
+    pub fn step(&mut self, more: bool) {
+        const STEPS: &[u16] = &[
+            25, 40, 50, 60, 70, 80, 90, 100, 110, 125, 150, 175, 200, 250, 300, 400,
+        ];
+        self.percent = if more {
+            STEPS
+                .iter()
+                .copied()
+                .find(|p| *p > self.percent)
+                .unwrap_or(400)
+        } else {
+            STEPS
+                .iter()
+                .rev()
+                .copied()
+                .find(|p| *p < self.percent)
+                .unwrap_or(25)
+        };
+    }
+    fn span(self, n: u32) -> u32 {
+        (u64::from(n) * 100 / u64::from(self.percent.max(100))).max(1) as u32
+    }
 }
 #[derive(Copy, Clone, PartialEq, Eq)]
 struct StripKey {
@@ -73,7 +118,7 @@ struct CellStrip {
     width: u16,
     rows: u32,
     x: u8,
-    zoom: u8,
+    zoom: u16,
 }
 pub(crate) struct Picture {
     source: DynamicImage,
@@ -137,12 +182,12 @@ impl Picture {
                 width: area.width,
                 rows,
                 x: crop.x,
-                zoom: crop.level,
+                zoom: crop.percent,
             };
             let mut cache = self.strip_cells.borrow_mut();
             if cache.as_ref().is_none_or(|(k, _)| *k != key) {
                 let (w, h) = self.dimensions();
-                let cw = (w / (1 << crop.level.min(2))).max(1);
+                let cw = crop.span(w);
                 let x = (w - cw) * u32::from(crop.x) / 255;
                 let width = u32::from(area.width);
                 let height = (rows * 2).min((2_000_000 / width).max(1));
@@ -191,7 +236,7 @@ impl Picture {
         let mut cache = self.strip.borrow_mut();
         if cache.as_ref().is_none_or(|(k, _)| *k != key) {
             let (w, h) = self.dimensions();
-            let cw = (w / (1 << crop.level.min(2))).max(1);
+            let cw = crop.span(w);
             let x = (w - cw) * u32::from(crop.x) / 255;
             let y = (u64::from(h) * u64::from(skip) / u64::from(rows)).min(u64::from(h - 1)) as u32;
             let end = (u64::from(h) * u64::from(skip + u32::from(area.height)))
@@ -222,16 +267,15 @@ impl Picture {
             && crate::appearance::BordersStyle::current()
                 == crate::appearance::BordersStyle::Rounded;
         let source = || {
-            if crop.level == 0 {
+            if crop.percent <= 100 {
                 return if rounded {
                     rounded_cover(&self.source)
                 } else {
                     self.source.clone()
                 };
             }
-            let scale = 1u32 << crop.level.min(2);
-            let w = (self.source.width() / scale).max(1);
-            let h = (self.source.height() / scale).max(1);
+            let w = crop.span(self.source.width());
+            let h = crop.span(self.source.height());
             self.source.crop_imm(
                 (self.source.width() - w) * u32::from(crop.x) / u32::from(u8::MAX),
                 (self.source.height() - h) * u32::from(crop.y) / u32::from(u8::MAX),

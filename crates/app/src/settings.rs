@@ -32,6 +32,7 @@ pub struct Settings {
     pub opaque_color: Option<String>,
     pub borders: crate::appearance::BordersStyle,
     pub page_width: Option<u16>,
+    pub scan_zoom: Option<u16>,
     pub paragraph_indent: u8,
     pub sidebar_width: Option<u16>,
     pub contents_width: Option<u16>,

@@ -11,6 +11,8 @@ pub(super) const ITEMS: &[(&str, &str, usize)] = &[
     ("Single page", "1", 3),
     ("Two-page spread", "2", 4),
     ("Continuous scroll", "3", 28),
+    ("Page width / zoom", "W", 39),
+    ("Fit page / fit width", "0", 40),
     ("Zoom in", "+", 8),
     ("Zoom out", "−", 9),
     ("Pan left", "←", 10),

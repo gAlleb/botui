@@ -81,7 +81,7 @@ impl Strip<'_> {
             if take == 0 {
                 continue;
             }
-            let area = Rect::new(r.x, r.y + y, r.width, take);
+            let area = Rect::new(r.x + (r.width - self.width) / 2, r.y + y, self.width, take);
             if let Some(p) = self.pages.get(n, self.side) {
                 p.draw_strip(f, area, self.picker, self.crop, skip, rows);
             } else if let Some(error) = self.pages.error(n, self.side) {
@@ -97,8 +97,8 @@ impl Picture {
         ((u64::from(h)
             * u64::from(width)
             * u64::from(cell.width.max(1))
-            * (1u64 << crop.level.min(2)))
-        .div_ceil(u64::from(w.max(1)) * u64::from(cell.height.max(1))))
+            * u64::from(crop.percent.max(100)))
+        .div_ceil(100 * u64::from(w.max(1)) * u64::from(cell.height.max(1))))
         .clamp(1, 32_000) as u32
     }
 }

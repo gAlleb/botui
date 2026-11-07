@@ -49,6 +49,7 @@ pub(super) fn entries(ctx: Context, p: &Settings) -> Vec<Entry> {
                 "Local library",
                 &[
                     ("P / R", "Choose a folder / use this folder as the library"),
+                    ("I", "File info and external viewer for PDF or DjVu"),
                     ("1 / 2 / 3", "Folders / currently reading / recently added"),
                     ("/", "Find a file, title, author or series in your library"),
                     ("V / U / F", "Grid or list / borders / background"),
@@ -78,9 +79,10 @@ pub(super) fn entries(ctx: Context, p: &Settings) -> Vec<Entry> {
             Context::Scan => (
                 "PDF & DjVu",
                 &[
-                    ("M / Esc", "Reading menu"),
+                    ("M / Enter", "Reading menu (Esc closes the menu or book)"),
                     ("1 / 2 / 3", "Single page / spread / continuous scroll"),
-                    ("+ / −", "Zoom in / out; arrows pan when zoomed"),
+                    ("W / 0", "Page width controls / reset to fit"),
+                    ("+ / −", "Widen / narrow the page, including below 100%"),
                     ("P / Ctrl+G", "Go directly to a page number"),
                     ("Home / End", "First / last page"),
                     ("/", "Find in the text layer"),

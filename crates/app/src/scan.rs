@@ -1,9 +1,11 @@
 //! A fixed page is addressed by its printed page index, never by a text offset.
 mod annotations;
 mod contents;
+mod controls;
 mod flow;
 mod history;
 mod menu;
+mod overlay;
 mod pages;
 mod search;
 use crate::{
@@ -60,7 +62,12 @@ pub fn read_server(
         Some(worker.start(move |cancel| botui_fixed::outline(&outline_path, kind, cancel)));
     let mut total = None;
     let mut pages = pages::Pages::new();
-    let mut crop = Crop::default();
+    let mut crop = Crop {
+        percent: prefs.scan_zoom.unwrap_or(100).clamp(25, 400),
+        ..Crop::default()
+    };
+    let initial_zoom = crop.percent;
+    let mut dialog: Option<controls::Dialog> = None;
     let store = LocalState::for_file(path)
         .map_err(|e| notices.push(e.to_string()))
         .ok();
@@ -148,7 +155,8 @@ pub fn read_server(
                         };
                         n = page;
                         offset = 0;
-                        crop = Crop::default();
+                        crop.x = 128;
+                        crop.y = 0;
                         history.record(
                             previous,
                             Location {
@@ -180,14 +188,14 @@ pub fn read_server(
             .saturating_mul(size.width)
             .max(screen.height.saturating_mul(size.height))
             .clamp(240, 1600);
-        let side = side.saturating_mul(1 << crop.level).min(1920);
+        let side = (u32::from(side) * u32::from(crop.percent.max(100)) / 100).min(1920) as u16;
         if let Some(count) = total {
             pages.update(path, kind, n, count, if scrolling { 2 } else { cols }, side);
         }
         let strip = flow::Strip {
             pages: &pages,
             side,
-            width: available,
+            width: crop.fit(body, false).width,
             height: screen.height.saturating_sub(u16::from(!zen)),
             picker: &picker,
             crop,
@@ -207,6 +215,8 @@ pub fn read_server(
             finish_on_arrival = None;
         }
         let mut hits = vec![];
+        let mut dialog_hits = Vec::new();
+        let mut width_button = Rect::default();
         let mut go_button = Rect::default();
         let mut footer_buttons = crate::preferences::Buttons::default();
         term.draw(|f| {
@@ -231,14 +241,22 @@ pub fn read_server(
                     go_button = Rect::new(right, y, w, 1);
                     f.render_widget(Paragraph::new(label).cyan(), go_button);
                 }
+                if !menu && area.width >= 56 {
+                    let label = format!("[W {}%]", crop.percent);
+                    let w = label.len() as u16;
+                    right -= w + 1;
+                    width_button = Rect::new(right, y, w, 1);
+                    f.render_widget(Paragraph::new(label).cyan(), width_button);
+                }
                 let space = right.saturating_sub(area.x);
                 let mut status = format!(" {}   ·   {} / {}", kind.label(), n, total.unwrap_or(0));
                 if scrolling {
-                    status.push_str(if crop.level == 0 {
-                        " · Scroll · Fit width"
+                    status.push_str(" · Scroll");
+                    if crop.percent == 100 {
+                        status.push_str(" · Fit width");
                     } else {
-                        " · Scroll · Zoom"
-                    });
+                        status.push_str(&format!(" · {}%", crop.percent));
+                    }
                 }
                 let hints = "   ·   Z Zen   M Menu";
                 if status.chars().count() + hints.chars().count() <= usize::from(space) {
@@ -259,7 +277,7 @@ pub fn read_server(
                     let slot =
                         Rect::new(area.x + (w + 2).saturating_mul(i), area.y, w, area.height);
                     if let Some(page) = pages.get(page_number, side) {
-                        page.draw_region(f, slot, &picker, crop);
+                        page.draw_region(f, crop.fit(slot, true), &picker, crop);
                     } else if let Some(error) = pages.error(page_number, side) {
                         pages::draw_error(f, slot, page_number, error);
                     }
@@ -278,42 +296,54 @@ pub fn read_server(
                 );
             }
             if menu {
-                let panel = centered(screen, 48, 20);
-                let block = crate::appearance::block().title(format!(
-                    " {} · {} / {} ",
-                    kind.label(),
-                    n,
-                    total.unwrap_or(0)
-                ));
-                let inner = block.inner(panel);
-                f.render_widget(Clear, panel);
-                f.render_widget(block, panel);
-                let offset = focus
-                    .saturating_add(1)
-                    .saturating_sub(usize::from(inner.height));
-                for (i, (label, shortcut, action)) in menu::ITEMS
-                    .iter()
-                    .skip(offset)
-                    .enumerate()
-                    .take(inner.height as usize)
-                {
-                    let r = Rect::new(inner.x, inner.y + i as u16, inner.width, 1);
-                    let style = if i + offset == focus {
-                        ratatui::style::Style::new().reversed()
-                    } else {
-                        Default::default()
-                    };
-                    let key_width = r.width.min(10);
-                    f.render_widget(
-                        Paragraph::new(*label).style(style),
-                        Rect::new(r.x, r.y, r.width - key_width, 1),
-                    );
-                    f.render_widget(
-                        Paragraph::new(*shortcut).right_aligned().style(style),
-                        Rect::new(r.right() - key_width, r.y, key_width, 1),
-                    );
-                    hits.push((r, *action));
-                }
+                let panel = centered(area, 48, 20);
+                overlay::paint(f, panel, |f| {
+                    let block = crate::appearance::block().title(format!(
+                        " {} · {} / {} ",
+                        kind.label(),
+                        n,
+                        total.unwrap_or(0)
+                    ));
+                    let inner = block.inner(panel);
+                    f.render_widget(Clear, panel);
+                    f.render_widget(block, panel);
+                    let offset = focus
+                        .saturating_add(1)
+                        .saturating_sub(usize::from(inner.height));
+                    for (i, (label, shortcut, action)) in menu::ITEMS
+                        .iter()
+                        .skip(offset)
+                        .enumerate()
+                        .take(inner.height as usize)
+                    {
+                        let r = Rect::new(inner.x, inner.y + i as u16, inner.width, 1);
+                        let style = if i + offset == focus {
+                            ratatui::style::Style::new().reversed()
+                        } else {
+                            Default::default()
+                        };
+                        let key_width = r.width.min(10);
+                        f.render_widget(
+                            Paragraph::new(*label).style(style),
+                            Rect::new(r.x, r.y, r.width - key_width, 1),
+                        );
+                        f.render_widget(
+                            Paragraph::new(*shortcut).right_aligned().style(style),
+                            Rect::new(r.right() - key_width, r.y, key_width, 1),
+                        );
+                        hits.push((r, *action));
+                    }
+                });
+            }
+            if let Some(d) = &dialog {
+                d.draw(
+                    f,
+                    area,
+                    total.unwrap_or(0),
+                    crop.percent,
+                    scrolling,
+                    &mut dialog_hits,
+                );
             }
             crate::settings::paint_interface(f);
         })?;
@@ -328,6 +358,32 @@ pub fn read_server(
             offset,
             crop,
         };
+        if let Some(d) = &mut dialog {
+            match d.input(&e, &dialog_hits, total.unwrap_or(0)) {
+                controls::Command::None => (),
+                controls::Command::Close => dialog = None,
+                controls::Command::Fit => crop = Crop::default(),
+                controls::Command::Zoom(more) => crop.step(more),
+                controls::Command::Go(page) => {
+                    n = page;
+                    offset = 0;
+                    crop.x = 128;
+                    crop.y = 0;
+                    history.record(
+                        previous,
+                        Location {
+                            page: n,
+                            offset,
+                            crop,
+                        },
+                    );
+                    finish_on_arrival = None;
+                    dirty |= n != previous.page || previous.offset != 0;
+                    dialog = None;
+                }
+            }
+            continue;
+        }
         if !menu && let Some(result) = splitter.input(&e) {
             if let Err(error) = result {
                 message = error.to_string();
@@ -340,7 +396,8 @@ pub fn read_server(
             {
                 n = target.clamp(1, count);
                 offset = 0;
-                crop = Crop::default();
+                crop.x = 128;
+                crop.y = 0;
                 history.record(
                     previous,
                     Location {
@@ -388,21 +445,23 @@ pub fn read_server(
                 KeyCode::Char('?') | KeyCode::F(1) => 27,
                 KeyCode::Char('m' | 'M') | KeyCode::Esc | KeyCode::Enter => 0,
                 KeyCode::Char('+' | '=') => 8,
-                KeyCode::Char('-') => 9,
+                KeyCode::Char('-' | '−') => 9,
+                KeyCode::Char('w' | 'W') => 39,
+                KeyCode::Char('0') => 40,
                 KeyCode::Down | KeyCode::Char('j') if scrolling => 30,
                 KeyCode::Up | KeyCode::Char('k') if scrolling => 29,
-                KeyCode::PageUp | KeyCode::Left if scrolling && crop.level == 0 => 31,
+                KeyCode::PageUp | KeyCode::Left if scrolling && crop.percent <= 100 => 31,
                 KeyCode::PageDown | KeyCode::Right | KeyCode::Char(' ')
-                    if scrolling && crop.level == 0 =>
+                    if scrolling && crop.percent <= 100 =>
                 {
                     32
                 }
                 KeyCode::PageUp if scrolling => 31,
                 KeyCode::PageDown if scrolling => 32,
-                KeyCode::Left if crop.level > 0 => 10,
-                KeyCode::Right if crop.level > 0 => 11,
-                KeyCode::Up if crop.level > 0 => 12,
-                KeyCode::Down if crop.level > 0 => 13,
+                KeyCode::Left if crop.percent > 100 => 10,
+                KeyCode::Right if crop.percent > 100 => 11,
+                KeyCode::Up if crop.percent > 100 => 12,
+                KeyCode::Down if crop.percent > 100 => 13,
                 KeyCode::Left | KeyCode::PageUp | KeyCode::Up | KeyCode::Char('h' | 'k') => 1,
                 KeyCode::Right
                 | KeyCode::PageDown
@@ -426,8 +485,8 @@ pub fn read_server(
                 }
                 MouseEventKind::ScrollUp if scrolling => 33,
                 MouseEventKind::ScrollDown if scrolling => 34,
-                MouseEventKind::ScrollUp if crop.level > 0 => 12,
-                MouseEventKind::ScrollDown if crop.level > 0 => 13,
+                MouseEventKind::ScrollUp if crop.percent > 100 => 12,
+                MouseEventKind::ScrollDown if crop.percent > 100 => 13,
                 MouseEventKind::ScrollUp => 1,
                 MouseEventKind::ScrollDown => 2,
                 MouseEventKind::Down(MouseButton::Left) if menu => hits
@@ -435,6 +494,11 @@ pub fn read_server(
                     .find(|(r, _)| r.contains(Position::new(m.column, m.row)))
                     .map(|(_, i)| *i)
                     .unwrap_or(0),
+                MouseEventKind::Down(MouseButton::Left)
+                    if !menu && width_button.contains(Position::new(m.column, m.row)) =>
+                {
+                    39
+                }
                 MouseEventKind::Down(MouseButton::Left)
                     if !menu && go_button.contains(Position::new(m.column, m.row)) =>
                 {
@@ -497,8 +561,9 @@ pub fn read_server(
                 offset = 0;
             }
             7 => n = total.unwrap_or(n),
-            8 => crop.level = crop.level.saturating_add(1).min(2),
-            9 => crop.level = crop.level.saturating_sub(1),
+            8 | 9 => crop.step(action == 8),
+            39 => dialog = Some(controls::Dialog::Width),
+            40 => crop = Crop::default(),
             10 => crop.x = crop.x.saturating_sub(64),
             11 => crop.x = crop.x.saturating_add(64),
             12 => crop.y = crop.y.saturating_sub(64),
@@ -557,26 +622,7 @@ pub fn read_server(
                 }
                 continue;
             }
-            24 => {
-                if let Some(count) = total
-                    && let Some(input) = crate::prompt::edit(
-                        term,
-                        &format!("Go to page · 1–{count}"),
-                        "[ Go ↵ ]",
-                        "",
-                        |_| {},
-                    )?
-                {
-                    if let Ok(page) = input.parse::<u32>()
-                        && (1..=count).contains(&page)
-                    {
-                        n = page;
-                        offset = 0;
-                    } else {
-                        message = format!("Enter a page from 1 to {count}");
-                    }
-                }
-            }
+            24 => dialog = Some(controls::Dialog::page()),
             16 => {
                 if let Some(text) = crate::prompt::edit(
                     term,
@@ -632,7 +678,7 @@ pub fn read_server(
             _ => (),
         }
         if old.0 != n && !(29..=36).contains(&action) {
-            crop.x = 0;
+            crop.x = 128;
             crop.y = 0;
             offset = 0;
         }
@@ -658,6 +704,11 @@ pub fn read_server(
             finish_on_arrival = None;
         }
         dirty |= old != (n, spread, scrolling, offset);
+    }
+    if initial_zoom != crop.percent
+        && let Err(e) = crate::settings::Settings::update(|s| s.scan_zoom = Some(crop.percent))
+    {
+        notices.push(e.to_string());
     }
     crate::stats::finish(store.as_ref(), opened, notices);
     if dirty
