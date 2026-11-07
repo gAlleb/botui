@@ -59,7 +59,7 @@ struct Layout {
 
 impl Layout {
     fn new(width: u16, height: u16, mode: LayoutMode, gap: u16) -> Self {
-        let spread = mode == LayoutMode::Spread && width >= 2 * MIN_COLUMN + gap;
+        let spread = mode == LayoutMode::Spread && width.saturating_sub(gap) >= 2 * MIN_COLUMN;
         let (columns, width, gutter) = if spread {
             (2, (width - gap) / 2, gap)
         } else {
@@ -122,12 +122,7 @@ impl Pager {
         mode: LayoutMode,
         gap: u16,
     ) {
-        let layout = Layout::new(
-            width,
-            height,
-            mode,
-            gap.min(width.saturating_sub(2 * MIN_COLUMN)),
-        );
+        let layout = Layout::new(width, height, mode, gap);
         if self.layout == layout {
             return;
         }

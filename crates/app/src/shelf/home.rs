@@ -133,6 +133,8 @@ impl Shelf {
         } else {
             0
         };
+        let sources = self.current().rows.len() as u16;
+        let help_height = help_height.min(footer_y.saturating_sub(y).saturating_sub(sources));
         let detail_y = footer_y.saturating_sub(help_height).max(y.min(footer_y));
         let pane = self.current_mut();
         let stride = if detail_y.saturating_sub(y) as usize >= pane.rows.len() * 2 {
@@ -167,9 +169,11 @@ impl Shelf {
             let (_, description, keys) = source(&action, self.session.is_some());
             f.render_widget(
                 Paragraph::new(description).wrap(Wrap { trim: true }),
-                row(detail_y, help_height - 1),
+                row(detail_y, if help_height > 1 { help_height - 1 } else { 1 }),
             );
-            f.render_widget(Paragraph::new(keys).style(ink), row(footer_y - 1, 1));
+            if help_height > 1 {
+                f.render_widget(Paragraph::new(keys).style(ink), row(footer_y - 1, 1));
+            }
         }
         if let Some(message) = &self.notice
             && footer_height >= 2

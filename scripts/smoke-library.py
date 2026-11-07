@@ -14,6 +14,18 @@ spec.loader.exec_module(shelf)
 
 
 def check(tmp):
+    binary = ROOT / "target/debug/botui"
+    home = shelf.Terminal(tmp, binary, args=[])
+    try:
+        home.see("Connect to BookOrbit")
+        home.run("resize-window","-t","shelf","-x","42","-y","14")
+        home.wait("Four sources fit the compact home",lambda f:"BOTUI" in f and "Offline downloads" in f and "Your TUI book reader." in f)
+        home.keys("End")
+        home.see("Read editions saved on this device.")
+        home.keys("Enter")
+        home.see("Local library")
+    finally:
+        home.run("kill-server",required=False)
     lib = tmp / "Test library"
     chapter = lib / "Fiction" / "Роджер Желязны"
     chapter.mkdir(parents=True)
