@@ -34,6 +34,7 @@ pub(crate) fn fetch(
     token: &str,
     file: &BookFile,
     cancelled: &AtomicBool,
+    progress: &botui_transfer::Progress,
 ) -> Result<TempPath> {
     let kind = file
         .format
@@ -45,7 +46,14 @@ pub(crate) fn fetch(
         botui_transfer::check_size(size, limit)?;
     }
     let mut destination = staging(kind)?;
-    api.download(token, file.id, destination.as_file_mut(), limit, cancelled)?;
+    api.download(
+        token,
+        file.id,
+        destination.as_file_mut(),
+        limit,
+        cancelled,
+        progress,
+    )?;
     Ok(destination.into_temp_path())
 }
 

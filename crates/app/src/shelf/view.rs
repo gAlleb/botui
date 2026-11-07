@@ -48,7 +48,33 @@ impl Shelf {
             });
             let inner = border.inner(panel);
             frame.render_widget(border, panel);
-            frame.render_widget(Paragraph::new(job.title).style(heading()), inner);
+            let mut title = job.title;
+            if let Some((progress, finishing)) = &job.transfer {
+                let (received, total, complete) = progress.snapshot();
+                if complete {
+                    title = finishing;
+                }
+                let received_label = super::format_size(received);
+                let detail = if let Some(total) = total {
+                    let percent = (received.saturating_mul(100) / total).min(100);
+                    format!(
+                        "{received_label} / {}  ·  {percent}%",
+                        super::format_size(total)
+                    )
+                } else {
+                    format!("{received_label} received")
+                };
+                if inner.height > 2 {
+                    frame.render_widget(
+                        Paragraph::new(detail),
+                        Rect::new(inner.x, inner.y + 1, inner.width, 1),
+                    );
+                }
+            }
+            frame.render_widget(
+                Paragraph::new(title).style(heading()),
+                Rect::new(inner.x, inner.y, inner.width, inner.height.min(1)),
+            );
             if !job.closing && !job.saving {
                 self.draw_buttons(frame, inner, "[ Cancel ]", true);
             }

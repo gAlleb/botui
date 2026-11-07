@@ -1,7 +1,7 @@
 //! Download a complete edition from a reader into a caller-owned staging file.
 use std::{
     io::{self, Read, Write},
-    sync::atomic::{AtomicBool, Ordering},
+    sync::atomic::{AtomicBool, AtomicU64, Ordering},
 };
 
 pub const MIB: u64 = 1 << 20;
@@ -29,16 +29,46 @@ pub fn check_cancel(cancel: &AtomicBool) -> io::Result<()> {
     Ok(())
 }
 
+/// A single download's worker publishes counters that a UI can poll without blocking.
+#[derive(Default)]
+pub struct Progress {
+    received: AtomicU64,
+    total: AtomicU64,
+    complete: AtomicBool,
+}
+
+impl Progress {
+    pub fn new(advertised: Option<u64>) -> Self {
+        Self {
+            total: AtomicU64::new(advertised.unwrap_or(0)),
+            ..Self::default()
+        }
+    }
+
+    pub fn snapshot(&self) -> (u64, Option<u64>, bool) {
+        let complete = self.complete.load(Ordering::Acquire);
+        let total = self.total.load(Ordering::Relaxed);
+        (
+            self.received.load(Ordering::Relaxed),
+            (total > 0).then_some(total),
+            complete,
+        )
+    }
+}
+
 pub fn stream(
     mut source: impl Read,
     mut destination: impl Write,
     expected: Option<u64>,
     limit: u64,
     cancel: &AtomicBool,
+    progress: &Progress,
 ) -> io::Result<u64> {
     if let Some(size) = expected {
         check_size(size, limit)?;
+        progress.total.store(size, Ordering::Relaxed);
     }
+    let advertised = progress.total.load(Ordering::Relaxed);
     let mut count = 0u64;
     let mut buf = [0; 64 * 1024];
     loop {
@@ -56,6 +86,11 @@ pub fn stream(
             .ok_or_else(|| io::Error::other("File length overflow"))?;
         check_size(count, limit)?;
         destination.write_all(&buf[..n]).map_err(write_error)?;
+        // An edition may have changed since the catalog was indexed.
+        if expected.is_none() && advertised > 0 && count > advertised {
+            progress.total.store(0, Ordering::Relaxed);
+        }
+        progress.received.store(count, Ordering::Relaxed);
     }
     if count == 0 || expected.is_some_and(|n| n != count) {
         return Err(io::Error::new(
@@ -65,6 +100,10 @@ pub fn stream(
     }
     destination.flush().map_err(write_error)?;
     check_cancel(cancel)?;
+    if advertised > 0 {
+        progress.total.store(count, Ordering::Relaxed);
+    }
+    progress.complete.store(true, Ordering::Release);
     Ok(count)
 }
 
@@ -83,14 +122,58 @@ mod tests {
         let cancel = AtomicBool::new(false);
         let mut file = Vec::new();
         assert_eq!(
-            stream(&b"12345"[..], &mut file, None, 5, &cancel).unwrap(),
+            stream(
+                &b"12345"[..],
+                &mut file,
+                None,
+                5,
+                &cancel,
+                &Progress::default()
+            )
+            .unwrap(),
             5
         );
         file.clear();
-        assert!(stream(&b"123456"[..], &mut file, None, 5, &cancel).is_err());
+        assert!(
+            stream(
+                &b"123456"[..],
+                &mut file,
+                None,
+                5,
+                &cancel,
+                &Progress::default()
+            )
+            .is_err()
+        );
         assert!(file.len() <= 5);
-        assert!(stream(&b""[..], io::sink(), None, 0, &cancel).is_err());
-        assert!(stream(&b"123"[..], io::sink(), Some(5), 0, &cancel).is_err());
+        assert!(stream(&b""[..], io::sink(), None, 0, &cancel, &Progress::default()).is_err());
+        assert!(
+            stream(
+                &b"123"[..],
+                io::sink(),
+                Some(5),
+                0,
+                &cancel,
+                &Progress::default()
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn response_size_replaces_the_catalog_hint_and_reports_only_written_bytes() {
+        let cancel = AtomicBool::new(false);
+        let progress = Progress::new(Some(1024));
+        stream(&b"123"[..], io::sink(), Some(3), 5, &cancel, &progress).unwrap();
+        assert_eq!(progress.snapshot(), (3, Some(3), true));
+
+        let partial = Progress::default();
+        assert!(stream(&b"123"[..], io::sink(), Some(4), 5, &cancel, &partial).is_err());
+        assert_eq!(partial.snapshot(), (3, Some(4), false));
+
+        let unknown = Progress::default();
+        stream(&b"123"[..], io::sink(), None, 5, &cancel, &unknown).unwrap();
+        assert_eq!(unknown.snapshot(), (3, None, true));
     }
 
     #[test]
@@ -114,6 +197,7 @@ mod tests {
             None,
             0,
             &cancel,
+            &Progress::default(),
         );
         assert!(result.unwrap_err().to_string().contains("cancelled"));
         assert!(count > 0 && count < 1 << 20);
@@ -130,7 +214,15 @@ mod tests {
                 Ok(())
             }
         }
-        let err = stream(&b"zip"[..], Full, None, 0, &AtomicBool::new(false)).unwrap_err();
+        let err = stream(
+            &b"zip"[..],
+            Full,
+            None,
+            0,
+            &AtomicBool::new(false),
+            &Progress::default(),
+        )
+        .unwrap_err();
         assert_eq!(err.kind(), io::ErrorKind::StorageFull);
         assert!(err.to_string().contains("disk"));
     }

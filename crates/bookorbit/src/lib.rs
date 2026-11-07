@@ -177,6 +177,7 @@ impl BookOrbit {
         writer: impl Write,
         limit: u64,
         cancel: &std::sync::atomic::AtomicBool,
+        progress: &botui_transfer::Progress,
     ) -> Result<u64> {
         botui_transfer::check_cancel(cancel)?;
         let path = format!("books/files/{file_id}/serve");
@@ -197,7 +198,7 @@ impl BookOrbit {
         }
         let length = response.content_length();
         Ok(botui_transfer::stream(
-            response, writer, length, limit, cancel,
+            response, writer, length, limit, cancel, progress,
         )?)
     }
 

@@ -65,7 +65,13 @@ fn check(session: &Session, query: &str) -> Result<()> {
                 role: f.role.clone(),
             };
             let file = session.with_token(|api, t| {
-                crate::cache::fetch(api, t, &edition, &AtomicBool::new(false))
+                crate::cache::fetch(
+                    api,
+                    t,
+                    &edition,
+                    &AtomicBool::new(false),
+                    &botui_transfer::Progress::default(),
+                )
             })?;
             let d = botui_formats::open_document(&file)
                 .map_err(|e| std::io::Error::other(e.to_string()))?;

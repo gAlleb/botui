@@ -206,6 +206,7 @@ fn native_session_catalog_and_selected_file_routes() {
             &mut dest,
             50,
             &std::sync::atomic::AtomicBool::new(false),
+            &botui_transfer::Progress::default(),
         )
     });
     assert!(req.starts_with("GET /shelf/api/v1/books/files/82/serve HTTP/1.1\r\n"));
@@ -219,6 +220,7 @@ fn native_session_catalog_and_selected_file_routes() {
             &mut dest,
             2,
             &std::sync::atomic::AtomicBool::new(false),
+            &botui_transfer::Progress::default(),
         )
     });
     assert!(oversize.is_err());
@@ -254,6 +256,7 @@ fn explains_expired_credentials_and_oidc_without_echoing_remote_error_text() {
             &mut dest,
             100,
             &std::sync::atomic::AtomicBool::new(false),
+            &botui_transfer::Progress::default(),
         )
     });
     assert!(proxy.is_err());

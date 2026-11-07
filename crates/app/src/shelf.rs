@@ -297,6 +297,7 @@ struct Pending {
     title: &'static str,
     closing: bool,
     saving: bool,
+    transfer: Option<(Arc<botui_transfer::Progress>, &'static str)>,
     work: Ticket<botui_bookorbit::Result<Loaded>>,
 }
 
@@ -316,6 +317,9 @@ pub(crate) struct Shelf {
     exit_warning: Option<String>,
     after_save: Option<AfterSave>,
     worker: Worker,
+    // A cancelled socket can still be waiting for its next read or timeout.
+    // Catalog navigation remains available while that edition worker unwinds.
+    downloads: Worker,
     pending: Option<Pending>,
     covers: covers::Covers,
     graphics: ratatui_image::picker::Picker,
@@ -357,6 +361,7 @@ impl Shelf {
             exit_warning: None,
             after_save: None,
             worker: Worker::new(),
+            downloads: Worker::new(),
             pending: None,
             covers: covers::Covers::new(),
             graphics: crate::cover::graphics(),
@@ -402,7 +407,35 @@ impl Shelf {
             title,
             closing: false,
             saving: false,
+            transfer: None,
             work: self.worker.start(task),
+        });
+    }
+
+    fn fetch_edition(
+        &mut self,
+        title: &'static str,
+        advertised: Option<u64>,
+        keep: bool,
+        task: impl FnOnce(&AtomicBool, &botui_transfer::Progress) -> botui_bookorbit::Result<Loaded>
+        + Send
+        + 'static,
+    ) {
+        let progress = Arc::new(botui_transfer::Progress::new(advertised));
+        let worker_progress = progress.clone();
+        let finishing = if keep {
+            "Saving offline…"
+        } else {
+            "Opening edition…"
+        };
+        self.pending = Some(Pending {
+            title,
+            closing: false,
+            saving: false,
+            transfer: Some((progress, finishing)),
+            work: self
+                .downloads
+                .start(move |cancel| task(cancel, &worker_progress)),
         });
     }
 
@@ -640,20 +673,25 @@ impl Shelf {
             else {
                 return;
             };
-            self.fetch("Downloading from OPDS…", move |cancel| {
-                let limit = crate::cache::download_limit()?;
-                if let Some(size) = file.size_bytes {
-                    botui_transfer::check_size(size, limit)?;
-                }
-                let mut f = crate::cache::staging(kind)?;
-                cat.download(href, f.as_file_mut(), cancel, limit)?;
-                if keep {
-                    crate::cache::keep(f.path(), &title, kind.label(), None, cancel)?;
-                    Ok(Loaded::Kept)
-                } else {
-                    Ok(Loaded::File(f.into_temp_path(), None, None))
-                }
-            });
+            self.fetch_edition(
+                "Downloading from OPDS…",
+                file.size_bytes,
+                keep,
+                move |cancel, progress| {
+                    let limit = crate::cache::download_limit()?;
+                    if let Some(size) = file.size_bytes {
+                        botui_transfer::check_size(size, limit)?;
+                    }
+                    let mut f = crate::cache::staging(kind)?;
+                    cat.download(href, f.as_file_mut(), cancel, limit, progress)?;
+                    if keep {
+                        crate::cache::keep(f.path(), &title, kind.label(), None, cancel)?;
+                        Ok(Loaded::Kept)
+                    } else {
+                        Ok(Loaded::File(f.into_temp_path(), None, None))
+                    }
+                },
+            );
             return;
         }
         let Some(session) = self.session.clone() else {
@@ -665,57 +703,66 @@ impl Shelf {
             _ => return,
         };
         let account = crate::offline::account(&self.server, &self.username);
-        self.fetch("Downloading book…", move |cancel| {
-            let path =
-                session.with_token(|api, token| crate::cache::fetch(api, token, &file, cancel))?;
-            if keep {
-                let dest = crate::cache::keep(
-                    &path,
-                    &title,
-                    file.format.as_deref().unwrap_or(""),
-                    Some((&account, file.id)),
-                    cancel,
-                )?;
-                if let Ok(p) = session.with_token(|api, t| api.progress(t, file.id)) {
-                    crate::offline::associate(&dest, account, p)?;
+        self.fetch_edition(
+            "Downloading book…",
+            file.size_bytes,
+            keep,
+            move |cancel, progress| {
+                let path = session.with_token(|api, token| {
+                    crate::cache::fetch(api, token, &file, cancel, progress)
+                })?;
+                if keep {
+                    let dest = crate::cache::keep(
+                        &path,
+                        &title,
+                        file.format.as_deref().unwrap_or(""),
+                        Some((&account, file.id)),
+                        cancel,
+                    )?;
+                    if let Ok(p) = session.with_token(|api, t| api.progress(t, file.id)) {
+                        crate::offline::associate(&dest, account, p)?;
+                    }
+                    return Ok(Loaded::Kept);
                 }
-                return Ok(Loaded::Kept);
-            }
-            let (base, note) = match session.with_token(|api, t| api.progress(t, file.id)) {
-                Ok(p) => (Some(p), None),
-                Err(_) => (
-                    None,
-                    Some("BookOrbit progress unavailable. Saving on this device.".into()),
-                ),
-            };
-            let (marks, note) = if file
-                .format
-                .as_deref()
-                .and_then(botui_formats::FileKind::from_extension)
-                .is_some_and(botui_formats::FileKind::readable)
-            {
-                match crate::reader::bookmarks::ServerMarks::load(session.clone(), book_id, file.id)
-                {
-                    Ok(m) => (Some(m), note),
+                let (base, note) = match session.with_token(|api, t| api.progress(t, file.id)) {
+                    Ok(p) => (Some(p), None),
                     Err(_) => (
                         None,
-                        Some(
-                            [
-                                note.as_deref(),
-                                Some("Server bookmarks unavailable. Showing local bookmarks."),
-                            ]
-                            .into_iter()
-                            .flatten()
-                            .collect::<Vec<_>>()
-                            .join(" "),
-                        ),
+                        Some("BookOrbit progress unavailable. Saving on this device.".into()),
                     ),
-                }
-            } else {
-                (None, note)
-            };
-            Ok(Loaded::NativeFile(path, base, note, marks))
-        });
+                };
+                let (marks, note) = if file
+                    .format
+                    .as_deref()
+                    .and_then(botui_formats::FileKind::from_extension)
+                    .is_some_and(botui_formats::FileKind::readable)
+                {
+                    match crate::reader::bookmarks::ServerMarks::load(
+                        session.clone(),
+                        book_id,
+                        file.id,
+                    ) {
+                        Ok(m) => (Some(m), note),
+                        Err(_) => (
+                            None,
+                            Some(
+                                [
+                                    note.as_deref(),
+                                    Some("Server bookmarks unavailable. Showing local bookmarks."),
+                                ]
+                                .into_iter()
+                                .flatten()
+                                .collect::<Vec<_>>()
+                                .join(" "),
+                            ),
+                        ),
+                    }
+                } else {
+                    (None, note)
+                };
+                Ok(Loaded::NativeFile(path, base, note, marks))
+            },
+        );
     }
 
     pub fn save_move(&mut self, base: Progress, change: Move) {
@@ -827,6 +874,7 @@ impl Shelf {
             title: "Signing out…",
             closing: true,
             saving: false,
+            transfer: None,
             work: Worker::new().start(move |_| {
                 let warning = session
                     .logout()
@@ -1662,21 +1710,23 @@ pub(crate) fn single_line(mut text: String) -> String {
     text
 }
 
+fn format_size(bytes: u64) -> String {
+    if bytes < 1024 {
+        format!("{bytes} B")
+    } else if bytes < 1024 * 1024 {
+        format!("{} KiB", bytes.div_ceil(1024))
+    } else {
+        format!("{:.1} MiB", bytes as f64 / 1048576.0)
+    }
+}
+
 fn file_label(file: &BookFile) -> String {
     let format = file
         .format
         .as_deref()
         .unwrap_or("unknown format")
         .to_uppercase();
-    let size = file.size_bytes.map(|bytes| {
-        if bytes < 1024 {
-            format!("{bytes} B")
-        } else if bytes < 1024 * 1024 {
-            format!("{} KiB", bytes.div_ceil(1024))
-        } else {
-            format!("{:.1} MiB", bytes as f64 / 1048576.0)
-        }
-    });
+    let size = file.size_bytes.map(format_size);
     let role = match file.role.as_str() {
         "primary" => "primary",
         "supplement" => "supplement",

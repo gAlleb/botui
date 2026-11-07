@@ -36,14 +36,31 @@ class Handler(shelf.Handler):
         if native:
             self.send_header("Content-Length", str(self.server.file.stat().st_size))
         self.end_headers()
-        with self.server.file.open("rb") as book:
-            shutil.copyfileobj(book, self.wfile, length=256*1024)
+        # Hold the socket open after one visible chunk until the TUI has painted it.
+        gate = self.server.resume
+        try:
+            with self.server.file.open("rb") as book:
+                self.wfile.write(book.read(self.server.first_chunk))
+                self.wfile.flush()
+                if not gate.wait(timeout=12):
+                    return
+                shutil.copyfileobj(book, self.wfile, length=256*1024)
+        except (BrokenPipeError, ConnectionResetError):
+            pass  # The cancellation check intentionally closes the client mid-response.
+
+def size_label(size):
+    if size < 1024:
+        return f"{size} B"
+    if size < 1024 * 1024:
+        return f"{(size + 1023) // 1024} KiB"
+    return f"{size / (1024 * 1024):.1f} MiB"
 
 def check(file, tmp, binary):
     with file.open("rb") as src:
         digest = hashlib.file_digest(src, "sha256").hexdigest()
     with shelf.Fixture(False) as server:
         server.file = file
+        server.first_chunk = min(2 << 20, file.stat().st_size // 2)
         server.RequestHandlerClass = Handler
         card = server.card
         def edition(i):
@@ -71,7 +88,39 @@ def check(file, tmp, binary):
                         t.keys("Tab","Tab","Enter")
                         t.click("Transfer test edition", t.see("Transfer test edition"))
                         t.see("Save offline")
+                    if source == "bookorbit":
+                        status = f"{size_label(server.first_chunk)} / {size_label(file.stat().st_size)}"
+                    else:
+                        status = f"{size_label(server.first_chunk)} received"
+
+                    # The worker may be blocked on a slow read. The UI must still accept Esc
+                    # and return to the edition before that read completes.
+                    server.resume = threading.Event()
                     t.keys("d")
+                    t.see(status)
+                    t.keys("Escape")
+                    t.see("Save offline")
+                    if source == "bookorbit":
+                        # This requires a new HTTP request on the same account.
+                        t.keys("3")
+                        t.wait("Read another shelf during cancellation", lambda screen:
+                               "Recently added" in screen and shelf.OTHER_BOOK in screen)
+                        t.keys("1")
+                        t.see(shelf.BOOK)
+                        t.keys("Enter")
+                        shelf.formats(t)
+                    server.resume.set()
+                    abandoned = home / "cache/botui/downloads"
+                    deadline = time.monotonic() + 6
+                    while list(abandoned.glob("edition-*")) and time.monotonic() < deadline:
+                        time.sleep(.05)
+                    assert not list(abandoned.glob("edition-*")), "cancelled transfer left a partial file"
+                    assert not list((home/".local/share/botui/downloads").glob("*.epub"))
+
+                    server.resume = threading.Event()
+                    t.keys("d")
+                    t.see(status)
+                    server.resume.set()
                     end = time.monotonic()+90
                     while time.monotonic()<end:
                         screen=t.run("capture-pane","-p","-t","shelf").stdout
@@ -88,8 +137,17 @@ def check(file, tmp, binary):
                         assert archive.read("mimetype").strip()==b"application/epub+zip"
                         assert "META-INF/container.xml" in archive.namelist()
                     assert not list((home/"cache/botui/downloads").glob("edition-*"))
-                    print(f"{source}: {file.stat().st_size} bytes, matching SHA-256, valid EPUB",flush=True)
+                    if file.stat().st_size > 1 << 20:
+                        config = home / "config/botui/config.toml"
+                        config.write_text("max_download_mib = 1\n")
+                        t.keys("d")
+                        t.see("1 MiB download limit")
+                        assert list((home / ".local/share/botui/downloads").glob("*.epub")) == [downloaded]
+                        assert not list(abandoned.glob("edition-*"))
+                    print(f"{source}: displayed “{status}”, cancelled and retried; {file.stat().st_size} bytes, matching SHA-256, valid EPUB",flush=True)
                 finally:
+                    if hasattr(server, "resume"):
+                        server.resume.set()
                     t.run("kill-server",required=False)
                     shutil.rmtree(home)
         finally:
@@ -106,4 +164,6 @@ if __name__=="__main__":
         if book is None:
             book=tmp/"fixture.epub"
             book.write_bytes(shelf.epub())
+            with zipfile.ZipFile(book, "a") as archive:
+                archive.writestr("fixture.bin", bytes(4 << 20), zipfile.ZIP_STORED)
         check(book,tmp,args.binary.resolve())

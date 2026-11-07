@@ -131,6 +131,7 @@ impl Catalog {
         writer: &mut dyn Write,
         cancel: &AtomicBool,
         limit: u64,
+        progress: &botui_transfer::Progress,
     ) -> Result<()> {
         botui_transfer::check_cancel(cancel)?;
         // Keep the blocking client's per-read timeout without a total transfer deadline.
@@ -153,7 +154,7 @@ impl Catalog {
             return Err("OPDS returned an HTML page instead of a book.".into());
         }
         let expected = resp.content_length();
-        botui_transfer::stream(resp, writer, expected, limit, cancel)?;
+        botui_transfer::stream(resp, writer, expected, limit, cancel, progress)?;
         Ok(())
     }
 }
