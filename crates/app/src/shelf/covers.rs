@@ -14,7 +14,7 @@ struct Slot {
     job: Option<(u64, Ticket<botui_bookorbit::Result<Option<Picture>>>)>,
 }
 enum Entry {
-    Image(Picture),
+    Image(Box<Picture>),
     Missing,
     RetryAfter(Instant),
 }
@@ -88,7 +88,7 @@ impl Covers {
                 continue;
             };
             let entry = match ticket.receiver.try_recv() {
-                Ok(Ok(Some(pic))) => Entry::Image(pic),
+                Ok(Ok(Some(pic))) => Entry::Image(Box::new(pic)),
                 Ok(Ok(None)) => Entry::Missing,
                 Err(TryRecvError::Empty) => continue,
                 _ => Entry::RetryAfter(Instant::now() + Duration::from_secs(30)),

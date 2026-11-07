@@ -12,6 +12,8 @@ fn page(number: u32, titles: &[&str]) -> BooksPage {
                 id: u64::from(number) * 2 + i as u64,
                 title: Some(t.to_string()),
                 authors: vec![],
+                series_name: None,
+                series_index: None,
                 has_cover: None,
                 progress: None,
                 files: vec![botui_bookorbit::BookFile {

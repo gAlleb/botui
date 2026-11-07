@@ -30,6 +30,10 @@ pub struct Book {
     pub id: u64,
     pub title: Option<String>,
     pub authors: Vec<String>,
+    #[serde(rename = "seriesName")]
+    pub series_name: Option<String>,
+    #[serde(rename = "seriesIndex")]
+    pub series_index: Option<serde_json::Value>,
     #[serde(rename = "hasCover")]
     pub has_cover: Option<bool>,
     #[serde(default, rename = "readingProgress", deserialize_with = "read_percent")]

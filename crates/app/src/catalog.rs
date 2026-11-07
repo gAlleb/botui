@@ -5,9 +5,19 @@ pub struct Book {
     pub id: u64,
     pub title: Option<String>,
     pub authors: Vec<String>,
+    pub jacket: Jacket,
     pub has_cover: Option<bool>,
     pub progress: Option<u8>,
     pub files: Vec<BookFile>,
+}
+/// The catalog's generated artwork when a book has no thumbnail.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Jacket {
+    Cloth,
+    Bauhaus {
+        series: Option<String>,
+        index: Option<String>,
+    },
 }
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BookFile {

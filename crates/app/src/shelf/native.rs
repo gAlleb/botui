@@ -7,6 +7,14 @@ impl From<botui_bookorbit::Book> for Book {
             id: b.id,
             title: b.title,
             authors: b.authors,
+            jacket: crate::catalog::Jacket::Bauhaus {
+                series: b.series_name,
+                index: b.series_index.and_then(|v| match v {
+                    serde_json::Value::Number(n) => Some(n.to_string()),
+                    serde_json::Value::String(s) => Some(s),
+                    _ => None,
+                }),
+            },
             progress: b.progress,
             has_cover: b.has_cover,
             files: b

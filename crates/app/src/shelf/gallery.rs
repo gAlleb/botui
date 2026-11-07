@@ -1,4 +1,5 @@
 //! Geometry is shared by drawing, keyboard navigation and mouse hit testing.
+mod bauhaus;
 mod jacket_edge;
 use super::{Book, Command, Scope, Shelf, single_line};
 use crate::centered;
@@ -110,6 +111,17 @@ pub(super) fn caption(text: &str, width: u16, max_lines: usize) -> String {
 /// A cloth binding and foil ornament drawn as terminal cells. The same title
 /// and author always get the same jacket, independent of sorting and resizing.
 fn jacket(frame: &mut Frame, slot: Rect, book: &Book, graphics: &ratatui_image::picker::Picker) {
+    if let crate::catalog::Jacket::Bauhaus { series, index } = &book.jacket {
+        bauhaus::draw(
+            frame,
+            slot,
+            graphics,
+            book,
+            series.as_deref(),
+            index.as_deref(),
+        );
+        return;
+    }
     let title = single_line(book.title.clone().unwrap_or_else(|| "Untitled".into()));
     let author = single_line(book.authors.join(", "));
     let seed = title

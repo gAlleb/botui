@@ -122,6 +122,7 @@ impl Shelf {
                         title: Some(title.clone()),
                         authors,
                         files,
+                        jacket: crate::catalog::Jacket::Cloth,
                         has_cover,
                         progress: None,
                     };

@@ -95,6 +95,7 @@ fn card(
             role: "primary".into(),
             size_bytes: None,
         }],
+        jacket: crate::catalog::Jacket::Cloth,
         has_cover: None,
         progress: e.percent,
     }

@@ -139,6 +139,12 @@ impl Picture {
         }
     }
 
+    pub fn generated_cover(source: DynamicImage) -> Self {
+        let mut picture = Self::new(source);
+        picture.is_cover = true;
+        picture
+    }
+
     pub fn cover(bytes: Vec<u8>) -> Option<Self> {
         let mut picture = Self::decode(bytes, 240, 360)?;
         picture.is_cover = true;
