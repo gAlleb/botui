@@ -1,0 +1,10 @@
+[package]
+name = "botui-fixed"
+edition.workspace = true
+version.workspace = true
+publish.workspace = true
+
+[dependencies]
+botui-formats = { path = "../formats" }
+image = { version = "0.25", default-features = false, features = ["png", "pnm"] }
+tempfile = "3"

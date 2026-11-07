@@ -1,0 +1,9 @@
+[workspace]
+members = ["crates/core", "crates/formats", "crates/store", "crates/app", "crates/bookorbit", "crates/fixed", "crates/opds"]
+default-members = ["crates/app"]
+resolver = "3"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+publish = false
