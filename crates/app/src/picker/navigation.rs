@@ -218,7 +218,6 @@ impl Navigation {
                 row,
             );
         }
-        self.splitter.draw_grip(frame);
         main
     }
 

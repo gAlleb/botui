@@ -1,12 +1,7 @@
 //! A terminal-cell splitter shared by the library sidebar and both contents panes.
 use crate::settings::Settings;
 use crossterm::event::{Event, KeyCode, KeyEventKind, MouseButton, MouseEventKind};
-use ratatui::{
-    Frame,
-    layout::{Position, Rect},
-    style::Stylize,
-    widgets::Paragraph,
-};
+use ratatui::layout::{Position, Rect};
 use std::io;
 
 #[derive(Clone, Copy)]
@@ -45,10 +40,9 @@ impl Splitter {
             Pane::Library => 60,
             Pane::Contents => 40,
         };
-        self.bounds.width.saturating_sub(main + 1).min(100)
+        self.bounds.width.saturating_sub(main).min(100)
     }
 
-    /// The spare cell between the panels also belongs to the drag handle.
     pub fn layout(&mut self, area: Rect, visible: bool) -> (Rect, Rect) {
         if area != self.bounds || !visible {
             self.drag = None;
@@ -72,31 +66,12 @@ impl Splitter {
             .unwrap_or(auto)
             .clamp(12, max);
         self.left = Rect { width, ..area };
-        let main = Rect::new(
-            self.left.right() + 1,
-            area.y,
-            area.width - width - 1,
-            area.height,
-        );
+        let main = Rect::new(self.left.right(), area.y, area.width - width, area.height);
         (self.left, main)
     }
 
-    pub fn draw_grip(&self, frame: &mut Frame) {
-        if !self.left.is_empty() {
-            let area = Rect::new(self.left.right(), self.left.y + self.left.height / 2, 1, 1);
-            let grip = Paragraph::new("↔");
-            frame.render_widget(
-                if self.drag.is_some() {
-                    grip.bold()
-                } else {
-                    grip.dim()
-                },
-                area,
-            );
-        }
-    }
-
-    /// Consume both ends of a grip gesture. Only its release can update config.toml.
+    /// Drag the sidebar's last cell (its border, or its padding without borders).
+    /// Only releasing the button commits the width to config.toml.
     pub fn input(&mut self, event: &Event) -> Option<io::Result<()>> {
         let Event::Mouse(m) = event else {
             if self.drag.is_some()
@@ -114,7 +89,7 @@ impl Splitter {
             let handle = Rect::new(
                 self.left.right().saturating_sub(1),
                 self.left.y,
-                2,
+                1,
                 self.left.height,
             );
             if self.left.is_empty() || !handle.contains(Position::new(m.column, m.row)) {
@@ -152,5 +127,37 @@ impl Splitter {
             return None;
         }
         Some(Ok(()))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crossterm::event::{KeyModifiers, MouseEvent};
+
+    #[test]
+    fn only_the_last_sidebar_cell_starts_a_drag() {
+        let mut split = Splitter::new(Pane::Contents, Some(30));
+        let area = Rect::new(4, 3, 115, 30);
+        let (sidebar, page) = split.layout(area, true);
+        assert_eq!(page.x, sidebar.right());
+        assert_eq!(page.right(), area.right());
+
+        let press = |column, row| {
+            Event::Mouse(MouseEvent {
+                kind: MouseEventKind::Down(MouseButton::Left),
+                column,
+                row,
+                modifiers: KeyModifiers::empty(),
+            })
+        };
+        let edge = sidebar.right() - 1;
+        assert!(split.input(&press(edge - 1, area.y)).is_none());
+        assert!(split.input(&press(edge + 1, area.y)).is_none());
+        assert!(split.input(&press(edge, area.bottom())).is_none());
+        assert!(split.input(&press(edge, area.y)).unwrap().is_ok());
+
+        assert_eq!(split.layout(area, false).1, area);
+        assert!(split.input(&press(edge, area.y)).is_none());
     }
 }

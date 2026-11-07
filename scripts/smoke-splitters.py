@@ -22,9 +22,10 @@ def mouse(term, code, column, row=8, end="M"):
 
 
 def at_width(term, cells):
-    return term.wait(f"Grip at column {cells}", lambda f: any(
-        line.find("↔") == cells for line in f.splitlines()
-    ))
+    frame = term.wait(f"Sidebar {cells} cells wide", lambda f:
+                      f.splitlines()[0][cells - 1:cells] in ("╮", "┐"))
+    assert "↔" not in frame
+    return frame
 
 
 def size(term, width):
@@ -36,20 +37,19 @@ def config(directory):
 
 
 def change_width(term, directory, field, start, end, cancel=False):
-    """Test both the visible grip and panel border, then release off the original edge."""
+    """Grab the last sidebar cell, then release off the original edge."""
     old = config(directory).get(field)
-    edge = -1 if cancel else 0
-    mouse(term, 0, start + edge)
-    mouse(term, 32, end + edge, 10)
+    mouse(term, 0, start - 1)
+    mouse(term, 32, end - 1, 10)
     at_width(term, end)
     assert config(directory).get(field) == old, "Preview was saved before mouse release"
     if cancel:
         term.keys("Escape")
         at_width(term, start)
-        mouse(term, 0, end + edge, 5, "m")
+        mouse(term, 0, end - 1, 5, "m")
         assert config(directory).get(field) == old
     else:
-        mouse(term, 0, end + edge, 5, "m")
+        mouse(term, 0, end - 1, 5, "m")
         term.wait("Committed width", lambda _: config(directory).get(field) == end)
 
 
@@ -63,7 +63,7 @@ def exercise(directory, server):
         change_width(term, directory, "sidebar_width", 32, 75, cancel=True)
         change_width(term, directory, "sidebar_width", 32, 75)
         size(term, 123)
-        at_width(term, 62)  # Keep 60 cells available for the book cards.
+        at_width(term, 63)  # Keep 60 cells available for the book cards.
         assert config(directory)["sidebar_width"] == 75
         size(term, 160)
         at_width(term, 75)
@@ -91,7 +91,7 @@ def exercise(directory, server):
         assert re.search(r"Passage \d+", frame).group() == anchor
         assert config(directory)["sidebar_width"] == 75
         size(term, 80)
-        at_width(term, 39)
+        at_width(term, 40)
         size(term, 115)
         at_width(term, 45)
         term.keys("q")
@@ -137,8 +137,8 @@ def exercise(directory, server):
 
     term = shelf.Terminal(directory, BINARY, args=[str(pdf)])
     try:
-        assert "2 / 3" in term.wait("Restored fixed page and width", lambda f: "2 / 3" in f and
-                                    any(line.find("↔") == 20 for line in f.splitlines()))
+        term.see("2 / 3")
+        at_width(term, 20)
     finally:
         term.run("kill-server", required=False)
 

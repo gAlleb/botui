@@ -320,7 +320,6 @@ impl Reader {
                     self.sidebar.follow(self.pager.anchor());
                 }
                 self.sidebar.draw_at(frame, style, self.sidebar_rect, false);
-                self.splitter.draw_grip(frame);
             }
             let foot = Rect::new(
                 screen.x,

@@ -135,7 +135,7 @@ pub fn read_server(
         if let Some(job) = &outline_job {
             match job.receiver.try_recv() {
                 Ok(result) => {
-                    sidebar.items = result.unwrap_or_default();
+                    sidebar.set_outline(result.unwrap_or_default());
                     outline_job = None;
                 }
                 Err(TryRecvError::Disconnected) => outline_job = None,
@@ -228,7 +228,6 @@ pub fn read_server(
         term.draw(|f| {
             let screen = f.area();
             sidebar.draw(f, sidebar_area, n, total.unwrap_or(0));
-            splitter.draw_grip(f);
             let area = Rect {
                 height: body.height.saturating_sub(u16::from(!zen)),
                 ..body

@@ -92,7 +92,6 @@ impl Shelf {
             let tab = self.active_tab();
             let scope = super::rail::current_scope(&self.current().section).cloned();
             self.rail.draw(frame, side, tab, scope.as_ref());
-            self.rail.splitter.draw_grip(frame);
         }
         let border = crate::appearance::block().title(if self.is_opds {
             " OPDS "

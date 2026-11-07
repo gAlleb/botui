@@ -8,7 +8,7 @@ use ratatui::{
 
 #[derive(Default)]
 pub struct Contents {
-    pub items: Vec<(u32, String)>,
+    items: Vec<(u32, String)>,
     selected: usize,
     first: usize,
     rows: Rect,
@@ -25,6 +25,27 @@ impl Contents {
     fn page(&self, i: usize) -> u32 {
         self.items.get(i).map_or(i as u32 + 1, |v| v.0)
     }
+    fn index_for_page(&self, page: u32) -> usize {
+        if self.items.is_empty() {
+            return page.saturating_sub(1) as usize;
+        }
+        self.items
+            .iter()
+            .enumerate()
+            .filter(|(_, v)| v.0 <= page)
+            .max_by_key(|(_, v)| v.0)
+            .map_or(0, |(i, _)| i)
+    }
+    pub fn set_outline(&mut self, items: Vec<(u32, String)>) {
+        if items.is_empty() {
+            return;
+        }
+        // A page selected while the outline was loading now belongs to a chapter.
+        let selected_page = self.page(self.selected);
+        self.items = items;
+        self.selected = self.index_for_page(selected_page);
+        self.first = 0;
+    }
     pub fn draw(&mut self, f: &mut Frame, area: Rect, page: u32, total: u32) {
         self.rows = Rect::default();
         if area.is_empty() {
@@ -40,26 +61,16 @@ impl Contents {
         f.render_widget(border, area);
         let count = self.count(total);
         if !self.focus {
-            self.selected = if self.items.is_empty() {
-                page.saturating_sub(1) as usize
-            } else {
-                self.items
-                    .iter()
-                    .enumerate()
-                    .filter(|(_, v)| v.0 <= page)
-                    .max_by_key(|(_, v)| v.0)
-                    .map_or(0, |(i, _)| i)
-            };
+            self.selected = self.index_for_page(page);
         }
         self.selected = self.selected.min(count.saturating_sub(1));
+        let height = usize::from(self.rows.height);
         self.first = self
             .first
             .min(self.selected)
-            .max((self.selected + 1).saturating_sub(self.rows.height as usize));
-        for (y, i) in (self.first..count)
-            .take(self.rows.height as usize)
-            .enumerate()
-        {
+            .max((self.selected + 1).saturating_sub(height))
+            .min(count.saturating_sub(height));
+        for (y, i) in (self.first..count).take(height).enumerate() {
             let label = self.items.get(i).map_or_else(
                 || format!(" Page {}", i + 1),
                 |(n, title)| format!(" {n}  {title}"),
@@ -110,5 +121,43 @@ impl Contents {
             .saturating_add_signed(step)
             .min(self.count(total).saturating_sub(1));
         Some(None)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ratatui::{Terminal, backend::TestBackend};
+
+    #[test]
+    fn resumed_outline_fills_the_pane_after_loading_and_resizing() {
+        let mut term = Terminal::new(TestBackend::new(40, 30)).unwrap();
+        let mut toc = Contents::default();
+        let mut draw = |toc: &mut Contents, height| {
+            term.draw(|f| toc.draw(f, Rect::new(0, 0, 40, height), 111, 181))
+                .unwrap();
+        };
+        draw(&mut toc, 30);
+        assert_eq!(toc.selected, 110);
+        assert!(toc.first > 0);
+
+        let pages = [
+            5, 6, 7, 9, 11, 19, 39, 42, 52, 57, 61, 71, 78, 84, 90, 96, 102, 111, 117, 123, 130,
+            138, 165, 181,
+        ];
+        toc.set_outline(pages.map(|p| (p, format!("Heading {p}"))).into());
+        draw(&mut toc, 30);
+        assert_eq!((toc.first, toc.page(toc.selected)), (0, 111));
+
+        draw(&mut toc, 6);
+        assert_eq!(toc.first + usize::from(toc.rows.height) - 1, toc.selected);
+        toc.input(&Event::Key(KeyCode::Tab.into()), 181);
+        toc.input(&Event::Key(KeyCode::Down.into()), 181);
+        draw(&mut toc, 30);
+        assert_eq!((toc.first, toc.page(toc.selected)), (0, 117));
+        assert_eq!(
+            toc.input(&Event::Key(KeyCode::Enter.into()), 181),
+            Some(Some(117))
+        );
     }
 }

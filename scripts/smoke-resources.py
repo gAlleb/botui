@@ -46,7 +46,7 @@ def check(tmp):
         select(t, "Next chapter")
         t.wait("exact in-book destination",lambda f:"Last passage." in f and "Book links" not in f)
         t.keys(",")
-        t.wait("back at paragraph with links",lambda f:"Publisher website" in f)
+        t.wait("back at paragraph with links", lambda f: "See Next chapter" in f and "Source note" in f)
     finally:
         t.run("kill-server", required=False)
     fb2 = tmp / "Notes.fb2"

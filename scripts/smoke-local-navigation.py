@@ -23,8 +23,8 @@ def check(home):
     term = shelf.Terminal(home, ROOT / "target/debug/botui", args=["--local", str(library)])
     try:
         term.run("resize-window", "-t", "shelf", "-x", "80", "-y", "24")
-        frame = splitters.at_width(term, 19)
-        assert "Navigation · F6" in frame and "2 Reading" in frame and "3 Recent" in frame
+        frame = splitters.at_width(term, 20)
+        assert "Navigation · F6" in frame and "2 Reading" in frame and "3 Recently added" in frame
 
         # Expand Fiction separately from opening it. No read of its siblings is required.
         term.keys("F6", "Home", "Down", "Down", "Right")
@@ -38,7 +38,7 @@ def check(home):
         term.see(name)
         term.click("2 Reading", term.see("2 Reading"))
         term.wait("Reading shelf", lambda s: name in s and "%" in s)
-        term.click("3 Recent", term.see("3 Recent"))
+        term.click("3 Recently added", term.see("3 Recently added"))
         term.wait("Recently added shelf", lambda s: "Recently added" in s and name in s)
 
         term.click("1 Folders", term.see("1 Folders"))

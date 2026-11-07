@@ -112,7 +112,7 @@ impl Navigation {
             inner.x,
             inner.y.saturating_add(1),
             inner.width,
-            inner.height.saturating_sub(2),
+            inner.height.saturating_sub(1 + u16::from(popup)),
         );
         if self.items.is_empty() {
             let help = match self.kind {
@@ -123,6 +123,13 @@ impl Navigation {
             };
             f.render_widget(Paragraph::new(help).style(style), self.rows);
         } else {
+            if self.kind == Kind::Contents {
+                let last_start = self
+                    .items
+                    .len()
+                    .saturating_sub(usize::from(self.rows.height));
+                *self.state.offset_mut() = self.state.offset().min(last_start);
+            }
             let entries = self
                 .items
                 .iter()
@@ -256,4 +263,36 @@ fn current(items: &[(Anchor, String)], place: Anchor) -> usize {
         .filter(|(_, (a, _))| *a <= place)
         .max_by_key(|(_, (a, _))| *a)
         .map_or(0, |(i, _)| i)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ratatui::{Terminal, backend::TestBackend};
+
+    #[test]
+    fn expanded_contents_reveals_earlier_chapters_without_changing_selection() {
+        let anchor = |block| Anchor { block, byte: 0 };
+        let doc = Document {
+            contents: (0..12)
+                .map(|i| (anchor(i), format!("Heading {i}")))
+                .collect(),
+            ..Document::default()
+        };
+        let mut nav = Navigation::new(Kind::Contents, &doc, anchor(9));
+        let mut term = Terminal::new(TestBackend::new(40, 24)).unwrap();
+        let mut draw = |nav: &mut Navigation, height| {
+            term.draw(|f| nav.draw_at(f, Style::default(), Rect::new(0, 0, 40, height), false))
+                .unwrap();
+        };
+        draw(&mut nav, 8);
+        assert!(nav.state.offset() > 0);
+        nav.edit(Edit::Move(1));
+        draw(&mut nav, 15);
+        assert_eq!(nav.rows.height, 12);
+        assert_eq!((nav.state.offset(), nav.state.selected()), (0, Some(10)));
+        nav.follow(anchor(9));
+        draw(&mut nav, 15);
+        assert_eq!((nav.state.offset(), nav.state.selected()), (0, Some(9)));
+    }
 }
