@@ -1,8 +1,8 @@
 //! Stationary, cell-sized art; never take space from the source list in a short window.
 use ratatui::{
     Frame,
-    layout::Rect,
-    style::{Color, Style, Stylize},
+    layout::{Position, Rect},
+    style::{Color, Style},
     widgets::Paragraph,
 };
 
@@ -12,8 +12,8 @@ const OWL: &[&str] = &[
     r"     / .-.   .-. \",
     r"    | ( o ) ( o ) |",
     r"    |  '-' V '-'  |",
-    r"    | \   ___   / |",
-    r"     \ '.     .' /",
+    r"    | \  v v v  / |",
+    r"     \ '. v v .' /",
     r"      \  '---'  /",
     r"    ___\/_____\/___",
     r"   /  ___   |  ___  \",
@@ -37,15 +37,96 @@ const WORD: &[&str] = &[
     "██████╔╝ ╚██████╔╝    ██║    ╚██████╔╝ ██║",
     "╚═════╝   ╚═════╝     ╚═╝     ╚═════╝  ╚═╝",
 ];
+struct Ink {
+    feathers: Color,
+    amber: Color,
+    aqua: Color,
+    violet: Color,
+    shade: Color,
+}
+
+impl Ink {
+    fn current() -> Self {
+        if std::env::var_os("NO_COLOR").is_some_and(|v| !v.is_empty()) {
+            return Self {
+                feathers: Color::Reset,
+                amber: Color::Reset,
+                aqua: Color::Reset,
+                violet: Color::Reset,
+                shade: Color::Reset,
+            };
+        }
+        let palette = crate::settings::interface_palette();
+        let (feathers, amber, aqua, violet): (u32, u32, u32, u32) = match palette.0 {
+            "gruvbox-dark" => (0xfe8019, 0xfabd2f, 0x8ec07c, 0xd3869b),
+            "gruvbox-light" => (0xaf3a03, 0xb57614, 0x427b58, 0x8f3f71),
+            "catppuccin-latte" => (0xfe640b, 0xdf8e1d, 0x179299, 0x8839ef),
+            "catppuccin-frappe" => (0xef9f76, 0xe5c890, 0x81c8be, 0xca9ee6),
+            "catppuccin-macchiato" => (0xf5a97f, 0xeed49f, 0x8bd5ca, 0xc6a0f6),
+            "catppuccin-mocha" => (0xfab387, 0xf9e2af, 0x94e2d5, 0xcba6f7),
+            "nord" => (0xd08770, 0xebcb8b, 0x8fbcbb, 0xb48ead),
+            "dracula" => (0xffb86c, 0xf1fa8c, 0x8be9fd, 0xbd93f9),
+            "tokyo-night" => (0xff9e64, 0xe0af68, 0x7dcfff, 0xbb9af7),
+            "solarized-dark" | "solarized-light" => (0xcb4b16, 0xb58900, 0x2aa198, 0x6c71c4),
+            "one-dark" => (0xd19a66, 0xe5c07b, 0x56b6c2, 0xc678dd),
+            "kanagawa" => (0xffa066, 0xe6c384, 0x7fb4ca, 0x957fb8),
+            "rose-pine" => (0xebbcba, 0xf6c177, 0x9ccfd8, 0xc4a7e7),
+            "rose-pine-dawn" => (0xb4637a, 0xea9d34, 0x56949f, 0x907aa9),
+            "everforest" => (0xe69875, 0xdbbc7f, 0x83c092, 0xd699b6),
+            _ => {
+                return Self {
+                    feathers: Color::Red,
+                    amber: Color::Yellow,
+                    aqua: Color::Cyan,
+                    violet: Color::Magenta,
+                    shade: Color::Blue,
+                };
+            }
+        };
+        let rgb = |v: u32| {
+            let [_, r, g, b] = v.to_be_bytes();
+            Color::Rgb(r, g, b)
+        };
+        let (fg, bg, _) = palette.colors();
+        let shade = match (fg, bg) {
+            (Color::Rgb(r, g, b), Color::Rgb(x, y, z)) => {
+                Color::Rgb(r.midpoint(x), g.midpoint(y), b.midpoint(z))
+            }
+            _ => fg,
+        };
+        Self {
+            feathers: rgb(feathers),
+            amber: rgb(amber),
+            aqua: rgb(aqua),
+            violet: rgb(violet),
+            shade,
+        }
+    }
+    fn word(&self, column: usize, glyph: char, split: usize) -> Style {
+        if glyph == '█' || glyph.is_ascii_alphabetic() {
+            Style::new()
+                .fg(if column < split {
+                    self.aqua
+                } else {
+                    self.violet
+                })
+                .bold()
+        } else {
+            Style::new().fg(self.shade)
+        }
+    }
+}
+
+fn draw_glyphs(f: &mut Frame, x: u16, y: u16, line: &str, style: impl Fn(usize, char) -> Style) {
+    for (column, glyph) in line.chars().enumerate().filter(|(_, ch)| *ch != ' ') {
+        if let Some(cell) = f.buffer_mut().cell_mut(Position::new(x + column as u16, y)) {
+            cell.set_char(glyph).set_style(style(column, glyph));
+        }
+    }
+}
+
 pub(super) fn draw(f: &mut Frame, area: Rect, canvas: Rect) -> u16 {
-    let plain = std::env::var_os("NO_COLOR").is_some();
-    let (owl, book, word, star) = if plain {
-        (Color::Reset, Color::Reset, Color::Reset, Color::Reset)
-    } else if let Some((ink, _, accent)) = crate::settings::shell_colors() {
-        (accent, accent, ink, accent)
-    } else {
-        (Color::Yellow, Color::Cyan, Color::Reset, Color::Cyan)
-    };
+    let ink = Ink::current();
     let big = canvas.width >= 70 && canvas.height >= 30;
     let small = canvas.width >= 64 && canvas.height >= 22;
     let (art, book_at) = if big { (OWL, 8) } else { (SMALL, 4) };
@@ -84,32 +165,38 @@ pub(super) fn draw(f: &mut Frame, area: Rect, canvas: Rect) -> u16 {
                     && (x.saturating_add(2) < mark.x || x >= mark.right().saturating_add(2)))
             {
                 f.render_widget(
-                    Paragraph::new(s).style(Style::new().fg(star).dim()),
+                    Paragraph::new(s).style(Style::new().fg(ink.shade).dim()),
                     Rect::new(x, y, 1, 1),
                 );
             }
         }
     }
     if !small {
-        f.render_widget(Paragraph::new("BOTUI").fg(word).bold(), mark);
+        let name = &"BOTUI"[..usize::from(mark.width.min(5))];
+        draw_glyphs(f, mark.x, mark.y, name, |x, c| ink.word(x, c, 2));
         return 1;
     }
-    for (i, s) in art.iter().enumerate() {
-        f.render_widget(
-            Paragraph::new(*s).fg(if i < book_at { owl } else { book }),
-            Rect::new(mark.x, mark.y + i as u16, left, 1),
-        );
+    for (i, line) in art.iter().enumerate() {
+        draw_glyphs(f, mark.x, mark.y + i as u16, line, |_, glyph| {
+            if glyph == 'o' || glyph == 'V' {
+                Style::new().fg(ink.amber).bold()
+            } else if i >= book_at {
+                Style::new().fg(if glyph == '|' { ink.violet } else { ink.aqua })
+            } else if matches!(glyph, '\'' | '-' | 'v') {
+                Style::new().fg(ink.amber)
+            } else {
+                Style::new().fg(ink.feathers)
+            }
+        });
     }
     let offset = (h - WORD.len() as u16) / 2;
-    for (i, s) in WORD.iter().enumerate() {
-        f.render_widget(
-            Paragraph::new(*s).fg(word).bold(),
-            Rect::new(
-                mark.x + left + 4,
-                mark.y + offset + i as u16,
-                mark.width - left - 4,
-                1,
-            ),
+    for (i, line) in WORD.iter().enumerate() {
+        draw_glyphs(
+            f,
+            mark.x + left + 4,
+            mark.y + offset + i as u16,
+            line,
+            |x, c| ink.word(x, c, 18),
         );
     }
     h + 1

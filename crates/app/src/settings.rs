@@ -236,9 +236,8 @@ pub fn paint_book(frame: &mut Frame, theme: crate::theme::Theme) {
         }
     }
 }
-pub fn shell_colors() -> Option<(Color, Color, Color)> {
-    let i = SHELL_THEME.get();
-    (i != 0).then(|| crate::shell_theme::ALL[i].colors())
+pub(crate) fn interface_palette() -> crate::shell_theme::Palette {
+    crate::shell_theme::ALL[SHELL_THEME.get()]
 }
 pub fn paint_interface(frame: &mut Frame) {
     paint_with(frame, SHELL_THEME.get());
