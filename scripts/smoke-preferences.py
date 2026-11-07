@@ -14,9 +14,40 @@ def check(tmp):
         t.click('[? Help]',t.see('[? Help]'));t.see('Keyboard shortcuts');guide=t.see('Open the selected item')
         aligned=[next(row.index(label) for row in guide.splitlines() if label in row) for label in ('Open settings','Back / close a panel','Open the selected item')]
         assert len(set(aligned))==1,aligned
-        assert 'series' in guide
+        assert 'series' in guide and 'Sections' in guide
+        # Click the wide index and navigate back by section without losing the Keys tab.
+        t.click('PDF & DjVu', guide)
+        pdf = t.see('Go directly to a page number')
+        assert '▸ PDF & DjVu' in pdf
+        t.keys('[')
+        t.see('Set page width and column gap')
+        t.keys(']')
+        t.see('Go directly to a page number')
         t.run('resize-window','-t','shelf','-x','42','-y','14')
-        t.keys('End');tail=t.see('Book statistics / close');assert any(row.strip(' │')=='book' for row in tail.splitlines()),tail
+        t.keys('End')
+        tail=t.see('Book statistics')
+        lines=tail.splitlines()
+        last=next(i for i,row in enumerate(lines) if 'Book statistics' in row)
+        assert 'close book' in ' '.join(row.strip(' │') for row in lines[last:last+3]),tail
+        assert '▸ PDF & DjVu' not in tail
+        t.keys('Home');t.see('Open settings')
+        # Wheel over the body must advance physical rows, including wrapped descriptions.
+        wheel=bytes.fromhex('1b')+b'[<65;20;7M'
+        for _ in range(4):t.keys('-H',*[f'{b:02x}' for b in wheel])
+        t.wait('Wheel moved past General',lambda f:'Open settings' not in f and 'Keyboard shortcuts' in f)
+        t.keys('/')
+        t.type('nonexistent-command')
+        t.see('No matching shortcuts.')
+        t.keys('C-u')
+        t.type('Ctrl+G')
+        compact = t.see('1 match')
+        assert 'Go directly' in compact and 'to a page' in ' '.join(row.strip(' │') for row in compact.splitlines())
+        t.keys('Enter')
+        t.see('[Esc Clear]')
+        t.keys('Escape')
+        guide=t.see('Find a key or action')
+        t.click('Find a key or action',guide);t.type('related books')
+        t.see('1 match');t.click('[Esc Clear]',t.see('[Esc Clear]'));t.see('Open settings')
         t.run('resize-window','-t','shelf','-x','115','-y','40')
         t.keys('Escape')
         t.click('[F2 Settings]',t.see('[F2 Settings]'));t.click('Interface theme',t.see('Interface theme'))

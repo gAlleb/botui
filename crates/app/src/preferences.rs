@@ -202,7 +202,7 @@ pub fn show(term: &mut AppTerminal, start: Open, ctx: Context) -> io::Result<()>
     let mut tab = if start == Open::Help { 4 } else { 0 };
     let mut state = ListState::default().with_selected(Some(0));
     let mut status = String::new();
-    let mut help_offset = 0usize;
+    let mut guide_view = help::Guide::default();
     let mut prefs = Settings::load()?;
     loop {
         let labels = rows(tab, &prefs);
@@ -211,12 +211,15 @@ pub fn show(term: &mut AppTerminal, start: Open, ctx: Context) -> io::Result<()>
         } else {
             vec![]
         };
-        let mut help_max = 0;
         let mut tabs = [Rect::default(); 5];
         let mut back = Rect::default();
         let mut body = Rect::default();
         term.draw(|f| {
-            let area = crate::centered(f.area(), 82, if tab==4{24}else{(labels.len() as u16+12).max(16)});
+            let area = if tab == 4 {
+                crate::centered(f.area(), 106, 34)
+            } else {
+                crate::centered(f.area(), 82, (labels.len() as u16 + 12).max(16))
+            };
             let block = appearance::block().title(if tab == 4 {
                 " Keyboard shortcuts "
             } else {
@@ -256,7 +259,7 @@ pub fn show(term: &mut AppTerminal, start: Open, ctx: Context) -> io::Result<()>
                     .height
                     .saturating_sub(2 + gap + u16::from(!status.is_empty())),
             );
-            if tab==4 { help_max=help::draw(f,body,&guide,&mut help_offset); } else {
+            if tab==4 { guide_view.draw(f,body,&guide); } else {
             f.render_stateful_widget(
                 List::new(labels.iter().map(String::as_str))
                     .highlight_style(Style::new().reversed()),
@@ -300,11 +303,12 @@ pub fn show(term: &mut AppTerminal, start: Open, ctx: Context) -> io::Result<()>
                     Rect::new(inner.x, inner.bottom() - 2, inner.width, 1),
                 );
             }
-            back = Rect::new(inner.x, inner.bottom() - 1, inner.width.min(10), 1);
-            f.render_widget(Paragraph::new("[Esc Back]").cyan(), back);
+            let back_label = if tab == 4 && guide_view.filtering() { "[Esc Clear]" } else { "[Esc Back]" };
+            back = Rect::new(inner.x, inner.bottom() - 1, inner.width.min(back_label.len() as u16), 1);
+            f.render_widget(Paragraph::new(back_label).cyan(), back);
             f.render_widget(
                 Paragraph::new(if tab == 4 {
-                    "  Tab Sections   ↑↓ Scroll"
+                    if inner.width >= 58 { "  ↑↓ Scroll   [ / ] Section   Tab Switch tab" } else { "  ↑↓ Scroll  [ ] Section" }
                 } else {
                     "  Tab Sections   ↑↓ Choose   Enter Edit"
                 })
@@ -315,7 +319,11 @@ pub fn show(term: &mut AppTerminal, start: Open, ctx: Context) -> io::Result<()>
         })?;
         let mut select = None;
         let mut opened = None;
-        let delta = match crate::settings::read_event()? {
+        let event = crate::settings::read_event()?;
+        if tab == 4 && guide_view.filter_input(&event) {
+            continue;
+        }
+        let delta = match event {
             Event::Key(k) if k.kind != KeyEventKind::Release => match k.code {
                 KeyCode::Esc | KeyCode::Char('q') | KeyCode::F(2) => return Ok(()),
                 KeyCode::Char('?') | KeyCode::F(1) => {
@@ -329,6 +337,10 @@ pub fn show(term: &mut AppTerminal, start: Open, ctx: Context) -> io::Result<()>
                 KeyCode::BackTab | KeyCode::Left => {
                     select = Some((tab + 4) % 5);
                     0
+                }
+                KeyCode::Char('[' | ']') if tab == 4 => {
+                    guide_view.section(k.code == KeyCode::Char(']'));
+                    continue;
                 }
                 KeyCode::Up | KeyCode::Char('k') => -1,
                 KeyCode::Down | KeyCode::Char('j') => 1,
@@ -345,8 +357,17 @@ pub fn show(term: &mut AppTerminal, start: Open, ctx: Context) -> io::Result<()>
             Event::Mouse(m) => {
                 let pos = Position::new(m.column, m.row);
                 match m.kind {
-                    MouseEventKind::Down(MouseButton::Left) if back.contains(pos) => return Ok(()),
+                    MouseEventKind::Down(MouseButton::Left) if back.contains(pos) => {
+                        if tab == 4 && guide_view.filtering() {
+                            guide_view.clear_filter();
+                            continue;
+                        }
+                        return Ok(());
+                    }
                     MouseEventKind::Down(MouseButton::Left) => {
+                        if tab == 4 && guide_view.click(pos) {
+                            continue;
+                        }
                         select = tabs.iter().position(|r| r.contains(pos));
                         if body.contains(pos) {
                             opened = Some(state.offset() + usize::from(m.row - body.y));
@@ -362,13 +383,13 @@ pub fn show(term: &mut AppTerminal, start: Open, ctx: Context) -> io::Result<()>
         };
         if let Some(i) = select {
             tab = i;
-            help_offset = 0;
+            guide_view = help::Guide::default();
             state = ListState::default().with_selected(Some(0));
             status.clear();
             continue;
         }
         if tab == 4 {
-            help_offset = help_offset.saturating_add_signed(delta).min(help_max);
+            guide_view.scroll(delta);
             continue;
         }
         if let Some(i) = opened.filter(|&i| i < labels.len() && tab != 4) {
