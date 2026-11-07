@@ -6,9 +6,28 @@ use std::{
     io::{self, Write},
     sync::atomic::{AtomicBool, Ordering},
 };
-use tempfile::{Builder, TempPath};
+use tempfile::{Builder, NamedTempFile, TempPath};
 
-const MAX_FILE: u64 = 512 << 20;
+pub(crate) fn download_limit() -> io::Result<u64> {
+    Ok(u64::from(crate::settings::Settings::load()?.max_download_mib) * botui_transfer::MIB)
+}
+
+/// Large editions are staged in the user's disk cache instead of the system
+/// temporary directory, which is often a small RAM-backed filesystem.
+pub(crate) fn staging(kind: FileKind) -> io::Result<NamedTempFile> {
+    use std::path::PathBuf;
+    let root = std::env::var_os("XDG_CACHE_HOME")
+        .map(PathBuf::from)
+        .filter(|p| p.is_absolute())
+        .or_else(|| std::env::var_os("HOME").map(|p| PathBuf::from(p).join(".cache")))
+        .ok_or(io::ErrorKind::NotFound)?;
+    let dir = root.join("botui/downloads");
+    std::fs::create_dir_all(&dir)?;
+    Builder::new()
+        .prefix("edition-")
+        .suffix(&format!(".{}", kind.label().to_ascii_lowercase()))
+        .tempfile_in(dir)
+}
 
 pub(crate) fn fetch(
     api: &BookOrbit,
@@ -21,47 +40,13 @@ pub(crate) fn fetch(
         .as_deref()
         .and_then(FileKind::from_extension)
         .ok_or("Book information is available for this format")?;
-    let suffix = format!(".{}", kind.label().to_ascii_lowercase());
-    if file.size_bytes.is_some_and(|size| size > MAX_FILE) {
-        return Err("Book exceeds the 512 MiB download limit".into());
+    let limit = download_limit()?;
+    if let Some(size) = file.size_bytes {
+        botui_transfer::check_size(size, limit)?;
     }
-    let mut staging = Builder::new().prefix("botui-").suffix(&suffix).tempfile()?;
-    let mut writer = BookWriter {
-        file: staging.as_file_mut(),
-        cancelled,
-    };
-    writer.check()?;
-    let count = api.download(token, file.id, &mut writer, MAX_FILE)?;
-    writer.check()?;
-    if count == 0 {
-        return Err("Server returned an empty book".into());
-    }
-    Ok(staging.into_temp_path())
-}
-
-struct BookWriter<'a> {
-    file: &'a mut std::fs::File,
-    cancelled: &'a AtomicBool,
-}
-
-impl BookWriter<'_> {
-    fn check(&self) -> io::Result<()> {
-        if self.cancelled.load(Ordering::Relaxed) {
-            Err(io::Error::other("Download cancelled"))
-        } else {
-            Ok(())
-        }
-    }
-}
-
-impl Write for BookWriter<'_> {
-    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        self.check()?;
-        self.file.write(buf)
-    }
-    fn flush(&mut self) -> io::Result<()> {
-        self.file.flush()
-    }
+    let mut destination = staging(kind)?;
+    api.download(token, file.id, destination.as_file_mut(), limit, cancelled)?;
+    Ok(destination.into_temp_path())
 }
 
 pub fn downloads() -> io::Result<std::path::PathBuf> {
@@ -133,6 +118,7 @@ pub fn keep(
         &digest[..16],
         kind.label().to_lowercase()
     ));
+    botui_transfer::check_cancel(cancel)?;
     match file.persist_noclobber(&dest) {
         Ok(_) => Ok(dest),
         Err(e) if e.error.kind() == io::ErrorKind::AlreadyExists => Ok(dest),

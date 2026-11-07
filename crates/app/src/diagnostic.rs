@@ -58,16 +58,16 @@ fn check(session: &Session, query: &str) -> Result<()> {
         let located = if with_cfi.is_empty() {
             0
         } else {
-            let mut file = tempfile::Builder::new()
-                .suffix(&format!(".{kind}"))
-                .tempfile()?;
-            session.with_token(|api, t| {
-                file.as_file_mut().set_len(0)?;
-                use std::io::Seek;
-                file.as_file_mut().rewind()?;
-                api.download(t, f.id, file.as_file_mut(), 512 << 20)
+            let edition = crate::catalog::BookFile {
+                id: f.id,
+                format: f.format.clone(),
+                size_bytes: f.size_bytes,
+                role: f.role.clone(),
+            };
+            let file = session.with_token(|api, t| {
+                crate::cache::fetch(api, t, &edition, &AtomicBool::new(false))
             })?;
-            let d = botui_formats::open_document(file.path())
+            let d = botui_formats::open_document(&file)
                 .map_err(|e| std::io::Error::other(e.to_string()))?;
             with_cfi
                 .iter()

@@ -68,7 +68,7 @@ impl Catalog {
             Search::Json(base, s) => json_url(base, s, terms),
             Search::Template(base, template) => expand(base, template, terms),
             Search::Description(u) => {
-                let r = self.get(u.clone(), "application/opensearchdescription+xml", 15)?;
+                let r = self.get(u.clone(), "application/opensearchdescription+xml", Some(15))?;
                 let base = r.url().clone();
                 let data = bounded(r, 256 << 10)?;
                 let doc = roxmltree::Document::parse(std::str::from_utf8(&data)?)?;

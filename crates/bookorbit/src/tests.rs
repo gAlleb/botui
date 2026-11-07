@@ -1,4 +1,5 @@
 use super::*;
+use crate::transport::copy_bounded;
 use std::io::{BufRead, BufReader, Write};
 use std::net::TcpListener;
 use std::thread;
@@ -199,14 +200,26 @@ fn native_session_catalog_and_selected_file_routes() {
 
     let mut dest = Vec::new();
     let (download, req, _) = exchange("200 OK", "application/pdf", b"%PDF-data", |s| {
-        s.download(&token, 82, &mut dest, 50)
+        s.download(
+            &token,
+            82,
+            &mut dest,
+            50,
+            &std::sync::atomic::AtomicBool::new(false),
+        )
     });
     assert!(req.starts_with("GET /shelf/api/v1/books/files/82/serve HTTP/1.1\r\n"));
     assert_eq!(download.unwrap(), 9);
     assert_eq!(dest, b"%PDF-data");
     dest.clear();
     let (oversize, _, _) = exchange("200 OK", "application/pdf", b"12345", |s| {
-        s.download(&token, 82, &mut dest, 2)
+        s.download(
+            &token,
+            82,
+            &mut dest,
+            2,
+            &std::sync::atomic::AtomicBool::new(false),
+        )
     });
     assert!(oversize.is_err());
     assert!(dest.is_empty());
@@ -235,7 +248,13 @@ fn explains_expired_credentials_and_oidc_without_echoing_remote_error_text() {
     assert!(is_unauthorized(expired.unwrap_err().as_ref()));
     let mut dest = Vec::new();
     let (proxy, _, _) = exchange("200 OK", "text/html; charset=utf-8", b"<html>SSO", |s| {
-        s.download("token", 2, &mut dest, 100)
+        s.download(
+            "token",
+            2,
+            &mut dest,
+            100,
+            &std::sync::atomic::AtomicBool::new(false),
+        )
     });
     assert!(proxy.is_err());
     assert!(dest.is_empty());

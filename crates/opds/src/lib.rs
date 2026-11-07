@@ -13,7 +13,7 @@ use std::{
     error::Error,
     io::{self, Read, Write},
     net::IpAddr,
-    sync::atomic::{AtomicBool, Ordering},
+    sync::atomic::AtomicBool,
     time::Duration,
 };
 pub type Result<T> = std::result::Result<T, Box<dyn Error + Send + Sync>>;
@@ -79,14 +79,13 @@ impl Catalog {
     pub fn root(&self) -> Url {
         self.origin.clone()
     }
-    fn get(&self, mut href: Url, accept: &str, timeout: u64) -> Result<Response> {
+    fn get(&self, mut href: Url, accept: &str, timeout: Option<u64>) -> Result<Response> {
         for _ in 0..5 {
             href = validated(href)?;
-            let mut req = self
-                .http
-                .get(href.clone())
-                .header("Accept", accept)
-                .timeout(Duration::from_secs(timeout));
+            let mut req = self.http.get(href.clone()).header("Accept", accept);
+            if let Some(seconds) = timeout {
+                req = req.timeout(Duration::from_secs(seconds));
+            }
             if href.origin() == self.origin.origin()
                 && let Some((u, p)) = &self.auth
             {
@@ -111,7 +110,7 @@ impl Catalog {
         Err("Too many OPDS redirects".into())
     }
     pub fn feed(&self, href: Url) -> Result<Feed> {
-        let response = self.get(href, "application/opds+json, application/atom+xml, application/opds-publication+json, application/xml;q=0.8, application/json;q=0.8", 20)?;
+        let response = self.get(href, "application/opds+json, application/atom+xml, application/opds-publication+json, application/xml;q=0.8, application/json;q=0.8", Some(20))?;
         let base = response.url().clone();
         let bytes = bounded(response, 4 << 20)?;
         let text = std::str::from_utf8(&bytes)?
@@ -124,33 +123,38 @@ impl Catalog {
         }
     }
     pub fn cover(&self, href: Url) -> Result<Vec<u8>> {
-        bounded(self.get(href, "image/*", 12)?, 2 << 20)
+        bounded(self.get(href, "image/*", Some(12))?, 2 << 20)
     }
-    pub fn download(&self, href: Url, writer: &mut dyn Write, cancel: &AtomicBool) -> Result<()> {
-        let resp = self.get(href, "*/*", 180)?;
+    pub fn download(
+        &self,
+        href: Url,
+        writer: &mut dyn Write,
+        cancel: &AtomicBool,
+        limit: u64,
+    ) -> Result<()> {
+        botui_transfer::check_cancel(cancel)?;
+        // Keep the blocking client's per-read timeout without a total transfer deadline.
+        let resp = self.get(href, "*/*", None)?;
+        if resp.status() != reqwest::StatusCode::OK {
+            return Err("OPDS returned an incomplete book.".into());
+        }
+        if resp
+            .headers()
+            .get(reqwest::header::CONTENT_TYPE)
+            .and_then(|s| s.to_str().ok())
+            .is_some_and(|s| {
+                s.split(';')
+                    .next()
+                    .unwrap_or_default()
+                    .trim()
+                    .eq_ignore_ascii_case("text/html")
+            })
+        {
+            return Err("OPDS returned an HTML page instead of a book.".into());
+        }
         let expected = resp.content_length();
-        let limit = 512 << 20;
-        if expected.is_some_and(|n| n > limit) {
-            return Err("File exceeds 512 MiB".into());
-        }
-        let mut src = resp.take(limit + 1);
-        let mut buf = [0; 32768];
-        let mut count = 0;
-        while !cancel.load(Ordering::Acquire) {
-            let n = src.read(&mut buf)?;
-            if n == 0 {
-                if count > 0 && expected.is_none_or(|len| len == count) {
-                    return Ok(());
-                }
-                break;
-            }
-            count += n as u64;
-            if count > limit {
-                break;
-            }
-            writer.write_all(&buf[..n])?;
-        }
-        Err("OPDS transfer interrupted or content length mismatch.".into())
+        botui_transfer::stream(resp, writer, expected, limit, cancel)?;
+        Ok(())
     }
 }
 fn bounded(r: Response, limit: u64) -> Result<Vec<u8>> {

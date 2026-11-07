@@ -20,7 +20,7 @@ use reqwest::{
     redirect::Policy,
 };
 use std::{error::Error, io::Write, time::Duration};
-use transport::{HttpFailure, api_root, checked, copy_bounded, decode, raw_bounded};
+use transport::{HttpFailure, api_root, checked, decode, raw_bounded};
 
 pub type Result<T> = std::result::Result<T, Box<dyn Error + Send + Sync>>;
 
@@ -176,11 +176,14 @@ impl BookOrbit {
         file_id: u64,
         writer: impl Write,
         limit: u64,
+        cancel: &std::sync::atomic::AtomicBool,
     ) -> Result<u64> {
+        botui_transfer::check_cancel(cancel)?;
         let path = format!("books/files/{file_id}/serve");
+        // The blocking client's timeout bounds each read. Setting a request
+        // timeout here would also cut off a large, steadily progressing book.
         let response = checked(
             self.authorized(Method::GET, &path, token)?
-                .timeout(Duration::from_secs(600))
                 .send()
                 .map_err(|e| e.without_url())?,
         )?;
@@ -193,14 +196,9 @@ impl BookOrbit {
             );
         }
         let length = response.content_length();
-        if length.is_some_and(|n| n > limit) {
-            return Err("File exceeds the size limit.".into());
-        }
-        let count = copy_bounded(response, writer, limit)?;
-        if length.is_some_and(|n| n != count) || count == 0 {
-            return Err("Incomplete file download.".into());
-        }
-        Ok(count)
+        Ok(botui_transfer::stream(
+            response, writer, length, limit, cancel,
+        )?)
     }
 
     pub fn thumbnail(&self, token: &str, book_id: u64) -> Result<Option<Vec<u8>>> {

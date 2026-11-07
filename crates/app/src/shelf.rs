@@ -656,11 +656,12 @@ impl Shelf {
                 return;
             };
             self.fetch("Downloading from OPDS…", move |cancel| {
-                let mut f = tempfile::Builder::new()
-                    .prefix("botui-opds-")
-                    .suffix(&format!(".{}", kind.label().to_lowercase()))
-                    .tempfile()?;
-                cat.download(href, f.as_file_mut(), cancel)?;
+                let limit = crate::cache::download_limit()?;
+                if let Some(size) = file.size_bytes {
+                    botui_transfer::check_size(size, limit)?;
+                }
+                let mut f = crate::cache::staging(kind)?;
+                cat.download(href, f.as_file_mut(), cancel, limit)?;
                 if keep {
                     crate::cache::keep(f.path(), &title, kind.label(), None, cancel)?;
                     Ok(Loaded::Kept)

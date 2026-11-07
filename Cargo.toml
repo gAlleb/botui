@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/core", "crates/formats", "crates/store", "crates/app", "crates/bookorbit", "crates/fixed", "crates/opds"]
+members = ["crates/core", "crates/formats", "crates/store", "crates/app", "crates/bookorbit", "crates/fixed", "crates/opds", "crates/transfer"]
 default-members = ["crates/app"]
 resolver = "3"
 
