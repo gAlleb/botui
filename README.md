@@ -67,7 +67,6 @@ Run these commands from the repository root. Each method below puts the Linux ex
 mise trust
 mise install rust
 mise run install
-./dist/botui
 ```
 
 The install task builds the release for your machine. To build static binaries for **both x86_64 and aarch64**, run `mise install` and `mise run dist`. The two binaries and `SHA256SUMS` appear in `./dist/`.
@@ -90,6 +89,12 @@ sha256sum --ignore-missing -c SHA256SUMS &&
   install -Dm755 "botui-$(uname -m)" ./dist/botui
 ```
 
+To run `botui` by name in this shell, add the build directory to your `PATH`:
+
+```sh
+export PATH="$PWD/dist:$PATH"
+```
+
 ### Format support
 
 | Format | Tools needed for reading |
@@ -103,10 +108,10 @@ Kitty displays pages and covers as raster images. Other terminals can use colore
 ## First run
 
 ```sh
-./dist/botui                          # Choose a library
-./dist/botui --library "$HOME/Books"  # Remember a local folder
-./dist/botui ./examples/first-light.fb2
-./dist/botui --resume                 # Continue your last unfinished local book
+botui                          # Choose a library
+botui --library "$HOME/Books"  # Remember a local folder
+botui ./examples/first-light.fb2
+botui --resume                 # Continue your last unfinished local book
 ```
 
 On the start screen, press **Enter** for your local library, **B** for BookOrbit or **P** for OPDS. On a shelf, press **/** to search as you type. Use the arrows and **Enter**, or click a book.
@@ -124,7 +129,7 @@ On the start screen, press **Enter** for your local library, **B** for BookOrbit
 
 Press **F2** for settings or **?** for shortcuts on the current screen. The interface starts in **Catppuccin Mocha**. Choose **Terminal** to follow your terminal palette.
 
-Run `./dist/botui --config-path` to locate the TOML file. The [configuration example](config.example.toml) covers library paths, appearance, key bindings and BookOrbit sign-in with a password or password command.
+Run `botui --config-path` to locate the TOML file. The [configuration example](config.example.toml) covers library paths, appearance, key bindings and BookOrbit sign-in with a password or password command.
 
 See the [user guide](docs/guide.md) for offline sync, bookmarks, notes, footnotes and PDF controls.
 

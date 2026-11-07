@@ -5,14 +5,14 @@
 ## First run
 
 ```sh
-./dist/botui                                      # choose a source
-./dist/botui --library "$HOME/Books"              # remember a local library folder
-./dist/botui --local                              # reopen the saved folder
-./dist/botui "./examples/first-light.fb2"         # open a file directly
-./dist/botui --resume                             # continue your last unfinished local book
-./dist/botui --server https://books.example.org   # BookOrbit installation root
-./dist/botui --opds https://books.example.org/opds
-./dist/botui --config-path                        # create or locate the config file
+botui                                      # choose a source
+botui --library "$HOME/Books"              # remember a local library folder
+botui --local                              # reopen the saved folder
+botui "./examples/first-light.fb2"         # open a file directly
+botui --resume                             # continue your last unfinished local book
+botui --server https://books.example.org   # BookOrbit installation root
+botui --opds https://books.example.org/opds
+botui --config-path                        # create or locate the config file
 ```
 
 On the start screen, move the selection to see the description and controls for that source. The local library is selected at startup. Press **Enter** or **L** to open it, **B** for BookOrbit, **P** for OPDS, **D** for BookOrbit offline downloads or **O** for OPDS downloads.
@@ -80,7 +80,7 @@ Before opening an edition, its card shows the author, series, synopsis, publishe
 
 **H Put on hold** removes a book from active reading and keeps your place; **H Resume reading** puts it back. **X Reset reading state** requires confirmation, clears personal progress across the book’s editions and changes it to Unread on BookOrbit. It keeps files, bookmarks and notes.
 
-Reaching the end sends 100%; BookOrbit applies its own completion policy. Use `./dist/botui --check-bookmarks "Title"` to check edition-specific bookmark addresses without changing progress.
+Reaching the end sends 100%; BookOrbit applies its own completion policy. Use `botui --check-bookmarks "Title"` to check edition-specific bookmark addresses without changing progress.
 
 See the [book details before reading](images/book-details.png) and [navigation with the libraries folded](images/navigation-folded.png).
 
@@ -141,7 +141,7 @@ In **G Bookmarks**, press **Delete** on the selection or click **[×]** beside a
 
 ## Configuration
 
-Run `./dist/botui --config-path` to print the exact path. The default is `~/.config/botui/config.toml`. The same TOML file holds the library root, interface, reader bindings and BookOrbit account. The default UI language is English. See the [commented configuration](../config.example.toml).
+Run `botui --config-path` to print the exact path. The default is `~/.config/botui/config.toml`. The same TOML file holds the library root, interface, reader bindings and BookOrbit account. The default UI language is English. See the [commented configuration](../config.example.toml).
 
 On first launch the interface uses **Catppuccin Mocha**; existing theme choices are preserved. **F2 → Reader → First-line indent** accepts 0–8 cells for the first line of prose (0 turns it off).
 
