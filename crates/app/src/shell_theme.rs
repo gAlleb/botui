@@ -92,18 +92,24 @@ impl Palette {
 #[derive(Clone, Copy, Default)]
 pub struct TerminalPaper {
     pub bg: Option<Color>,
+    pub fg: Option<Color>,
     kitty: bool,
 }
 impl TerminalPaper {
     pub fn detect() -> Self {
-        use terminal_colorsaurus::{QueryOptions, background_color};
+        use terminal_colorsaurus::{QueryOptions, background_color, color_palette};
         let options = QueryOptions::default();
         let mut result = Self {
             kitty: std::env::var_os("KITTY_WINDOW_ID").is_some()
                 || std::env::var("TERM").is_ok_and(|v| v == "xterm-kitty"),
             ..Default::default()
         };
-        if let Ok(answer) = background_color(options) {
+        if let Ok(colors) = color_palette(options) {
+            let (r, g, b) = colors.foreground.scale_to_8bit();
+            result.fg = Some(Color::Rgb(r, g, b));
+            let (r, g, b) = colors.background.scale_to_8bit();
+            result.bg = Some(Color::Rgb(r, g, b));
+        } else if let Ok(answer) = background_color(QueryOptions::default()) {
             let (r, g, b) = answer.scale_to_8bit();
             result.bg = Some(Color::Rgb(r, g, b));
         }

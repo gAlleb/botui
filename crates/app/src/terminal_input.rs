@@ -26,21 +26,23 @@ struct Input {
 pub(crate) fn read(
     paper: &'static LocalKey<Cell<TerminalPaper>>,
     timeout: Option<Duration>,
+    watch: bool,
 ) -> io::Result<Option<Event>> {
     let deadline = timeout.map(|t| Instant::now() + t);
-    INPUT.with_borrow_mut(|s| s.read(paper, deadline))
+    INPUT.with_borrow_mut(|s| s.read(paper, deadline, watch))
 }
 impl Input {
     fn read(
         &mut self,
         paper: &'static LocalKey<Cell<TerminalPaper>>,
         deadline: Option<Instant>,
+        watch: bool,
     ) -> io::Result<Option<Event>> {
         loop {
             if let Some(e) = self.queued.pop_front() {
                 return Ok(Some(e));
             }
-            if !crate::settings::opaque() || paper.get().bg.is_none() {
+            if !watch || paper.get().bg.is_none() {
                 self.next = None;
             } else {
                 let now = Instant::now();

@@ -29,6 +29,10 @@ impl LineInput {
         format!("{visible}▏{after}")
     }
 
+    pub fn value(&self) -> &str {
+        &self.value
+    }
+
     pub fn finish(self, secret: bool) -> String {
         if secret {
             self.value

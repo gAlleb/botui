@@ -9,28 +9,50 @@ use image::DynamicImage;
 use lru::LruCache;
 use std::{io, num::NonZeroUsize, path::Path, sync::mpsc::TryRecvError};
 type Key = (u32, u16);
-pub(super) struct Pages {
-    appearance: ScanAppearance,
+type Ink = ([u8; 3], [u8; 3]);
+struct Lane {
+    renderer: std::sync::Arc<std::sync::Mutex<botui_fixed::PageReader>>,
     worker: Worker,
     job: Option<(Key, Ticket<io::Result<Picture>>)>,
+}
+pub(super) struct Pages {
+    appearance: ScanAppearance,
+    colors: Option<Ink>,
+    lanes: [Lane; 2],
+    last: u32,
+    backward: bool,
     cache: LruCache<Key, Result<Picture, String>>,
 }
 impl Pages {
-    pub fn new(appearance: ScanAppearance) -> Self {
+    pub fn new(appearance: ScanAppearance, path: &Path, kind: FileKind) -> Self {
         Self {
             appearance,
-            worker: Worker::new(),
-            job: None,
-            cache: LruCache::new(NonZeroUsize::new(4).unwrap()),
+            colors: None,
+            lanes: std::array::from_fn(|_| Lane {
+                renderer: std::sync::Arc::new(std::sync::Mutex::new(botui_fixed::PageReader::new(
+                    path, kind,
+                ))),
+                worker: Worker::new(),
+                job: None,
+            }),
+            last: 0,
+            backward: false,
+            cache: LruCache::new(NonZeroUsize::new(8).unwrap()),
         }
     }
-    pub fn set_appearance(&mut self, appearance: ScanAppearance) {
+    pub fn configure(&mut self, appearance: ScanAppearance, colors: Option<Ink>) {
+        if self.appearance == appearance && self.colors == colors {
+            return;
+        }
         self.appearance = appearance;
-        self.job = None;
+        self.colors = colors;
+        for lane in &mut self.lanes {
+            lane.job = None;
+        }
         self.cache.clear();
     }
     pub fn busy(&self) -> bool {
-        self.job.is_some()
+        self.lanes.iter().any(|l| l.job.is_some())
     }
     pub fn get(&self, page: u32, side: u16) -> Option<&Picture> {
         self.cache.peek(&(page, side))?.as_ref().ok()
@@ -43,7 +65,8 @@ impl Pages {
             .map(String::as_str)
     }
     pub fn poll(&mut self) {
-        if let Some((k, t)) = &self.job {
+        for lane in &mut self.lanes {
+            let Some((k, t)) = &lane.job else { continue };
             let result = match t.receiver.try_recv() {
                 Ok(result) => Some(result.map_err(|error| error.to_string())),
                 Err(TryRecvError::Empty) => None,
@@ -51,55 +74,113 @@ impl Pages {
             };
             if let Some(result) = result {
                 self.cache.put(*k, result);
-                self.job = None;
+                lane.job = None;
             }
         }
     }
-    pub fn update(
-        &mut self,
-        path: &Path,
-        kind: FileKind,
-        first: u32,
-        count: u32,
-        cols: u16,
-        side: u16,
-    ) {
-        let visible_end = first.saturating_add(u32::from(cols) - 1).min(count);
-        let end = visible_end.saturating_add(2).min(count);
-        let capacity = NonZeroUsize::new(usize::from(cols) + 2).unwrap();
-        if self.cache.cap() != capacity {
-            self.cache.resize(capacity);
+    pub fn update(&mut self, first: u32, count: u32, cols: u16, side: u16) {
+        if first != self.last {
+            self.backward = first < self.last;
+            self.last = first;
         }
-        let relevant = |k: Key| k.1 == side && (first..=end).contains(&k.0);
-        if self.job.as_ref().is_some_and(|(k, _)| !relevant(*k)) {
-            self.job = None;
+        let end = first.saturating_add(u32::from(cols) - 1).min(count);
+        let mut wanted: Vec<u32> = (first..=end).collect();
+        // Limit speculative work on very large rasters, never evict a visible slide.
+        let radius = if side > 1600 { 2 } else { 3 };
+        for d in 1..=radius {
+            let left = first.checked_sub(d).filter(|p| *p > 0);
+            let right = end.checked_add(d).filter(|p| *p <= count);
+            wanted.extend(
+                if self.backward {
+                    [left, right]
+                } else {
+                    [right, left]
+                }
+                .into_iter()
+                .flatten(),
+            );
         }
-        for i in first..=visible_end {
+        self.cache
+            .resize(NonZeroUsize::new(wanted.len() + 1).unwrap());
+        for &i in wanted.iter().rev() {
             self.cache.promote(&(i, side));
         }
-        if self.job.is_none()
-            && let Some(i) = (first..=end).find(|i| !self.cache.contains(&(*i, side)))
-        {
-            let path = path.to_owned();
+        let missing: Vec<_> = wanted
+            .iter()
+            .copied()
+            .filter(|n| !self.cache.contains(&(*n, side)))
+            .take(self.lanes.len())
+            .collect();
+        for lane in &mut self.lanes {
+            if lane
+                .job
+                .as_ref()
+                .is_some_and(|((p, s), _)| *s != side || !missing.contains(p))
+            {
+                lane.job = None;
+            }
+        }
+        for i in missing {
+            if self
+                .lanes
+                .iter()
+                .any(|l| l.job.as_ref().is_some_and(|(k, _)| *k == (i, side)))
+            {
+                continue;
+            }
+            let lane = self.lanes.iter_mut().find(|l| l.job.is_none()).unwrap();
+            let renderer = lane.renderer.clone();
             let appearance = self.appearance;
-            self.job = Some((
+            let colors = self.colors;
+            lane.job = Some((
                 (i, side),
-                self.worker.start(move |cancel| {
-                    let image = botui_fixed::page(&path, kind, i, side, cancel)?;
-                    Ok(Picture::new(apply_appearance(image, appearance)))
+                lane.worker.start(move |cancel| {
+                    let image = renderer
+                        .lock()
+                        .map_err(|_| io::Error::other("Page worker interrupted"))?
+                        .render(i, side, cancel)?;
+                    Ok(Picture::new(apply_appearance(image, appearance, colors)))
                 }),
             ));
         }
     }
 }
 
-fn apply_appearance(image: DynamicImage, appearance: ScanAppearance) -> DynamicImage {
+fn apply_appearance(
+    image: DynamicImage,
+    appearance: ScanAppearance,
+    colors: Option<Ink>,
+) -> DynamicImage {
     let mut image = match appearance.quarter_turns % 4 {
         1 => image.rotate90(),
         2 => image.rotate180(),
         3 => image.rotate270(),
         _ => image,
     };
+    if let Some((bg, fg)) = colors {
+        let tone: [[u8; 3]; 256] = std::array::from_fn(|i| {
+            std::array::from_fn(|k| {
+                ((u32::from(fg[k]) * (255 - i as u32) + u32::from(bg[k]) * i as u32 + 127) / 255)
+                    as u8
+            })
+        });
+        let mut rgb = image.into_rgb8();
+        for pixel in rgb.pixels_mut() {
+            let [r, g, b] = pixel.0;
+            let saturation = r.max(g).max(b) - r.min(g).min(b);
+            if saturation >= 48 {
+                continue;
+            } // Keep colored diagrams and illustrations.
+            let grey =
+                (54 * usize::from(r) + 183 * usize::from(g) + 19 * usize::from(b) + 128) / 256;
+            let mapped = tone[grey];
+            let keep = u32::from(saturation.saturating_sub(12));
+            pixel.0 = std::array::from_fn(|k| {
+                ((u32::from(mapped[k]) * (36 - keep) + u32::from(pixel.0[k]) * keep) / 36) as u8
+            });
+        }
+        return DynamicImage::ImageRgb8(rgb);
+    }
     if appearance.inverted {
         image.invert();
     }
@@ -138,7 +219,9 @@ mod tests {
             ScanAppearance {
                 quarter_turns: 1,
                 inverted: true,
+                ..Default::default()
             },
+            None,
         )
         .to_luma8();
         assert_eq!(image.dimensions(), (3, 2));

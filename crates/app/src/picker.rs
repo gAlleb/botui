@@ -2,6 +2,7 @@ mod gallery;
 mod index;
 mod info;
 mod navigation;
+mod search;
 use botui_formats::FileKind;
 use info::show_info;
 
@@ -23,7 +24,6 @@ use crate::AppTerminal;
 #[derive(Clone, PartialEq, Eq)]
 enum LocalView {
     Directory,
-    Search(String),
     Reading,
     Recent,
 }
@@ -36,6 +36,7 @@ struct Entry {
 }
 
 pub struct Picker {
+    search: Option<search::Search>,
     source: Option<crate::cache::Source>,
     allowed: Option<std::sync::Arc<std::collections::HashSet<PathBuf>>>,
     index: index::Index,
@@ -74,6 +75,7 @@ impl Picker {
     fn open(dir: PathBuf, source: Option<crate::cache::Source>) -> io::Result<Self> {
         let settings = crate::settings::Settings::load()?;
         let mut picker = Self {
+            search: None,
             source,
             allowed: source
                 .map(|s| s.files(&dir).map(std::sync::Arc::new))
@@ -171,7 +173,6 @@ impl Picker {
             Paragraph::new(match &self.view {
                 LocalView::Reading => "Currently reading".into(),
                 LocalView::Recent => "Recently added".into(),
-                LocalView::Search(q) => format!("Search · {} · {} results", q, self.entries.len()),
                 LocalView::Directory => {
                     use unicode_truncate::UnicodeTruncateStr;
                     let path = self.dir.to_string_lossy();
@@ -281,7 +282,6 @@ impl Picker {
                 "Searching library…"
             } else {
                 match self.view {
-                    LocalView::Search(_) => "No matching books.",
                     LocalView::Reading => "No books currently being read.",
                     _ if self.source.is_some() => "No saved books yet.",
                     _ => "No books or folders here.",
@@ -353,9 +353,7 @@ impl Picker {
     }
 
     fn browse(&mut self, view: LocalView) -> io::Result<()> {
-        if matches!(&view, LocalView::Directory)
-            || matches!(&view,LocalView::Search(q) if q.is_empty())
-        {
+        if matches!(&view, LocalView::Directory) {
             return self.load(&self.dir.clone());
         }
         if view == LocalView::Reading {
@@ -390,14 +388,8 @@ impl Picker {
             self.error = None;
             return Ok(());
         }
-        self.index.start(
-            self.root.clone(),
-            self.allowed.clone(),
-            match &view {
-                LocalView::Search(q) => Some(q),
-                _ => None,
-            },
-        );
+        self.index
+            .start(self.root.clone(), self.allowed.clone(), false);
         self.navigation.show_shelf(&view);
         self.view = view;
         self.entries.clear();
@@ -422,16 +414,6 @@ impl Picker {
         let done = self.index.collect(&mut self.entries);
         if let Some(Err(e)) = done {
             self.error = Some(e.to_string());
-        } else if done.is_some() && matches!(self.view, LocalView::Search(_)) {
-            let selected = self
-                .list
-                .selected()
-                .and_then(|i| self.entries.get(i))
-                .map(|e| e.path.clone());
-            self.entries.sort_by_cached_key(|e| e.name.to_lowercase());
-            if let Some(i) = selected.and_then(|p| self.entries.iter().position(|e| e.path == p)) {
-                self.list.select(Some(i));
-            }
         } else if done.is_some()
             && listing
             && matches!(self.view, LocalView::Recent)
@@ -473,6 +455,12 @@ impl Picker {
             }
         }
         loop {
+            if let Some(search) = &mut self.search {
+                if let Some(path) = search.choose(term)? {
+                    return Ok(Some(path));
+                }
+                self.search = None;
+            }
             self.collect();
             term.draw(|frame| {
                 self.draw(frame);
@@ -600,7 +588,7 @@ impl Picker {
                 || click.is_some_and(|p| self.view_button.contains(p))
             {
                 self.grid_view = !self.grid_view;
-                if !self.index.listing() && !matches!(self.view, LocalView::Search(_)) {
+                if !self.index.listing() {
                     self.warm_directory();
                 }
                 if let Err(e) = crate::settings::Settings::update(|s| s.local_grid = self.grid_view)
@@ -631,21 +619,14 @@ impl Picker {
             if key == Some(KeyCode::Char('/'))
                 || click.is_some_and(|p| self.search_button.contains(p))
             {
-                let q = match &self.view {
-                    LocalView::Search(q) => q.clone(),
-                    _ => String::new(),
-                };
                 let title = match self.source {
                     Some(crate::cache::Source::BookOrbit) => "Search BookOrbit offline downloads",
                     Some(crate::cache::Source::Opds) => "Search OPDS downloads",
                     None => "Search local library",
                 };
-                if let Some(q) =
-                    crate::prompt::edit(term, title, "[ Search ↵ ]", &q, |f| self.draw(f))?
-                    && let Err(e) = self.browse(LocalView::Search(q))
-                {
-                    self.error = Some(e.to_string());
-                }
+                let mut index = self.index.sibling();
+                index.start(self.root.clone(), self.allowed.clone(), true);
+                self.search = Some(search::Search::new(index, title));
                 continue;
             }
             if self.source.is_none() && matches!(key, Some(KeyCode::Char('r' | 'R')))

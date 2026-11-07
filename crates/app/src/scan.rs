@@ -46,6 +46,7 @@ pub fn read_server(
     notices: &mut Vec<String>,
     base: Option<&botui_bookorbit::progress::Progress>,
 ) -> io::Result<(Option<botui_bookorbit::progress::Move>, Option<f64>)> {
+    let _uploads = crate::cover::ScanGraphics;
     let picker = graphics();
     let worker = Worker::new();
     let p = path.to_owned();
@@ -111,7 +112,7 @@ pub fn read_server(
         theme: "terminal".into(),
         ..Saved::default()
     });
-    let mut pages = pages::Pages::new(checkpoint.scan_appearance);
+    let mut pages = pages::Pages::new(checkpoint.scan_appearance, path, kind);
     let mut last_save = opened;
     let mut save_failed = false;
     let mut end_visible;
@@ -119,6 +120,7 @@ pub fn read_server(
     let mut search = search::Search::default();
     let mut history = history::History::default();
     let mut viewer = crate::cover_viewer::Viewer::default();
+    let mut last_sheet: Option<(u32, u16, u16, bool)> = None;
     let mut message = String::new();
     let mut menu = false;
     let mut focus: usize = 0;
@@ -196,6 +198,11 @@ pub fn read_server(
             .max(screen.height.saturating_mul(size.height))
             .clamp(240, 1600);
         let side = (u32::from(side) * u32::from(crop.percent.max(100)) / 100).min(1920) as u16;
+        let appearance = checkpoint.scan_appearance;
+        pages.configure(
+            appearance,
+            appearance.terminal_paper.then(crate::settings::scan_colors),
+        );
         pages.poll();
         let view = flow::Viewport {
             side,
@@ -213,9 +220,22 @@ pub fn read_server(
             } else {
                 cols
             };
-            pages.update(path, kind, n, count, visible, side);
+            pages.update(n, count, visible, side);
         }
         let strip = view.strip(&pages);
+        let (shown, shown_offset) = if pages.get(n, side).is_some() {
+            last_sheet = Some((n, offset, side, scrolling));
+            (n, offset)
+        } else if pages.error(n, side).is_none()
+            && let Some((p, o, s, flow)) = last_sheet
+            && s == side
+            && flow == scrolling
+            && pages.get(p, s).is_some()
+        {
+            (p, o)
+        } else {
+            (n, offset)
+        };
         end_visible = if scrolling {
             strip.end(n, offset)
         } else {
@@ -258,7 +278,7 @@ pub fn read_server(
         let mut footer_buttons = crate::preferences::Buttons::default();
         term.draw(|f| {
             let screen = f.area();
-            sidebar.draw(f, sidebar_area, n, total.unwrap_or(0));
+            sidebar.draw(f, sidebar_area, shown, total.unwrap_or(0));
             let area = Rect {
                 height: body.height.saturating_sub(u16::from(!zen)),
                 ..body
@@ -285,7 +305,11 @@ pub fn read_server(
                     f.render_widget(Paragraph::new(label).cyan(), width_button);
                 }
                 let space = right.saturating_sub(area.x);
-                let mut status = format!(" {}   ·   {} / {}", kind.label(), n, total.unwrap_or(0));
+                let mut status =
+                    format!(" {}   ·   {} / {}", kind.label(), shown, total.unwrap_or(0));
+                if shown != n {
+                    status.push_str(&format!(" → {n}"));
+                }
                 if scrolling {
                     status.push_str(" · Scroll");
                     if crop.percent == 100 {
@@ -301,10 +325,10 @@ pub fn read_server(
                 f.render_widget(Paragraph::new(status).dim(), Rect::new(area.x, y, space, 1));
             }
             if scrolling {
-                strip.draw(f, area, n, offset);
+                strip.draw(f, area, shown, shown_offset);
             } else {
                 for i in 0..cols {
-                    let page_number = n.saturating_add(u32::from(i));
+                    let page_number = shown.saturating_add(u32::from(i));
                     let w = if cols == 2 {
                         area.width.saturating_sub(2) / 2
                     } else {
@@ -319,7 +343,10 @@ pub fn read_server(
                     }
                 }
             }
-            if pages.get(n, side).is_none() && pages.error(n, side).is_none() {
+            if pages.get(shown, side).is_none()
+                && pages.error(shown, side).is_none()
+                && opened.elapsed() >= Duration::from_millis(150)
+            {
                 f.render_widget(
                     Paragraph::new("Rendering page…").centered(),
                     centered(area, 36, 1),
@@ -389,13 +416,13 @@ pub fn read_server(
             || total.is_none()
             || pages.busy();
         let timeout = if busy {
-            Some(Duration::from_millis(60))
+            Some(Duration::from_millis(20))
         } else if dirty {
             Some(interval.saturating_sub(last_save.elapsed()))
         } else {
             None
         };
-        let event = crate::settings::read_event_for(timeout)?;
+        let event = crate::settings::read_scan_event(timeout, appearance.terminal_paper)?;
         let Some(e) = event else {
             continue;
         };
@@ -630,21 +657,27 @@ pub fn read_server(
             41..=43 => {
                 let appearance = &mut checkpoint.scan_appearance;
                 if action == 43 {
-                    appearance.inverted = !appearance.inverted;
+                    (appearance.inverted, appearance.terminal_paper) =
+                        match (appearance.inverted, appearance.terminal_paper) {
+                            (_, true) => (false, false),
+                            (true, false) => (false, true),
+                            (false, false) => (true, false),
+                        };
                 } else {
                     let step = if action == 41 { 1 } else { 3 };
                     appearance.quarter_turns = (appearance.quarter_turns % 4 + step) % 4;
                     crop.x = 128;
                     crop.y = 0;
                 }
-                pages.set_appearance(*appearance);
                 message = format!(
-                    "{}° · {} colors",
+                    "{}° · {}",
                     u16::from(appearance.quarter_turns) * 90,
-                    if appearance.inverted {
-                        "Inverted"
+                    if appearance.terminal_paper {
+                        "Terminal paper"
+                    } else if appearance.inverted {
+                        "Inverted colors"
                     } else {
-                        "Original"
+                        "Original colors"
                     }
                 );
                 dirty = true;

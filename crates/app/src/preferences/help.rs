@@ -63,7 +63,7 @@ pub(super) fn entries(ctx: Context, p: &Settings) -> Vec<Entry> {
                     ("P / R", "Choose a folder / use this folder as the library"),
                     ("I", "File info and external viewer for PDF or DjVu"),
                     ("1 / 2 / 3", "Folders / currently reading / recently added"),
-                    ("/", "Find a file, title, author or series in your library"),
+                    ("/", "Live fuzzy search · type to filter, Enter to open"),
                     ("V / U / F", "Grid or list / borders / background"),
                 ],
             ),
@@ -108,7 +108,7 @@ pub(super) fn entries(ctx: Context, p: &Settings) -> Vec<Entry> {
                         "r / Shift+R",
                         "Rotate the document clockwise / counterclockwise",
                     ),
-                    ("V", "Switch between original and inverted page colors"),
+                    ("V", "Cycle original, inverted and terminal paper"),
                     ("Home / End", "First / last page"),
                     ("/", "Find in the text layer"),
                     (

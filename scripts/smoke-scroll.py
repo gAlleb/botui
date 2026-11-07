@@ -104,9 +104,42 @@ sys.stdout.write('Lighthouse on the north shore\\f\\fLighthouse by the southern 
         t.keys('Right');t.see('3 / 3');stop(t)
         assert saved(d)['block']==2, 'The damaged page prevented saving the next readable page'
     finally: t.run('kill-server',required=False)
+def slow_jump(d):
+    # Hold a distant page in the renderer; the old sheet must remain readable.
+    d.mkdir()
+    book=d/'nine.pdf'
+    book.write_bytes(s.pdf(True,300,440,(.3,)*9))
+    bins=d/'bin';bins.mkdir()
+    renderer=bins/'pdftoppm'
+    renderer.write_text("""#!/usr/bin/env python3
+import sys,time
+from pathlib import Path
+d=Path(__file__).parent
+n=int(sys.argv[sys.argv.index('-f')+1])
+with (d/'calls').open('a') as f: print(n,file=f)
+if n==8:
+    while not (d/'release').exists(): time.sleep(.01)
+value={1:76,7:173,8:205}.get(n,110)
+sys.stdout.buffer.write(b'P6\\n20 30\\n255\\n'+bytes([value])*1800)
+""")
+    renderer.chmod(0o755)
+    t=start(d,book,'PATH='+str(bins)+os.pathsep+os.environ['PATH'])
+    try:
+        t.see('::::::::')
+        t.keys('p');t.see('Go to page');t.keys('8','Enter')
+        t.wait('Visible sheet stays on screen until the destination arrives',
+               lambda f: '→ 8' in f and '::::::::' in f and 'Rendering page' not in f)
+        (bins/'release').touch()
+        t.wait('New sheet replaces old sheet',lambda f: '8 / 9' in f and '########' in f)
+        t.keys('Left');t.wait('Reverse page', lambda f:'7 / 9' in f and '********' in f)
+        t.keys('Right');t.see('########')
+        calls=(bins/'calls').read_text().splitlines()
+        assert calls.count('8')==1,calls
+    finally:t.run('kill-server',required=False)
+
 if __name__=='__main__':
     with tempfile.TemporaryDirectory(prefix='botui-flow-') as tmp:
-        d=Path(tmp);damaged_sheet_and_search(d/'mixed');text_scroll(d/'text');pdf=d/'pages.pdf';pdf.write_bytes(s.pdf(True));scan_scroll(d/'pdf',pdf)
+        d=Path(tmp);slow_jump(d/'jump');damaged_sheet_and_search(d/'mixed');text_scroll(d/'text');pdf=d/'pages.pdf';pdf.write_bytes(s.pdf(True));scan_scroll(d/'pdf',pdf)
         if shutil.which('c44') and shutil.which('djvm'):
             sheets=[]
             for i,color in enumerate((76,204,128)):

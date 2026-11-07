@@ -54,6 +54,14 @@ impl Index {
             cache: Arc::new(Mutex::new(LruCache::new(NonZeroUsize::new(8192).unwrap()))),
         }
     }
+    pub fn sibling(&self) -> Self {
+        Self {
+            cache: self.cache.clone(),
+            worker: Worker::new(),
+            run: None,
+            batches: None,
+        }
+    }
     pub fn listing(&self) -> bool {
         self.batches.is_some()
     }
@@ -87,23 +95,16 @@ impl Index {
         &mut self,
         root: PathBuf,
         allowed: Option<Arc<std::collections::HashSet<PathBuf>>>,
-        query: Option<&str>,
+        search: bool,
     ) {
         self.clear();
         let cache = self.cache.clone();
-        let query = query.map(key);
         let (tx, rx) = mpsc::channel();
         self.batches = Some(rx);
-        self.run = Some(self.worker.start(move |stop| {
-            scan(
-                &root,
-                allowed.as_deref(),
-                query.as_deref(),
-                stop,
-                &cache,
-                tx,
-            )
-        }));
+        self.run = Some(
+            self.worker
+                .start(move |stop| scan(&root, allowed.as_deref(), search, stop, &cache, tx)),
+        );
     }
     pub fn collect(&mut self, entries: &mut Vec<Entry>) -> Option<io::Result<()>> {
         let done = match self.run.as_ref()?.receiver.try_recv() {
@@ -128,12 +129,12 @@ impl Index {
 fn scan(
     root: &Path,
     allowed: Option<&std::collections::HashSet<PathBuf>>,
-    query: Option<&str>,
+    search: bool,
     stop: &AtomicBool,
     cache: &Cache,
     tx: mpsc::Sender<Vec<Entry>>,
 ) -> io::Result<()> {
-    let words: Vec<_> = query.unwrap_or_default().split_whitespace().collect();
+    let mut enrich = Vec::new();
     let mut dirs = vec![root.to_owned()];
     let mut dated = Vec::new();
     let mut batch = Vec::new();
@@ -174,24 +175,16 @@ fn scan(
                 .unwrap_or(&path)
                 .to_string_lossy()
                 .into_owned();
-            if query.is_some() {
-                let meta = metadata(&path, kind, cache);
-                let mut hay = key(&name);
-                if let Some(m) = &meta {
-                    for v in std::iter::once(&m.title).chain(&m.authors).chain(&m.series) {
-                        hay.push(' ');
-                        hay.push_str(&key(v));
-                    }
-                }
-                if !words.iter().all(|w| hay.contains(w)) {
-                    continue;
+            if search {
+                if kind.readable() {
+                    enrich.push((path.clone(), name.clone(), kind));
                 }
                 batch.push(Entry {
                     path,
                     name,
                     percent: None,
                     kind: Some(kind),
-                    meta,
+                    meta: None,
                 });
                 if batch.len() >= 48 || sent.elapsed() > Duration::from_millis(90) {
                     if tx.send(std::mem::take(&mut batch)).is_err() {
@@ -218,9 +211,33 @@ fn scan(
             }
         }
     }
-    if query.is_none() {
+    if !search {
         dated.sort_by(|a, b| (&a.0, &a.1).cmp(&(&b.0, &b.1)));
         batch = dated.into_iter().map(|(_, _, e)| e).collect();
+    }
+    if tx.send(std::mem::take(&mut batch)).is_err() {
+        return Ok(());
+    }
+    // Make filenames searchable immediately; archive metadata can arrive later.
+    for (path, name, kind) in enrich {
+        if stop.load(Ordering::Acquire) {
+            return Ok(());
+        }
+        if let Some(meta) = metadata(&path, kind, cache) {
+            batch.push(Entry {
+                path,
+                name,
+                kind: Some(kind),
+                meta: Some(meta),
+                percent: None,
+            });
+        }
+        if batch.len() >= 48 || sent.elapsed() > Duration::from_millis(60) {
+            if tx.send(std::mem::take(&mut batch)).is_err() {
+                return Ok(());
+            }
+            sent = Instant::now();
+        }
     }
     let _ = tx.send(batch);
     Ok(())

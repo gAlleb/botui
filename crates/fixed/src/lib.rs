@@ -112,7 +112,6 @@ pub fn page(
         FileKind::Pdf => {
             cmd = Command::new("pdftoppm");
             cmd.args([
-                "-png",
                 "-singlefile",
                 "-f",
                 &n.to_string(),
@@ -205,3 +204,6 @@ pub fn outline(path: &Path, kind: FileKind, cancel: &AtomicBool) -> io::Result<V
 
 mod search;
 pub use search::{PageMatch, TextLayer, text_layer};
+
+mod session;
+pub use session::PageReader;

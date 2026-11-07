@@ -4,12 +4,16 @@ use ratatui::{
     Frame,
     layout::{Rect, Size},
 };
+use ratatui_image::sliced::{SlicedImage, SlicedProtocol};
 use ratatui_image::{
     Image, Resize,
     picker::{Picker, ProtocolType, cap_parser::QueryStdioOptions},
     protocol::Protocol,
 };
-use std::{cell::RefCell, io::Cursor};
+use std::{
+    cell::{Cell, RefCell},
+    io::Cursor,
+};
 
 pub(crate) fn graphics() -> Picker {
     thread_local! { static PICKER: Picker = detect(); }
@@ -120,7 +124,17 @@ struct CellStrip {
     x: u8,
     zoom: u16,
 }
+// A terminal may evict non-visible Kitty uploads while a large PDF is open.
+thread_local! { static COVER_EPOCH: Cell<u64> = const {Cell::new(0)}; }
+pub(crate) struct ScanGraphics;
+impl Drop for ScanGraphics {
+    fn drop(&mut self) {
+        COVER_EPOCH.set(COVER_EPOCH.get().wrapping_add(1));
+    }
+}
 pub(crate) struct Picture {
+    epoch: Cell<u64>,
+    sliced: RefCell<Option<(CellStrip, SlicedProtocol)>>,
     source: DynamicImage,
     is_cover: bool,
     strip: RefCell<Option<(StripKey, Box<Picture>)>>,
@@ -131,6 +145,8 @@ pub(crate) struct Picture {
 impl Picture {
     pub fn new(source: DynamicImage) -> Self {
         Self {
+            epoch: Cell::default(),
+            sliced: Default::default(),
             source,
             is_cover: false,
             strip: Default::default(),
@@ -233,6 +249,44 @@ impl Picture {
             }
             return;
         }
+        // Kitty can display another row of the same upload. Bound the virtual
+        // sheet (including row diacritics) before asking the terminal to scale it.
+        let font = picker.font_size();
+        if picker.protocol_type() == ProtocolType::Kitty
+            && rows <= 280
+            && area.width <= 280
+            && u64::from(area.width)
+                * u64::from(font.width)
+                * u64::from(rows)
+                * u64::from(font.height)
+                <= 4_000_000
+        {
+            let key = CellStrip {
+                width: area.width,
+                rows,
+                x: crop.x,
+                zoom: crop.percent,
+            };
+            let mut cache = self.sliced.borrow_mut();
+            if cache.as_ref().is_none_or(|(k, _)| *k != key) {
+                let (w, h) = self.dimensions();
+                let cw = crop.span(w);
+                let x = (w - cw) * u32::from(crop.x) / 255;
+                let image = self.source.crop_imm(x, 0, cw, h);
+                *cache = SlicedProtocol::new_with_resize(
+                    picker,
+                    image,
+                    Size::new(area.width, rows as u16),
+                    Resize::Scale(Some(image::imageops::FilterType::Triangle)),
+                )
+                .ok()
+                .map(|p| (key, p));
+            }
+            if let Some((_, proto)) = &*cache {
+                f.render_widget(SlicedImage::new(proto, (0, -(skip as i16)).into()), area);
+                return;
+            }
+        }
         let key = StripKey {
             skip,
             rows,
@@ -311,6 +365,13 @@ impl Picture {
         }
         let size = area.as_size();
         let mut ready = self.ready.borrow_mut();
+        if self.is_cover
+            && picker.protocol_type() == ProtocolType::Kitty
+            && self.epoch.replace(COVER_EPOCH.get()) != COVER_EPOCH.get()
+        {
+            *ready = None;
+        }
+
         if ready.as_ref().is_none_or(|(old, view, corners, _)| {
             *old != size || *view != crop || *corners != rounded
         }) {

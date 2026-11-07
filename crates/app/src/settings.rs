@@ -64,7 +64,43 @@ pub(crate) fn read_event() -> io::Result<crossterm::event::Event> {
 pub(crate) fn read_event_for(
     timeout: Option<std::time::Duration>,
 ) -> io::Result<Option<crossterm::event::Event>> {
-    crate::terminal_input::read(&TERMINAL, timeout)
+    read_scan_event(timeout, false)
+}
+pub(crate) fn read_scan_event(
+    timeout: Option<std::time::Duration>,
+    paper: bool,
+) -> io::Result<Option<crossterm::event::Event>> {
+    crate::terminal_input::read(&TERMINAL, timeout, opaque() || paper)
+}
+pub(crate) fn scan_colors() -> ([u8; 3], [u8; 3]) {
+    let t = TERMINAL.get();
+    let rgb = |c| match c {
+        Some(Color::Rgb(r, g, b)) => Some([r, g, b]),
+        _ => None,
+    };
+    let (fg, bg, _) = interface_palette().colors();
+    let bg = rgb(t.bg).or(rgb(Some(bg))).unwrap_or([30, 30, 46]);
+    let fg = rgb(t.fg).or(rgb(Some(fg))).unwrap_or([222, 224, 230]);
+    let lum = |v: [u8; 3]| {
+        let [r, g, b] = v.map(|c| {
+            let f = f64::from(c) / 255.;
+            if f <= 0.04045 {
+                f / 12.92
+            } else {
+                ((f + 0.055) / 1.055).powf(2.4)
+            }
+        });
+        0.2126 * r + 0.7152 * g + 0.0722 * b
+    };
+    let (a, b) = (lum(bg) + 0.05, lum(fg) + 0.05);
+    let ink = if a.max(b) / a.min(b) >= 4.5 {
+        fg
+    } else if a > 0.23 {
+        [13, 14, 18]
+    } else {
+        [245, 245, 245]
+    };
+    (bg, ink)
 }
 pub(crate) fn opaque() -> bool {
     OPAQUE.load(Ordering::Relaxed)

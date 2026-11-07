@@ -18,6 +18,8 @@ use tempfile::NamedTempFile;
 pub struct ScanAppearance {
     pub quarter_turns: u8,
     pub inverted: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub terminal_paper: bool,
 }
 
 #[derive(Clone, Default)]

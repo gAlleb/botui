@@ -26,3 +26,4 @@ botui-opds = { path = "../opds" }
 unicode-truncate = "2.0"
 terminal-colorsaurus = "1"
 resvg = { version = "0.45", default-features = false, features = ["text", "system-fonts"] }
+unicode-normalization = "0.1"

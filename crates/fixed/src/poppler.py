@@ -10,11 +10,29 @@ if sys.argv[2] == "text":
     for index in range(doc.get_n_pages()):
         sys.stdout.write((doc.get_page(index).get_text() or "") + "\f")
     sys.exit(0)
-n=int(sys.argv[2])
-if not n:
-    print("Pages:",doc.get_n_pages())
+def render(n, side):
+    page = doc.get_page(n - 1)
+    w, h = page.get_size()
+    scale = side / max(w, h)
+    out = cairo.ImageSurface(cairo.FORMAT_RGB24, max(1, round(w*scale)), max(1, round(h*scale)))
+    ctx = cairo.Context(out)
+    ctx.set_source_rgb(1, 1, 1)
+    ctx.paint()
+    ctx.scale(scale, scale)
+    page.render(ctx)
+    out.flush()
+    return out
+
+if sys.argv[2] == "stream":
+    import struct
+    wire = sys.stdout.buffer
+    for line in sys.stdin.buffer:
+        n, side = map(int, line.split())
+        surface = render(n, side)
+        wire.write(struct.pack(">II", surface.get_width(), surface.get_height()))
+        wire.write(surface.get_data())
+        wire.flush()
+elif int(sys.argv[2]):
+    render(int(sys.argv[2]), int(sys.argv[3])).write_to_png(sys.stdout.buffer)
 else:
-    page=doc.get_page(n-1);w,h=page.get_size();scale=int(sys.argv[3])/max(w,h)
-    out=cairo.ImageSurface(cairo.FORMAT_RGB24,max(1,round(w*scale)),max(1,round(h*scale)))
-    ctx=cairo.Context(out);ctx.set_source_rgb(1,1,1);ctx.paint();ctx.scale(scale,scale);page.render(ctx)
-    out.write_to_png(sys.stdout.buffer)
+    print("Pages:", doc.get_n_pages())
