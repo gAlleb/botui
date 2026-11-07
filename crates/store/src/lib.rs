@@ -1,4 +1,6 @@
 //! Device-local resume points. A display anchor is never a BookOrbit CFI.
+#[cfg(unix)]
+mod fingerprint;
 mod notes;
 mod stats;
 use botui_core::Anchor;
@@ -121,19 +123,40 @@ impl HistoryEntry {
         Ok(items)
     }
 }
+fn hash_file(file: &mut fs::File) -> io::Result<String> {
+    let mut digest = Sha256::new();
+    io::copy(file, &mut digest)?;
+    Ok(format!("{:x}", digest.finalize()))
+}
 impl LocalState {
     /// Identical files share a resume point even after a move; revised editions do not.
     pub fn for_file(path: &Path) -> io::Result<Self> {
         let state = state_dir()?;
-        Self::in_directory(path, &state.join("botui").join("positions"))
+        let dir = state.join("botui/positions");
+        let cache = env::var_os("XDG_CACHE_HOME")
+            .map(PathBuf::from)
+            .filter(|p| p.is_absolute())
+            .or_else(|| {
+                env::var_os("HOME")
+                    .map(PathBuf::from)
+                    .filter(|p| p.is_absolute())
+                    .map(|p| p.join(".cache"))
+            })
+            .map(|p| p.join("botui/file-digests"));
+        Self::in_directory(path, &dir, cache.as_deref())
     }
 
-    fn in_directory(path: &Path, dir: &Path) -> io::Result<Self> {
+    fn in_directory(path: &Path, dir: &Path, cache: Option<&Path>) -> io::Result<Self> {
         let mut file = fs::File::open(path)?;
-        let mut hash = Sha256::new();
-        io::copy(&mut file, &mut hash)?;
+        #[cfg(unix)]
+        let key = fingerprint::digest(&mut file, cache)?;
+        #[cfg(not(unix))]
+        let key = {
+            let _ = cache;
+            hash_file(&mut file)?
+        };
         Ok(Self {
-            path: dir.join(format!("{:x}.json", hash.finalize())),
+            path: dir.join(format!("{key}.json")),
         })
     }
 
@@ -208,7 +231,7 @@ mod tests {
         let path = tmp.path().join("книга.epub");
         let dir = tmp.path().join("state");
         fs::write(&path, b"first edition")?;
-        let first = LocalState::in_directory(&path, &dir)?;
+        let first = LocalState::in_directory(&path, &dir, None)?;
         first.save(&Saved {
             anchor: Anchor { block: 5, byte: 14 },
             spread: true,
@@ -221,13 +244,19 @@ mod tests {
         })?;
         let renamed = tmp.path().join("другое имя.epub");
         fs::rename(&path, &renamed)?;
-        let after = LocalState::in_directory(&renamed, &dir)?.load()?.unwrap();
+        let after = LocalState::in_directory(&renamed, &dir, None)?
+            .load()?
+            .unwrap();
         assert_eq!(
             (after.anchor.block, after.anchor.byte, after.spread),
             (5, 14, true)
         );
         fs::write(&path, b"revised edition")?;
-        assert!(LocalState::in_directory(&path, &dir)?.load()?.is_none());
+        assert!(
+            LocalState::in_directory(&path, &dir, None)?
+                .load()?
+                .is_none()
+        );
         Ok(())
     }
 }
