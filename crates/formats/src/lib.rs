@@ -1,6 +1,8 @@
 //! Read a local book as text, independent of its catalog and of the terminal.
 
 mod cover;
+mod metadata;
+pub use metadata::{BookMetadata, book_metadata};
 mod epub;
 pub use cover::cover;
 mod fb2;
@@ -76,7 +78,7 @@ pub fn open_document(path: &Path) -> Result<Document> {
 }
 
 // XML declares legacy encodings in an ASCII prolog. A BOM takes precedence.
-fn decode_xml(bytes: &[u8]) -> Result<Cow<'_, str>> {
+fn xml_encoding(bytes: &[u8]) -> Result<(&'static Encoding, usize)> {
     let (encoding, skip) = if let Some(pair) = Encoding::for_bom(bytes) {
         pair
     } else if bytes.starts_with(&[0, b'<', 0, b'?']) {
@@ -105,6 +107,11 @@ fn decode_xml(bytes: &[u8]) -> Result<Cow<'_, str>> {
         };
         (encoding, 0)
     };
+    Ok((encoding, skip))
+}
+
+fn decode_xml(bytes: &[u8]) -> Result<Cow<'_, str>> {
+    let (encoding, skip) = xml_encoding(bytes)?;
     encoding
         .decode_without_bom_handling_and_without_replacement(&bytes[skip..])
         .ok_or_else(|| {

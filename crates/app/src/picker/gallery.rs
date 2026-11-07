@@ -44,7 +44,11 @@ impl Picker {
                 );
                 continue;
             };
-            let book = card(entry, kind);
+            let m = entry
+                .meta
+                .clone()
+                .or_else(|| self.index.cached(&entry.path));
+            let book = card(entry, kind, m.as_deref());
             let path = entry.path.clone();
             self.covers.request(book.id, move || {
                 if kind.readable() {
@@ -60,7 +64,11 @@ impl Picker {
         self.grid = Some(grid);
     }
 }
-fn card(e: &Entry, kind: botui_formats::FileKind) -> Book {
+fn card(
+    e: &Entry,
+    kind: botui_formats::FileKind,
+    meta: Option<&botui_formats::BookMetadata>,
+) -> Book {
     let mut h = DefaultHasher::new();
     e.path.hash(&mut h);
     let id = h.finish();
@@ -68,8 +76,15 @@ fn card(e: &Entry, kind: botui_formats::FileKind) -> Book {
     let (author, title) = name.split_once(" - ").unwrap_or(("", name.as_ref()));
     Book {
         id,
-        title: Some(title.into()),
-        authors: if author.is_empty() {
+        title: Some(
+            meta.map(|m| m.title.as_str())
+                .filter(|t| !t.is_empty())
+                .unwrap_or(title)
+                .into(),
+        ),
+        authors: if let Some(m) = meta.filter(|m| !m.authors.is_empty()) {
+            m.authors.clone()
+        } else if author.is_empty() {
             vec![]
         } else {
             vec![author.into()]

@@ -1,4 +1,5 @@
 mod gallery;
+mod index;
 mod info;
 use botui_formats::FileKind;
 pub(super) use info::show_info;
@@ -28,6 +29,7 @@ enum LocalView {
     Recent,
 }
 struct Entry {
+    meta: Option<std::sync::Arc<botui_formats::BookMetadata>>,
     percent: Option<u8>,
     path: PathBuf,
     name: String,
@@ -35,6 +37,7 @@ struct Entry {
 }
 
 pub struct Picker {
+    index: index::Index,
     dir: PathBuf,
     root: PathBuf,
     grid_view: bool,
@@ -59,6 +62,7 @@ pub struct Picker {
 impl Picker {
     pub fn new(dir: PathBuf) -> io::Result<Self> {
         let mut picker = Self {
+            index: index::Index::new(),
             dir: dir.clone(),
             grid_view: crate::settings::Settings::load()?.local_grid,
             grid: None,
@@ -97,6 +101,7 @@ impl Picker {
                     name,
                     kind,
                     percent: None,
+                    meta: None,
                 });
             }
         }
@@ -105,6 +110,7 @@ impl Picker {
         self.view = LocalView::Directory;
         self.entries = entries;
         self.dir = dir.to_owned();
+        self.warm_directory();
         self.error = None;
         Ok(())
     }
@@ -186,6 +192,18 @@ impl Picker {
         } else {
             let items = self.entries.iter().map(|e| {
                 ListItem::new(match e.kind {
+                    Some(kind) if let Some(m) = e.meta.as_ref().filter(|m| !m.title.is_empty()) => {
+                        let fields = [m.title.clone(), m.authors.join(", "), e.name.clone()];
+                        format!(
+                            " [{}] {}",
+                            kind.label(),
+                            fields
+                                .into_iter()
+                                .filter(|s| !s.is_empty())
+                                .collect::<Vec<_>>()
+                                .join("  ·  ")
+                        )
+                    }
                     Some(kind) => format!(" [{}] {}", kind.label(), e.name),
                     None => format!(" {}/", e.name),
                 })
@@ -197,7 +215,16 @@ impl Picker {
             );
         }
         if self.entries.is_empty() {
-            frame.render_widget(Paragraph::new("No books or folders here."), self.rows);
+            let text = if self.index.busy() {
+                "Searching library…"
+            } else {
+                match self.view {
+                    LocalView::Search(_) => "No matching books.",
+                    LocalView::Reading => "No books currently being read.",
+                    _ => "No books or folders here.",
+                }
+            };
+            frame.render_widget(Paragraph::new(text), self.rows);
         }
         if bottom > 0 {
             let footer = Rect::new(inner.x, inner.bottom() - 1, inner.width, 1);
@@ -247,6 +274,7 @@ impl Picker {
             return self.load(&self.dir.clone());
         }
         if view == LocalView::Reading {
+            self.index.clear();
             self.entries = botui_store::HistoryEntry::for_root(&self.root)?
                 .into_iter()
                 .filter(|entry| entry.percent < 100)
@@ -259,6 +287,7 @@ impl Picker {
                     );
                     Some(Entry {
                         percent: Some(entry.percent),
+                        meta: None,
                         path: entry.path,
                         name,
                         kind: Some(kind),
@@ -267,65 +296,60 @@ impl Picker {
                 .collect();
             self.list = ListState::default().with_selected((!self.entries.is_empty()).then_some(0));
             self.view = view;
+            self.warm_directory();
             self.error = None;
             return Ok(());
         }
-        let needle = match &view {
-            LocalView::Search(q) => q.to_lowercase(),
-            _ => String::new(),
-        };
-        let mut dirs = vec![self.root.clone()];
-        let mut entries = Vec::new();
-        while let Some(dir) = dirs.pop() {
-            let items = match fs::read_dir(&dir) {
-                Ok(i) => i,
-                Err(_) if dir != self.root => continue,
-                Err(e) => return Err(e),
-            };
-            for item in items.flatten() {
-                if item.file_name().to_string_lossy().starts_with('.') {
-                    continue;
-                }
-                let path = item.path();
-                let Ok(t) = item.file_type() else { continue };
-                if t.is_dir() {
-                    dirs.push(path);
-                    continue;
-                }
-                let name = path
-                    .strip_prefix(&self.root)
-                    .unwrap_or(&path)
-                    .to_string_lossy()
-                    .into_owned();
-                if let Some(kind) = FileKind::from_path(&path)
-                    && name.to_lowercase().contains(&needle)
-                    && path.is_file()
-                {
-                    entries.push(Entry {
-                        percent: None,
-                        path,
-                        name,
-                        kind: Some(kind),
-                    });
-                }
-            }
-        }
-        entries.sort_by_cached_key(|e| e.name.to_lowercase());
-        self.list = ListState::default().with_selected((!entries.is_empty()).then_some(0));
-        if view == LocalView::Recent {
-            entries.sort_by_cached_key(|e| {
-                std::cmp::Reverse(
-                    e.path
-                        .metadata()
-                        .ok()
-                        .and_then(|m| m.created().or_else(|_| m.modified()).ok()),
-                )
-            });
-        }
+        self.index.start(
+            self.root.clone(),
+            match &view {
+                LocalView::Search(q) => Some(q),
+                _ => None,
+            },
+        );
         self.view = view;
-        self.entries = entries;
+        self.entries.clear();
+        self.list = ListState::default();
         self.error = None;
         Ok(())
+    }
+    fn warm_directory(&mut self) {
+        if self.grid_view {
+            self.index.warm(
+                self.entries
+                    .iter()
+                    .filter_map(|e| Some((e.path.clone(), e.kind?)))
+                    .collect(),
+            );
+        } else {
+            self.index.clear();
+        }
+    }
+    fn collect(&mut self) {
+        let listing = self.index.listing();
+        let done = self.index.collect(&mut self.entries);
+        if let Some(Err(e)) = done {
+            self.error = Some(e.to_string());
+        } else if done.is_some() && matches!(self.view, LocalView::Search(_)) {
+            let selected = self
+                .list
+                .selected()
+                .and_then(|i| self.entries.get(i))
+                .map(|e| e.path.clone());
+            self.entries.sort_by_cached_key(|e| e.name.to_lowercase());
+            if let Some(i) = selected.and_then(|p| self.entries.iter().position(|e| e.path == p)) {
+                self.list.select(Some(i));
+            }
+        } else if done.is_some()
+            && listing
+            && matches!(self.view, LocalView::Recent)
+            && self.grid_view
+        {
+            self.warm_directory();
+        }
+        if self.list.selected().is_none() && !self.entries.is_empty() {
+            self.list.select(Some(0));
+        }
     }
     fn move_selection(&mut self, delta: isize) {
         let Some(i) = self.list.selected() else {
@@ -351,11 +375,14 @@ impl Picker {
             }
         }
         loop {
+            self.collect();
             term.draw(|frame| {
                 self.draw(frame);
                 crate::settings::paint_interface(frame)
             })?;
-            if self.covers.busy() && !event::poll(std::time::Duration::from_millis(60))? {
+            if (self.covers.busy() || self.index.busy())
+                && !event::poll(std::time::Duration::from_millis(60))?
+            {
                 self.covers.collect();
                 continue;
             }
@@ -442,6 +469,9 @@ impl Picker {
                 || click.is_some_and(|p| self.view_button.contains(p))
             {
                 self.grid_view = !self.grid_view;
+                if !self.index.listing() && !matches!(self.view, LocalView::Search(_)) {
+                    self.warm_directory();
+                }
                 if let Err(e) = crate::settings::Settings::update(|s| s.local_grid = self.grid_view)
                 {
                     self.error = Some(e.to_string());

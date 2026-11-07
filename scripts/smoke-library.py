@@ -4,6 +4,7 @@ import importlib.util
 import tomllib
 from pathlib import Path
 import shutil
+import zipfile
 import tempfile
 import time
 
@@ -31,6 +32,11 @@ def check(tmp):
     chapter.mkdir(parents=True)
     filename = "Знак Единорога.fb2"
     shutil.copyfile(ROOT / "examples/first-light.fb2", chapter / filename)
+    orphan = chapter / "a015.fb2"
+    orphan.write_bytes('<?xml version="1.0" encoding="windows-1251"?><FictionBook><description><title-info><author><first-name>Виктор</first-name><last-name>Пелевин</last-name></author><book-title>Жёлтая стрела</book-title><sequence name="Северное депо"/></title-info></description><body><section><p>Поезд номер 15.</p></section></body></FictionBook>'.encode("cp1251"))
+    with zipfile.ZipFile(chapter/"b018.epub","w") as z:
+        z.writestr("META-INF/container.xml", '<container><rootfile full-path="book.opf"/></container>')
+        z.writestr("book.opf", '<package xmlns:dc="http://purl.org/dc/elements/1.1/"><metadata><dc:title>Star map</dc:title><dc:creator>Aria Nova</dc:creator></metadata></package>')
     t = shelf.Terminal(tmp, ROOT / "target/debug/botui", args=["--local"])
     try:
         frame = t.see("Local library")
@@ -45,6 +51,9 @@ def check(tmp):
         t.type(str(lib))
         t.keys("Enter")
         t.see(str(lib))
+        for query, expected in [("Пелевин Желтая", "Жёлтая стрела"), ("северное депо", "a015.fb2"), ("Nova map", "b018.epub")]:
+            t.keys("/");t.see("Search local library");t.type(query);t.keys("Enter")
+            t.see(expected);t.keys("Escape");t.see(str(lib))
         t.keys("/")
         t.see("Search local library")
         t.type("Знак Единорога")
