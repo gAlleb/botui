@@ -10,6 +10,7 @@ mod native;
 mod opds;
 mod rail;
 mod reading_log;
+mod search;
 mod view;
 
 use crate::catalog::{Book, BookFile};
@@ -102,7 +103,6 @@ enum Scope {
     Collection(Collection),
     Reading,
     Recent,
-    Search(String),
 }
 impl Scope {
     fn name(&self) -> &str {
@@ -111,7 +111,6 @@ impl Scope {
             Self::All => "All books",
             Self::Reading => "Currently reading",
             Self::Recent => "Recently added",
-            Self::Search(q) => q,
             Self::Library(lib) => &lib.name,
             Self::Collection(c) => &c.name,
         }
@@ -121,7 +120,7 @@ impl Scope {
             Self::Group(d, _) => Tab::Groups(*d),
             Self::Reading => Tab::Reading,
             Self::Recent => Tab::Recent,
-            Self::Search(_) | Self::All => Tab::All,
+            Self::All => Tab::All,
             Self::Library(_) => Tab::Libraries,
             Self::Collection(_) => Tab::Collections,
         }
@@ -198,6 +197,7 @@ enum Tail {
 }
 
 struct Pane {
+    live_search: Option<Box<search::Panel>>,
     section: Section,
     title: String,
     rows: Vec<Row>,
@@ -211,6 +211,7 @@ impl Pane {
         let selection = ListState::default().with_selected((!rows.is_empty()).then_some(0));
         Self {
             section,
+            live_search: None,
             tail: None,
             tail_error: false,
             search: None,
@@ -1086,7 +1087,7 @@ impl Shelf {
                 if scope == Scope::All {
                     let depth = self.all_books_index().unwrap_or_else(|| self.root_depth());
                     self.stack.truncate(depth);
-                } else if matches!(scope, Scope::Reading | Scope::Recent | Scope::Search(_)) {
+                } else if matches!(scope, Scope::Reading | Scope::Recent) {
                     self.stack.truncate(self.root_depth());
                 }
                 self.stack.push(Pane::new(
@@ -1639,6 +1640,9 @@ impl Shelf {
             if let Some(choice) = self.collect_results() {
                 return Ok(choice);
             }
+            if self.handle_search(term)? {
+                continue;
+            }
             term.draw(|frame| {
                 self.draw(frame);
                 crate::settings::paint_interface(frame)
@@ -1698,44 +1702,15 @@ impl Shelf {
                 && (matches!(&e, Event::Key(k) if k.kind!=KeyEventKind::Release && k.code==KeyCode::Char('/'))
                     || matches!(&e, Event::Mouse(m) if m.kind==MouseEventKind::Down(MouseButton::Left) && self.search_button.contains(Position::new(m.column,m.row))))
             {
-                let directory = match self.current().section {
-                    Section::Groups { directory, .. } => Some(directory),
-                    _ => None,
-                };
-                let old = match &self.current().section {
-                    Section::Books {
-                        scope: Scope::Search(q),
-                        ..
-                    } => q.clone(),
-                    Section::Groups { query, .. } => query.clone(),
-                    _ => String::new(),
-                };
-                if let Some(q) = crate::prompt::edit(
-                    term,
-                    if self.is_opds {
-                        "Search OPDS catalog"
-                    } else if directory == Some(Directory::Authors) {
-                        "Search authors"
-                    } else if directory == Some(Directory::Series) {
-                        "Search series"
-                    } else {
-                        "Search all books · title or author"
-                    },
-                    "[ Search ↵ ]",
-                    &old,
-                    |f| self.draw(f),
-                )? {
-                    if self.is_opds {
-                        if !q.is_empty() {
-                            self.search_feed(q);
-                        }
-                    } else if let Some(d) = directory {
-                        self.groups(d, q);
-                    } else if q.is_empty() {
-                        self.open_tab(Tab::All)
-                    } else {
-                        self.books(Scope::Search(q), 0)
-                    }
+                if let Some(session) = self.session.clone() {
+                    self.start_search(session);
+                } else if let Some(q) =
+                    crate::prompt::edit(term, "Search OPDS catalog", "[ Search ↵ ]", "", |f| {
+                        self.draw(f)
+                    })?
+                    && !q.is_empty()
+                {
+                    self.search_feed(q);
                 }
                 continue;
             }

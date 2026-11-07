@@ -95,7 +95,7 @@ Choose **Connect to BookOrbit** to sign in. The dashboard shows continue reading
 | 2 | Currently reading | 6 | Authors |
 | 3 | Recently added | 7 | Series |
 
-**Authors** and **Series** show account-wide totals and the number of books in each entry. Open an author to see their books, or a series to read its volumes in server order. **/** searches the current directory in these two sections. On book shelves it searches the whole catalog by title or author, including books beyond the loaded rows.
+**Authors** and **Series** show account-wide totals and the number of books in each entry. Open an author to see their books, or a series to read its volumes in server order. **/** shows results as you type. In **Authors** and **Series** it filters that directory. On the dashboard or a book shelf, it searches your whole BookOrbit catalog by title, author or series. Try `желз` for `Желязны`, or `znak edin` for `Знак Единорога`. Results appear while BOTUI fetches catalog metadata in the background. Select with **↑/↓** and press **Enter**, or click a result. **Esc** from a book card restores the query and selection.
 
 **V** switches between cover grid and list. **Tab / Shift+Tab** change sections in display order. Arrows, the wheel and Page Up / Page Down navigate a shelf. More items load as you scroll. Enter or a click opens the selection. **Esc** goes back.
 

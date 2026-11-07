@@ -26,7 +26,18 @@ pub struct BookFile {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SeriesMembership {
+    pub series_name: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
 pub struct Book {
+    pub subtitle: Option<String>,
+    #[serde(default)]
+    pub narrators: Vec<String>,
+    #[serde(default, rename = "seriesMemberships")]
+    pub series_memberships: Vec<SeriesMembership>,
     pub id: u64,
     pub title: Option<String>,
     pub authors: Vec<String>,

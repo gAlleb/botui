@@ -38,7 +38,10 @@ pub(super) fn entries(ctx: Context, p: &Settings) -> Vec<Entry> {
                         "0…7",
                         "Dashboard, books, reading, recent, libraries, collections, authors, series",
                     ),
-                    ("/", "Find books or search the current directory"),
+                    (
+                        "/",
+                        "BookOrbit: type to filter books, authors or series · Enter opens",
+                    ),
                     ("V / U / F", "Grid or list / borders / background"),
                     ("Enter / click", "Open the selected item"),
                     ("F6", "Focus navigation; ←/→ fold or expand groups"),

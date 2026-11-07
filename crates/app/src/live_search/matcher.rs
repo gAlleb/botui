@@ -1,4 +1,3 @@
-use super::super::Entry;
 use unicode_normalization::{UnicodeNormalization, char::is_combining_mark};
 
 pub(super) fn fold(s: &str) -> String {
@@ -82,26 +81,18 @@ fn word_score(needle: &str, word: &str) -> Option<i32> {
     }
     best
 }
-pub(super) struct Candidate {
-    pub(super) entry: Entry,
+pub(super) struct Words {
     words: Vec<(String, String)>,
 }
-impl Candidate {
-    pub(super) fn new(entry: Entry) -> Self {
-        let mut text = entry.name.clone();
-        if let Some(m) = &entry.meta {
-            for field in std::iter::once(&m.title).chain(&m.authors).chain(&m.series) {
-                text.push(' ');
-                text.push_str(field);
-            }
-        }
-        let mut words = fold(&text)
+impl Words {
+    pub(super) fn new(text: &str) -> Self {
+        let mut words = fold(text)
             .split_whitespace()
             .map(|w| (w.to_owned(), roman(w)))
             .collect::<Vec<_>>();
         words.sort_unstable();
         words.dedup();
-        Self { entry, words }
+        Self { words }
     }
     pub(super) fn score(&self, query: &[(String, String)]) -> Option<i32> {
         query

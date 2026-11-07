@@ -50,9 +50,6 @@ pub(super) fn fetch_books(
         Scope::All => api.all_books(t, page, PAGE_SIZE),
         Scope::Library(l) => api.library_books(t, l.id, page, PAGE_SIZE),
         Scope::Collection(c) => api.books(t, c.id, page, PAGE_SIZE),
-        Scope::Search(q) => {
-            api.catalog_query(t, None, page, PAGE_SIZE, CatalogOrder::Title, Some(q))
-        }
         Scope::Reading => api.catalog_query(t, None, page, PAGE_SIZE, CatalogOrder::Reading, None),
         Scope::Recent => api.catalog_query(t, None, page, PAGE_SIZE, CatalogOrder::Recent, None),
     })

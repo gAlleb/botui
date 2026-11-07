@@ -5,6 +5,7 @@ mod connection;
 mod cover;
 mod cover_viewer;
 mod diagnostic;
+mod live_search;
 mod offline;
 mod picker;
 mod preferences;

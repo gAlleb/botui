@@ -77,7 +77,7 @@ def check(tmp):
         t.type("нк единр")
         t.see(filename)  # live fuzzy results before pressing Enter
         t.type("ххх")
-        t.see("No matching books.")
+        t.see("No matches.")
         t.keys("BSpace", "BSpace", "BSpace")
         t.see(filename)
         t.keys("Enter")
