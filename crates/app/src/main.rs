@@ -42,6 +42,7 @@ struct Screen;
 
 impl Screen {
     fn enter() -> io::Result<(Self, AppTerminal)> {
+        offline::reconnect::start();
         crate::settings::detect_terminal();
         enable_raw_mode()?;
         // Keep the guard alive through partial setup, input errors and unwinding.
@@ -227,6 +228,25 @@ fn browse(term: &mut AppTerminal, notices: &mut Vec<String>, dir: PathBuf) -> Re
             p
         }
     };
+    browse_picker(term, notices, &mut picker)
+}
+
+fn browse_downloads(
+    term: &mut AppTerminal,
+    notices: &mut Vec<String>,
+    source: cache::Source,
+) -> Result<()> {
+    let dir = cache::downloads()?;
+    std::fs::create_dir_all(&dir)?;
+    let mut picker = picker::Picker::downloads(dir, source)?;
+    browse_picker(term, notices, &mut picker)
+}
+
+fn browse_picker(
+    term: &mut AppTerminal,
+    notices: &mut Vec<String>,
+    picker: &mut picker::Picker,
+) -> Result<()> {
     while let Some(path) = picker.choose(term)? {
         if let Err(err) = open_book(term, &path, notices) {
             picker.error = Some(format!("{} — {err}", path.display()));
@@ -263,11 +283,7 @@ fn opds_shelf(term: &mut AppTerminal, url: String, notices: &mut Vec<String>) ->
                     shelf.set_error(e.to_string());
                 }
             }
-            shelf::Selection::Downloads => {
-                let dir = cache::downloads()?;
-                std::fs::create_dir_all(&dir)?;
-                browse(term, notices, dir)?;
-            }
+            shelf::Selection::Downloads(source) => browse_downloads(term, notices, source)?,
             shelf::Selection::Local => local_library(term, notices, None)?,
             shelf::Selection::Opds => return Ok(()),
         }
@@ -299,13 +315,15 @@ fn bookorbit_shelf(
                 return Ok(());
             }
             shelf::Selection::Opds => opds_shelf(term, String::new(), notices)?,
-            shelf::Selection::Downloads => {
-                let dir = cache::downloads()?;
-                std::fs::create_dir_all(&dir)?;
-                browse(term, notices, dir)?;
-            }
+            shelf::Selection::Downloads(source) => browse_downloads(term, notices, source)?,
             shelf::Selection::Local => local_library(term, notices, None)?,
             shelf::Selection::Book(file, base) => {
+                if base.is_none() && offline::Copy::open(&file)?.is_some() {
+                    if let Err(e) = open_book(term, &file, notices) {
+                        shelf.set_error(e.to_string());
+                    }
+                    continue;
+                }
                 let at = notices.len();
                 let read = (|| -> Result<Option<botui_bookorbit::progress::Move>> {
                     if let Some(k) =
@@ -327,7 +345,7 @@ fn bookorbit_shelf(
                 match read {
                     Ok(Some(change)) => {
                         if let Some(p) = base {
-                            shelf.save_move(p, change)
+                            shelf.save_move(file.to_path_buf(), p, change)
                         }
                     }
                     Ok(None) => {

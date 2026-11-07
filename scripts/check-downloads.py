@@ -124,7 +124,7 @@ def check(file, tmp, binary):
                     end = time.monotonic()+90
                     while time.monotonic()<end:
                         screen=t.run("capture-pane","-p","-t","shelf").stdout
-                        if "Saved in Offline downloads" in screen:
+                        if ("Saved in BookOrbit offline downloads" if source == "bookorbit" else "Saved in OPDS downloads") in screen:
                             break
                         time.sleep(.1)
                     else:

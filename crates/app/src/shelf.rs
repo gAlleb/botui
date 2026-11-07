@@ -28,14 +28,29 @@ use std::{
 };
 use tempfile::TempPath;
 
-use crate::AppTerminal;
+use crate::{AppTerminal, cache::Source};
 use background::{Ticket, Worker};
 
+pub(crate) enum EditionPath {
+    Temporary(TempPath),
+    Local(std::path::PathBuf),
+}
+
+impl std::ops::Deref for EditionPath {
+    type Target = std::path::Path;
+    fn deref(&self) -> &Self::Target {
+        match self {
+            Self::Temporary(path) => path,
+            Self::Local(path) => path,
+        }
+    }
+}
+
 pub(crate) enum Selection {
-    Downloads,
+    Downloads(Source),
     Opds,
     Local,
-    Book(TempPath, Option<Progress>),
+    Book(EditionPath, Option<Progress>),
     Quit,
 }
 
@@ -116,7 +131,7 @@ impl Scope {
 #[derive(Clone)]
 enum Command {
     Borders,
-    Downloads,
+    Downloads(Source),
     Background,
     Opds,
     Feed(botui_opds::Address),
@@ -220,7 +235,11 @@ impl Pane {
             ),
             Row::new("Browse local library…", Command::Local),
             Row::new("Open OPDS catalog…", Command::Opds),
-            Row::new("Offline downloads", Command::Downloads),
+            Row::new(
+                Source::BookOrbit.label(),
+                Command::Downloads(Source::BookOrbit),
+            ),
+            Row::new(Source::Opds.label(), Command::Downloads(Source::Opds)),
         ];
         if connected {
             rows.push(Row::new("Change connection…", Command::Connect));
@@ -262,12 +281,12 @@ enum Loaded {
     Books(Scope, BooksPage),
     File(TempPath, Option<Progress>, Option<String>),
     NativeFile(
-        TempPath,
+        std::path::PathBuf,
         Option<Progress>,
         Option<String>,
         Option<crate::reader::bookmarks::ServerMarks>,
     ),
-    Kept,
+    Kept(Source),
     Status(
         u64,
         botui_bookorbit::detail::UserStatus,
@@ -683,8 +702,8 @@ impl Shelf {
                     let mut f = crate::cache::staging(kind)?;
                     cat.download(href, f.as_file_mut(), cancel, limit, progress)?;
                     if keep {
-                        crate::cache::keep(f.path(), &title, kind.label(), None, cancel)?;
-                        Ok(Loaded::Kept)
+                        crate::cache::keep_opds(f.path(), &title, kind.label(), cancel)?;
+                        Ok(Loaded::Kept(Source::Opds))
                     } else {
                         Ok(Loaded::File(f.into_temp_path(), None, None))
                     }
@@ -701,34 +720,50 @@ impl Shelf {
             _ => return,
         };
         let account = crate::offline::account(&self.server, &self.username);
+        let version = self
+            .card
+            .data
+            .as_ref()
+            .and_then(|d| d.files.iter().find(|v| v.id == file.id))
+            .and_then(|v| v.content_version.clone());
         self.fetch_edition(
-            "Downloading book…",
+            "Opening edition…",
             file.size_bytes,
             keep,
             move |cancel, progress| {
-                let path = session.with_token(|api, token| {
-                    crate::cache::fetch(api, token, &file, cancel, progress)
-                })?;
-                if keep {
-                    let dest = crate::cache::keep(
-                        &path,
-                        &title,
-                        file.format.as_deref().unwrap_or(""),
-                        Some((&account, file.id)),
-                        cancel,
-                    )?;
-                    if let Ok(p) = session.with_token(|api, t| api.progress(t, file.id)) {
-                        crate::offline::associate(&dest, account, p)?;
-                    }
-                    return Ok(Loaded::Kept);
+                let path = crate::cache::native::Request {
+                    account: &account,
+                    file: &file,
+                    title: &title,
+                    version: version.as_deref(),
+                    check_update: keep,
                 }
+                .open(&session, cancel, progress)?;
+                // Re-entering a connected shelf can race the reconnect worker after offline reading.
+                let sync_notice = crate::offline::sync(&session, &account, cancel)
+                    .unwrap_or_else(|e| Some(format!("Offline progress is pending: {e}")));
                 let (base, note) = match session.with_token(|api, t| api.progress(t, file.id)) {
-                    Ok(p) => (Some(p), None),
+                    Ok(p) => {
+                        crate::offline::associate(&path, account, p.clone())?;
+                        (Some(p), sync_notice)
+                    }
+                    Err(e)
+                        if botui_bookorbit::is_forbidden(e.as_ref())
+                            || botui_bookorbit::is_unauthorized(e.as_ref()) =>
+                    {
+                        return Err(e);
+                    }
                     Err(_) => (
                         None,
-                        Some("BookOrbit progress unavailable. Saving on this device.".into()),
+                        Some("BookOrbit progress unavailable. Reading the local copy.".into()),
                     ),
                 };
+                if keep {
+                    return Ok(Loaded::Kept(Source::BookOrbit));
+                }
+                if base.is_none() && crate::offline::Copy::open(&path)?.is_some() {
+                    return Ok(Loaded::NativeFile(path, base, note, None));
+                }
                 let (marks, note) = if file
                     .format
                     .as_deref()
@@ -763,23 +798,34 @@ impl Shelf {
         );
     }
 
-    pub fn save_move(&mut self, base: Progress, change: Move) {
+    pub fn save_move(&mut self, path: std::path::PathBuf, base: Progress, change: Move) {
         if let Some(session) = self.session.clone() {
             self.fetch("Saving position to BookOrbit…", move |_| {
-                session
-                    .with_token(|api, t| api.save_move(t, &base, &change))
-                    .map(|saved| Loaded::Moved {
-                        saved,
-                        file: base.file_id,
-                        percent: change.percentage.round().clamp(
-                            0.0,
-                            if change.percentage >= 100.0 {
-                                100.0
-                            } else {
-                                99.0
-                            },
-                        ) as u8,
-                    })
+                let saved = match session.with_token(|api, t| api.save_move(t, &base, &change)) {
+                    Ok(saved) => saved,
+                    Err(e) => {
+                        crate::offline::queue_if_current(&path, &base, change)?;
+                        return Err(e);
+                    }
+                };
+                if saved {
+                    match session.with_token(|api, t| api.progress(t, base.file_id)) {
+                        Ok(current) => crate::offline::advance(&path, &base, current)?,
+                        Err(_) => crate::offline::queue_if_current(&path, &base, change.clone())?,
+                    }
+                }
+                Ok(Loaded::Moved {
+                    saved,
+                    file: base.file_id,
+                    percent: change.percentage.round().clamp(
+                        0.0,
+                        if change.percentage >= 100.0 {
+                            100.0
+                        } else {
+                            99.0
+                        },
+                    ) as u8,
+                })
             });
             if let Some(job) = &mut self.pending {
                 job.saving = true;
@@ -866,6 +912,7 @@ impl Shelf {
             self.login_screen();
             return None;
         };
+        crate::offline::reconnect::signed_out();
         self.stack = vec![Pane::home(false)];
         // Logout must not wait behind a document download that is being cancelled.
         self.pending = Some(Pending {
@@ -899,7 +946,7 @@ impl Shelf {
                     self.notice = Some(e.to_string());
                 }
             }
-            Command::Downloads => return Some(Selection::Downloads),
+            Command::Downloads(source) => return Some(Selection::Downloads(source)),
             Command::Opds => return Some(Selection::Opds),
             Command::Feed(href) => self.fetch_feed(href),
             Command::InlineFeed(name, items) => {
@@ -961,7 +1008,12 @@ impl Shelf {
                 self.server = server;
                 self.username = username;
                 self.login = None;
-                self.session = Some(Arc::new(session));
+                let session = Arc::new(session);
+                crate::offline::reconnect::connected(
+                    crate::offline::account(&self.server, &self.username),
+                    session.clone(),
+                );
+                self.session = Some(session);
                 self.stack = vec![Pane::home(true)];
                 if let Err(e) =
                     crate::connection::remember(&self.server, &self.username, !self.grid_view)
@@ -1050,11 +1102,11 @@ impl Shelf {
             Loaded::NativeFile(path, base, note, marks) => {
                 self.bookmarks = marks;
                 self.notice = note;
-                return Some(Selection::Book(path, base));
+                return Some(Selection::Book(EditionPath::Local(path), base));
             }
             Loaded::File(path, base, note) => {
                 self.notice = note;
-                return Some(Selection::Book(path, base));
+                return Some(Selection::Book(EditionPath::Temporary(path), base));
             }
             Loaded::Status(id, status, reset, warning) => {
                 self.dirty_shelves = [true, true];
@@ -1087,7 +1139,7 @@ impl Shelf {
                     meta.read_status = Some(status);
                 }
             }
-            Loaded::Kept => self.notice = Some("Saved in Offline downloads".into()),
+            Loaded::Kept(source) => self.notice = Some(format!("Saved in {}", source.label())),
             Loaded::Moved { saved: false, .. } => {
                 self.notice = Some(
                     "Another device updated this book. This device kept its local position.".into(),
@@ -1267,6 +1319,9 @@ impl Shelf {
         self.covers.collect();
         self.rail.collect();
         self.card.collect();
+        if let Some(message) = crate::offline::reconnect::notice() {
+            self.notice = Some(message);
+        }
         let result = match self.pending.as_ref()?.work.receiver.try_recv() {
             Ok(result) => result,
             Err(TryRecvError::Empty) => return None,
@@ -1284,6 +1339,7 @@ impl Shelf {
                     } else {
                         self.notice = Some("Session expired (401). Sign in again.".into());
                         self.session = None;
+                        crate::offline::reconnect::signed_out();
                         self.stack = vec![Pane::home(false)];
                         self.covers.reset();
                         self.rail = rail::Rail::saved();
@@ -1419,7 +1475,8 @@ impl Shelf {
                 }
                 Some(KeyCode::Char('l' | 'L')) => Some(Command::Local),
                 Some(KeyCode::Char('p' | 'P')) => Some(Command::Opds),
-                Some(KeyCode::Char('d' | 'D')) => Some(Command::Downloads),
+                Some(KeyCode::Char('d' | 'D')) => Some(Command::Downloads(Source::BookOrbit)),
+                Some(KeyCode::Char('o' | 'O')) => Some(Command::Downloads(Source::Opds)),
                 Some(KeyCode::Char('c' | 'C')) if self.session.is_some() => Some(Command::Connect),
                 _ => None,
             };

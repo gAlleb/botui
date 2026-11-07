@@ -5,6 +5,7 @@ use serde::Deserialize;
 #[serde(default, rename_all = "camelCase")]
 pub struct Detail {
     pub title: Option<String>,
+    pub files: Vec<FileVersion>,
     pub authors: Vec<Name>,
     pub description: Option<String>,
     pub series_id: Option<u64>,
@@ -23,6 +24,12 @@ pub struct Detail {
     pub genres: Vec<String>,
     pub added_at: Option<String>,
     pub read_status: Option<UserStatus>,
+}
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FileVersion {
+    pub id: u64,
+    pub content_version: Option<String>,
 }
 #[derive(Deserialize)]
 pub struct Name {

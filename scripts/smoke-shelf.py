@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """Run the BookOrbit shelf against a private loopback HTTP fixture and a tmux terminal."""
 
+import hashlib
 import io
+import itertools
 import tomllib
 import json
 import os
@@ -96,13 +98,14 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, *_):
         pass
 
-    def reply(self, code, body, mime="application/json"):
+    def reply(self, code, body, mime="application/json", etag=None):
         if mime == "application/json":
             body = json.dumps(body, ensure_ascii=False).encode()
         self.server.requests.append((self.command, self.path, code))
         self.send_response(code)
         self.send_header("Content-Type", mime)
         self.send_header("Content-Length", str(len(body)))
+        if etag: self.send_header("ETag", etag)
         self.end_headers()
         self.wfile.write(body)
 
@@ -146,6 +149,7 @@ class Handler(BaseHTTPRequestHandler):
             marks.append(row)
             return self.reply(201,row)
         if self.path == API + "/auth/login":
+            if getattr(self.server, "unavailable", False): return self.reply(503, {})
             if (data.get("username"), data.get("password")) != (USER, PASSWORD):
                 return self.reply(401, {"statusCode": 401, "message": "Invalid credentials"})
             if data.get("clientKind") != "native":
@@ -208,7 +212,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.reply(200, {"items":items[page*size:(page+1)*size], "total":len(items), "page":page, "size":size})
         if url.path in [API+"/books/200",API+"/books/201"]:
             idx=int(url.path.rsplit('/',1)[1]);b=self.server.card(idx-200)
-            return self.reply(200,dict(title=b['title'],authors=[{"id":410,"name":a} for a in b["authors"]],description="<p>Letters from the northern lighthouse.</p>",publisher="Harbor Press",language="en",isbn13="9780000000002",seriesName="Beacon",seriesId=49,seriesIndex=2,libraryName="Port",readStatus={"status":self.server.statuses.get(idx,"unread"),"startedAt":None,"finishedAt":None}))
+            return self.reply(200,dict(title=b['title'],files=[dict(id=f["id"], contentVersion=getattr(self.server, "revision", "1")) for f in b["files"]],authors=[{"id":410,"name":a} for a in b["authors"]],description="<p>Letters from the northern lighthouse.</p>",publisher="Harbor Press",language="en",isbn13="9780000000002",seriesName="Beacon",seriesId=49,seriesIndex=2,libraryName="Port",readStatus={"status":self.server.statuses.get(idx,"unread"),"startedAt":None,"finishedAt":None}))
         if url.path.startswith(API + "/dashboard/scrollers/"):
             key = url.path.rsplit("/", 1)[1]
             indexes = {"continue-reading":[i-200 for i,st in self.server.statuses.items() if st in ("reading","rereading")], "recently-added":[0,1], "random":[0]}[key]
@@ -268,13 +272,18 @@ class Handler(BaseHTTPRequestHandler):
             return self.reply(404, {"statusCode": 404})
         for ident, (_, mime, data) in self.server.files.items():
             if url.path == API + f"/books/files/{ident}/serve":
-                return self.reply(200, data, mime)
+                tag = chr(34) + hashlib.sha256(data).hexdigest() + chr(34)
+                if self.headers.get("If-None-Match") == tag:
+                    return self.reply(304, b"", mime, etag=tag)
+                return self.reply(200, data, mime, etag=tag)
         self.reply(404, {"path": self.path, "statusCode": 404})
 
 
 class Terminal:
+    sessions = itertools.count()
+
     def __init__(self, tmp, binary, url=None, args=None):
-        self.base = ["tmux", "-f", "/dev/null", "-S", str(tmp / "tmux.sock")]
+        self.base = ["tmux", "-f", "/dev/null", "-S", str(tmp / f"tmux-{next(self.sessions)}.sock")]
         self.env = {"HOME": str(tmp), "PATH": os.environ["PATH"], "LC_ALL": "C.UTF-8",
                     "XDG_CONFIG_HOME": str(tmp / "config"), "XDG_STATE_HOME": str(tmp / "state"),
                     "XDG_CACHE_HOME": str(tmp / "cache")}
@@ -308,7 +317,10 @@ class Terminal:
         row, line = next((i, line) for i, line in enumerate(frame.splitlines(), 1) if label in line)
         col = line.index(label) + 1
         seq = f"\033[<0;{col};{row}M\033[<0;{col};{row}m"
-        self.keys("-H", *[f"{b:02x}" for b in seq.encode()])
+        # Deliver the complete SGR report in one paste, as a terminal would write it.
+        # A synthetic, bytewise Esc under load can be read as the Escape key.
+        self.run("set-buffer", "-b", "mouse", seq)
+        self.run("paste-buffer", "-d", "-r", "-b", "mouse", "-t", "shelf")
 
 
 def login(term, url, wrong_password=False):

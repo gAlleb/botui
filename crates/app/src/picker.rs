@@ -36,6 +36,8 @@ struct Entry {
 }
 
 pub struct Picker {
+    source: Option<crate::cache::Source>,
+    allowed: Option<std::sync::Arc<std::collections::HashSet<PathBuf>>>,
     index: index::Index,
     navigation: navigation::Navigation,
     dir: PathBuf,
@@ -62,8 +64,20 @@ pub struct Picker {
 
 impl Picker {
     pub fn new(dir: PathBuf) -> io::Result<Self> {
+        Self::open(dir, None)
+    }
+
+    pub fn downloads(dir: PathBuf, source: crate::cache::Source) -> io::Result<Self> {
+        Self::open(dir.canonicalize()?, Some(source))
+    }
+
+    fn open(dir: PathBuf, source: Option<crate::cache::Source>) -> io::Result<Self> {
         let settings = crate::settings::Settings::load()?;
         let mut picker = Self {
+            source,
+            allowed: source
+                .map(|s| s.files(&dir).map(std::sync::Arc::new))
+                .transpose()?,
             index: index::Index::new(),
             navigation: navigation::Navigation::new(settings.sidebar_width),
             dir: dir.clone(),
@@ -102,6 +116,13 @@ impl Picker {
             let entry = entry?;
             let path = entry.path();
             let name = entry.file_name().to_string_lossy().into_owned();
+            if self
+                .allowed
+                .as_ref()
+                .is_some_and(|files| !files.contains(&path))
+            {
+                continue;
+            }
             let is_dir = path.is_dir();
             let kind = (!is_dir).then(|| FileKind::from_path(&path)).flatten();
             if !name.starts_with('.') && (is_dir || (path.is_file() && kind.is_some())) {
@@ -128,9 +149,16 @@ impl Picker {
     fn draw(&mut self, frame: &mut Frame) {
         let area = frame.area();
         frame.render_widget(Clear, area);
-        let panel = self.navigation.layout(frame, area);
+        let panel = if self.source.is_some() {
+            area
+        } else {
+            self.navigation.layout(frame, area)
+        };
         let compact = panel == area;
-        let block = crate::appearance::block().title(" Local library ");
+        let block = crate::appearance::block().title(format!(
+            " {} ",
+            self.source.map_or("Local library", |s| s.label())
+        ));
         let inner = block.inner(panel);
         frame.render_widget(block, panel);
         self.exit = Rect::default();
@@ -178,7 +206,9 @@ impl Picker {
         self.shelves = [Rect::default(); 3];
         if compact {
             let mut x = inner.x;
-            let tabs = if inner.width < 51 {
+            let tabs = if self.source.is_some() {
+                ["1 All books", "2 Reading", "3 Recent"]
+            } else if inner.width < 51 {
                 ["1 Folders", "2 Reading", "3 Recent"]
             } else {
                 ["1 Folders", "2 Currently reading", "3 Recently added"]
@@ -253,6 +283,7 @@ impl Picker {
                 match self.view {
                     LocalView::Search(_) => "No matching books.",
                     LocalView::Reading => "No books currently being read.",
+                    _ if self.source.is_some() => "No saved books yet.",
                     _ => "No books or folders here.",
                 }
             };
@@ -269,13 +300,13 @@ impl Picker {
     /// Keep each mouse target intact when a sidebar, split or narrow terminal
     /// leaves less space for actions. Reserve these rows before drawing the books.
     fn draw_footer(&mut self, frame: &mut Frame, inner: Rect, max_rows: u16) -> u16 {
-        let directory = self.view == LocalView::Directory;
+        let directory = self.source.is_none() && self.view == LocalView::Directory;
         let actions = [
             Some("[ Q Back ]"),
             Some("[F2 Settings] [? Help]"),
             self.selected_scan().map(|_| "[I File info]"),
             (directory && self.dir.parent().is_some()).then_some("[↑ Up]"),
-            Some("[P Folder…]"),
+            self.source.is_none().then_some("[P Folder…]"),
             Some("[/ Search]"),
             directory.then_some("[R Set library here]"),
         ];
@@ -331,7 +362,11 @@ impl Picker {
             self.index.clear();
             self.entries = botui_store::HistoryEntry::for_root(&self.root)?
                 .into_iter()
-                .filter(|entry| entry.percent < 100)
+                .filter(|entry| {
+                    self.allowed
+                        .as_ref()
+                        .is_none_or(|files| files.contains(&entry.path))
+                })
                 .filter_map(|entry| {
                     let kind = FileKind::from_path(&entry.path)?;
                     let name = format!(
@@ -357,6 +392,7 @@ impl Picker {
         }
         self.index.start(
             self.root.clone(),
+            self.allowed.clone(),
             match &view {
                 LocalView::Search(q) => Some(q),
                 _ => None,
@@ -455,7 +491,9 @@ impl Picker {
                 }
                 continue;
             }
-            if let Some(result) = self.navigation.input(&e) {
+            if self.source.is_none()
+                && let Some(result) = self.navigation.input(&e)
+            {
                 let result = result.and_then(|action| match action {
                     Some(navigation::Node::Folder(path)) => self.load(&path),
                     Some(navigation::Node::Folders) => self.browse(LocalView::Directory),
@@ -474,7 +512,8 @@ impl Picker {
                 let cfg = crate::settings::Settings::load()?;
                 self.grid_view = cfg.local_grid;
                 self.navigation.splitter.preferred = cfg.sidebar_width;
-                if cfg.library_root != old
+                if self.source.is_none()
+                    && cfg.library_root != old
                     && let Some(root) = cfg
                         .library_root
                         .or_else(|| {
@@ -510,7 +549,7 @@ impl Picker {
                 }
                 continue;
             }
-            if matches!(key, Some(KeyCode::Char('p' | 'P')))
+            if self.source.is_none() && matches!(key, Some(KeyCode::Char('p' | 'P')))
                 || click.is_some_and(|p| self.path_button.contains(p))
             {
                 if let Some(value) = crate::prompt::edit(
@@ -596,17 +635,20 @@ impl Picker {
                     LocalView::Search(q) => q.clone(),
                     _ => String::new(),
                 };
+                let title = match self.source {
+                    Some(crate::cache::Source::BookOrbit) => "Search BookOrbit offline downloads",
+                    Some(crate::cache::Source::Opds) => "Search OPDS downloads",
+                    None => "Search local library",
+                };
                 if let Some(q) =
-                    crate::prompt::edit(term, "Search local library", "[ Search ↵ ]", &q, |f| {
-                        self.draw(f)
-                    })?
+                    crate::prompt::edit(term, title, "[ Search ↵ ]", &q, |f| self.draw(f))?
                     && let Err(e) = self.browse(LocalView::Search(q))
                 {
                     self.error = Some(e.to_string());
                 }
                 continue;
             }
-            if matches!(key, Some(KeyCode::Char('r' | 'R')))
+            if self.source.is_none() && matches!(key, Some(KeyCode::Char('r' | 'R')))
                 || click.is_some_and(|p| self.root_button.contains(p))
             {
                 if self.view == LocalView::Directory {
@@ -629,7 +671,8 @@ impl Picker {
                 self.load(&self.dir.clone())?;
                 continue;
             }
-            if self.view == LocalView::Directory
+            if self.source.is_none()
+                && self.view == LocalView::Directory
                 && (click.is_some_and(|p| self.up_button.contains(p))
                     || key == Some(KeyCode::Backspace)
                     || (key == Some(KeyCode::Left) && self.grid.is_none()))

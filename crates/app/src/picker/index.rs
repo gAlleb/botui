@@ -83,16 +83,27 @@ impl Index {
     pub fn cached(&self, path: &Path) -> Option<Arc<BookMetadata>> {
         Some(self.cache.lock().ok()?.peek(path)?.1.clone())
     }
-    pub fn start(&mut self, root: PathBuf, query: Option<&str>) {
+    pub fn start(
+        &mut self,
+        root: PathBuf,
+        allowed: Option<Arc<std::collections::HashSet<PathBuf>>>,
+        query: Option<&str>,
+    ) {
         self.clear();
         let cache = self.cache.clone();
         let query = query.map(key);
         let (tx, rx) = mpsc::channel();
         self.batches = Some(rx);
-        self.run = Some(
-            self.worker
-                .start(move |stop| scan(&root, query.as_deref(), stop, &cache, tx)),
-        );
+        self.run = Some(self.worker.start(move |stop| {
+            scan(
+                &root,
+                allowed.as_deref(),
+                query.as_deref(),
+                stop,
+                &cache,
+                tx,
+            )
+        }));
     }
     pub fn collect(&mut self, entries: &mut Vec<Entry>) -> Option<io::Result<()>> {
         let done = match self.run.as_ref()?.receiver.try_recv() {
@@ -116,6 +127,7 @@ impl Index {
 
 fn scan(
     root: &Path,
+    allowed: Option<&std::collections::HashSet<PathBuf>>,
     query: Option<&str>,
     stop: &AtomicBool,
     cache: &Cache,
@@ -144,6 +156,9 @@ fn scan(
             }
             let Ok(ty) = en.file_type() else { continue };
             let path = en.path();
+            if allowed.is_some_and(|files| !files.contains(&path)) {
+                continue;
+            }
             if ty.is_dir() {
                 dirs.push(path);
                 continue;

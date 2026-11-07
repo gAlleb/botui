@@ -1,5 +1,6 @@
 //! A downloaded native edition retains its exact progress baseline and account.
 //! Uploads use the same conditional write as a live read. No credentials on disk.
+pub(crate) mod reconnect;
 use botui_bookorbit::{
     Session,
     progress::{Move, Progress, Target},
@@ -32,6 +33,10 @@ fn sidecar(book: &Path) -> PathBuf {
         book.file_name().unwrap_or_default().to_string_lossy()
     ))
 }
+pub(super) fn has_sidecar(book: &Path) -> bool {
+    sidecar(book).is_file()
+}
+
 fn lock(dir: &Path) -> io::Result<fs::File> {
     let file = fs::OpenOptions::new()
         .create(true)
@@ -55,6 +60,43 @@ fn load(path: &Path) -> io::Result<Option<Copy>> {
         Err(e) => Err(e),
     }
 }
+/// Older installations stored only the progress sidecar beside the saved edition.
+pub(super) fn legacy_file(
+    dir: &Path,
+    account: &str,
+    id: u64,
+    kind: botui_formats::FileKind,
+) -> io::Result<Option<PathBuf>> {
+    let mut newest = None;
+    for entry in fs::read_dir(dir)? {
+        let entry = entry?;
+        let name = entry.file_name();
+        let Some(book) = name
+            .to_str()
+            .and_then(|n| n.strip_prefix('.'))
+            .and_then(|n| n.strip_suffix(".json"))
+        else {
+            continue;
+        };
+        let path = dir.join(book);
+        if botui_formats::FileKind::from_path(&path) != Some(kind)
+            || !load(&entry.path())
+                .ok()
+                .flatten()
+                .is_some_and(|r| r.account == account && r.base.file_id == id)
+        {
+            continue;
+        }
+        let Ok(meta) = path.symlink_metadata() else {
+            continue;
+        };
+        if meta.is_file() && meta.len() > 0 {
+            newest = newest.max(Some((meta.modified()?, path)));
+        }
+    }
+    Ok(newest.map(|(_, path)| path))
+}
+
 pub fn associate(book: &Path, account: String, base: Progress) -> io::Result<()> {
     let path = sidecar(book);
     let _lock = lock(book.parent().ok_or(io::ErrorKind::InvalidInput)?)?;
@@ -70,9 +112,34 @@ pub fn associate(book: &Path, account: String, base: Progress) -> io::Result<()>
         },
     )
 }
+pub fn advance(book: &Path, base: &Progress, current: Progress) -> io::Result<()> {
+    let _lock = lock(book.parent().ok_or(io::ErrorKind::InvalidInput)?)?;
+    let path = sidecar(book);
+    if let Some(mut copy) = load(&path)?
+        && copy.base == *base
+        && copy.pending.is_none()
+    {
+        copy.base = current;
+        write(&path, &copy)?;
+    }
+    Ok(())
+}
+
+pub fn queue_if_current(book: &Path, base: &Progress, change: Move) -> io::Result<()> {
+    if let Some(copy) = Copy::open(book)?
+        && copy.base == *base
+        && copy.pending.is_none()
+    {
+        copy.queue(book, change)?;
+    }
+    Ok(())
+}
 impl Copy {
     pub fn open(path: &Path) -> io::Result<Option<Self>> {
-        if path.parent() != Some(crate::cache::downloads()?.as_path()) {
+        let dir = crate::cache::downloads()?;
+        if path.parent() != Some(dir.as_path())
+            && dir.canonicalize().ok().as_deref() != path.parent()
+        {
             return Ok(None);
         }
         load(&sidecar(path))
@@ -94,40 +161,87 @@ impl Copy {
         }
         current
     }
-    pub fn queue(mut self, path: &Path, m: Move) -> io::Result<()> {
+    pub fn queue(self, path: &Path, m: Move) -> io::Result<()> {
         let _lock = lock(path.parent().ok_or(io::ErrorKind::InvalidInput)?)?;
         let meta = sidecar(path);
-        if load(&meta)?.as_ref() != Some(&self) {
+        let Some(mut current) = load(&meta)? else {
+            return Err(io::Error::other("Saved BookOrbit edition is missing"));
+        };
+        // A reconnect can acknowledge the previous queued location while this reader is open.
+        if current != self
+            && !(current.account == self.account
+                && current.pending.is_none()
+                && self
+                    .pending
+                    .as_ref()
+                    .is_some_and(|m| matches_move(&current.base, m)))
+        {
             return Err(io::Error::other(
                 "Offline copy changed in another session; position saved locally",
             ));
         }
-        self.pending = Some(m);
-        write(&meta, &self)
+        current.pending = Some(m);
+        write(&meta, &current)?;
+        reconnect::wake();
+        Ok(())
     }
 }
+fn matches_move(current: &Progress, movement: &Move) -> bool {
+    (current.percentage - movement.percentage).abs() < 0.000_001
+        && match &movement.target {
+            Target::Text(cfi) => current.text.cfi.as_ref() == Some(cfi),
+            Target::Page(n) => current.text.page == Some(*n),
+        }
+}
+
+fn records(dir: &Path) -> io::Result<Vec<PathBuf>> {
+    let entries = match fs::read_dir(dir) {
+        Ok(entries) => entries,
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(e) => return Err(e),
+    };
+    let mut result = Vec::new();
+    for item in entries {
+        let path = item?.path();
+        if path
+            .file_name()
+            .is_some_and(|s| s.to_string_lossy().starts_with('.'))
+            && path.extension().is_some_and(|v| v == "json")
+        {
+            result.push(path);
+        }
+    }
+    Ok(result)
+}
+pub(super) fn has_pending(account: &str) -> io::Result<bool> {
+    for path in records(&crate::cache::downloads()?)? {
+        if load(&path)?.is_some_and(|r| r.account == account && r.pending.is_some()) {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
 pub fn sync(
     session: &Session,
     account: &str,
     cancel: &AtomicBool,
 ) -> botui_bookorbit::Result<Option<String>> {
     let dir = crate::cache::downloads()?;
-    if !dir.is_dir() {
+    if !has_pending(account)? {
         return Ok(None);
     }
+    let serial = fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(dir.join(format!(".sync-{account}.lock")))?;
+    serial.lock()?;
     let mut messages = Vec::new();
-    for item in fs::read_dir(&dir)? {
+    for path in records(&dir)? {
         if cancel.load(Ordering::Acquire) {
             break;
         }
-        let item = item?;
-        let name = item.file_name();
-        if !name.to_string_lossy().starts_with('.')
-            || item.path().extension().and_then(|s| s.to_str()) != Some("json")
-        {
-            continue;
-        }
-        let path = item.path();
         let Some(mut record) = load(&path)? else {
             continue;
         };
@@ -139,26 +253,32 @@ pub fn sync(
         };
         let current = session.with_token(|a, t| a.progress(t, record.base.file_id))?;
         // Finishing the last viewport can change only the percentage.
-        let matches = (current.percentage - m.percentage).abs() < 0.000_001
-            && match &m.target {
-                Target::Text(cfi) => current.text.cfi.as_ref() == Some(cfi),
-                Target::Page(n) => current.text.page == Some(*n),
-            };
+        let matches = matches_move(&current, m);
         let saved = matches
             || (current == record.base
                 && session.with_token(|a, t| a.save_move(t, &record.base, m))?);
-        let _lock = lock(&dir)?;
-        if load(&path)?.as_ref() != Some(&record) {
-            continue;
-        }
         if saved {
-            record.base = if matches {
+            let acknowledged = if matches {
                 current
             } else {
                 session.with_token(|a, t| a.progress(t, record.base.file_id))?
             };
-            record.pending = None;
-            write(&path, &record)?;
+            let _lock = lock(&dir)?;
+            let Some(mut latest) = load(&path)? else {
+                continue;
+            };
+            if latest == record {
+                record.base = acknowledged;
+                record.pending = None;
+                write(&path, &record)?;
+            } else if latest.account == record.account
+                && latest.base == record.base
+                && latest.pending.is_some()
+                && matches_move(&acknowledged, m)
+            {
+                latest.base = acknowledged;
+                write(&path, &latest)?;
+            }
         } else {
             messages.push(
                 "Another device changed an offline book; kept its local progress.".to_owned(),
@@ -175,15 +295,7 @@ pub fn reset_positions(account: &str, files: &[u64]) -> io::Result<()> {
         return Ok(());
     }
     let _lock = lock(&dir)?;
-    for item in fs::read_dir(&dir)? {
-        let path = item?.path();
-        if !path
-            .file_name()
-            .is_some_and(|s| s.to_string_lossy().starts_with('.'))
-            || path.extension().and_then(|v| v.to_str()) != Some("json")
-        {
-            continue;
-        }
+    for path in records(&dir)? {
         if let Some(mut copy) = load(&path)?
             && copy.account == account
             && files.contains(&copy.base.file_id)

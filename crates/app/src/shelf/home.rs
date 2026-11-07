@@ -36,9 +36,14 @@ fn source(cmd: &Command, connected: bool) -> (&'static str, &'static str, &'stat
             "Connect to an OPDS catalog, browse its feeds and choose an edition to read or download.",
             "Enter Open feed   / Catalog search   Esc Back",
         ),
-        Command::Downloads => (
+        Command::Downloads(crate::cache::Source::BookOrbit) => (
             "D",
-            "Read editions saved on this device. Your downloads are available without a server connection.",
+            "Continue your BookOrbit books offline. Your reading position syncs when your account reconnects.",
+            "Enter Open   / Search downloads   Q Back",
+        ),
+        Command::Downloads(crate::cache::Source::Opds) => (
+            "O",
+            "Read books you saved from OPDS catalogs. Reading progress is stored on this device.",
             "Enter Open   / Search downloads   Q Back",
         ),
         _ => ("", "", ""),

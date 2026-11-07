@@ -1,4 +1,5 @@
-//! A remote book is readable only once its private, format-suffixed temporary file is complete.
+//! Staging and publication of complete downloads.
+pub(crate) mod native;
 use crate::catalog::BookFile;
 use botui_bookorbit::{BookOrbit, Result};
 use botui_formats::FileKind;
@@ -68,13 +69,48 @@ pub fn downloads() -> io::Result<std::path::PathBuf> {
     Ok(base.join("botui/downloads"))
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Source {
+    BookOrbit,
+    Opds,
+}
+
+impl Source {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::BookOrbit => "BookOrbit offline downloads",
+            Self::Opds => "OPDS downloads",
+        }
+    }
+
+    pub fn files(
+        self,
+        dir: &std::path::Path,
+    ) -> io::Result<std::collections::HashSet<std::path::PathBuf>> {
+        let native = native::saved_names(dir)?;
+        let mut files = std::collections::HashSet::new();
+        for entry in std::fs::read_dir(dir)? {
+            let entry = entry?;
+            let path = entry.path();
+            if !entry.file_type()?.is_file() || FileKind::from_path(&path).is_none() {
+                continue;
+            }
+            let is_native =
+                native.contains(&entry.file_name()) || crate::offline::has_sidecar(&path);
+            if is_native == (self == Self::BookOrbit) {
+                files.insert(path);
+            }
+        }
+        Ok(files)
+    }
+}
+
 /// A content suffix distinguishes editions and makes repeated saves idempotent.
 /// The offline library is user data; evicting the cover cache cannot remove books.
-pub fn keep(
+pub fn keep_opds(
     path: &std::path::Path,
     title: &str,
     format: &str,
-    source: Option<(&str, u64)>,
     cancel: &AtomicBool,
 ) -> Result<std::path::PathBuf> {
     use sha2::{Digest, Sha256};
@@ -85,10 +121,6 @@ pub fn keep(
     let mut input = fs::File::open(path)?;
     let mut file = tempfile::NamedTempFile::new_in(&dir)?;
     let mut h = Sha256::new();
-    if let Some((account, file)) = source {
-        h.update(account);
-        h.update(file.to_be_bytes());
-    }
     let mut buf = [0u8; 65536];
     loop {
         if cancel.load(Ordering::Acquire) {
@@ -101,6 +133,17 @@ pub fn keep(
         file.write_all(&buf[..n])?;
         h.update(&buf[..n]);
     }
+    publish(file, title, kind, h.finalize().as_slice(), cancel)
+}
+
+pub(super) fn publish(
+    file: NamedTempFile,
+    title: &str,
+    kind: FileKind,
+    digest: &[u8],
+    cancel: &AtomicBool,
+) -> Result<std::path::PathBuf> {
+    let dir = downloads()?;
     let title: String = title
         .chars()
         .map(|c| {
@@ -119,17 +162,15 @@ pub fn keep(
         })
         .collect();
     let title = title.trim().trim_matches('.');
-    let digest = format!("{:x}", h.finalize());
+    let digest: String = digest[..8].iter().map(|b| format!("{b:02x}")).collect();
     let dest = dir.join(format!(
         "{} [{}].{}",
         if title.is_empty() { "Untitled" } else { title },
-        &digest[..16],
+        digest,
         kind.label().to_lowercase()
     ));
     botui_transfer::check_cancel(cancel)?;
-    match file.persist_noclobber(&dest) {
-        Ok(_) => Ok(dest),
-        Err(e) if e.error.kind() == io::ErrorKind::AlreadyExists => Ok(dest),
-        Err(e) => Err(e.error.into()),
-    }
+    // The completed bytes determine the name. This also repairs a locally damaged copy.
+    file.persist(&dest)?;
+    Ok(dest)
 }

@@ -20,11 +20,11 @@ def check(tmp):
     try:
         home.see("Connect to BookOrbit")
         home.run("resize-window","-t","shelf","-x","42","-y","14")
-        home.wait("Four sources fit the compact home",lambda f:"BOTUI" in f and "Offline downloads" in f and "Your TUI book reader." in f)
+        home.wait("Download shelves fit the compact home",lambda f:"BOTUI" in f and "BookOrbit offline downloads" in f and "Your TUI book reader." in f)
         home.keys("End")
-        home.see("Read editions saved on this device.")
+        home.see("Read books you saved from OPDS")
         home.keys("Enter")
-        home.see("Local library")
+        home.see("OPDS downloads")
     finally:
         home.run("kill-server",required=False)
     lib = tmp / "Test library"

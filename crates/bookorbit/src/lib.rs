@@ -185,14 +185,28 @@ impl BookOrbit {
         progress: &botui_transfer::Progress,
     ) -> Result<u64> {
         botui_transfer::check_cancel(cancel)?;
-        let path = format!("books/files/{file_id}/serve");
-        // The blocking client's timeout bounds each read. Setting a request
-        // timeout here would also cut off a large, steadily progressing book.
-        let response = checked(
-            self.authorized(Method::GET, &path, token)?
-                .send()
-                .map_err(|e| e.without_url())?,
-        )?;
+        self.edition(token, file_id, None)?
+            .ok_or("Unexpected not-modified response")?
+            .write_to(writer, limit, cancel, progress)
+    }
+
+    /// An authenticated 304 grants reuse of exactly the version the caller supplied.
+    pub fn edition(
+        &self,
+        token: &str,
+        file_id: u64,
+        etag: Option<&str>,
+    ) -> Result<Option<EditionBody>> {
+        let mut request =
+            self.authorized(Method::GET, &format!("books/files/{file_id}/serve"), token)?;
+        if let Some(etag) = etag {
+            request = request.header(reqwest::header::IF_NONE_MATCH, etag);
+        }
+        let response = request.send().map_err(|e| e.without_url())?;
+        if etag.is_some() && response.status() == StatusCode::NOT_MODIFIED {
+            return Ok(None);
+        }
+        let response = checked(response)?;
         if response.status() != StatusCode::OK {
             return Err("BookOrbit returned an incomplete file.".into());
         }
@@ -201,10 +215,7 @@ impl BookOrbit {
                 "BookOrbit returned HTML instead of a book. Check the address and sign-in.".into(),
             );
         }
-        let length = response.content_length();
-        Ok(botui_transfer::stream(
-            response, writer, length, limit, cancel, progress,
-        )?)
+        Ok(Some(EditionBody(response)))
     }
 
     pub fn thumbnail(&self, token: &str, book_id: u64) -> Result<Option<Vec<u8>>> {
@@ -259,4 +270,32 @@ fn is_html(response: &Response) -> bool {
                 .next()
                 .is_some_and(|t| t.trim().eq_ignore_ascii_case("text/html"))
         })
+}
+
+pub struct EditionBody(reqwest::blocking::Response);
+
+impl EditionBody {
+    pub fn etag(&self) -> Option<&str> {
+        let tag = self.0.headers().get(reqwest::header::ETAG)?.to_str().ok()?;
+        // An entity tag is a quoted opaque value, optionally prefixed with W/.
+        let quoted = tag.strip_prefix("W/").unwrap_or(tag);
+        (quoted.len() >= 2
+            && quoted.starts_with('"')
+            && quoted.ends_with('"')
+            && !quoted[1..quoted.len() - 1].contains('"'))
+        .then_some(tag)
+    }
+
+    pub fn write_to(
+        self,
+        writer: impl Write,
+        limit: u64,
+        cancel: &std::sync::atomic::AtomicBool,
+        progress: &botui_transfer::Progress,
+    ) -> Result<u64> {
+        let length = self.0.content_length();
+        Ok(botui_transfer::stream(
+            self.0, writer, length, limit, cancel, progress,
+        )?)
+    }
 }

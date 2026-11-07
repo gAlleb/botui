@@ -15,6 +15,12 @@
 
 В EPUB отдельно проверен случай, когда примечание находится в конце книги и открытие последней главы не означает завершения чтения. Временный переход хранит исходный адрес текста: возврат, изменение размеров и выход из книги не подменяют его адресом словаря.
 
+## Повторная проверка изданий и состояния чтения
+
+У BookOrbit маршрут `books/files/:fileId/serve` проверяет доступ к изданию и принимает `If-None-Match`. Сервер возвращает 304 для прежней версии или полный файл с новым ETag. BOTUI сохраняет первое прочитанное издание и использует его на полке и в BookOrbit offline downloads. Повторная проверка нужна при изменении версии в карточке, размера или при явном Save offline. Позиция и закладки запрашиваются отдельно. [Контроллер файлов](https://github.com/bookorbit/bookorbit/blob/6ad1445dab35757164ed3bf31e83caeb6ba24ad2/server/src/modules/book/book.controller.ts#L401-L417) · [Валидаторы файла](https://github.com/bookorbit/bookorbit/blob/6ad1445dab35757164ed3bf31e83caeb6ba24ad2/server/src/common/utils/file-range.utils.ts)
+
+Для сканов Bookokrat сохраняет настройки отображения для конкретной книги, а BookOrbit предлагает повернуть лист в своём PDF-ридере. В BOTUI поворот и инверсия относятся к изданию PDF/DjVu и применяются в фоновом обработчике страниц до расчёта размера разворота и прокрутки. [Состояние книги в Bookokrat](https://github.com/bugzmanov/bookokrat/blob/9c02ee3b3a0f86791b3917cb1a93436d92a8603e/src/bookmarks.rs) · [Настройки PDF в BookOrbit](https://github.com/bookorbit/bookorbit/blob/6ad1445dab35757164ed3bf31e83caeb6ba24ad2/client/src/features/reader/pdf-v4/components/PdfReaderSettingsPanel.vue)
+
 ## Открытые различия
 
 - Для нативных заглушек реализован Bauhaus; альтернативные стили веб-профиля пока не импортируются.

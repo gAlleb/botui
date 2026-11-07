@@ -53,6 +53,8 @@ impl Shelf {
                 let (received, total, complete) = progress.snapshot();
                 if complete {
                     title = finishing;
+                } else if received > 0 && !self.is_opds {
+                    title = "Downloading book…";
                 }
                 let received_label = super::format_size(received);
                 let detail = if let Some(total) = total {
@@ -64,7 +66,7 @@ impl Shelf {
                 } else {
                     format!("{received_label} received")
                 };
-                if inner.height > 2 {
+                if inner.height > 2 && (received > 0 || self.is_opds) {
                     frame.render_widget(
                         Paragraph::new(detail),
                         Rect::new(inner.x, inner.y + 1, inner.width, 1),
