@@ -139,6 +139,57 @@ pub(super) fn setting(
                 Settings::update(|s| s.reading_layout = Some(modes[i].into()))?;
             }
         }
+        (1, 8) | (2, 4) => {
+            let reader = tab == 1;
+            let val = if reader {
+                p.contents_width
+            } else {
+                p.sidebar_width
+            };
+            if let Some(v) = edit(
+                term,
+                if reader {
+                    "Contents width · 12–100 cells or blank for Auto"
+                } else {
+                    "Sidebar width · 12–100 cells or blank for Auto"
+                },
+                &val.map_or(String::new(), |n| n.to_string()),
+            )? {
+                let v = v.trim();
+                let n = if v.is_empty() {
+                    None
+                } else {
+                    Some(
+                        v.parse::<u16>()
+                            .ok()
+                            .filter(|n| (12..=100).contains(n))
+                            .ok_or_else(|| {
+                                io::Error::other("Enter 12–100 cells or clear the field.")
+                            })?,
+                    )
+                };
+                Settings::update(|s| {
+                    if reader {
+                        s.contents_width = n
+                    } else {
+                        s.sidebar_width = n
+                    }
+                })?;
+            }
+        }
+        (2, 3) => {
+            if let Some(s) = edit(
+                term,
+                "Download limit · MiB (0 = unlimited)",
+                &p.max_download_mib.to_string(),
+            )? {
+                let n = s
+                    .trim()
+                    .parse::<u32>()
+                    .map_err(|_| io::Error::other("Enter a non-negative number of MiB."))?;
+                Settings::update(|s| s.max_download_mib = n)?;
+            }
+        }
         (2, 0) => {
             if let Some(v) = edit(
                 term,

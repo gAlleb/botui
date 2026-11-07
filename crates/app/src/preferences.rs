@@ -1,5 +1,6 @@
 //! One settings and help surface for every source, including direct-file launches.
 mod edit;
+mod help;
 use crate::{AppTerminal, appearance, settings::Settings, shell_theme};
 use crossterm::event::{Event, KeyCode, KeyEventKind, MouseButton, MouseEventKind};
 use ratatui::{
@@ -64,88 +65,7 @@ impl Buttons {
     }
 }
 const TABS: [&str; 5] = ["Appearance", "Reader", "Library", "BookOrbit", "Keys"];
-fn help(ctx: Context, p: &Settings) -> Vec<String> {
-    let mut rows = vec![
-        "F2          Open settings".into(),
-        "? / F1      Keyboard shortcuts".into(),
-        "Esc         Back / close a panel".into(),
-    ];
-    let mut groups = vec![ctx];
-    for c in [Context::Shelf, Context::Local, Context::Text, Context::Scan] {
-        if c != ctx {
-            groups.push(c)
-        }
-    }
-    for c in groups {
-        let (name, keys): (&str, &[(&str, &str)]) = match c {
-            Context::Shelf => (
-                "BookOrbit & catalogs",
-                &[
-                    (
-                        "0…7",
-                        "Dashboard, books, reading, recent, libraries, collections, authors, series",
-                    ),
-                    ("/", "Find books or search the current directory"),
-                    ("V / U / F", "Grid or list / borders / background"),
-                    ("Enter / click", "Open the selected item"),
-                    ("F6", "Focus navigation; ←/→ fold or expand groups"),
-                    ("Q / Esc", "Return to source chooser / back one level"),
-                    ("PgUp/PgDn", "Move through the shelf"),
-                    ("D", "Save the selected file offline"),
-                ],
-            ),
-            Context::Local => (
-                "Local library",
-                &[
-                    ("P / R", "Choose a folder / use this folder as the library"),
-                    ("1 / 2 / 3", "Folders / currently reading / recently added"),
-                    ("/", "Search below the library root"),
-                    ("V / U / F", "Grid or list / borders / background"),
-                ],
-            ),
-            Context::Text => (
-                "EPUB & FB2",
-                &[
-                    ("M / Esc", "Reading menu"),
-                    ("← / →", "Previous / next page (or scroll)"),
-                    ("1 / 2 / 3", "Single page / spread / continuous scroll"),
-                    ("W", "Set page width and column gap"),
-                    ("[ / ]", "Widen / narrow each page"),
-                    ("{ / }", "Decrease / increase column gap"),
-                    ("O / /", "Contents / find in book"),
-                    ("T / F / U", "Reader theme / background / borders"),
-                    ("B / G", "Toggle bookmark / show bookmarks"),
-                    ("N / A / E", "Edit note / show notes / export Markdown"),
-                    ("I / S", "Links and illustrations / reading statistics"),
-                    (", / .", "Jump back / forward"),
-                    ("Q", "Close the book"),
-                ],
-            ),
-            Context::Scan => (
-                "PDF & DjVu",
-                &[
-                    ("M / Esc", "Reading menu"),
-                    ("1 / 2 / 3", "Single page / spread / continuous scroll"),
-                    ("+ / −", "Zoom in / out; arrows pan when zoomed"),
-                    ("P / Ctrl+G", "Go directly to a page number"),
-                    ("Home / End", "First / last page"),
-                    ("/ / N", "Search text layer / next matching page"),
-                    ("B / G", "Toggle bookmark / show bookmarks"),
-                    ("I / A / E", "Edit page note / show notes / export Markdown"),
-                    ("S / Q", "Book statistics / close book"),
-                ],
-            ),
-        };
-        rows.push(format!("── {name}"));
-        rows.extend(keys.iter().map(|(k, v)| format!("{k:<14}{v}")));
-        if c == Context::Text && !p.keys.is_empty() {
-            rows.push("── Your EPUB / FB2 overrides (take precedence)".into());
-            rows.extend(p.keys.iter().map(|(k, v)| format!("{k:<14}{v}")));
-        }
-    }
-    rows
-}
-fn rows(tab: usize, s: &Settings, ctx: Context) -> Vec<String> {
+fn rows(tab: usize, s: &Settings) -> Vec<String> {
     let pair = |k: &str, v: &str| format!(" {k:<23} {v}");
     let view = |grid| if grid { "Cover grid" } else { "List" };
     match tab {
@@ -211,6 +131,11 @@ fn rows(tab: usize, s: &Settings, ctx: Context) -> Vec<String> {
                 "First-line indent",
                 &format!("{} cells", s.paragraph_indent.min(8)),
             ),
+            pair(
+                "Contents width",
+                &s.contents_width
+                    .map_or_else(|| "Auto".into(), |n| format!("{n} cells")),
+            ),
         ],
         2 => vec![
             pair(
@@ -221,6 +146,19 @@ fn rows(tab: usize, s: &Settings, ctx: Context) -> Vec<String> {
             ),
             pair("Local shelf", view(s.local_grid)),
             pair("Reading statistics", "This device →"),
+            pair(
+                "Download limit",
+                &if s.max_download_mib == 0 {
+                    "Unlimited".into()
+                } else {
+                    format!("{} MiB", s.max_download_mib)
+                },
+            ),
+            pair(
+                "Sidebar width",
+                &s.sidebar_width
+                    .map_or_else(|| "Auto".into(), |n| format!("{n} cells")),
+            ),
         ],
         3 => vec![
             pair(
@@ -257,16 +195,23 @@ fn rows(tab: usize, s: &Settings, ctx: Context) -> Vec<String> {
             ),
             pair("Account shelf", view(!s.bookorbit.list_view)),
         ],
-        _ => help(ctx, s),
+        _ => Vec::new(),
     }
 }
 pub fn show(term: &mut AppTerminal, start: Open, ctx: Context) -> io::Result<()> {
     let mut tab = if start == Open::Help { 4 } else { 0 };
     let mut state = ListState::default().with_selected(Some(0));
     let mut status = String::new();
+    let mut help_offset = 0usize;
     let mut prefs = Settings::load()?;
     loop {
-        let labels = rows(tab, &prefs, ctx);
+        let labels = rows(tab, &prefs);
+        let guide = if tab == 4 {
+            help::entries(ctx, &prefs)
+        } else {
+            vec![]
+        };
+        let mut help_max = 0;
         let mut tabs = [Rect::default(); 5];
         let mut back = Rect::default();
         let mut body = Rect::default();
@@ -311,12 +256,14 @@ pub fn show(term: &mut AppTerminal, start: Open, ctx: Context) -> io::Result<()>
                     .height
                     .saturating_sub(2 + gap + u16::from(!status.is_empty())),
             );
+            if tab==4 { help_max=help::draw(f,body,&guide,&mut help_offset); } else {
             f.render_stateful_widget(
                 List::new(labels.iter().map(String::as_str))
                     .highlight_style(Style::new().reversed()),
                 body,
                 &mut state,
             );
+            }
             if tab<4 && body.height>=labels.len() as u16+4 {
                 // Explain the selected control where the eye already is. Reserve the
                 // last row for the same navigation hints on every tab.
@@ -331,10 +278,13 @@ pub fn show(term: &mut AppTerminal, start: Open, ctx: Context) -> io::Result<()>
                     (1,3)=>"Space between facing text pages. The W panel also lets you adjust this while reading.",
                     (1,4)=>"Reflow repairs words split across printed lines. Preserve keeps the book’s original breaks.",
                     (1,6)=>"Default for newly opened books: one page, a spread or continuous scroll.",
+                    (1,8)=>"Width of the contents panel. Drag its right edge in a book, or enter cells here.",
                     (1,7)=>"Indent the first line of a text paragraph by 0–8 cells. Wrapped lines keep their left edge.",
                     (1,_)=>"Display embedded illustrations on the page or open them from I when you need them.",
                     (2,0)=>"Choose the library used by the folder browser. Searches also include its subfolders.",
                     (2,1)=>"Open local folders as a list or a grid of covers.",
+                    (2,4)=>"Width of BookOrbit navigation. Drag its right edge, or enter cells here.",
+                    (2,3)=>"Maximum download size for BookOrbit and OPDS. Enter MiB or 0 for unlimited.",
                     (2,_)=>"Editions, completed sessions and time spent in books on this device, across all sources.",
                     (3,0)|(3,1)=>"Used at your next sign-in. Saved credentials belong to this server and username.",
                     (3,2)=>"Store a password in your private config, or use a password command instead.",
@@ -412,8 +362,13 @@ pub fn show(term: &mut AppTerminal, start: Open, ctx: Context) -> io::Result<()>
         };
         if let Some(i) = select {
             tab = i;
+            help_offset = 0;
             state = ListState::default().with_selected(Some(0));
             status.clear();
+            continue;
+        }
+        if tab == 4 {
+            help_offset = help_offset.saturating_add_signed(delta).min(help_max);
             continue;
         }
         if let Some(i) = opened.filter(|&i| i < labels.len() && tab != 4) {

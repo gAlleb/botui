@@ -13,10 +13,15 @@ use std::{
 use toml_edit::{DocumentMut, TableLike};
 
 const EXAMPLE: &str = include_str!("../../../config.example.toml");
+fn default_download_limit() -> u32 {
+    4096
+}
 #[derive(Default, Deserialize, Serialize)]
 #[serde(default)]
 pub struct Settings {
     pub library_root: Option<PathBuf>,
+    #[serde(default = "default_download_limit")]
+    pub max_download_mib: u32,
     pub zen: bool,
     pub local_grid: bool,
     pub preserve_printed_lines: bool,
@@ -28,6 +33,8 @@ pub struct Settings {
     pub borders: crate::appearance::BordersStyle,
     pub page_width: Option<u16>,
     pub paragraph_indent: u8,
+    pub sidebar_width: Option<u16>,
+    pub contents_width: Option<u16>,
     pub reading_layout: Option<String>,
     pub column_gap: Option<u16>,
     pub bookorbit: Connection,

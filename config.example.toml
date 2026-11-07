@@ -1,6 +1,11 @@
 # Local library. Uncomment to use a specific folder.
 # library_root = "/path/to/books"
 local_grid = false
+# Drag the right edge of either panel to set these widths. Omit for Auto.
+# sidebar_width = 28
+# contents_width = 24
+# Per downloaded edition, in MiB (BookOrbit and OPDS). 0 removes the limit.
+max_download_mib = 4096
 
 # Reader defaults. Use "terminal" to follow your terminal's colors.
 theme = "terminal"
