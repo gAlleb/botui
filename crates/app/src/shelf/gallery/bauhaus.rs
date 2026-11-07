@@ -1,3 +1,4 @@
+// BookOrbit artwork adaptation: see licenses/NOTICE.md and licenses/bookorbit/.
 //! BookOrbit's default generated cover. The browser chooses its palette by series or
 //! author and its geometric figure by the catalog title. These keys intentionally
 //! use JavaScript UTF-16 code units, including for non-Latin catalog entries.

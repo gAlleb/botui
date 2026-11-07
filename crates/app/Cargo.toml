@@ -2,6 +2,7 @@
 name = "botui"
 version.workspace = true
 edition.workspace = true
+license-file = "../../licenses/NOTICE.md"
 publish.workspace = true
 
 [dependencies]

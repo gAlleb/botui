@@ -1,3 +1,4 @@
+// BookOrbit artwork adaptation: see licenses/NOTICE.md and licenses/bookorbit/.
 //! Fit lettering with the same shaping engine used for the final raster.
 use super::{Design, artwork::Palette};
 use resvg::usvg::{self, fontdb};

@@ -36,7 +36,7 @@ use ratatui::{Terminal, backend::CrosstermBackend, layout::Rect};
 type AppTerminal = Terminal<CrosstermBackend<io::Stdout>>;
 type Result<T> = std::result::Result<T, Box<dyn Error>>;
 
-const HELP: &str = "botui [FILE | DIRECTORY | --local [DIRECTORY] | --resume | --library DIRECTORY | --server URL | --opds URL]\n\nOpen a book or remember a local library folder. Use --resume for the last unfinished local book or offline download. With no arguments, choose a source. F2 settings, ? shortcuts. Use --config-path to locate config.toml or --check-bookmarks TITLE to inspect server bookmarks without editing them.\nBookOrbit: 0 dashboard, 1 all books, 2 reading, 3 recent, 4 libraries, 5 collections, 6 authors, 7 series. / search, V grid/list, U borders.\nIn EPUB or FB2: 1/2/3 single/spread/scroll, arrows or wheel to read, W page layout, [/] width, {/} column gap, Z zen, O contents, T theme, F background, B/G bookmarks, M menu, Q close.\nPDF and DjVu: 1/2/3 single/spread/scroll, P go to page (Ctrl+G also works), / find text, N next match, +/- zoom, Z zen, G bookmarks.\n";
+const HELP: &str = "botui [FILE | DIRECTORY | --local [DIRECTORY] | --resume | --library DIRECTORY | --server URL | --opds URL]\n\nOpen a book or remember a local library folder. Use --resume for the last unfinished local book or offline download. With no arguments, choose a source. F2 settings and About, ? shortcuts, --license for license texts. Use --config-path to locate config.toml or --check-bookmarks TITLE to inspect server bookmarks without editing them.\nBookOrbit: 0 dashboard, 1 all books, 2 reading, 3 recent, 4 libraries, 5 collections, 6 authors, 7 series. / search, V grid/list, U borders.\nIn EPUB or FB2: 1/2/3 single/spread/scroll, arrows or wheel to read, W page layout, [/] width, {/} column gap, Z zen, O contents, T theme, F background, B/G bookmarks, M menu, Q close.\nPDF and DjVu: 1/2/3 single/spread/scroll, P go to page (Ctrl+G also works), / find text, N next match, W width, +/- zoom, 0 fit, Z zen, G bookmarks.\n";
 
 struct Screen;
 
@@ -90,6 +90,7 @@ enum Start {
     File(PathBuf),
     Resume,
     Help,
+    License,
     ConfigPath,
     CheckBookmarks(String),
 }
@@ -105,6 +106,7 @@ fn arguments() -> Result<Start> {
                 .into_string()
                 .map_err(|_| "Invalid title")?,
         ),
+        Some(v) if v == "--license" => Start::License,
         Some(v) if v == "--config-path" => Start::ConfigPath,
         Some(v) if v == "--help" || v == "-h" => Start::Help,
         Some(v) if v == "--opds" => Start::Opds(
@@ -342,6 +344,16 @@ fn bookorbit_shelf(
 
 fn run() -> Result<()> {
     let start = arguments()?;
+    if matches!(start, Start::License) {
+        println!(
+            "{}\n{}\n{}\n{}",
+            include_str!("../../../licenses/NOTICE.md"),
+            include_str!("../../../LICENSE"),
+            include_str!("../../../licenses/bookorbit/LICENSE"),
+            include_str!("../../../licenses/bookorbit/ADDITIONAL_TERMS.md")
+        );
+        return Ok(());
+    }
     if matches!(start, Start::Help) {
         print!("{HELP}");
         return Ok(());

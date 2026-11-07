@@ -1,4 +1,5 @@
 //! One settings and help surface for every source, including direct-file launches.
+mod about;
 mod edit;
 mod help;
 use crate::{AppTerminal, appearance, settings::Settings, shell_theme};
@@ -64,7 +65,14 @@ impl Buttons {
         }
     }
 }
-const TABS: [&str; 5] = ["Appearance", "Reader", "Library", "BookOrbit", "Keys"];
+const TABS: [&str; 6] = [
+    "Appearance",
+    "Reader",
+    "Library",
+    "BookOrbit",
+    "Keys",
+    "About",
+];
 fn rows(tab: usize, s: &Settings) -> Vec<String> {
     let pair = |k: &str, v: &str| format!(" {k:<23} {v}");
     let view = |grid| if grid { "Cover grid" } else { "List" };
@@ -203,6 +211,7 @@ pub fn show(term: &mut AppTerminal, start: Open, ctx: Context) -> io::Result<()>
     let mut state = ListState::default().with_selected(Some(0));
     let mut status = String::new();
     let mut guide_view = help::Guide::default();
+    let mut about_offset = 0usize;
     let mut prefs = Settings::load()?;
     loop {
         let labels = rows(tab, &prefs);
@@ -211,18 +220,20 @@ pub fn show(term: &mut AppTerminal, start: Open, ctx: Context) -> io::Result<()>
         } else {
             vec![]
         };
-        let mut tabs = [Rect::default(); 5];
+        let mut tabs = [Rect::default(); TABS.len()];
+        let mut website = Rect::default();
+        let mut about_max = 0;
         let mut back = Rect::default();
         let mut body = Rect::default();
         term.draw(|f| {
-            let area = if tab == 4 {
-                crate::centered(f.area(), 106, 34)
-            } else {
-                crate::centered(f.area(), 82, (labels.len() as u16 + 12).max(16))
+            let area = match tab {
+                4 => crate::centered(f.area(), 106, 34),
+                5 => crate::centered(f.area(), 82, 24),
+                _ => crate::centered(f.area(), 82, (labels.len() as u16+12).max(16)),
             };
             let block = appearance::block().title(if tab == 4 {
                 " Keyboard shortcuts "
-            } else {
+            } else if tab==5 {" About / Legal notices "} else {
                 " Settings "
             });
             let inner = block.inner(area);
@@ -235,7 +246,7 @@ pub fn show(term: &mut AppTerminal, start: Open, ctx: Context) -> io::Result<()>
             let mut x = inner.x;
             for (i, label) in TABS.iter().enumerate() {
                 let s = if compact {
-                    ["Style", "Read", "Lib", "Orbit", "Keys"][i]
+                    ["Style", "Read", "Lib", "Orbit", "Keys", "About"][i]
                 } else {
                     label
                 };
@@ -259,7 +270,7 @@ pub fn show(term: &mut AppTerminal, start: Open, ctx: Context) -> io::Result<()>
                     .height
                     .saturating_sub(2 + gap + u16::from(!status.is_empty())),
             );
-            if tab==4 { guide_view.draw(f,body,&guide); } else {
+            if tab==5 { (about_max,website)=about::draw(f,body,&mut about_offset); } else if tab==4 { guide_view.draw(f,body,&guide); } else {
             f.render_stateful_widget(
                 List::new(labels.iter().map(String::as_str))
                     .highlight_style(Style::new().reversed()),
@@ -286,7 +297,7 @@ pub fn show(term: &mut AppTerminal, start: Open, ctx: Context) -> io::Result<()>
                     (1,_)=>"Display embedded illustrations on the page or open them from I when you need them.",
                     (2,0)=>"Choose the library used by the folder browser. Searches also include its subfolders.",
                     (2,1)=>"Open local folders as a list or a grid of covers.",
-                    (2,4)=>"Width of BookOrbit navigation. Drag its right edge, or enter cells here.",
+                    (2,4)=>"Width of the local library and BookOrbit navigation. Drag its right edge, or enter cells here.",
                     (2,3)=>"Maximum download size for BookOrbit and OPDS. Enter MiB or 0 for unlimited.",
                     (2,_)=>"Editions, completed sessions and time spent in books on this device, across all sources.",
                     (3,0)|(3,1)=>"Used at your next sign-in. Saved credentials belong to this server and username.",
@@ -307,7 +318,7 @@ pub fn show(term: &mut AppTerminal, start: Open, ctx: Context) -> io::Result<()>
             back = Rect::new(inner.x, inner.bottom() - 1, inner.width.min(back_label.len() as u16), 1);
             f.render_widget(Paragraph::new(back_label).cyan(), back);
             f.render_widget(
-                Paragraph::new(if tab == 4 {
+                Paragraph::new(if tab == 5 {"  Enter Website   ↑↓ Scroll"} else if tab == 4 {
                     if inner.width >= 58 { "  ↑↓ Scroll   [ / ] Section   Tab Switch tab" } else { "  ↑↓ Scroll  [ ] Section" }
                 } else {
                     "  Tab Sections   ↑↓ Choose   Enter Edit"
@@ -331,11 +342,11 @@ pub fn show(term: &mut AppTerminal, start: Open, ctx: Context) -> io::Result<()>
                     0
                 }
                 KeyCode::Tab | KeyCode::Right => {
-                    select = Some((tab + 1) % 5);
+                    select = Some((tab + 1) % TABS.len());
                     0
                 }
                 KeyCode::BackTab | KeyCode::Left => {
-                    select = Some((tab + 4) % 5);
+                    select = Some((tab + TABS.len() - 1) % TABS.len());
                     0
                 }
                 KeyCode::Char('[' | ']') if tab == 4 => {
@@ -369,7 +380,7 @@ pub fn show(term: &mut AppTerminal, start: Open, ctx: Context) -> io::Result<()>
                             continue;
                         }
                         select = tabs.iter().position(|r| r.contains(pos));
-                        if body.contains(pos) {
+                        if body.contains(pos) && (tab != 5 || website.contains(pos)) {
                             opened = Some(state.offset() + usize::from(m.row - body.y));
                         }
                         0
@@ -384,12 +395,23 @@ pub fn show(term: &mut AppTerminal, start: Open, ctx: Context) -> io::Result<()>
         if let Some(i) = select {
             tab = i;
             guide_view = help::Guide::default();
+            about_offset = 0;
             state = ListState::default().with_selected(Some(0));
             status.clear();
             continue;
         }
-        if tab == 4 {
-            guide_view.scroll(delta);
+        if tab >= 4 {
+            if tab == 5 && opened.is_some() {
+                status = about::open()
+                    .err()
+                    .map(|e| e.to_string())
+                    .unwrap_or_default();
+            }
+            if tab == 5 {
+                about_offset = about_offset.saturating_add_signed(delta).min(about_max);
+            } else {
+                guide_view.scroll(delta);
+            }
             continue;
         }
         if let Some(i) = opened.filter(|&i| i < labels.len() && tab != 4) {

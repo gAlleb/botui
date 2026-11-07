@@ -1,3 +1,4 @@
+// BookOrbit artwork adaptation: see licenses/NOTICE.md and licenses/bookorbit/.
 //! The web catalog uses Oklch palettes. Convert to sRGB before encoding the
 //! vector art so a terminal and the SVG renderer agree on the same ink.
 use ratatui::style::Color;
