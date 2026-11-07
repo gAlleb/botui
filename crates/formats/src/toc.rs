@@ -15,15 +15,21 @@ pub fn read(
     let mut entries = Vec::new();
     let mut seen = HashSet::new();
     let mut link = |href: &str, label: String| {
-        let Ok(file) = member_path(path, href) else {
+        let (reference, fragment) = href.split_once('#').unwrap_or((href, ""));
+        let file = if reference.is_empty() && !fragment.is_empty() {
+            path.to_owned()
+        } else if let Ok(file) = member_path(path, reference) {
+            file
+        } else {
             return;
         };
-        let block = match href.split_once('#') {
-            Some((_, frag)) if !frag.is_empty() => percent_encoding::percent_decode_str(frag)
+        let block = if fragment.is_empty() {
+            starts.get(&file).copied()
+        } else {
+            percent_encoding::percent_decode_str(fragment)
                 .decode_utf8()
                 .ok()
-                .and_then(|id| ids.get(&(file, id.into_owned())).copied()),
-            _ => starts.get(&file).copied(),
+                .and_then(|id| ids.get(&(file, id.into_owned())).copied())
         };
         let title = clean(&label);
         if let Some(block) = block

@@ -44,6 +44,7 @@ pub(super) fn parse(bytes: &[u8], fallback: &str) -> Result<Document> {
         .unwrap_or_else(|| clean(fallback));
     let mut locations = botui_core::Locations::default();
     let mut blocks = Vec::new();
+    let mut contents = Vec::new();
     let mut raw = vec![];
     let mut tables = std::collections::BTreeMap::new();
     let mut ids = std::collections::HashMap::new();
@@ -59,9 +60,40 @@ pub(super) fn parse(bytes: &[u8], fallback: &str) -> Result<Document> {
             continue;
         }
         let paths = super::locations::FbPaths::new(body);
+        // The preorder traversal emits a paragraph before visiting its inline children.
+        let mut current_block = None;
         for node in body.descendants().filter(|n| n.is_element()) {
             if let Some(id) = node.attribute("id") {
-                ids.insert(id, blocks.len());
+                let block = current_block
+                    .filter(|&(_, owner)| node.ancestors().any(|n| n.id() == owner))
+                    .map_or(blocks.len(), |(at, _)| at);
+                ids.insert(id, block);
+            }
+            if node.has_tag_name("title")
+                && node
+                    .parent_element()
+                    .is_some_and(|p| p.has_tag_name("body") || p.has_tag_name("section"))
+            {
+                let parts: Vec<_> = node
+                    .children()
+                    .filter(|n| n.has_tag_name("p"))
+                    .map(text)
+                    .filter(|s| !s.is_empty())
+                    .collect();
+                let label = if parts.is_empty() {
+                    text(node)
+                } else {
+                    parts.join(" ")
+                };
+                if !label.is_empty() {
+                    contents.push((
+                        botui_core::Anchor {
+                            block: blocks.len(),
+                            byte: 0,
+                        },
+                        label,
+                    ));
+                }
             }
             if matches!(node.tag_name().name(), "a" | "image") {
                 if let Some(attr) = node.attributes().find(|a| a.name() == "href") {
@@ -131,6 +163,7 @@ pub(super) fn parse(bytes: &[u8], fallback: &str) -> Result<Document> {
                 if let Some(runs) = paths.paragraph(node, &content) {
                     locations.0.insert(blocks.len(), runs);
                 }
+                current_block = Some((blocks.len(), node.id()));
                 blocks.push(Block {
                     text: content,
                     heading,
@@ -191,7 +224,7 @@ pub(super) fn parse(bytes: &[u8], fallback: &str) -> Result<Document> {
                     Target::Note(parts.join("\n\n"))
                 } else {
                     Target::Passage(Anchor {
-                        block: *ids.get(id)?,
+                        block: *ids.get(id).filter(|&&i| i < blocks.len())?,
                         byte: 0,
                     })
                 }
@@ -214,7 +247,7 @@ pub(super) fn parse(bytes: &[u8], fallback: &str) -> Result<Document> {
     Ok(Document {
         tables,
         references,
-        contents: vec![],
+        contents,
         title,
         blocks,
         locations,

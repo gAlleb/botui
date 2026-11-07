@@ -147,3 +147,36 @@ fn image_only_epub_keeps_two_spine_destinations_and_ignores_remote_art() {
         [0, 1]
     );
 }
+
+#[test]
+fn navigation_document_can_link_to_its_own_fragment_in_the_spine() {
+    let book = read_book(archive(&[
+        ("META-INF/container.xml", r#"<container><rootfile full-path="OPS/p.opf"/></container>"#),
+        ("OPS/p.opf", r#"<package><manifest><item id="n" href="chap.xhtml" media-type="application/xhtml+xml" properties="nav"/></manifest><spine><itemref idref="n"/></spine></package>"#),
+        ("OPS/chap.xhtml",r##"<html><body><nav role="doc-toc"><ol><li><a href="#p%202">The coast</a></li></ol></nav><section id="p 2"><p>Far from the harbor.</p></section></body></html>"##),
+    ]), "test").unwrap();
+    assert_eq!(book.contents.len(), 1);
+    let (anchor, title) = &book.contents[0];
+    assert_eq!(title, "The coast");
+    assert_eq!(book.blocks[anchor.block].text, "Far from the harbor.");
+}
+
+#[test]
+fn fb2_contents_group_section_titles_and_inline_fragment_keeps_its_paragraph() {
+    let src = r##"<FictionBook><body><section><title><p>Book I</p><p>The Shore</p></title>
+        <subtitle>A decorative subtitle</subtitle>
+        <p>See <a href="#destination">the coast</a>.</p>
+        <section><title><p>Part 1</p></title><p>The <emphasis id="destination">coast</emphasis> is rough.</p><p>Another day.</p></section>
+        </section></body></FictionBook>"##;
+    let book = super::fb2::parse(src.as_bytes(), "example").unwrap();
+    let names: Vec<_> = book
+        .contents
+        .iter()
+        .map(|(_, title)| title.as_str())
+        .collect();
+    assert_eq!(names, ["Book I The Shore", "Part 1"]);
+    let botui_core::Target::Passage(place) = book.references[0].target else {
+        panic!("missing internal link")
+    };
+    assert_eq!(book.blocks[place.block].text, "The coast is rough.");
+}

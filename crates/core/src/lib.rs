@@ -8,7 +8,7 @@ mod reference;
 pub use reference::{Reference, Target};
 mod search;
 pub use location::{Locations, Run};
-pub use search::SearchIndex;
+pub use search::{SearchIndex, SearchMatch};
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 

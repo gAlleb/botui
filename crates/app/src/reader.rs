@@ -3,6 +3,7 @@ mod layout;
 mod navigation;
 pub(crate) mod notes;
 mod resources;
+mod search;
 pub(crate) mod theme_picker;
 use navigation::{Edit, Kind};
 
@@ -36,6 +37,8 @@ enum Action {
     Focus,
     JumpBack,
     JumpForward,
+    FindAgain(bool),
+    SearchResults,
     Note,
     Export,
     Statistics,
@@ -63,7 +66,7 @@ enum Action {
     Resize,
 }
 
-const COMMANDS: [Action; 25] = [
+const COMMANDS: [Action; 28] = [
     Action::Resume,
     Action::Previous,
     Action::Next,
@@ -73,6 +76,9 @@ const COMMANDS: [Action; 25] = [
     Action::Theme,
     Action::Navigate(Kind::Contents),
     Action::Navigate(Kind::Search),
+    Action::FindAgain(true),
+    Action::FindAgain(false),
+    Action::SearchResults,
     Action::Mark,
     Action::Navigate(Kind::Marks),
     Action::Layout,
@@ -114,6 +120,7 @@ struct Reader {
     menu: Option<TableState>,
     menu_rows: Rect,
     nav: Option<navigation::Navigation>,
+    search: search::Search,
     marks: Vec<botui_core::Anchor>,
     margin: i8,
     bindings: std::collections::HashMap<char, Action>,
@@ -183,6 +190,7 @@ impl Reader {
             menu: None,
             menu_rows: Rect::default(),
             nav: None,
+            search: Default::default(),
             marks,
             margin,
             bindings: Default::default(),
@@ -246,7 +254,7 @@ impl Reader {
                     }
                     continue;
                 }
-                let mut para = Paragraph::new(line.text.as_str()).style(if line.table_header {
+                let mut para = Paragraph::new(self.search.line(line)).style(if line.table_header {
                     style.add_modifier(Modifier::BOLD)
                 } else {
                     style
@@ -410,6 +418,9 @@ impl Reader {
                 Action::Theme => (format!("Theme · {}", self.theme.name()).into(), "T"),
                 Action::Navigate(Kind::Contents) => ("Contents".into(), "O"),
                 Action::Navigate(Kind::Search) => ("Find in book".into(), "/"),
+                Action::SearchResults => ("Reopen search results".into(), "F5"),
+                Action::FindAgain(true) => ("Next search match".into(), "F3"),
+                Action::FindAgain(false) => ("Previous search match".into(), "F4"),
                 Action::Mark => (
                     (if self.remote_marked || self.marks.contains(&self.pager.anchor()) {
                         "Remove bookmark"
@@ -534,6 +545,11 @@ impl Reader {
             }
             Event::Key(k) if k.kind != KeyEventKind::Release => match k.code {
                 KeyCode::F(2) => Some(Action::Settings),
+                KeyCode::F(5) => Some(Action::SearchResults),
+                KeyCode::F(4) => Some(Action::FindAgain(false)),
+                KeyCode::F(3) => Some(Action::FindAgain(
+                    !k.modifiers.contains(KeyModifiers::SHIFT),
+                )),
                 KeyCode::Char('?') | KeyCode::F(1) => Some(Action::Help),
                 KeyCode::Char(c)
                     if self.menu.is_none()
@@ -705,13 +721,39 @@ impl Reader {
                 let mut nav =
                     navigation::Navigation::new(kind, &self.doc, self.pager.anchor(), &self.marks);
                 if kind == Kind::Search {
-                    nav.index = Some(self.pager.search_index(&self.doc));
+                    nav.index = Some(self.search.index(&self.pager, &self.doc));
                 }
                 self.nav = Some(nav);
             }
+            Action::SearchResults => {
+                self.apply(Action::Navigate(Kind::Search));
+                if let Some(nav) = &mut self.nav {
+                    self.search.restore(nav);
+                }
+            }
+            Action::FindAgain(forward) => {
+                self.menu = None;
+                if let Some(place) = self.search.advance(self.pager.anchor(), forward) {
+                    self.jump_to(place);
+                    self.dirty = true;
+                } else {
+                    self.apply(Action::Navigate(Kind::Search));
+                }
+            }
             Action::NavEdit(Edit::Back) => self.nav = None,
             Action::NavEdit(e) => {
-                if let Some(place) = self.nav.as_mut().and_then(|n| n.edit(e)) {
+                if let Some(nav) = &mut self.nav
+                    && let Some(place) = nav.edit(e)
+                {
+                    if let Edit::Choose(selected) = e
+                        && nav.index.is_some()
+                    {
+                        self.search.select(
+                            std::mem::take(&mut nav.query),
+                            std::mem::take(&mut nav.hits),
+                            selected,
+                        );
+                    }
                     self.jump_to(place);
                     self.dirty = true;
                     self.nav = None;
@@ -885,6 +927,9 @@ fn bindings() -> io::Result<std::collections::HashMap<char, Action>> {
                 "theme" => Action::Theme,
                 "contents" => Action::Navigate(Kind::Contents),
                 "search" => Action::Navigate(Kind::Search),
+                "search-results" => Action::SearchResults,
+                "next-match" => Action::FindAgain(true),
+                "previous-match" => Action::FindAgain(false),
                 "bookmark" => Action::Mark,
                 "bookmarks" => Action::Navigate(Kind::Marks),
                 "single" => Action::Single,
@@ -1096,6 +1141,7 @@ pub fn read_server(
                         !new.hide_inline_images,
                     );
                     reader.pager.seek(focus);
+                    reader.search = Default::default();
                 }
                 continue;
             }

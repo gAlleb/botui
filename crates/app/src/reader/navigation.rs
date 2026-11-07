@@ -22,11 +22,13 @@ pub(super) enum Edit {
     Choose(usize),
     Type(char),
     Erase,
+    Clear,
 }
 pub(super) struct Navigation {
-    pub(super) index: Option<botui_core::SearchIndex>,
+    pub(super) index: Option<std::rc::Rc<botui_core::SearchIndex>>,
+    pub(super) hits: Vec<botui_core::SearchMatch>,
     kind: Kind,
-    query: String,
+    pub(super) query: String,
     items: Vec<(Anchor, String)>,
     unavailable: Vec<String>,
     state: ListState,
@@ -55,6 +57,7 @@ impl Navigation {
         Self {
             kind,
             index: None,
+            hits: vec![],
             unavailable: vec![],
             items,
             state,
@@ -167,6 +170,19 @@ impl Navigation {
         );
         if popup {
             f.render_widget(Paragraph::new("[ Back ]").style(style), self.back);
+            if self.kind == Kind::Search && inner.width >= 49 && inner.height >= 2 {
+                f.render_widget(
+                    Paragraph::new("F3 next · F4 previous")
+                        .right_aligned()
+                        .style(style),
+                    Rect::new(
+                        self.back.right(),
+                        self.back.y,
+                        inner.width - self.back.width,
+                        1,
+                    ),
+                );
+            }
         } else {
             self.back = Rect::default();
         }
@@ -182,6 +198,13 @@ impl Navigation {
                 KeyCode::PageDown => Some(Edit::Move(self.rows.height as isize)),
                 KeyCode::Home => Some(Edit::Move(isize::MIN)),
                 KeyCode::End => Some(Edit::Move(isize::MAX)),
+                KeyCode::Char('u')
+                    if self.kind == Kind::Search
+                        && k.modifiers
+                            .contains(crossterm::event::KeyModifiers::CONTROL) =>
+                {
+                    Some(Edit::Clear)
+                }
                 KeyCode::Backspace if self.kind == Kind::Search => Some(Edit::Erase),
                 KeyCode::Char(c) if self.kind == Kind::Search && !c.is_control() => {
                     Some(Edit::Type(c))
@@ -218,6 +241,7 @@ impl Navigation {
                 return None;
             }
             Edit::Type(c) if self.query.chars().count() < 256 => self.query.push(c),
+            Edit::Clear => self.query.clear(),
             Edit::Erase => {
                 self.query.pop();
             }
@@ -235,11 +259,21 @@ impl Navigation {
         }
     }
     fn refresh_results(&mut self) {
-        self.items = self
-            .index
-            .as_ref()
-            .map_or_else(Vec::new, |index| index.find(&self.query));
-        self.state = ListState::default().with_selected((!self.items.is_empty()).then_some(0));
+        if let Some(index) = &self.index {
+            self.hits = index.matches(&self.query);
+        }
+        self.show_results(0);
+    }
+    pub(super) fn show_results(&mut self, selected: usize) {
+        if let Some(index) = &self.index {
+            self.items = self
+                .hits
+                .iter()
+                .map(|hit| (hit.anchor, index.excerpt(hit)))
+                .collect();
+        }
+        self.state =
+            ListState::default().with_selected((!self.items.is_empty()).then_some(selected));
     }
 }
 
