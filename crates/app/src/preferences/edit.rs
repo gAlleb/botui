@@ -233,7 +233,7 @@ pub(super) fn setting(
             )? && v != *value
             {
                 if i == 0 && !v.is_empty() {
-                    botui_bookorbit::BookOrbit::new(&v)
+                    botui_bookorbit::BookOrbit::validate_address(&v)
                         .map_err(|e| io::Error::other(e.to_string()))?;
                 }
                 if old.has_credentials()

@@ -29,9 +29,35 @@ def check(tmp):
         assert cfg()['paragraph_indent']==3
         t.keys('Tab');t.click('Reading statistics',t.see('Reading statistics'));t.see('Editions opened');t.keys('Escape')
         t.click('Download limit',t.see('4096 MiB'));t.keys('C-u');t.type('2048');t.keys('Enter');t.see('2048 MiB');assert cfg()['max_download_mib']==2048
-        t.keys('Tab');t.see('Password command');t.click('Server',t.see('Server'));t.type('https://example.invalid');t.keys('Enter')
-        t.click('Username',t.see('Username'));t.type('tester');t.keys('Enter')
-        t.click('Password ',t.see('Password '));t.type('masked-test');assert 'masked-test' not in t.see('Replace saved password');t.keys('Enter')
+        t.keys('Tab')
+        t.click('Server', t.see('Password command'))
+        t.see('BookOrbit server URL')
+        t.type('invalid-address')
+        t.see('invalid-address▏')
+        t.keys('Enter')
+        rejected = t.see('Invalid BookOrbit server address.')
+        assert not cfg()['bookorbit']['server']
+        t.click('Server', rejected)
+        t.see('BookOrbit server URL')
+        server = 'https://example.invalid'
+        t.type(server)
+        t.see(server + '▏')
+        t.keys('Enter')
+        account = t.wait('Saved server and returned to account settings',
+                         lambda f: 'Password command' in f and server in f and cfg()['bookorbit']['server'] == server)
+        t.click('Username', account)
+        t.see('BookOrbit username')
+        t.type('tester')
+        t.see('tester▏')
+        t.keys('Enter')
+        account = t.wait('Saved username and returned to account settings',
+                         lambda f: 'Password command' in f and 'tester' in f and cfg()['bookorbit']['username'] == 'tester')
+        t.click('Password ', account)
+        t.see('Replace saved password')
+        t.type('masked-test')
+        assert 'masked-test' not in t.see('•••••••••••▏')
+        t.keys('Enter')
+        t.see('Stored · replace or clear')
         t.keys('Escape');t.see('Your TUI book reader.');t.keys('q')
         data=cfg();assert (data['borders'],data['interface_theme'],data['column_gap'],data['opaque_background'])==('square','nord',10,True)
         assert data['bookorbit']['password']=='masked-test'

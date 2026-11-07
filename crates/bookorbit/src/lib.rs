@@ -59,6 +59,11 @@ pub struct BookOrbit {
 }
 
 impl BookOrbit {
+    /// Check the configured installation URL before creating a client at sign-in.
+    pub fn validate_address(server: &str) -> Result<()> {
+        api_root(server).map(|_| ())
+    }
+
     /// Accept an installation root, including its optional reverse proxy path.
     pub fn new(server: &str) -> Result<Self> {
         let root = api_root(server)?;
