@@ -144,6 +144,25 @@ pub fn choose(
     labels: &[String],
     selected: usize,
 ) -> io::Result<Option<usize>> {
+    choose_rows(term, title, labels, selected, false).map(|r| r.map(|(i, _)| i))
+}
+
+pub fn choose_removable(
+    term: &mut AppTerminal,
+    title: &str,
+    labels: &[String],
+    selected: usize,
+) -> io::Result<Option<(usize, bool)>> {
+    choose_rows(term, title, labels, selected, true)
+}
+
+fn choose_rows(
+    term: &mut AppTerminal,
+    title: &str,
+    labels: &[String],
+    selected: usize,
+    removable: bool,
+) -> io::Result<Option<(usize, bool)>> {
     use ratatui::style::Style;
     use ratatui::widgets::{List, ListState};
     let mut list = ListState::default().with_selected(
@@ -152,6 +171,8 @@ pub fn choose(
     loop {
         let mut rows = Rect::default();
         let mut back = Rect::default();
+        let mut delete = Rect::default();
+        let mut delete_rows = Rect::default();
         term.draw(|f| {
             let area = centered(f.area(), 70, (labels.len().clamp(3, 18) + 3) as u16);
             let block = crate::appearance::block().title(format!(" {title} "));
@@ -162,6 +183,10 @@ pub fn choose(
                 height: inner.height.saturating_sub(1),
                 ..inner
             };
+            if removable && !labels.is_empty() && rows.width >= 18 {
+                delete_rows = Rect::new(rows.right() - 3, rows.y, 3, rows.height);
+                rows.width -= 4;
+            }
             if labels.is_empty() {
                 f.render_widget(Paragraph::new(" No entries yet."), rows);
             } else {
@@ -172,6 +197,16 @@ pub fn choose(
                     &mut list,
                 );
             }
+            if !delete_rows.is_empty() {
+                for row in 0..usize::from(delete_rows.height)
+                    .min(labels.len().saturating_sub(list.offset()))
+                {
+                    f.render_widget(
+                        Paragraph::new("[×]").dim(),
+                        Rect::new(delete_rows.x, delete_rows.y + row as u16, 3, 1),
+                    );
+                }
+            }
             back = Rect::new(
                 inner.x,
                 inner.bottom().saturating_sub(1),
@@ -179,12 +214,54 @@ pub fn choose(
                 inner.height.min(1),
             );
             f.render_widget(Paragraph::new("[ Back ]").cyan(), back);
+            if removable && list.selected().is_some() {
+                let x = back.right();
+                delete = Rect::new(
+                    x,
+                    back.y,
+                    inner.right().saturating_sub(x).min(12),
+                    back.height,
+                );
+                f.render_widget(Paragraph::new("[Del Delete]").cyan(), delete);
+            }
             crate::settings::paint_interface(f);
         })?;
-        let move_by = match crate::settings::read_event()? {
+        let event = crate::settings::read_event()?;
+        if removable {
+            let target = match &event {
+                Event::Key(k) if k.kind != KeyEventKind::Release && k.code == KeyCode::Delete => {
+                    list.selected()
+                }
+                Event::Mouse(m) if m.kind == MouseEventKind::Down(MouseButton::Left) => {
+                    let at = Position::new(m.column, m.row);
+                    if delete.contains(at) {
+                        list.selected()
+                    } else if delete_rows.contains(at) {
+                        Some(list.offset() + usize::from(m.row - delete_rows.y))
+                            .filter(|&i| i < labels.len())
+                    } else {
+                        None
+                    }
+                }
+                _ => None,
+            };
+            if let Some(i) = target {
+                list.select(Some(i));
+                if document_panel(
+                    term,
+                    "Delete bookmark?",
+                    labels[i].trim(),
+                    Some("[ Delete bookmark ]"),
+                )? {
+                    return Ok(Some((i, true)));
+                }
+                continue;
+            }
+        }
+        let move_by = match event {
             Event::Key(k) if k.kind != KeyEventKind::Release => match k.code {
                 KeyCode::Esc | KeyCode::Char('q') => return Ok(None),
-                KeyCode::Enter => return Ok(list.selected()),
+                KeyCode::Enter => return Ok(list.selected().map(|i| (i, false))),
                 KeyCode::Up | KeyCode::Char('k') => -1,
                 KeyCode::Down | KeyCode::Char('j') => 1,
                 KeyCode::PageDown => rows.height as isize,
@@ -204,7 +281,7 @@ pub fn choose(
                 {
                     let i = list.offset() + usize::from(m.row - rows.y);
                     if i < labels.len() {
-                        return Ok(Some(i));
+                        return Ok(Some((i, false)));
                     }
                     continue;
                 }
@@ -226,10 +303,11 @@ fn document_panel(
     term: &mut AppTerminal,
     title: &str,
     body: &str,
-    reset: bool,
+    action: Option<&str>,
 ) -> io::Result<bool> {
     use ratatui::style::Stylize;
     use ratatui::widgets::{Paragraph, Wrap};
+    let reset = action.is_some();
     let mut offset = 0u16;
     let mut danger = false;
     loop {
@@ -261,8 +339,7 @@ fn document_panel(
                 back = Rect::new(r.x, y, r.width.min(label.len() as u16), 1);
                 let p = Paragraph::new(label);
                 f.render_widget(if !danger { p.reversed() } else { p }, back);
-                if reset {
-                    let l = "[ Reset reading state ]";
+                if let Some(l) = action {
                     let x = back.right() + 1;
                     accept = Rect::new(x, y, r.right().saturating_sub(x).min(l.len() as u16), 1);
                     let p = Paragraph::new(l);
@@ -310,9 +387,9 @@ pub fn confirm_reset(term: &mut AppTerminal, title: &str) -> io::Result<bool> {
             "{}\n\nBookOrbit will mark this book unread and clear progress for every edition, reading sessions, attempts and reading dates, including synced Kobo and KOReader progress. Files, notes, highlights and bookmarks are kept. This cannot be undone.",
             crate::shelf::single_line(title.to_owned())
         ),
-        true,
+        Some("[ Reset reading state ]"),
     )
 }
 pub fn message(term: &mut AppTerminal, title: &str, body: &str) -> io::Result<()> {
-    document_panel(term, title, body, false).map(|_| ())
+    document_panel(term, title, body, None).map(|_| ())
 }
