@@ -319,8 +319,11 @@ impl Picker {
             self.source.is_none().then_some("[P Folder…]"),
             Some("[/ Search]"),
             directory.then_some("[R Set library here]"),
-            (self.source.is_some() && self.list.selected().is_some())
-                .then_some("[Del Remove download]"),
+            match (&self.view, self.source) {
+                (LocalView::Collection(_), None) => Some("[Del Delete collection]"),
+                (_, Some(_)) if self.list.selected().is_some() => Some("[Del Remove download]"),
+                _ => None,
+            },
             (self.source.is_none() && !self.navigation.visible_panel())
                 .then_some("[4 Collections]"),
             (self.source.is_none()
@@ -572,6 +575,15 @@ impl Picker {
                 Event::Key(k) if k.kind != KeyEventKind::Release => Some(k.code),
                 _ => None,
             };
+            if matches!(self.view, LocalView::Collection(_))
+                && (key == Some(KeyCode::Delete)
+                    || click.is_some_and(|p| self.remove_button.contains(p)))
+            {
+                if let Err(e) = self.delete_collection(term) {
+                    self.error = Some(e.to_string());
+                }
+                continue;
+            }
             if self.source.is_none() {
                 let browse = key == Some(KeyCode::Char('4'))
                     || click.is_some_and(|p| self.collections_button.contains(p));

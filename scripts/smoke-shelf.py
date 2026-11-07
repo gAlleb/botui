@@ -186,6 +186,13 @@ class Handler(BaseHTTPRequestHandler):
         self.reply(404, {"path": self.path})
 
     def do_DELETE(self):
+        if self.path == API + "/collections/100":
+            if self.headers.get("Authorization") != f"Bearer {self.server.token}":
+                return self.reply(401, {})
+            if self.server.deny_collection_delete:
+                return self.reply(403, {})
+            del self.server.personal[100]
+            return self.reply(204, b"", "application/octet-stream")
         if self.path == API + "/collections/100/books":
             data = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
             self.server.personal[100][1].difference_update(data["bookIds"])
@@ -275,8 +282,11 @@ class Handler(BaseHTTPRequestHandler):
         if url.path == API + "/collections":
             if self.server.personal or "bookIds" in query:
                 book = int(query.get("bookIds", ["0"])[0])
-                return self.reply(200, [dict(id=i,name=n,bookCount=len(m),memberCount=int(book in m))
-                                        for i,(n,m) in self.server.personal.items()])
+                items = [dict(id=i, name=n, bookCount=len(m), memberCount=int(book in m), isOwner=True, mediaType="books")
+                         for i, (n, m) in self.server.personal.items()]
+                if not book:
+                    items.append(dict(id=150, name="Podcasts only", bookCount=0, isOwner=True, mediaType="podcasts"))
+                return self.reply(200, items)
             return self.reply(200, [{"id": 91, "userId": 7, "name": COLLECTION, "bookCount": TOTAL}]
                               if self.server.has_collections else [])
         if url.path == API + "/collections/100/books":
@@ -601,6 +611,27 @@ def check_without_collections(tmp, binary, fixture):
         term.keys("Escape"); formats(term); term.keys("Escape")
         term.wait("Collection is empty after removal", lambda f: "Winter reading  ·  0" in f and BOOK not in f)
         assert not fixture.personal[100][1]
+        term.keys("1"); term.click(BOOK, term.see(BOOK)); formats(term); term.keys("a")
+        term.click("Add to Winter reading", term.see("Add to Winter reading"))
+        term.see("Remove from Winter reading"); term.keys("5")
+        listing = term.see("[Del Delete collection]")
+        assert "Podcasts only" not in listing
+        term.click("[Del Delete collection]", listing)
+        assert "Winter reading" in term.see("Delete collection?")
+        term.keys("Enter"); term.see("[Del Delete collection]")
+        assert fixture.personal[100][1] == {200}
+        assert not any(m == "DELETE" and p == API + "/collections/100" for m, p, _ in fixture.requests)
+        fixture.deny_collection_delete = True
+        term.keys("DC"); term.see("Delete collection?"); term.keys("Right", "Enter")
+        term.wait("Deletion refused", lambda f: "403" in f)
+        assert fixture.personal[100][1] == {200}
+        fixture.deny_collection_delete = False
+        term.keys("DC")
+        term.click("[ Delete collection ]", term.see("[ Delete collection ]"))
+        term.see("No personal collections yet")
+        assert not fixture.personal and ("DELETE", API + "/collections/100", 204) in fixture.requests
+        term.keys("1"); term.click(BOOK, term.see(BOOK)); term.click("EPUB", formats(term))
+        term.see(EPUB_MARK); term.keys("q"); formats(term)
         quit_shelf(term)
         requests = fixture.requests
         for path in ("/books/query", "/libraries/31/books", "/libraries/32/books"):

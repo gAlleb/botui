@@ -35,11 +35,22 @@ Results update as you type; use **↑/↓** and **Enter** to open a book, or **E
 
 **2** opens reading history with percentages and **3** shows recent files by creation time, falling back to modification time.
 
-**4 Collections** opens your local collections. Choose **New collection…** to create one. With a file selected, press **A** to add it to a collection or remove it. The same file can belong to several collections and stays in its original folder.
-
 In a wide terminal the left pane shows the folder tree, currently reading and recently added. Click a folder name to display its books on the right; click its arrow to fold or expand it. **F6** switches focus, **← / →** fold or expand, and **Enter** opens a folder.
 
 Drag the divider to resize it. Small windows keep the numbered tabs. [See the local library in Kitty](images/local-library.png).
+
+## Managing collections
+
+| Action | Local library | BookOrbit |
+| --- | --- | --- |
+| Create a collection | Press **4**, choose **New collection…**, enter a name and press **Enter**. | Press **5**, then **N**, enter a name and press **Enter**. |
+| Add a book | Select a file, press **A** and choose **Add to** beside the collection name. | Open the book card, press **A Collections** and choose **Add to**. |
+| Remove a book | Select the file, press **A** and choose **Remove from**. | On the book card, press **A Collections** and choose **Remove from**. |
+| Delete a collection | Press **4**, open the collection and press **Del**. | Press **5**, select a collection you own and press **Del**. You can also do this inside the open collection. |
+
+You can also click **Del Delete collection**. Check the name in the confirmation and choose **Delete collection**. **Cancel** is selected by default.
+
+A book can belong to several collections. Deleting a collection keeps its books in the library and in their other collections. Local collections are stored on this device. BookOrbit saves collection changes to your account. Refresh the web library to see them.
 
 ## BookOrbit
 
@@ -53,8 +64,6 @@ Use **0** to revisit and refresh the dashboard.
 | 1 | All books | 5 | Collections |
 | 2 | Currently reading | 6 | Authors |
 | 3 | Recently added | 7 | Series |
-
-In **5 Collections**, press **N** to create a private BookOrbit collection. From a book card, press **A Collections** to add or remove the book. Changes appear in the web library for the same account.
 
 **Authors** and **Series** show account-wide totals and the number of books in each entry. Open an author to see their books, or a series to read its volumes in server order. **/** opens a centered search window. Results update as you type; **Esc** or a click outside closes it.
 

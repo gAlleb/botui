@@ -24,7 +24,7 @@ pub(super) struct Rail {
     hits: Vec<(Rect, usize)>,
     rows: Vec<Command>,
     viewport: Rect,
-    focused: bool,
+    pub(super) focused: bool,
     cursor: usize,
     offset: usize,
     folded: [bool; 2],

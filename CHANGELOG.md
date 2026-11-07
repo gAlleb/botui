@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- Create personal collections, add or remove books, and delete a collection with confirmation. BookOrbit saves changes to your account. Local collections work across folders on this device.
+- BookOrbit offline downloads now shows progress in **Currently reading** even for books first opened in the connected library.
+- When both the account and the offline copy have a new reading position, choose which one to keep when opening the edition in BookOrbit.
+- Remove individual files from BookOrbit or OPDS downloads. Pending BookOrbit progress survives removal of the file.
+- Native release builds strip symbols to reduce executable size. The guides use `botui` by name for reader commands.
+
 ## 0.1.0 — 2026-11-07
 
 Read EPUB, FB2, PDF and DjVu from a local library, an OPDS catalog or a BookOrbit account. Switch between a single page, a two-page spread and continuous scrolling.

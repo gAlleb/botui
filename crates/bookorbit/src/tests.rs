@@ -35,7 +35,9 @@ fn reads_collection_array_and_redacts_malformed_payloads() {
         vec![Collection {
             id: 3,
             name: "Моя полка".into(),
-            book_count: 42
+            book_count: 42,
+            is_owner: false,
+            media_type: None
         }]
     );
     let error = decode::<Vec<Collection>>(

@@ -56,7 +56,10 @@ pub(super) fn entries(ctx: Context, p: &Settings) -> Vec<Entry> {
                         "A / N",
                         "Book card: manage collections / Collections: create one",
                     ),
-                    ("Del", "Remove the selected copy from a download shelf"),
+                    (
+                        "Del",
+                        "Delete your selected collection or remove a downloaded copy",
+                    ),
                     ("L / B", "Reading log / related books on the book card"),
                 ],
             ),
@@ -75,7 +78,10 @@ pub(super) fn entries(ctx: Context, p: &Settings) -> Vec<Entry> {
                         "4 / A",
                         "Browse local collections / add or remove the selected book",
                     ),
-                    ("Del", "Remove the selected file on a download shelf"),
+                    (
+                        "Del",
+                        "Delete the open local collection or remove a downloaded copy",
+                    ),
                     ("/", "Live fuzzy search · type to filter, Enter to open"),
                     ("V / U / F", "Grid or list / borders / background"),
                 ],

@@ -14,6 +14,9 @@ pub struct Collection {
     pub id: u64,
     pub name: String,
     pub book_count: u64,
+    #[serde(default)]
+    pub is_owner: bool,
+    pub media_type: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize)]

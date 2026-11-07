@@ -24,6 +24,15 @@ impl BookOrbit {
         )
     }
 
+    pub fn delete_collection(&self, token: &str, id: u64) -> Result<()> {
+        let response = self
+            .authorized(Method::DELETE, &format!("collections/{id}"), token)?
+            .send()
+            .map_err(|e| e.without_url())?;
+        checked(response)?;
+        Ok(())
+    }
+
     pub fn set_membership(&self, token: &str, collection: u64, book: u64, add: bool) -> Result<()> {
         let method = if add { Method::POST } else { Method::DELETE };
         checked(

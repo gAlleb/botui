@@ -335,6 +335,22 @@ pub fn message(term: &mut AppTerminal, title: &str, body: &str) -> io::Result<()
     document_panel(term, title, body, None).map(|_| ())
 }
 
+pub fn confirm_delete_collection(
+    term: &mut AppTerminal,
+    name: &str,
+    location: &str,
+) -> io::Result<bool> {
+    document_panel(
+        term,
+        "Delete collection?",
+        &format!(
+            "{}\n\nDelete this collection from {location}? Its books stay in the library.",
+            crate::shelf::single_line(name.to_owned())
+        ),
+        Some("[ Delete collection ]"),
+    )
+}
+
 pub fn collection_name(
     term: &mut AppTerminal,
     underneath: impl FnMut(&mut ratatui::Frame),

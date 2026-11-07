@@ -18,6 +18,7 @@ impl Shelf {
         self.home_controls.clear();
         self.keep_button = Rect::default();
         self.new_collection_button = Rect::default();
+        self.delete_collection_button = Rect::default();
         self.search_button = Rect::default();
         self.rail.clear_hits();
         self.grid = None;
@@ -415,6 +416,17 @@ impl Shelf {
             } else {
                 self.back_button.right() + 1
             };
+            let delete = "[Del Delete collection]";
+            if self.deletable_collection().is_some()
+                && inner.right().saturating_sub(x) >= delete.len() as u16
+            {
+                self.delete_collection_button = Rect::new(x, y, delete.len() as u16, 1);
+                frame.render_widget(
+                    Paragraph::new(delete).style(heading()),
+                    self.delete_collection_button,
+                );
+                x = self.delete_collection_button.right().saturating_add(1);
+            }
             let label = "[Q Home]";
             if !matches!(self.current().section, Section::Home)
                 && inner.right().saturating_sub(x) >= label.len() as u16

@@ -131,6 +131,8 @@ Press **F2** for settings or **?** for shortcuts on the current screen. The inte
 
 Run `botui --config-path` to locate the TOML file. The [configuration example](config.example.toml) covers library paths, appearance, key bindings and BookOrbit sign-in with a password or password command.
 
+[Create and delete collections, add books and remove them](docs/guide.md#managing-collections)
+
 See the [user guide](docs/guide.md) for offline sync, bookmarks, notes, footnotes and PDF controls.
 
 ## Development

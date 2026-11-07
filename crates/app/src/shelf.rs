@@ -364,6 +364,7 @@ pub(crate) struct Shelf {
     file_button: Rect,
     keep_button: Rect,
     new_collection_button: Rect,
+    delete_collection_button: Rect,
     tab_buttons: [Rect; Tab::ALL.len()],
     prefs_buttons: crate::preferences::Buttons,
     home_hits: Vec<(Rect, usize)>,
@@ -407,6 +408,7 @@ impl Shelf {
             file_button: Rect::default(),
             keep_button: Rect::default(),
             new_collection_button: Rect::default(),
+            delete_collection_button: Rect::default(),
             tab_buttons: [Rect::default(); Tab::ALL.len()],
             prefs_buttons: Default::default(),
             home_hits: vec![],
@@ -1794,6 +1796,16 @@ impl Shelf {
                 if let Err(err) = result {
                     self.notice = Some(err.to_string());
                 }
+                continue;
+            }
+            if self.pending.is_none()
+                && self.login.is_none()
+                && self.info.is_none()
+                && (matches!(&e, Event::Key(k) if k.kind != KeyEventKind::Release && k.code == KeyCode::Delete && !self.rail.focused)
+                    || matches!(&e, Event::Mouse(m) if m.kind == MouseEventKind::Down(MouseButton::Left) && self.delete_collection_button.contains(Position::new(m.column, m.row))))
+                && self.deletable_collection().is_some()
+            {
+                self.delete_collection(term)?;
                 continue;
             }
             if self.pending.is_none()

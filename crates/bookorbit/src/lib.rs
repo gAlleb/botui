@@ -89,7 +89,10 @@ impl BookOrbit {
     }
 
     pub fn collections(&self, token: &str) -> Result<Vec<Collection>> {
-        read_json(self.authorized(Method::GET, "collections", token)?)
+        let mut items: Vec<Collection> =
+            read_json(self.authorized(Method::GET, "collections", token)?)?;
+        items.retain(|c| c.media_type.as_deref().is_none_or(|kind| kind == "books"));
+        Ok(items)
     }
 
     /// Query all books visible to this user, including titles outside collections.

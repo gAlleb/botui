@@ -23,7 +23,7 @@ fn file() -> io::Result<PathBuf> {
     Ok(crate::cache::data_dir()?.join("collections.json"))
 }
 
-fn update(name: &str, create: bool, member: Option<(&Path, bool)>) -> io::Result<()> {
+fn edit_collections(edit: impl FnOnce(&mut Collections) -> io::Result<()>) -> io::Result<()> {
     let dir = crate::cache::data_dir()?;
     fs::create_dir_all(&dir)?;
     let lock = fs::OpenOptions::new()
@@ -34,31 +34,52 @@ fn update(name: &str, create: bool, member: Option<(&Path, bool)>) -> io::Result
     lock.lock()?;
     let file = file()?;
     let mut all = read(&file)?;
-    if create && all.contains_key(name) {
-        return Err(io::Error::other(
-            "A collection with this name already exists.",
-        ));
-    }
-    let books = if create {
-        all.entry(name.to_owned()).or_default()
-    } else {
-        all.get_mut(name)
-            .ok_or_else(|| io::Error::other("Collection no longer exists."))?
-    };
-    if let Some((path, add)) = member {
-        if add {
-            books.insert(path.to_owned());
-        } else {
-            books.remove(path);
-        }
-    }
+    edit(&mut all)?;
     let mut tmp = tempfile::NamedTempFile::new_in(dir)?;
     serde_json::to_writer(tmp.as_file_mut(), &all)?;
     tmp.persist(file)?;
     Ok(())
 }
 
+fn update(name: &str, create: bool, member: Option<(&Path, bool)>) -> io::Result<()> {
+    edit_collections(|all| {
+        if create && all.contains_key(name) {
+            return Err(io::Error::other(
+                "A collection with this name already exists.",
+            ));
+        }
+        let books = if create {
+            all.entry(name.to_owned()).or_default()
+        } else {
+            all.get_mut(name)
+                .ok_or_else(|| io::Error::other("Collection no longer exists."))?
+        };
+        if let Some((path, add)) = member {
+            if add {
+                books.insert(path.to_owned());
+            } else {
+                books.remove(path);
+            }
+        }
+        Ok(())
+    })
+}
+
 impl Picker {
+    pub(super) fn delete_collection(&mut self, term: &mut AppTerminal) -> io::Result<()> {
+        let LocalView::Collection(name) = &self.view else {
+            return Ok(());
+        };
+        if prompt::confirm_delete_collection(term, name, "this device")? {
+            edit_collections(|all| {
+                all.remove(name);
+                Ok(())
+            })?;
+            self.browse(LocalView::Directory)?;
+        }
+        Ok(())
+    }
+
     pub(super) fn show_collection(&mut self, name: String) -> io::Result<()> {
         let mut all = read(&file()?)?;
         self.index.clear();
