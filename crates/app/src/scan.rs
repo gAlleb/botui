@@ -504,13 +504,14 @@ pub fn read_server(
             13 => crop.y = crop.y.saturating_add(64),
             18..=22 => {
                 if let Some(store) = store.as_ref() {
+                    let before = marks.len();
                     match annotations::open(term, action, store, path, n, &mut marks) {
                         Ok((page, msg)) => {
                             if let Some(page) = page {
                                 n = page.min(total.unwrap_or(page)).max(1);
                             }
                             message = msg;
-                            dirty |= action == 18;
+                            dirty |= before != marks.len();
                         }
                         Err(e) => message = e.to_string(),
                     }

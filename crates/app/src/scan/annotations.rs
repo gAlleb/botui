@@ -14,7 +14,6 @@ pub(super) fn open(
         block: page.saturating_sub(1) as usize,
         byte: 0,
     };
-    let notes = store.notes()?;
     let choices: Vec<(Anchor, String)> = match which {
         18 => {
             let message = if let Ok(i) = marks.binary_search(&at) {
@@ -27,11 +26,24 @@ pub(super) fn open(
             };
             return Ok((None, message.into()));
         }
-        19 => marks
-            .iter()
-            .map(|a| (*a, format!(" Page {}", a.block + 1)))
-            .collect(),
+        19 => {
+            let labels: Vec<_> = marks
+                .iter()
+                .map(|a| format!(" Page {}", a.block + 1))
+                .collect();
+            let initial = marks.partition_point(|mark| *mark < at);
+            let choice = crate::prompt::choose_removable(term, "Page bookmarks", &labels, initial)?;
+            return match choice {
+                Some((i, true)) => {
+                    marks.remove(i);
+                    Ok((None, "Bookmark removed".into()))
+                }
+                Some((i, false)) => Ok((Some(marks[i].block as u32 + 1), String::new())),
+                None => Ok((None, String::new())),
+            };
+        }
         20 => {
+            let notes = store.notes()?;
             let initial = notes
                 .iter()
                 .find(|v| v.anchor() == at)
@@ -47,7 +59,8 @@ pub(super) fn open(
             }
             return Ok((None, String::new()));
         }
-        21 => notes
+        21 => store
+            .notes()?
             .iter()
             .map(|v| {
                 (
@@ -58,22 +71,13 @@ pub(super) fn open(
             .collect(),
         22 => {
             let title = path.file_stem().unwrap_or_default().to_string_lossy();
-            let output = crate::reader::notes::export(&title, None, &notes)?;
+            let output = crate::reader::notes::export(&title, None, &store.notes()?)?;
             return Ok((None, format!("Saved {}", output.display())));
         }
         _ => return Ok((None, String::new())),
     };
     let initial = choices.iter().position(|(a, _)| *a >= at).unwrap_or(0);
     let labels: Vec<_> = choices.iter().map(|v| v.1.clone()).collect();
-    let i = crate::prompt::choose(
-        term,
-        if which == 19 {
-            "Page bookmarks"
-        } else {
-            "Page notes"
-        },
-        &labels,
-        initial,
-    )?;
+    let i = crate::prompt::choose(term, "Page notes", &labels, initial)?;
     Ok((i.map(|i| choices[i].0.block as u32 + 1), String::new()))
 }
