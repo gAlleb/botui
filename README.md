@@ -82,18 +82,7 @@ cargo build --release --locked -p botui --target-dir target &&
 
 ### Prebuilt Linux binaries
 
-Download `botui-x86_64` or `botui-aarch64` for your machine, together with `SHA256SUMS`, from [Releases](https://github.com/gAlleb/botui/releases) or [branch builds](https://github.com/gAlleb/botui/actions/workflows/build.yml). With both files in the current directory, verify the download and install it:
-
-```sh
-sha256sum --ignore-missing -c SHA256SUMS &&
-  install -Dm755 "botui-$(uname -m)" ./dist/botui
-```
-
-To run `botui` by name in this shell, add the build directory to your `PATH`:
-
-```sh
-export PATH="$PWD/dist:$PATH"
-```
+Download `botui-x86_64` or `botui-aarch64` for your machine, together with `SHA256SUMS`, from [Releases](https://github.com/gAlleb/botui/releases) or [branch builds](https://github.com/gAlleb/botui/actions/workflows/build.yml).
 
 ### Format support
 

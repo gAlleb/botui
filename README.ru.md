@@ -82,18 +82,7 @@ cargo build --release --locked -p botui --target-dir target &&
 
 ### Готовые бинарники для Linux
 
-Скачайте `botui-x86_64` или `botui-aarch64` для вашей архитектуры и файл `SHA256SUMS` из [релизов](https://github.com/gAlleb/botui/releases) или [сборок ветки](https://github.com/gAlleb/botui/actions/workflows/build.yml). Положите оба файла в текущую папку и выполните:
-
-```sh
-sha256sum --ignore-missing -c SHA256SUMS &&
-  install -Dm755 "botui-$(uname -m)" ./dist/botui
-```
-
-Чтобы запускать `botui` по имени в текущем сеансе оболочки, добавьте папку сборки в `PATH`:
-
-```sh
-export PATH="$PWD/dist:$PATH"
-```
+Скачайте `botui-x86_64` или `botui-aarch64` для вашей архитектуры и файл `SHA256SUMS` из [релизов](https://github.com/gAlleb/botui/releases) или [сборок ветки](https://github.com/gAlleb/botui/actions/workflows/build.yml).
 
 ### Поддержка форматов
 
