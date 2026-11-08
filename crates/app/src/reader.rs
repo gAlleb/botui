@@ -138,7 +138,13 @@ struct Reader {
 }
 
 impl Reader {
-    fn new(doc: Document, area: Rect, saved: Option<Saved>, source: &Path) -> Self {
+    fn new(
+        doc: Document,
+        area: Rect,
+        saved: Option<Saved>,
+        source: &Path,
+        remote: Option<botui_core::Anchor>,
+    ) -> Self {
         let settings = crate::settings::Settings::load().unwrap_or_default();
         let mode = if saved.is_none() && settings.reading_layout.as_deref() == Some("single") {
             LayoutMode::Single
@@ -158,7 +164,7 @@ impl Reader {
             .clamp(32, 240);
         let gap = settings.column_gap.unwrap_or(4).min(32);
         let (text, mode_for_size, _) = layout::geometry(area, mode, page_width, gap, settings.zen);
-        let mut pager = Pager::with_options(
+        let pager = Pager::with_start(
             &doc,
             text.width,
             text.height,
@@ -168,11 +174,9 @@ impl Reader {
                 inline_images: !settings.hide_inline_images,
                 paragraph_indent: settings.paragraph_indent,
             },
+            remote.or_else(|| saved.as_ref().map(|s| s.anchor)),
         );
         let marks = saved.as_ref().map(|s| s.marks.clone()).unwrap_or_default();
-        if let Some(state) = &saved {
-            pager.seek(state.anchor);
-        }
         let theme = settings
             .theme
             .as_deref()
@@ -1074,17 +1078,12 @@ pub fn read_server(
         local.anchor = botui_core::Anchor::default();
         local.finished = false;
     }
-    let mut reader = Reader::new(doc, Rect::new(0, 0, size.width, size.height), saved, path);
-    match bindings() {
-        Ok(map) => reader.bindings = map,
-        Err(e) => notices.push(format!("Could not read key bindings: {e}")),
-    }
+    let mut resume_anchor = None;
     let mut can_sync = base.is_some();
     if let Some(p) = base {
         if let Some(cfi) = p.text.cfi.as_deref() {
-            if let Some(a) = reader.doc.bookmark_anchor(cfi) {
-                reader.pager.seek(a);
-                reader.dirty = true;
+            if let Some(a) = doc.reading_anchor(cfi) {
+                resume_anchor = Some(a);
             } else {
                 can_sync = false;
                 notices.push("BookOrbit position could not be located in this text.".into());
@@ -1094,6 +1093,18 @@ pub fn read_server(
             notices.push("BookOrbit has no exact text location. Using the local position.".into());
         }
     }
+    let mut reader = Reader::new(
+        doc,
+        Rect::new(0, 0, size.width, size.height),
+        saved,
+        path,
+        resume_anchor,
+    );
+    match bindings() {
+        Ok(map) => reader.bindings = map,
+        Err(e) => notices.push(format!("Could not read key bindings: {e}")),
+    }
+    reader.dirty |= resume_anchor.is_some();
     let opened = Instant::now();
     let start = reader.pager.anchor();
     let started_finished = reader.finished;
@@ -1263,7 +1274,7 @@ pub fn read_server(
                 {
                     let focus = reader.pager.anchor();
                     let size = term.size()?;
-                    reader.pager = Pager::with_options(
+                    reader.pager = Pager::with_start(
                         &reader.doc,
                         size.width,
                         size.height,
@@ -1273,8 +1284,8 @@ pub fn read_server(
                             inline_images: !new.hide_inline_images,
                             paragraph_indent: new.paragraph_indent,
                         },
+                        Some(focus),
                     );
-                    reader.pager.seek(focus);
                     if old.preserve_printed_lines != new.preserve_printed_lines {
                         reader.search = Default::default();
                     }

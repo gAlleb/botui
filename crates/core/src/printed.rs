@@ -42,8 +42,9 @@ pub(super) fn wrap(
     start: usize,
     width: usize,
     indent: u8,
+    resume: Option<Anchor>,
 ) {
-    if blocks.len() == 1 {
+    if blocks.len() == 1 && resume.is_none() {
         wrap_block(
             lines,
             &blocks[0],
@@ -53,18 +54,25 @@ pub(super) fn wrap(
         );
         return;
     }
-    let (text, offsets) = join(blocks);
+    let (mut text, offsets) = join(blocks);
     let before = lines.len();
-    wrap_block(
-        lines,
-        &Block {
-            text,
-            heading: false,
-        },
-        start,
-        width,
-        indent,
-    );
+    let heading = blocks[0].heading;
+    let indent = if heading { 0 } else { indent };
+    let cut = resume.and_then(|a| {
+        let i = a.block.checked_sub(start)?;
+        let source = blocks.get(i)?.text.get(a.byte..)?;
+        let pos = offsets[i] + a.byte;
+        (!source.is_empty() && pos > 0 && text.is_char_boundary(pos)).then_some(pos)
+    });
+    let suffix = cut.map(|pos| text.split_off(pos));
+    wrap_block(lines, &Block { text, heading }, start, width, indent);
+    if let (Some(byte), Some(text)) = (cut, suffix) {
+        let after_prefix = lines.len();
+        wrap_block(lines, &Block { text, heading }, start, width, 0);
+        for line in &mut lines[after_prefix..] {
+            line.start.byte += byte;
+        }
+    }
     for line in &mut lines[before..] {
         let byte = line.start.byte;
         let i = offsets.partition_point(|n| *n <= byte).saturating_sub(1);

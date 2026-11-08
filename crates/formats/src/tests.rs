@@ -138,6 +138,33 @@ fn bookmarks_resolve_element_or_range_starts_without_guessing_another_chapter() 
 }
 
 #[test]
+fn web_progress_resumes_on_printed_text_across_wraps_and_normalized_whitespace() {
+    use botui_core::{Anchor, LayoutMode, Pager};
+    let book = super::fb2::parse("<FictionBook><body><section><p>  Amber 🌄   at dawn.</p><p>Another day.</p></section></body></FictionBook>".as_bytes(), "").unwrap();
+    let path = "/6/2!/4/2/2/1";
+    let mut pager = Pager::new(&book, 5, 2, LayoutMode::Single);
+    for (offset, block, byte, word) in [
+        (0, 0, 0, "Amber"),
+        (12, 0, "Amber 🌄 ".len(), "at"),
+        (10, 0, "Amber 🌄 ".len(), "at"),
+        (11, 0, "Amber 🌄 ".len(), "at"),
+        (17, 0, "Amber 🌄 at d".len(), "dawn."),
+        (21, 1, 0, "Anoth"),
+    ] {
+        let cfi = format!("epubcfi({path}:{offset})");
+        let at = book.reading_anchor(&cfi).unwrap();
+        assert_eq!(at, Anchor { block, byte }, "{cfi}");
+        pager.seek(at);
+        assert!(pager.lines(0)[0].text.contains(word), "{cfi}");
+        assert_eq!(book.reading_anchor(&book.cfi(at).unwrap()), Some(at));
+    }
+    assert!(
+        book.reading_anchor(&format!("epubcfi({path}:999)"))
+            .is_none()
+    );
+}
+
+#[test]
 fn a_repeated_epub_passage_has_its_own_file_address() {
     let html = "<html><head/><body><p>Again.</p><p hidden='hidden'>Again.</p><p>Third line.</p><p>Again.</p></body></html>";
     let mut d = botui_core::Document::default();

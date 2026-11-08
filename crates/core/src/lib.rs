@@ -134,6 +134,7 @@ pub struct ReflowOptions {
 }
 
 pub struct Pager {
+    resume: Option<Anchor>,
     paragraph_indent: u8,
     printed: Vec<bool>,
     inline_images: bool,
@@ -184,6 +185,19 @@ impl Pager {
         mode: LayoutMode,
         options: ReflowOptions,
     ) -> Self {
+        Self::with_start(doc, width, height, mode, options, None)
+    }
+
+    /// Reflow the opening passage from the saved word. Earlier text remains
+    /// reachable by paging back, including the prefix of a split paragraph.
+    pub fn with_start(
+        doc: &Document,
+        width: u16,
+        height: u16,
+        mode: LayoutMode,
+        options: ReflowOptions,
+        resume: Option<Anchor>,
+    ) -> Self {
         let ReflowOptions {
             repair_printed,
             inline_images,
@@ -209,8 +223,16 @@ impl Pager {
             }
         }
         let layout = Layout::new(width, height, mode, SPREAD_GAP);
-        let lines = wrap_document(doc, layout.width, &printed, inline_images, paragraph_indent);
-        Self {
+        let lines = wrap_document(
+            doc,
+            layout.width,
+            &printed,
+            inline_images,
+            paragraph_indent,
+            resume,
+        );
+        let mut pager = Self {
+            resume,
             layout,
             paragraph_indent,
             inline_images,
@@ -218,7 +240,11 @@ impl Pager {
             lines,
             first: 0,
             focus: Anchor::default(),
+        };
+        if let Some(at) = resume {
+            pager.seek(at);
         }
+        pager
     }
 
     /// Reflow the same document. Keep the line containing the saved word at the top.
@@ -244,6 +270,7 @@ impl Pager {
                 &self.printed,
                 self.inline_images,
                 self.paragraph_indent,
+                self.resume,
             );
         }
         self.layout = layout;
@@ -322,7 +349,14 @@ impl Pager {
     }
     fn move_to(&mut self, first: usize) {
         self.first = first;
-        self.focus = self.lines[first].start;
+        // The blank row between paragraphs belongs to the layout. Its source
+        // address is the end of the preceding paragraph, often on another page.
+        let line = &self.lines[first];
+        self.focus = if line.text.is_empty() && line.image.is_none() {
+            self.lines.get(first + 1).unwrap_or(line).start
+        } else {
+            line.start
+        };
     }
 }
 
@@ -332,6 +366,7 @@ fn wrap_document(
     printed: &[bool],
     inline_images: bool,
     paragraph_indent: u8,
+    resume: Option<Anchor>,
 ) -> Vec<PageLine> {
     let mut lines = Vec::new();
     if width == 0 {
@@ -394,6 +429,7 @@ fn wrap_document(
             start,
             usize::from(width),
             paragraph_indent,
+            resume.filter(|a| (start..=end).contains(&a.block)),
         );
         start = end + 1;
         if lines.len() > before {
@@ -571,6 +607,47 @@ mod tests {
         assert_eq!((pager.page_number(), pager.page_count()), (5, 5));
         pager.previous();
         assert_eq!(pager.lines(0)[0].text, "В");
+    }
+
+    #[test]
+    fn page_turn_on_paragraph_separator_saves_first_visible_passage() {
+        let doc = document(&["one two three", "next paragraph", "ending"]);
+        let mut pager = Pager::new(&doc, 5, 3, LayoutMode::Single);
+        pager.next();
+        assert!(pager.lines(0)[0].text.is_empty());
+        assert_eq!(pager.lines(0)[1].text, "next");
+        assert_eq!(pager.anchor(), Anchor { block: 1, byte: 0 });
+        pager.previous();
+        assert_eq!(pager.anchor(), Anchor::default());
+    }
+
+    #[test]
+    fn web_resume_starts_at_saved_word_and_keeps_preceding_text_reachable() {
+        let doc = document(&["друг другу. Частично это мне удалось, и когда мне показалось"]);
+        let at = Anchor {
+            block: 0,
+            byte: doc.blocks[0].text.find("удалось").unwrap(),
+        };
+        let mut pager = Pager::with_start(
+            &doc,
+            44,
+            2,
+            LayoutMode::Single,
+            ReflowOptions {
+                repair_printed: true,
+                inline_images: false,
+                paragraph_indent: 3,
+            },
+            Some(at),
+        );
+        for width in [44, 24, 100] {
+            pager.relayout(&doc, width, 2, LayoutMode::Spread);
+            assert_eq!(pager.lines(0)[0].anchor(), at);
+            assert!(pager.lines(0)[0].text.starts_with("удалось,"));
+            assert_eq!(pager.lines(0)[0].indent, 0);
+        }
+        pager.previous();
+        assert_eq!(pager.lines(0)[0].text, "друг другу. Частично это мне");
     }
 
     #[test]

@@ -20,7 +20,7 @@ def run(name,f):
         previous.unlink()
         f.marks[302]=[{"id":10,"title":"Last chapter on phone","cfi":f.progress[302]["text"]["cfi"]},{"id":11,"title":"Earlier edition","cfi":None}]
         t.click('FB2',s.formats(t));t.wait('возврат с сервера' ,lambda x:x.strip().startswith('Обратный рейс'))
-        t.keys("g");t.see("Last chapter on phone");t.see("Earlier edition · unavailable in this file");t.keys("Enter")
+        t.keys("g");t.see("Last chapter on phone — Обратный рейс");t.see("Earlier edition · unavailable in this file");t.keys("Enter")
         t.keys("b","g");t.see("Bookmarks: 1");assert [m["id"] for m in f.marks[302]]==[11];t.keys("Escape");t.wait("Closed bookmarks",lambda x:"Bookmarks:" not in x);t.keys("b","g");t.see("Bookmarks: 2")
         assert f.marks[302][-1]["cfi"]==f.progress[302]["text"]["cfi"]
         t.keys("Escape")

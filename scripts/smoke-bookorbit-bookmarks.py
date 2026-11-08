@@ -81,12 +81,41 @@ def exercise(tmp, server):
         t.run("kill-server",required=False)
 
 
+def web_passage(tmp, server):
+    # BookOrbit uses the chapter title even for a bookmark halfway through its prose.
+    server.marks[302] = [
+        {"id": 20, "title": "Верхнее окно", "cfi": "epubcfi(/6/4!/4/2/4/1:16)"}
+    ]
+    t = open_book(tmp, server)
+    try:
+        t.see("Верхнее окно — Внизу у воды")
+        t.keys("Enter")
+        t.wait("Jump to the marked passage",
+               lambda frame: "Bookmarks:" not in frame and "Внизу у воды" in frame)
+        t.keys("q")
+        s.formats(t)
+        assert server.progress[302]["text"]["cfi"] == server.marks[302][0]["cfi"]
+        t.click("FB2", s.formats(t))
+        frame = t.see("Внизу у воды")
+        if "Z Zen" in frame:
+            t.keys("z")
+        t.wait("Resume exactly on the bookmarked words",
+               lambda frame: frame.strip().startswith("Внизу у воды"))
+        t.keys("q")
+        s.formats(t)
+        assert server.saved == [302]
+    finally:
+        t.run("kill-server", required=False)
+
+
 if __name__ == "__main__":
     with tempfile.TemporaryDirectory() as tmp, s.Fixture(False) as server:
         thread = threading.Thread(target=server.serve_forever, daemon=True)
         thread.start()
         try:
             exercise(Path(tmp), server)
+            with tempfile.TemporaryDirectory() as second:
+                web_passage(Path(second), server)
         finally:
             server.shutdown()
             thread.join()

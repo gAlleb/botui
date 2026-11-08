@@ -1,6 +1,6 @@
 use super::{Reader, bookmarks::ServerMarks};
 use crate::{AppTerminal, prompt};
-use botui_core::Anchor;
+use botui_core::{Anchor, Document};
 use botui_store::LocalState;
 use std::io;
 
@@ -12,6 +12,32 @@ struct Mark {
     at: Option<Anchor>,
     label: String,
     origin: Origin,
+}
+
+fn remote_label(doc: &Document, at: Option<Anchor>, title: &str) -> String {
+    let title = title.replace(char::is_control, " ");
+    let excerpt = at.and_then(|a| {
+        let block = doc.blocks.get(a.block)?;
+        let tail = block.text.get(a.byte..)?.trim_start();
+        if tail.is_empty() || block.heading && tail == title.trim() {
+            doc.blocks
+                .get(a.block + 1)
+                .filter(|b| !b.heading)
+                .map(|b| b.text.as_str())
+        } else {
+            Some(tail)
+        }
+    });
+    let Some(line) = excerpt.filter(|s| !s.is_empty()) else {
+        return format!("BookOrbit · {title}");
+    };
+    let snippet: String = line.chars().take(120).collect();
+    if line.starts_with(title.trim()) {
+        format!("BookOrbit · {snippet}")
+    } else {
+        let short: String = title.chars().take(24).collect();
+        format!("BookOrbit · {short} — {snippet}")
+    }
 }
 
 impl Reader {
@@ -44,7 +70,7 @@ impl Reader {
                     .map(|(id, at, title)| Mark {
                         at,
                         origin: Origin::BookOrbit(id),
-                        label: format!("BookOrbit · {}", title.replace(char::is_control, " ")),
+                        label: remote_label(&self.doc, at, &title),
                     }),
             );
         }

@@ -66,7 +66,11 @@ impl Document {
         for (&block, runs) in &self.locations.0 {
             for r in runs.iter().filter(|r| &*r.path == path) {
                 if offset < r.utf16 {
-                    continue;
+                    // Whitespace collapsed by the text reader, in this same DOM text node.
+                    return Some(Anchor {
+                        block,
+                        byte: r.byte,
+                    });
                 }
                 let mut units = offset - r.utf16;
                 let text = &self.blocks[block].text[r.byte..r.end];
@@ -92,6 +96,31 @@ impl Document {
 }
 
 impl Document {
+    /// A browser may place its caret in whitespace at a visual line break.
+    /// Resume on the following printed character, including across a paragraph break.
+    pub fn reading_anchor(&self, cfi: &str) -> Option<Anchor> {
+        let at = self.bookmark_anchor(cfi)?;
+        let tail = self.blocks.get(at.block)?.text.get(at.byte..)?;
+        if let Some(i) = tail.find(|c: char| !c.is_whitespace()) {
+            return Some(Anchor {
+                block: at.block,
+                byte: at.byte + i,
+            });
+        }
+        Some(
+            self.blocks
+                .iter()
+                .enumerate()
+                .skip(at.block + 1)
+                .find_map(|(block, b)| {
+                    b.text
+                        .find(|c: char| !c.is_whitespace())
+                        .map(|byte| Anchor { block, byte })
+                })
+                .unwrap_or(at),
+        )
+    }
+
     /// Foliate also emits range CFIs for dog-ears. Navigate to the start of
     /// the range. Escaped commas inside an assertion do not delimit a range.
     pub fn bookmark_anchor(&self, cfi: &str) -> Option<Anchor> {
