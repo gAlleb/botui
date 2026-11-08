@@ -12,6 +12,29 @@ fn heading() -> Style {
 }
 
 impl Shelf {
+    pub(super) fn draw_view_controls(&mut self, frame: &mut Frame, left: Rect) {
+        if left.width >= 19 {
+            let label = if self.grid_view {
+                "[V List]"
+            } else {
+                "[V Grid]"
+            };
+            let w = label.chars().count() as u16;
+            if (self.session.is_some() || self.feed_search().is_some()) && left.width >= 30 {
+                self.search_button = Rect::new(left.right() - w - 12, left.y, 11, 1);
+                frame.render_widget(
+                    Paragraph::new("[/ Search]").style(Style::new().fg(Color::Cyan)),
+                    self.search_button,
+                );
+            }
+            self.view_button = Rect::new(left.right() - w, left.y, w, 1);
+            frame.render_widget(
+                Paragraph::new(label).style(Style::new().fg(Color::Cyan)),
+                self.view_button,
+            );
+        }
+    }
+
     pub(super) fn draw(&mut self, frame: &mut Frame) {
         self.prefs_buttons = Default::default();
         self.home_hits.clear();
@@ -39,7 +62,7 @@ impl Shelf {
             && self.info.is_none()
             && panel.width >= 123
             && panel.height >= 20
-            && (self.view_available() || matches!(self.current().section, Section::Dashboard(_)));
+            && self.view_available();
         let (side, panel) = self.rail.splitter.layout(panel, wide);
         if let Some(job) = &self.pending {
             let panel = centered(frame.area(), 54, 7);
@@ -197,25 +220,8 @@ impl Shelf {
                 self.keep_button,
             );
         }
-        if self.view_available() && left.width >= 19 {
-            let label = if self.grid_view {
-                "[V List]"
-            } else {
-                "[V Grid]"
-            };
-            let w = label.chars().count() as u16;
-            if (self.session.is_some() || self.feed_search().is_some()) && left.width >= 30 {
-                self.search_button = Rect::new(left.right() - w - 12, left.y, 11, 1);
-                frame.render_widget(
-                    Paragraph::new("[/ Search]").style(Style::new().fg(Color::Cyan)),
-                    self.search_button,
-                );
-            }
-            self.view_button = Rect::new(left.right() - w, left.y, w, 1);
-            frame.render_widget(
-                Paragraph::new(label).style(Style::new().fg(Color::Cyan)),
-                self.view_button,
-            );
+        if self.view_available() {
+            self.draw_view_controls(frame, left);
         }
         if matches!(
             self.current().section,
@@ -441,7 +447,7 @@ impl Shelf {
     }
 }
 
-fn book_line(b: Option<&super::Book>, width: u16) -> ratatui::text::Line<'static> {
+pub(super) fn book_line(b: Option<&super::Book>, width: u16) -> ratatui::text::Line<'static> {
     use super::gallery::{caption, formats};
     use ratatui::text::{Line, Span};
     let available = width.saturating_sub(2);

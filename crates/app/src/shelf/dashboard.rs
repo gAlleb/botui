@@ -160,18 +160,18 @@ impl Shelf {
         }
         let ink = Style::new().fg(Color::Cyan);
         let username = super::single_line(self.username.clone());
+        self.draw_view_controls(frame, area);
+        let controls_x = [self.search_button, self.view_button]
+            .iter()
+            .filter(|r| r.width > 0)
+            .map(|r| r.x)
+            .min()
+            .unwrap_or(area.right());
         frame.render_widget(
             Paragraph::new(format!(" Dashboard  ·  {username}")).style(ink.bold()),
-            Rect::new(area.x, area.y, area.width, 1),
+            Rect::new(area.x, area.y, controls_x - area.x, 1),
         );
         let mut y = area.y + 1;
-        self.search_button = Rect::new(
-            area.right() - area.width.min(10),
-            area.y,
-            area.width.min(10),
-            1,
-        );
-        frame.render_widget(Paragraph::new("[/ Search]").style(ink), self.search_button);
         let pane = self.current();
         let Section::Dashboard(data) = &pane.section else {
             return;
@@ -223,26 +223,48 @@ impl Shelf {
                 Rect::new(area.x, y, area.width, 1),
             );
             let tile_h = h.saturating_sub(1);
+            let slots = if self.grid_view {
+                cols
+            } else {
+                usize::from(tile_h)
+            };
             let offset = selected
                 .filter(|idx| s.books.contains(idx))
-                .map_or(0, |idx| (idx - s.books.start) / cols * cols);
+                .map_or(0, |idx| {
+                    let local = idx - s.books.start;
+                    if self.grid_view {
+                        local / cols * cols
+                    } else {
+                        (local + 1).saturating_sub(slots)
+                    }
+                });
             if s.books.is_empty() && tile_h > 0 {
                 frame.render_widget(
                     Paragraph::new(format!(" {}", s.empty)).dim(),
                     Rect::new(area.x, y + 1, area.width, 1),
                 );
             }
-            for (col, index) in s.books.clone().skip(offset).take(cols).enumerate() {
+            for (col, index) in s.books.clone().skip(offset).take(slots).enumerate() {
                 if tile_h == 0 {
                     break;
                 }
                 let Command::Files(book) = &pane.rows[index].action else {
                     continue;
                 };
+                let active = selected == Some(index);
+                if !self.grid_view {
+                    let rect = Rect::new(area.x, y + 1 + col as u16, area.width, 1);
+                    let mut line = Paragraph::new(super::view::book_line(Some(book), rect.width));
+                    if active {
+                        line = line.reversed();
+                    }
+                    frame.render_widget(line, rect);
+                    cells.push((index, rect));
+                    continue;
+                }
                 let x = area.x + (col * area.width as usize / cols) as u16;
                 let end = area.x + ((col + 1) * area.width as usize / cols) as u16;
                 let tile = Rect::new(x, y + 1, end - x, tile_h);
-                let active = selected == Some(index);
                 if tile_h >= 5 {
                     let border = crate::appearance::card(active);
                     let face = border.inner(tile);
@@ -270,7 +292,11 @@ impl Shelf {
                 }
                 cells.push((index, tile));
             }
-            y += h;
+            y += if self.grid_view {
+                h
+            } else {
+                h.min(2 + s.books.len() as u16)
+            };
         }
         if let Some(notice) = &self.notice {
             frame.render_widget(

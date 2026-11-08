@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- The BookOrbit dashboard shares the shelf view. Press V or click the view button to switch between covers and book lists.
+
 - Covers, illustrations and scanned pages use terminal graphics in supported tmux sessions, including Kitty.
 
 ## 0.1.4 — 2026-11-08

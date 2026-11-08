@@ -73,7 +73,7 @@ In **Authors** and **Series** it filters that directory. On the dashboard or a b
 
 Results appear while BOTUI fetches catalog metadata in the background. Select with **↑/↓** and press **Enter**, or click a result. **Esc** from a book card restores the query and selection.
 
-**V** switches between cover grid and list. **Tab / Shift+Tab** change sections in display order. Arrows, the wheel and Page Up / Page Down navigate a shelf. More items load as you scroll. Enter or a click opens the selection. **Esc** goes back.
+**V** switches between cover grid and list on the dashboard and shelves. Both use the same saved view. **Tab / Shift+Tab** change sections in display order. Arrows, the wheel and Page Up / Page Down navigate a shelf. More items load as you scroll. Enter or a click opens the selection. **Esc** goes back.
 
 ### Offline reading and sync
 

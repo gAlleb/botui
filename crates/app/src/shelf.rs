@@ -536,7 +536,8 @@ impl Shelf {
     fn view_available(&self) -> bool {
         matches!(
             self.current().section,
-            Section::Feed { .. }
+            Section::Dashboard(_)
+                | Section::Feed { .. }
                 | Section::Groups { .. }
                 | Section::Libraries
                 | Section::Collections
@@ -1592,7 +1593,9 @@ impl Shelf {
                 }
                 return None;
             }
-            if let Section::Dashboard(d) = &self.current().section {
+            if self.grid_view
+                && let Section::Dashboard(d) = &self.current().section
+            {
                 let down = match (&event, key) {
                     (_, Some(KeyCode::Down | KeyCode::Char('j'))) => Some(true),
                     (_, Some(KeyCode::Up | KeyCode::Char('k'))) => Some(false),
@@ -1613,24 +1616,28 @@ impl Shelf {
                     return None;
                 }
             }
-            let step = grid.cols as isize;
-            let delta = match (&event, key) {
-                (_, Some(KeyCode::Left | KeyCode::Char('h'))) => -1,
-                (_, Some(KeyCode::Right | KeyCode::Char('l'))) => 1,
-                (_, Some(KeyCode::Up | KeyCode::Char('k'))) => -step,
-                (_, Some(KeyCode::Down | KeyCode::Char('j'))) => step,
-                (Event::Mouse(m), _) if self.list_area.contains(Position::new(m.column, m.row)) => {
-                    match m.kind {
-                        MouseEventKind::ScrollUp => -step,
-                        MouseEventKind::ScrollDown => step,
-                        _ => 0,
+            if self.grid_view {
+                let step = grid.cols as isize;
+                let delta = match (&event, key) {
+                    (_, Some(KeyCode::Left | KeyCode::Char('h'))) => -1,
+                    (_, Some(KeyCode::Right | KeyCode::Char('l'))) => 1,
+                    (_, Some(KeyCode::Up | KeyCode::Char('k'))) => -step,
+                    (_, Some(KeyCode::Down | KeyCode::Char('j'))) => step,
+                    (Event::Mouse(m), _)
+                        if self.list_area.contains(Position::new(m.column, m.row)) =>
+                    {
+                        match m.kind {
+                            MouseEventKind::ScrollUp => -step,
+                            MouseEventKind::ScrollDown => step,
+                            _ => 0,
+                        }
                     }
+                    _ => 0,
+                };
+                if delta != 0 {
+                    self.current_mut().move_by(delta);
+                    return None;
                 }
-                _ => 0,
-            };
-            if delta != 0 {
-                self.current_mut().move_by(delta);
-                return None;
             }
         }
         let list_area = self.list_area;
