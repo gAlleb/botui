@@ -2,11 +2,17 @@
 
 ## Unreleased
 
+## 0.1.1 — 2026-11-08
+
+- Panel, dialog and book card outlines follow the active theme’s accent color. Focused navigation and selected cards use a stronger outline.
+- In grid view, the selected title has an accent-colored background, including when borders are hidden.
 - Create personal collections, add or remove books, and delete a collection with confirmation. BookOrbit saves changes to your account. Local collections work across folders on this device.
 - BookOrbit offline downloads now shows progress in **Currently reading** even for books first opened in the connected library.
 - When both the account and the offline copy have a new reading position, choose which one to keep when opening the edition in BookOrbit.
 - Remove individual files from BookOrbit or OPDS downloads. Pending BookOrbit progress survives removal of the file.
 - Native release builds strip symbols to reduce executable size. The guides use `botui` by name for reader commands.
+- The architecture and verification checklist are available in English and Russian. Each README links to the matching language. The standalone upstream comparison has been removed.
+- Publishing a tagged release triggers the BOTUI package build in omvoid-repo.
 
 ## 0.1.0 — 2026-11-07
 

@@ -143,11 +143,7 @@ impl Navigation {
             } else {
                 " F6 Browse "
             })
-            .border_style(if self.focused {
-                Style::new().cyan().bold()
-            } else {
-                Style::new().dim()
-            });
+            .border_style(crate::appearance::border_style(self.focused));
         if self.focused {
             block = block.title_bottom(" ←/→ Fold · ↵ Open ");
         }

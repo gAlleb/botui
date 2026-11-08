@@ -127,7 +127,7 @@ dependencies = [
 
 [[package]]
 name = "botui"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "botui-bookorbit",
  "botui-core",
@@ -154,7 +154,7 @@ dependencies = [
 
 [[package]]
 name = "botui-bookorbit"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "botui-transfer",
  "reqwest",
@@ -164,7 +164,7 @@ dependencies = [
 
 [[package]]
 name = "botui-core"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "unicode-segmentation",
  "unicode-width",
@@ -172,7 +172,7 @@ dependencies = [
 
 [[package]]
 name = "botui-fixed"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "botui-formats",
  "image",
@@ -181,7 +181,7 @@ dependencies = [
 
 [[package]]
 name = "botui-formats"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "base64 0.23.1",
  "botui-core",
@@ -198,7 +198,7 @@ dependencies = [
 
 [[package]]
 name = "botui-opds"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "botui-transfer",
  "reqwest",
@@ -208,7 +208,7 @@ dependencies = [
 
 [[package]]
 name = "botui-store"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "botui-core",
  "serde",
@@ -219,7 +219,7 @@ dependencies = [
 
 [[package]]
 name = "botui-transfer"
-version = "0.1.0"
+version = "0.1.1"
 
 [[package]]
 name = "bumpalo"

@@ -144,7 +144,7 @@ See the [user guide](docs/guide.md) for offline sync, bookmarks, notes, footnote
 
 Smoke tests need tmux, Python 3.11+, the PDF and DjVu helpers above, and `c44` and `djvm` for test fixtures.
 
-[Architecture](docs/architecture.md) · [Verification checklist](docs/checklist.md) · [Known gaps](docs/upstream-audit.md) · [Changelog](CHANGELOG.md)
+[Architecture](docs/architecture.md) · [Verification checklist](docs/checklist.md) · [Coverage limits](docs/checklist.md#coverage-limits) · [Changelog](CHANGELOG.md)
 
 ## License
 

@@ -4,7 +4,7 @@ use crate::shelf::gallery::{Grid, book_face};
 use ratatui::{
     Frame,
     layout::Rect,
-    style::Stylize,
+    text::Text,
     widgets::{Paragraph, Wrap},
 };
 use std::{
@@ -25,7 +25,8 @@ impl Picker {
         );
         for &(i, area) in &grid.cells {
             let entry = &self.entries[i];
-            let border = crate::appearance::card(i == selected);
+            let active = i == selected;
+            let border = crate::appearance::card(active);
             let inner = border.inner(area);
             f.render_widget(border, area);
             if inner.is_empty() {
@@ -33,9 +34,11 @@ impl Picker {
             }
             let Some(kind) = entry.kind else {
                 f.render_widget(
-                    Paragraph::new(format!("{}/", entry.name))
-                        .bold()
-                        .wrap(Wrap { trim: true }),
+                    Paragraph::new(Text::styled(
+                        format!("{}/", entry.name),
+                        crate::appearance::card_title(active),
+                    ))
+                    .wrap(Wrap { trim: true }),
                     Rect {
                         y: inner.y + inner.height / 3,
                         height: inner.height - inner.height / 3,
@@ -59,7 +62,14 @@ impl Picker {
                 page.write_to(&mut out, image::ImageFormat::Png)?;
                 Ok(Some(out.into_inner()))
             });
-            book_face(f, inner, &book, self.covers.image(book.id), &self.graphics);
+            book_face(
+                f,
+                inner,
+                &book,
+                self.covers.image(book.id),
+                &self.graphics,
+                active,
+            );
         }
         self.grid = Some(grid);
     }

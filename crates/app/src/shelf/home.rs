@@ -91,7 +91,7 @@ impl Shelf {
         }
         if illustrated && y + sources + 3 < canvas.bottom() {
             f.render_widget(
-                Paragraph::new("─".repeat(canvas.width.into())).dim(),
+                Paragraph::new("─".repeat(canvas.width.into())).style(ink.dim()),
                 row(y, 1),
             );
             y += 2;

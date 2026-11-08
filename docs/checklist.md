@@ -1,43 +1,45 @@
-# Критерии работы читалки
+# Reader verification checklist
 
-Это проверяемые сценарии, а не список нарисованных экранов. Команды запуска тестов — в [README](../README.md).
+**English** · [Русский](checklist.ru.md)
 
-| Сценарий | Чем проверен |
+The table records how each reading or navigation scenario was checked. See the [README](../README.md) for the commands to run the checks.
+
+| Scenario | Verification |
 |---|---|
-| Вход BookOrbit с нулём личных коллекций; выбор библиотеки, книги, файла и возврат назад | smoke-shelf |
-| Поиск книги за пределами первой выдачи; текущие с процентом; недавние; непрерывный список и сетка | smoke-shelf |
-| Дашборд после входа, открытие полки, поиск автора и серии за пределами первой порции, счётчики до входа в раздел, порядок томов | smoke-shelf, отдельный Kitty |
-| Миграция в TOML, одновременный запуск, открытый пароль и внешняя команда, изоляция аккаунта | smoke-config |
-| Две независимые настройки разворота, выравнивание клавиш меню, скруглённые и прямые рамки, режим без рамок | smoke-reader, smoke-library, тест геометрии; Chaos and Amber в Kitty |
-| Вставить путь к папке мышью, найти книгу во вложенной папке, сменить вид и перезапустить | smoke-library; отдельно реальная папка с «Знаком Единорога» |
-| Настройки фона, темы, обычного чтения, Zen, мышь и сохранение места | smoke-reader; Kitty с обычной и чистой страницами |
-| Одна страница и разворот; обе колонки реагируют на поля; поиск по восстановленному слову не ломает исходные координаты | botui-core и реальный EPUB о Гесаре |
-| Поиск через OPDS, HTTP Basic, следование по лентам и выбор издания | smoke-sources |
-| Настоящее изображение страницы, разворот, поиск по текстовому слою и переход к странице PDF и DjVu | smoke-sources |
-| Локальные заметки и закладки, экспорт Markdown, время с открытой книгой | smoke-reader, smoke-sources |
-| Точная позиция в файле BookOrbit, конфликт с другим устройством, серверная закладка без адреса | smoke-progress |
-| Первое Read, старая офлайн-копия, EPUB с 5-й главы онлайн до 7-й офлайн и обратно в BookOrbit. Проверить передачу файла один раз, две раздельные полки загрузок, автоматическую отправку при возврате сети и 99 → 100% по прежнему адресу | smoke-offline |
-| Перейти по ссылке и назад; открыть сноску и иллюстрацию EPUB/FB2 | smoke-resources |
-| Выбрать независимые темы, непрозрачность и рамки; справка, настройки подключения, сохранение после перезапуска | smoke-preferences |
-| Свернуть дерево мышью и клавишами, открыть карточку без изменения истории, отложить, отменить и подтвердить сброс | smoke-details |
-| Сдвинуть текст на строку; увидеть части двух разных сканов одновременно и восстановить смещение | smoke-scroll |
-| Открыть 137-й лист напрямую, найти текст на 137-м и 139-м, увидеть границу со 138-м на всю ширину | Release в Kitty, тестовый PDF на 140 листов; [вид границы страниц](images/pdf-scroll.png) |
-| Вернуться Q/Q к выбору источника после сохранения, открыть без повторного входа | smoke-progress |
-| Сменить палитру в работающем терминале в отсутствие pywal, сравнить реальные цвета фона | Изолированные Kitty и Alacritty |
-| Найти фразу после переноса; перейти по результатам, оглавлению и якорям | smoke-text-search, тесты botui-core и botui-formats |
-| Прочитать серверный журнал и связанные книги; удалить отдельную закладку, включая недоступный адрес, отменить удаление | smoke-details, smoke-bookorbit-bookmarks |
-| Перетащить край панели на полке и в обоих ридерах, отменить Esc; открыть снова на том же месте | smoke-splitters |
-| Снова открыть PDF на странице 111 и увидеть все 24 пункта оглавления с выделенной главой 11. Уменьшить и вернуть высоту окна, сохранив выделение | Тесты оглавления и проверка установленного botui на *How to Cook Your Life* в отдельном профиле |
-| Открыть PDF/DjVu щелчком по изданию, уменьшить лист со 100% до 90%, восстановить ширину и перейти на страницу маленьким диалогом | smoke-shelf, smoke-sources, smoke-scan-controls, отдельная проверка пикселей Kitty |
-| Скачать EPUB 790 МиБ через BookOrbit и OPDS без Content-Length, отменить зависшую передачу, повторить, сверить SHA-256 | scripts/check-downloads.py с пользовательским файлом через временные локальные HTTP-серверы |
-| Раскрыть дерево локальных папок и открыть книгу справа; свернуть, изменить ширину, вернуться к книге и к истории | smoke-local-navigation, отдельная проверка Local library в Kitty |
-| Щёлкнуть издательскую сноску [1] в «Знаке Единорога», открыть ту же ссылку через F6; вернуться Esc и издательской стрелкой ↩ к тому же тексту | реальный EPUB в изолированном профиле; smoke-resources также проверяет словарь, обратные ссылки и resize |
-| Перейти в справке к разделу или найти команду, сохраняя читаемые колонки при 42×14 | smoke-preferences |
-| Открыть описание самостоятельной читалки в About, перейти на соседнюю вкладку Legal и открыть ссылку об авторстве мышью, получить полный текст лицензий без запуска UI | smoke-about |
+| Sign in to BookOrbit with no personal collections. Choose a library, book and edition, then navigate back. | smoke-shelf |
+| Find a book beyond the first batch of results. Check progress on the current shelf, recent additions and continuous navigation in list and grid views. | smoke-shelf |
+| Open a shelf from the dashboard. Find an author or series beyond the first batch. Check counts before opening the index and verify volume order. | smoke-shelf and a separate Kitty session |
+| Migrate settings to TOML, start two instances and check plaintext passwords, password commands and account isolation. | smoke-config |
+| Adjust page width and gutter independently. Check shortcut alignment and rounded, square and hidden borders. | smoke-reader, smoke-library, layout tests and *Chaos and Amber* in Kitty |
+| Paste a folder path with the mouse, find a book in a subfolder, switch views and restart. | smoke-library and a local folder containing *Sign of the Unicorn* |
+| Change background and theme, switch between regular and Zen reading, use the mouse and restore a saved position. | smoke-reader and Kitty in regular and Zen modes |
+| Switch between one page and a spread. Adjust the margins of both columns. Find a word rejoined across a line break and return to its original location. | botui-core and a Gesar EPUB |
+| Search an OPDS catalog, authenticate with HTTP Basic, follow feeds and choose an edition. | smoke-sources |
+| Display actual PDF and DjVu page images, open a spread, search the text layer and jump to a page. | smoke-sources |
+| Create local notes and bookmarks, export Markdown and track time with the book open. | smoke-reader and smoke-sources |
+| Restore an exact BookOrbit file position, handle a conflict with another device and list a server bookmark without a location. | smoke-progress |
+| Open an edition for the first time and reuse an older offline copy. Read an EPUB from chapter 5 online to chapter 7 offline, then resume in BookOrbit. Check that the file transfers once, the two download shelves stay separate, progress syncs on reconnect and 99% can reach 100% at the same location. | smoke-offline |
+| Follow a link and return. Open a footnote and an illustration in EPUB and FB2. | smoke-resources |
+| Choose independent themes, opacity and border style. Use help and connection settings, then restart to check persistence. | smoke-preferences |
+| Fold the tree with mouse and keyboard, open book details without adding to reading history, put a book on hold, then cancel and confirm a reset. | smoke-details |
+| Scroll text by one line. Show parts of two adjacent scanned pages and restore the saved scroll offset. | smoke-scroll |
+| Jump to page 137, find text on pages 137 and 139, and see the boundary with page 138 at full width. | Release build in Kitty with a 140-page test PDF. [Page boundary screenshot](images/pdf-scroll.png) |
+| Press Q twice to return to the source chooser after saving. Reopen the book without signing in again. | smoke-progress |
+| Change the palette in a running terminal without pywal and compare the rendered background colors. | Isolated Kitty and Alacritty sessions |
+| Find a phrase after reflow. Navigate between results, contents entries and anchors. | smoke-text-search, botui-core and botui-formats tests |
+| Open the server reading log and related books. Delete a single bookmark, including one with an unresolved location, and cancel deletion. | smoke-details and smoke-bookorbit-bookmarks |
+| Drag the sidebar edge on the shelf and in both readers. Cancel with Esc and check the saved width on reopening. | smoke-splitters |
+| Reopen a PDF at page 111. With enough space, all 24 contents entries are visible and chapter 11 is selected. Shrink and restore the window height with the chapter still selected. | Contents tests and the installed executable with *How to Cook Your Life* in a separate profile |
+| Click a PDF or DjVu edition to open it. Reduce page width from 100% to 90%, restore it and use the small page-number dialog. | smoke-shelf, smoke-sources, smoke-scan-controls and a Kitty pixel check |
+| Download a 790 MiB EPUB through BookOrbit and OPDS without Content-Length. Cancel a stalled transfer, retry and compare SHA-256. | scripts/check-downloads.py using the original file and temporary local HTTP servers |
+| Expand the local folder tree and open a book on the right. Collapse the tree, resize it and return to the book and reading history. | smoke-local-navigation and a Kitty session in Local library |
+| Click the publisher’s footnote [1] in *Sign of the Unicorn* or follow it with F6. Return to the same passage using Esc or the publisher’s ↩ link. | The EPUB in an isolated profile. smoke-resources also checks glossary entries, backlinks and resizing. |
+| Jump to a help section or search for a command with readable columns at 42 × 14 cells. | smoke-preferences |
+| Open the reader description in About and the adjacent Legal tab. Follow the attribution link with the mouse and read the full licenses from the CLI. | smoke-about |
 
-## Границы проверок
+## Coverage limits
 
-- BookOrbit: проверены ответы личного сервера для закладок конкретного EPUB и FB2. Изменение статуса, сброс и конфликты прогресса воспроизводятся на локальном HTTP-стенде. Полная проверка веб → iPhone → TUI требует устройства и одного и того же файла.
-- EPUB/FB2: адаптивные текстовые таблицы и встроенные растровые изображения; полное воспроизведение CSS, объединённых ячеек и MathML не заявляется.
-- OPDS 1/2: прямые выдаваемые файлы; каталоги, требующие DRM или отдельного процесса займа, не превращаются в фиктивные загрузки.
-- Для PDF/DjVu без текстового слоя доступно чтение скана, без OCR. Сервер синхронизирует номер страницы, локально сохраняется и смещение прокрутки.
+- **BookOrbit.** Bookmark responses were checked against a personal server for specific EPUB and FB2 editions. A local HTTP fixture exercises status changes, resets and progress conflicts. A full web → iPhone → TUI check requires a physical device and the same edition file.
+- **EPUB and FB2.** The reader supports reflowable text tables and embedded raster images. Full CSS layout, merged cells and MathML are outside this coverage.
+- **OPDS 1 and 2.** Tests cover direct file acquisition. DRM and separate lending workflows are unsupported.
+- **PDF and DjVu.** Image-only pages are readable. Search requires an existing text layer. The server syncs the page number, and the device also saves the scroll offset.

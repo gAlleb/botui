@@ -223,11 +223,7 @@ impl Rail {
     pub fn draw(&mut self, f: &mut Frame, area: Rect, active: Tab, scope: Option<&Scope>) {
         let mut edge = crate::appearance::block()
             .title(" Navigation · F6 ")
-            .border_style(if self.focused {
-                Style::new().cyan().bold()
-            } else {
-                Style::new().dim()
-            });
+            .border_style(crate::appearance::border_style(self.focused));
         if self.focused {
             edge = edge.title_bottom(" ←/→ Fold · F6 Back ");
         }

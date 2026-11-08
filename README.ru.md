@@ -144,7 +144,7 @@ botui --resume                 # Продолжить последнюю нед�
 
 Для smoke-тестов нужны tmux, Python 3.11+, указанные выше средства чтения PDF и DjVu, а также `c44` и `djvm` для создания тестовых файлов.
 
-[Архитектура](docs/architecture.md) · [Проверяемые сценарии](docs/checklist.md) · [Известные ограничения](docs/upstream-audit.md) · [История изменений](CHANGELOG.md)
+[Архитектура](docs/architecture.ru.md) · [Проверяемые сценарии](docs/checklist.ru.md) · [Границы проверок](docs/checklist.ru.md#границы-проверок) · [История изменений (EN)](CHANGELOG.md)
 
 ## Лицензия
 

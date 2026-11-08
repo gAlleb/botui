@@ -1,5 +1,7 @@
 # BOTUI user guide
 
+**English** · [Русский](guide.ru.md)
+
 [README](../README.md)
 
 ## First run

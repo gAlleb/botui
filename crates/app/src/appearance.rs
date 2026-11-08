@@ -51,12 +51,22 @@ pub fn block<'a>() -> Block<'a> {
         BordersStyle::Square => Block::bordered(),
         BordersStyle::None => Block::new().padding(Padding::horizontal(1)),
     }
+    .border_style(border_style(false))
+}
+pub fn border_style(focused: bool) -> Style {
+    let accent = Style::new().fg(Color::Cyan);
+    if focused { accent.bold() } else { accent.dim() }
 }
 pub fn card<'a>(active: bool) -> Block<'a> {
-    let tile = block().border_style(if active {
-        Style::new().fg(Color::Cyan).bold()
-    } else {
-        Style::new().dim()
-    });
+    let tile = block().border_style(border_style(active));
     if active { tile.title(" ▸ ") } else { tile }
+}
+
+pub fn card_title(selected: bool) -> Style {
+    let title = Style::new().bold();
+    if selected {
+        title.fg(Color::Cyan).reversed()
+    } else {
+        title
+    }
 }

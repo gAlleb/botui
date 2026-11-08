@@ -6,7 +6,8 @@ use crate::centered;
 use ratatui::{
     Frame,
     layout::{Position, Rect},
-    style::{Color, Style},
+    style::{Color, Style, Stylize},
+    text::Text,
     widgets::{Paragraph, Wrap},
 };
 
@@ -215,6 +216,7 @@ impl Shelf {
                         book,
                         self.covers.image(book.id),
                         &self.graphics,
+                        active,
                     );
                 }
                 Command::Books(scope, _) => {
@@ -225,7 +227,10 @@ impl Shelf {
                         _ => None,
                     };
                     frame.render_widget(
-                        Paragraph::new(format!(" {}", single_line(scope.name().into()))).bold(),
+                        Paragraph::new(Text::styled(
+                            format!(" {}", single_line(scope.name().into())),
+                            crate::appearance::card_title(active),
+                        )),
                         line(inner, 0, 1),
                     );
                     if let Some(n) = n {
@@ -237,9 +242,12 @@ impl Shelf {
                     }
                 }
                 _ => frame.render_widget(
-                    Paragraph::new(row.label.as_str())
-                        .centered()
-                        .wrap(Wrap { trim: true }),
+                    Paragraph::new(Text::styled(
+                        row.label.as_str(),
+                        crate::appearance::card_title(active),
+                    ))
+                    .centered()
+                    .wrap(Wrap { trim: true }),
                     line(inner, inner.height / 2, 2),
                 ),
             }
@@ -248,7 +256,6 @@ impl Shelf {
         self.grid = Some(grid);
     }
 }
-use ratatui::style::Stylize;
 
 pub(crate) fn book_face(
     frame: &mut Frame,
@@ -256,7 +263,11 @@ pub(crate) fn book_face(
     book: &Book,
     picture: Option<&crate::cover::Picture>,
     graphics: &ratatui_image::picker::Picker,
+    selected: bool,
 ) {
+    if inner.is_empty() {
+        return;
+    }
     let meta = if inner.height >= 7 { 4 } else { 2 };
     let art = inner.height.saturating_sub(meta);
     let title = single_line(book.title.clone().unwrap_or_else(|| "Untitled".into()));
@@ -267,10 +278,12 @@ pub(crate) fn book_face(
         jacket(frame, area, book, graphics);
     }
     frame.render_widget(
-        Paragraph::new(caption(&title, inner.width, if meta == 4 { 2 } else { 1 }))
-            .centered()
-            .style(Style::new().bold())
-            .wrap(Wrap { trim: true }),
+        Paragraph::new(Text::styled(
+            caption(&title, inner.width, if meta == 4 { 2 } else { 1 }),
+            crate::appearance::card_title(selected),
+        ))
+        .centered()
+        .wrap(Wrap { trim: true }),
         line(inner, art, meta - 1),
     );
     if meta == 4 {

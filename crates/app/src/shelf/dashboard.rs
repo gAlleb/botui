@@ -186,8 +186,7 @@ impl Shelf {
                     let w = area.width / across as u16;
                     let rect = Rect::new(area.x + i as u16 * w, y, w, 3);
                     let block = crate::appearance::block()
-                        .title(format!(" {} ", super::single_line(label.clone())))
-                        .border_style(Style::new().dim());
+                        .title(format!(" {} ", super::single_line(label.clone())));
                     let inside = block.inner(rect);
                     frame.render_widget(block, rect);
                     frame.render_widget(
@@ -243,8 +242,9 @@ impl Shelf {
                 let x = area.x + (col * area.width as usize / cols) as u16;
                 let end = area.x + ((col + 1) * area.width as usize / cols) as u16;
                 let tile = Rect::new(x, y + 1, end - x, tile_h);
+                let active = selected == Some(index);
                 if tile_h >= 5 {
-                    let border = crate::appearance::card(selected == Some(index));
+                    let border = crate::appearance::card(active);
                     let face = border.inner(tile);
                     frame.render_widget(border, tile);
                     book_face(
@@ -253,6 +253,7 @@ impl Shelf {
                         book,
                         self.covers.image(book.id),
                         &self.graphics,
+                        active,
                     );
                     if book.has_cover != Some(false) {
                         wanted.push(book.id);
@@ -262,13 +263,8 @@ impl Shelf {
                     let title =
                         super::single_line(book.title.clone().unwrap_or_else(|| "Untitled".into()));
                     frame.render_widget(
-                        Paragraph::new(format!("{percent}{title}")).style(
-                            if selected == Some(index) {
-                                ink.reversed()
-                            } else {
-                                Style::default()
-                            },
-                        ),
+                        Paragraph::new(format!("{percent}{title}"))
+                            .style(crate::appearance::card_title(active)),
                         tile,
                     );
                 }
