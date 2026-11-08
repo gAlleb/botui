@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Covers, illustrations and scanned pages use terminal graphics in supported tmux sessions, including Kitty.
+
 ## 0.1.4 — 2026-11-08
 
 - Press `%` to toggle a dim page count and reading percentage in zen mode. The preference is shared by the text and scan readers and can also be changed in Settings → Reader.

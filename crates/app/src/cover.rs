@@ -20,16 +20,17 @@ pub(crate) fn graphics() -> Picker {
     PICKER.with(Clone::clone)
 }
 fn detect() -> Picker {
-    // Multiplexers may inherit KITTY_WINDOW_ID without passing graphics through.
-    let direct = std::env::var_os("TMUX").is_none() && std::env::var_os("STY").is_none();
     let term = std::env::var("TERM").unwrap_or_default();
     let brand = std::env::var("TERM_PROGRAM").unwrap_or_default();
-    let candidate = matches!(
-        term.as_str(),
-        "xterm-kitty" | "xterm-ghostty" | "foot" | "foot-extra"
-    ) || matches!(brand.as_str(), "WezTerm" | "iTerm.app" | "ghostty");
+    // The image picker wraps capability queries and graphics for tmux.
+    let tmux = term.starts_with("tmux") || brand == "tmux";
+    let candidate =
+        tmux || matches!(
+            term.as_str(),
+            "xterm-kitty" | "xterm-ghostty" | "foot" | "foot-extra"
+        ) || matches!(brand.as_str(), "WezTerm" | "iTerm.app" | "ghostty");
     if !monochrome()
-        && direct
+        && std::env::var_os("STY").is_none()
         && candidate
         && let Ok(p) = Picker::from_query_stdio_with_options(graphics_options())
         && p.protocol_type() != ProtocolType::Halfblocks
