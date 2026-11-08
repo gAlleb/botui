@@ -7,5 +7,5 @@ publish.workspace = true
 
 [dependencies]
 botui-formats = { path = "../formats" }
-image = { version = "0.25", default-features = false, features = ["png", "pnm"] }
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "pnm", "webp"] }
 tempfile = "3"

@@ -46,20 +46,43 @@ pub fn read_server(
     notices: &mut Vec<String>,
     base: Option<&botui_bookorbit::progress::Progress>,
 ) -> io::Result<(Option<botui_bookorbit::progress::Move>, Option<f64>)> {
+    read_pages(term, path, kind, notices, base, None)
+}
+
+pub(super) fn read_pages(
+    term: &mut AppTerminal,
+    path: &Path,
+    kind: FileKind,
+    notices: &mut Vec<String>,
+    base: Option<&botui_bookorbit::progress::Progress>,
+    album: Option<botui_core::Document>,
+) -> io::Result<(Option<botui_bookorbit::progress::Move>, Option<f64>)> {
     let _uploads = crate::cover::ScanGraphics;
     let mut picker = graphics();
     let worker = Worker::new();
     let p = path.to_owned();
-    let count_job = worker.start(move |cancel| botui_fixed::page_count(&p, kind, cancel));
+    let count_job = album
+        .is_none()
+        .then(|| worker.start(move |cancel| botui_fixed::page_count(&p, kind, cancel)));
     let prefs = crate::settings::Settings::load()?;
     let mut zen = prefs.zen;
     let mut sidebar = contents::Contents::default();
     let mut splitter =
         crate::splitter::Splitter::new(crate::splitter::Pane::Contents, prefs.contents_width);
     let outline_path = path.to_owned();
-    let mut outline_job =
-        Some(worker.start(move |cancel| botui_fixed::outline(&outline_path, kind, cancel)));
-    let mut total = None;
+    let mut outline_job = album
+        .is_none()
+        .then(|| worker.start(move |cancel| botui_fixed::outline(&outline_path, kind, cancel)));
+    let plates = album.map(|doc| {
+        sidebar.set_outline(
+            doc.contents
+                .into_iter()
+                .map(|(anchor, title)| (anchor.block as u32 + 1, title))
+                .collect(),
+        );
+        std::sync::Arc::<[String]>::from(doc.image_pages)
+    });
+    let mut total = plates.as_ref().map(|p| p.len() as u32);
     let mut crop = Crop {
         percent: prefs.scan_zoom.unwrap_or(100).clamp(25, 400),
         ..Crop::default()
@@ -83,6 +106,9 @@ pub fn read_server(
     }
     if base.is_some_and(|p| p.percentage == 0. && p.text.cfi.is_none() && p.text.page.is_none()) {
         n = 1;
+    }
+    if let Some(count) = total {
+        n = n.clamp(1, count);
     }
     let opened = std::time::Instant::now();
     let start = n;
@@ -112,7 +138,10 @@ pub fn read_server(
         theme: "terminal".into(),
         ..Saved::default()
     });
-    let mut pages = pages::Pages::new(checkpoint.scan_appearance, path, kind);
+    let mut pages = pages::Pages::new(checkpoint.scan_appearance, || match &plates {
+        Some(members) => botui_fixed::PageReader::epub(path, members.clone()),
+        None => botui_fixed::PageReader::new(path, kind),
+    });
     let mut last_save = opened;
     let mut save_failed = false;
     let mut end_visible;
@@ -130,7 +159,9 @@ pub fn read_server(
         if let Some(msg) = viewer.collect() {
             message = msg;
         }
-        if total.is_none() {
+        if total.is_none()
+            && let Some(count_job) = &count_job
+        {
             match count_job.receiver.try_recv() {
                 Ok(result) => {
                     let count = result?;
@@ -747,6 +778,9 @@ pub fn read_server(
                 continue;
             }
             24 => dialog = Some(controls::Dialog::page()),
+            16 if plates.is_some() => {
+                message = "This scanned EPUB has no searchable text layer.".into()
+            }
             16 => {
                 dialog = Some(controls::Dialog::Search(crate::prompt::LineInput::new(
                     &search.query,

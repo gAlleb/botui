@@ -89,22 +89,29 @@ pub(super) fn read_book(reader: impl Read + Seek, fallback: &str) -> Result<Docu
         let start = blocks.len();
         starts.insert(member.clone(), start);
         let mut links = vec![];
-        for (id, block) in xhtml::append_blocks(&html, &mut blocks, &mut links, &mut tables) {
+        let dom = if item.attribute("media-type") == Some("text/html") {
+            scraper::Html::parse_document(&html)
+        } else {
+            xhtml::parse_document(&html)
+        };
+        for (id, block) in xhtml::append_blocks(&dom, &mut blocks, &mut links, &mut tables) {
             ids.entry((member.clone(), id)).or_insert(block);
         }
         let member: std::sync::Arc<str> = member.into();
         raw.extend(links.into_iter().map(|v| (member.clone(), v)));
         super::locations::epub(&html, &spine_path, start, &blocks[start..], &mut locations);
     }
+    let mut image_pages = Vec::new();
     if blocks.is_empty() {
         let mut plates = HashMap::<String, (usize, usize)>::new();
         for (base, link) in &mut raw {
             if link.image
-                && member_path(base, &link.href)
-                    .ok()
-                    .and_then(|p| resources.get(&p))
+                && let Ok(member) = member_path(base, &link.href)
+                && resources
+                    .get(&member)
                     .is_some_and(|m| super::resources::raster(m))
             {
+                image_pages.push(member);
                 link.block = blocks.len();
                 let entry = plates.entry(base.to_string()).or_insert((blocks.len(), 0));
                 entry.1 += 1;
@@ -242,6 +249,7 @@ pub(super) fn read_book(reader: impl Read + Seek, fallback: &str) -> Result<Docu
         })
         .collect();
     Ok(Document {
+        image_pages,
         tables,
         references,
         contents,

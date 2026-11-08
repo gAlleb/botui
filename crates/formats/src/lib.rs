@@ -129,7 +129,12 @@ pub fn synopsis(input: &str) -> String {
         return xhtml::clean(input);
     }
     let mut blocks = vec![];
-    xhtml::append_blocks(input, &mut blocks, &mut vec![], &mut Default::default());
+    xhtml::append_blocks(
+        &scraper::Html::parse_document(input),
+        &mut blocks,
+        &mut vec![],
+        &mut Default::default(),
+    );
     blocks
         .into_iter()
         .map(|b| b.text)

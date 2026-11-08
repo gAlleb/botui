@@ -286,33 +286,36 @@ impl Reader {
                 self.links.mark_line(frame, &self.doc, line, rect);
             }
         }
-        for (id, area) in figures {
-            self.links.image(area, id);
-            let entry = &self.doc.references[id];
-            if let botui_core::Target::Image(member) = &entry.target {
-                let pictures = self
-                    .illustrations
-                    .get_or_insert_with(|| crate::shelf::covers::Covers::with_capacity(8));
-                let member = member.clone();
-                let path = self.source.clone();
-                pictures.request_with(
-                    id as u64,
-                    move || Ok(botui_formats::illustration(&path, &member).ok()),
-                    crate::cover::Picture::inline,
-                );
-                if let Some(picture) = pictures.image(id as u64) {
-                    picture.draw(frame, area, &crate::cover::graphics());
-                } else {
-                    frame.render_widget(
-                        Paragraph::new(format!("Illustration · {}", entry.label))
-                            .centered()
-                            .style(style.add_modifier(Modifier::DIM)),
-                        Rect {
-                            y: area.y + area.height / 2,
-                            height: 1,
-                            ..area
-                        },
+        if !figures.is_empty() {
+            let pictures = self
+                .illustrations
+                .get_or_insert_with(|| crate::shelf::covers::Covers::with_capacity(8));
+            pictures.fit_visible(figures.len());
+            for (id, area) in figures {
+                self.links.image(area, id);
+                let entry = &self.doc.references[id];
+                if let botui_core::Target::Image(member) = &entry.target {
+                    let member = member.clone();
+                    let path = self.source.clone();
+                    pictures.request_with(
+                        id as u64,
+                        move || Ok(botui_formats::illustration(&path, &member).ok()),
+                        crate::cover::Picture::inline,
                     );
+                    if let Some(picture) = pictures.image(id as u64) {
+                        picture.draw(frame, area, &crate::cover::graphics());
+                    } else {
+                        frame.render_widget(
+                            Paragraph::new(format!("Illustration · {}", entry.label))
+                                .centered()
+                                .style(style.add_modifier(Modifier::DIM)),
+                            Rect {
+                                y: area.y + area.height / 2,
+                                height: 1,
+                                ..area
+                            },
+                        );
+                    }
                 }
             }
         }
@@ -1038,6 +1041,18 @@ pub fn read_server(
     base: Option<&botui_bookorbit::progress::Progress>,
     mut remote: Option<&mut bookmarks::ServerMarks>,
 ) -> io::Result<(Option<botui_bookorbit::progress::Move>, f64)> {
+    if !doc.image_pages.is_empty() {
+        // The raster page index is local to this EPUB. Its server location uses a text CFI.
+        let (change, percent) = crate::scan::read_pages(
+            term,
+            path,
+            botui_formats::FileKind::Epub,
+            notices,
+            None,
+            Some(doc),
+        )?;
+        return Ok((change, percent.unwrap_or_default()));
+    }
     let mut viewer = crate::cover_viewer::Viewer::default();
     let before = notices.len();
     let (mut state, mut saved) = match LocalState::for_file(path).and_then(|store| {

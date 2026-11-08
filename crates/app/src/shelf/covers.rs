@@ -35,6 +35,10 @@ impl Covers {
             }),
         }
     }
+    /// A loaded figure must stay resident until the rest of this viewport is ready.
+    pub fn fit_visible(&mut self, count: usize) {
+        self.images.resize(NonZeroUsize::new(count.max(8)).unwrap());
+    }
     pub fn reset(&mut self) {
         for s in &mut self.slots {
             s.job = None;

@@ -30,6 +30,7 @@ fn imports_spine_in_order_without_front_matter_or_note_bodies() {
         ("Text/one chapter.xhtml", "<!DOCTYPE html><html><head><title>Окно</title></head><body><h1>Глава <b>1</b></h1><p>Нача<em>ло</em>&nbsp;книги. <span hidden>лишнее</span><script>alert(1)</script></p><p>Следующая строка.</p></body></html>"),
     ]), "fallback").unwrap();
     assert_eq!(book.title, "Волны & берег");
+    assert!(book.image_pages.is_empty());
     let lines: Vec<_> = book
         .blocks
         .iter()
@@ -44,6 +45,26 @@ fn imports_spine_in_order_without_front_matter_or_note_bodies() {
             (false, "Последняя глава"),
         ]
     );
+}
+
+#[test]
+fn empty_xhtml_title_keeps_chapter_text_and_its_navigation_target() {
+    let book = read_book(archive(&[
+        ("META-INF/container.xml", r#"<container><rootfile full-path="book.opf"/></container>"#),
+        ("book.opf", r#"<package><manifest><item id="chapter" href="chapter.xhtml" media-type="application/xhtml+xml"/><item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/></manifest><spine><itemref idref="chapter"/></spine></package>"#),
+        ("chapter.xhtml", r#"<html><head><title /></head><body><p class="empty"/><p id="start">First breath.</p><script/><p>Second breath.</p></body></html>"#),
+        ("nav.xhtml", r##"<html><head><title/></head><body><nav role="doc-toc"><a href="chapter.xhtml#start">Practice</a></nav></body></html>"##),
+    ]), "test").unwrap();
+    assert_eq!(
+        book.blocks
+            .iter()
+            .map(|b| b.text.as_str())
+            .collect::<Vec<_>>(),
+        ["First breath.", "Second breath."]
+    );
+    let anchor = botui_core::Anchor { block: 0, byte: 0 };
+    assert_eq!(book.contents, [(anchor, "Practice".into())]);
+    assert_eq!(book.resolve_cfi(&book.cfi(anchor).unwrap()), Some(anchor));
 }
 
 #[test]
@@ -118,7 +139,12 @@ fn bookmarks_resolve_element_or_range_starts_without_guessing_another_chapter() 
 fn a_repeated_epub_passage_has_its_own_file_address() {
     let html = "<html><head/><body><p>Again.</p><p hidden='hidden'>Again.</p><p>Third line.</p><p>Again.</p></body></html>";
     let mut d = botui_core::Document::default();
-    super::xhtml::append_blocks(html, &mut d.blocks, &mut vec![], &mut d.tables);
+    super::xhtml::append_blocks(
+        &super::xhtml::parse_document(html),
+        &mut d.blocks,
+        &mut vec![],
+        &mut d.tables,
+    );
     super::locations::epub(html, "/6/2", 0, &d.blocks, &mut d.locations);
     for (block, step) in [(0, 2), (2, 8)] {
         let a = botui_core::Anchor { block, byte: 2 };
@@ -137,6 +163,7 @@ fn image_only_epub_keeps_two_spine_destinations_and_ignores_remote_art() {
         ("b.xhtml",r#"<html><body><img alt="Last plate" src="i.jpg"/></body></html>"#),
         ("toc.xhtml",r#"<html><body><nav epub:type="toc"><ol><li><a href="a.xhtml">First</a></li><li><a href="b.xhtml">Last</a></li></ol></nav></body></html>"#),
     ]),"album").unwrap();
+    assert_eq!(book.image_pages, ["i.jpg", "i.jpg"]);
     assert_eq!(book.blocks.len(), 2);
     assert_eq!(book.blocks[1].text, "Last plate");
     assert_eq!(

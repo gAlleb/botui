@@ -3,11 +3,10 @@ use crate::{
     cover::Picture,
     shelf::background::{Ticket, Worker},
 };
-use botui_formats::FileKind;
 use botui_store::ScanAppearance;
 use image::DynamicImage;
 use lru::LruCache;
-use std::{io, num::NonZeroUsize, path::Path, sync::mpsc::TryRecvError};
+use std::{io, num::NonZeroUsize, sync::mpsc::TryRecvError};
 type Key = (u32, u16);
 use super::paper::Paper;
 struct Lane {
@@ -24,14 +23,12 @@ pub(super) struct Pages {
     cache: LruCache<Key, Result<Picture, String>>,
 }
 impl Pages {
-    pub fn new(appearance: ScanAppearance, path: &Path, kind: FileKind) -> Self {
+    pub fn new(appearance: ScanAppearance, renderer: impl Fn() -> botui_fixed::PageReader) -> Self {
         Self {
             appearance,
             colors: None,
             lanes: std::array::from_fn(|_| Lane {
-                renderer: std::sync::Arc::new(std::sync::Mutex::new(botui_fixed::PageReader::new(
-                    path, kind,
-                ))),
+                renderer: std::sync::Arc::new(std::sync::Mutex::new(renderer())),
                 worker: Worker::new(),
                 job: None,
             }),

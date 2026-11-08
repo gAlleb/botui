@@ -1,7 +1,6 @@
 //! Open only embedded resources named by the document; never fetch a remote illustration.
 use super::{FileKind, Result, decode_xml, epub, invalid, xhtml};
 use base64::{Engine, engine::general_purpose::STANDARD};
-use scraper::Html;
 use std::{
     fs::File,
     io::{BufReader, Read},
@@ -69,7 +68,7 @@ pub fn supplementary_note(
 ) -> Result<Supplement> {
     let mut zip = zip::ZipArchive::new(BufReader::new(File::open(path)?))?;
     let html = epub::read_member(&mut zip, member, &mut (4 << 20))?;
-    let dom = Html::parse_document(&html);
+    let dom = xhtml::parse_document(&html);
     let node = dom
         .tree
         .nodes()

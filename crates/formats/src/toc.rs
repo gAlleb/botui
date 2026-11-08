@@ -1,7 +1,7 @@
 //! Read optional EPUB 3 navigation or EPUB 2 NCX, keeping spine fragment targets.
 use super::{epub::member_path, xhtml::clean};
 use botui_core::Anchor;
-use scraper::{Html, Selector};
+use scraper::Selector;
 use std::collections::{HashMap, HashSet};
 
 pub fn read(
@@ -69,7 +69,7 @@ pub fn read(
             }
         }
     } else {
-        let doc = Html::parse_document(xml);
+        let doc = super::xhtml::parse_document(xml);
         let selector = Selector::parse("nav").unwrap();
         let anchors = Selector::parse("a[href]").unwrap();
         for nav in doc.select(&selector).filter(|n| {

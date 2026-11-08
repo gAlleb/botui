@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 0.1.2 — 2026-11-08
+
+- Read image-only EPUBs as scanned books. Each scan fills its page, with spreads, continuous scrolling, zoom and local resume. Large albums no longer cycle through thumbnails while idle.
+- Open EPUBs whose chapters use a self-closing XHTML title. These editions could appear empty even when they contained readable text.
+
 ## 0.1.1 — 2026-11-08
 
 - Panel, dialog and book card outlines follow the active theme’s accent color. Focused navigation and selected cards use a stronger outline.

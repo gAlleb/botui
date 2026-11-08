@@ -14,6 +14,8 @@ use unicode_width::UnicodeWidthStr;
 
 #[derive(Clone, Debug, Default)]
 pub struct Document {
+    /// Ordered archive members when the entire reading order consists of raster plates.
+    pub image_pages: Vec<String>,
     pub tables: std::collections::BTreeMap<usize, TableRow>,
     pub references: Vec<Reference>,
     pub contents: Vec<(Anchor, String)>,
@@ -470,6 +472,7 @@ mod tests {
 
     fn document(paragraphs: &[&str]) -> Document {
         Document {
+            image_pages: vec![],
             tables: Default::default(),
             title: "Книга".into(),
             references: vec![],

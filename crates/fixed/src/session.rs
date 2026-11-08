@@ -4,6 +4,7 @@ use std::path::PathBuf;
 pub struct PageReader {
     path: PathBuf,
     kind: FileKind,
+    plates: Option<std::sync::Arc<[String]>>,
     #[cfg(unix)]
     streaming: bool,
     #[cfg(unix)]
@@ -14,6 +15,7 @@ impl PageReader {
         Self {
             path: path.to_owned(),
             kind,
+            plates: None,
             #[cfg(unix)]
             streaming: kind == FileKind::Pdf
                 && !std::env::var_os("PATH").is_some_and(|p| {
@@ -23,7 +25,35 @@ impl PageReader {
             session: None,
         }
     }
+    pub fn epub(path: &Path, members: std::sync::Arc<[String]>) -> Self {
+        Self {
+            plates: Some(members),
+            ..Self::new(path, FileKind::Epub)
+        }
+    }
     pub fn render(&mut self, n: u32, side: u16, cancel: &AtomicBool) -> io::Result<DynamicImage> {
+        if let Some(plates) = &self.plates {
+            let member = n
+                .checked_sub(1)
+                .and_then(|index| plates.get(index as usize))
+                .ok_or_else(|| io::Error::other("Page outside EPUB reading order"))?;
+            let bytes = botui_formats::illustration(&self.path, member)
+                .map_err(|e| io::Error::other(e.to_string()))?;
+            let mut decoder =
+                image::ImageReader::new(io::Cursor::new(bytes)).with_guessed_format()?;
+            let mut limits = image::Limits::default();
+            limits.max_alloc = Some(64 << 20);
+            limits.max_image_width = Some(8192);
+            limits.max_image_height = Some(8192);
+            decoder.limits(limits);
+            let page = decoder.decode().map_err(io::Error::other)?;
+            let side = u32::from(side.clamp(200, 1920));
+            return Ok(if page.width().max(page.height()) > side {
+                page.thumbnail(side, side)
+            } else {
+                page
+            });
+        }
         #[cfg(unix)]
         if self.streaming {
             if self.session.is_none() {

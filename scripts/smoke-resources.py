@@ -4,6 +4,7 @@ from base64 import b64encode
 import importlib.util
 from pathlib import Path
 from tempfile import TemporaryDirectory
+import time
 from zipfile import ZipFile
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -117,7 +118,38 @@ def check_reference_return(tmp):
         t.run("kill-server",required=False)
 
 
+def check_scanned_epub(tmp):
+    book = tmp / "Scans.epub"
+    with ZipFile(book, "w") as z:
+        z.writestr("META-INF/container.xml", '<container><rootfile full-path="a.opf"/></container>')
+        z.writestr("a.opf", '<package><manifest><item id="body" href="pages.xhtml" media-type="application/xhtml+xml"/>'
+                   '<item id="scan" href="scan.jpg" media-type="image/jpeg"/></manifest>'
+                   '<spine><itemref idref="body"/></spine></package>')
+        z.writestr("pages.xhtml", "<html><body>" + '<p><img src="scan.jpg"/></p>' * 12 + "</body></html>")
+        z.write(ROOT / "scripts/fixtures/shelf-cover.jpg", "scan.jpg")
+    config = tmp / "config/botui"
+    config.mkdir(parents=True)
+    (config / "config.toml").write_text('zen = false\nreading_layout = "single"\n')
+    t = shelf.Terminal(tmp, BINARY, args=[str(book)])
+    try:
+        t.wait("first scanned page", lambda f: "1 / 12" in f and "▀" in f)
+        t.keys("Right")
+        t.wait("second scanned page", lambda f: "2 / 12" in f and "▀" in f)
+        t.keys("2", "Right")
+        t.wait("next scanned spread", lambda f: "4 / 12" in f and "▀" in f)
+        t.keys("q")
+        deadline = time.monotonic() + 5
+        while t.run("has-session", "-t", "shelf", required=False).returncode == 0:
+            if time.monotonic() >= deadline:
+                raise AssertionError("Scanned reader did not close")
+            time.sleep(.05)
+    finally:
+        t.run("kill-server", required=False)
+
+
 if __name__ == "__main__":
+    with TemporaryDirectory(prefix="botui-scans-") as folder:
+        check_scanned_epub(Path(folder))
     with TemporaryDirectory(prefix="botui-resources-") as folder:
         check(Path(folder))
     with TemporaryDirectory(prefix="botui-reference-return-") as folder:

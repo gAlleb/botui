@@ -1,6 +1,60 @@
 use botui_core::Block;
 use ego_tree::iter::Edge;
 use scraper::{Html, Node};
+use xmlparser::{ElementEnd, Token, Tokenizer};
+
+/// HTML ignores the slash in a non-void tag like `<title/>` and can consume
+/// the rest of the chapter as title text. Expand XML empty elements for display;
+/// CFI mapping still reads the original XHTML.
+pub(super) fn parse_document(source: &str) -> Html {
+    if !source.contains("/>") {
+        return Html::parse_document(source);
+    }
+    let mut expanded = String::new();
+    let mut copied = 0;
+    let mut name = "";
+    for token in Tokenizer::from(source).map_while(Result::ok) {
+        match token {
+            Token::ElementStart { span, .. } => name = &source[span.start() + 1..span.end()],
+            Token::ElementEnd {
+                end: ElementEnd::Empty,
+                span,
+            } => {
+                // An explicit HTML </br> would introduce a second line break.
+                if matches!(
+                    name,
+                    "area"
+                        | "base"
+                        | "br"
+                        | "col"
+                        | "embed"
+                        | "hr"
+                        | "img"
+                        | "input"
+                        | "link"
+                        | "meta"
+                        | "param"
+                        | "source"
+                        | "track"
+                        | "wbr"
+                ) {
+                    continue;
+                }
+                expanded.push_str(&source[copied..span.start()]);
+                expanded.push_str("></");
+                expanded.push_str(name);
+                expanded.push('>');
+                copied = span.end();
+            }
+            _ => {}
+        }
+    }
+    if copied == 0 {
+        return Html::parse_document(source);
+    }
+    expanded.push_str(&source[copied..]);
+    Html::parse_document(&expanded)
+}
 
 /// Collapse book whitespace and remove control bytes before text reaches a terminal.
 pub(super) fn clean(input: &str) -> String {
@@ -71,12 +125,11 @@ pub(super) struct RawLink {
     pub href: String,
 }
 pub(super) fn append_blocks(
-    html: &str,
+    dom: &Html,
     blocks: &mut Vec<Block>,
     links: &mut Vec<RawLink>,
     tables: &mut std::collections::BTreeMap<usize, botui_core::TableRow>,
 ) -> Vec<(String, botui_core::Anchor)> {
-    let dom = Html::parse_document(html);
     let Some(body) = dom
         .root_element()
         .child_elements()

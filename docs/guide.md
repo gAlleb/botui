@@ -140,6 +140,8 @@ When you visit a note or glossary entry at the end of the book, **Esc** or **Bac
 
 For **PDF and DjVu**, press **Enter** or click the edition to start reading. **1 / 2 / 3** select single page, spread or continuous scroll. At **100%**, a scrolling sheet fits the reading pane. Press **−** once for **90%**, again for **80%**, or **+** to enlarge it. **0** restores fit.
 
+An EPUB made entirely of page scans opens in the same viewer. Use **P** to jump to a scan or **3** to scroll. BOTUI saves your place on this device.
+
 **W** opens the same controls for the mouse; the chosen zoom is saved when you close the book. **Z** hides the contents and footer. **P** or **Ctrl+G** opens a small page-number dialog over the document.
 
 **/** searches the text layer; **F3 / F4 / F5** open the next match, previous match, or results. **B / G** manage bookmarks; **I / A / E** manage and export notes.

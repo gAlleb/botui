@@ -258,6 +258,7 @@ pub(super) fn parse(bytes: &[u8], fallback: &str) -> Result<Document> {
         })
         .collect();
     Ok(Document {
+        image_pages: vec![],
         tables,
         references,
         contents,
