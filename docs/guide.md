@@ -128,6 +128,8 @@ Positions and notes are local.
 | Jump back / forward | **, / .** |
 | Book statistics / close | **S / Q** |
 
+Press **O** to open the contents. Chapters appear under their book or part. Click a triangle or use **← / →** to fold or expand a group. Click a title or press **Enter** to open it. In the sidebar, **Tab** gives the outline keyboard focus.
+
 Width and spacing are in terminal cells. Extra room sits outside the spread. A narrow window shows one page. Resize or adjust either value while reading to reflow both pages around the current text position. In scanned EPUB/FB2 text, botui can join printed line breaks and split words.
 
 Set `preserve_printed_lines = true` for editions where those breaks are intentional.

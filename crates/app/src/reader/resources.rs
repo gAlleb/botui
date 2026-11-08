@@ -53,11 +53,20 @@ pub(super) fn open(
     term: &mut AppTerminal,
     path: &Path,
     r: &botui_core::Reference,
+    background: impl FnMut(&mut ratatui::Frame),
+) -> crate::Result<Option<Anchor>> {
+    open_target(term, path, &r.label, &r.target, background)
+}
+pub(super) fn open_target(
+    term: &mut AppTerminal,
+    path: &Path,
+    label: &str,
+    target: &Target,
     mut background: impl FnMut(&mut ratatui::Frame),
 ) -> crate::Result<Option<Anchor>> {
-    match &r.target {
+    match target {
         Target::Passage(a) => return Ok(Some(*a)),
-        Target::Note(t) => view(term, &r.label, Some(t), None, None, &mut background)?,
+        Target::Note(t) => view(term, label, Some(t), None, None, &mut background)?,
         Target::Supplement {
             member,
             fragment,
@@ -71,7 +80,7 @@ pub(super) fn open(
             )?;
             view(
                 term,
-                &r.label,
+                label,
                 Some(&note.text),
                 None,
                 note.backlink.as_deref(),
@@ -82,7 +91,7 @@ pub(super) fn open(
             let bytes = botui_formats::illustration(path, member)?;
             let picture =
                 Picture::illustration(bytes).ok_or("Cannot display this image format or size")?;
-            view(term, &r.label, None, Some(&picture), None, &mut background)?;
+            view(term, label, None, Some(&picture), None, &mut background)?;
         }
         Target::Web(url) => {
             let labels = vec![format!(" Open in browser: {url}"), " Cancel".to_owned()];

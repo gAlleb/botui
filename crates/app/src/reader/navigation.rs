@@ -1,5 +1,5 @@
 use crate::centered;
-use botui_core::{Anchor, Document};
+use botui_core::{Anchor, ContentsEntry, Document, Target};
 use crossterm::event::{Event, KeyCode, KeyEventKind, MouseButton, MouseEventKind};
 use ratatui::{
     Frame,
@@ -19,6 +19,7 @@ pub(super) enum Edit {
     Back,
     Move(isize),
     Choose(usize),
+    Fold(usize, bool),
     Type(char),
     Erase,
     Clear,
@@ -28,7 +29,10 @@ pub(super) struct Navigation {
     pub(super) hits: Vec<botui_core::SearchMatch>,
     kind: Kind,
     pub(super) query: String,
-    items: Vec<(Anchor, String)>,
+    items: Vec<ContentsEntry>,
+    depths: Vec<usize>,
+    folded: std::collections::HashSet<usize>,
+    visible: Vec<usize>,
     state: ListState,
     rows: Rect,
     back: Rect,
@@ -42,16 +46,23 @@ impl Navigation {
                 .iter()
                 .enumerate()
                 .filter(|(_, b)| b.heading)
-                .map(|(i, b)| (Anchor { block: i, byte: 0 }, b.text.clone()))
+                .map(|(i, b)| ContentsEntry::passage(Anchor { block: i, byte: 0 }, b.text.clone()))
                 .collect(),
             Kind::Notes | Kind::Search => vec![],
         };
+        let mut depths = Vec::with_capacity(items.len());
+        for entry in &items {
+            depths.push(entry.parent.map_or(0, |p| depths[p] + 1));
+        }
         let i = current(&items, place);
         let state = ListState::default().with_selected((!items.is_empty()).then_some(i));
         Self {
             kind,
             index: None,
             hits: vec![],
+            folded: Default::default(),
+            visible: (0..items.len()).collect(),
+            depths,
             items,
             state,
             rows: Rect::default(),
@@ -60,7 +71,10 @@ impl Navigation {
         }
     }
     pub fn add_notes(&mut self, notes: &[botui_store::Note]) {
-        self.items = notes.iter().map(|n| (n.anchor(), n.body.clone())).collect();
+        self.items = notes
+            .iter()
+            .map(|n| ContentsEntry::passage(n.anchor(), n.body.clone()))
+            .collect();
         self.state.select((!self.items.is_empty()).then_some(0));
     }
     pub fn draw(&mut self, f: &mut Frame, style: Style) {
@@ -69,8 +83,72 @@ impl Navigation {
     }
     pub fn follow(&mut self, place: Anchor) {
         if !self.items.is_empty() {
-            self.state.select(Some(current(&self.items, place)));
+            let mut index = current(&self.items, place);
+            loop {
+                if let Ok(row) = self.visible.binary_search(&index) {
+                    self.state.select(Some(row));
+                    break;
+                }
+                let Some(parent) = self.items[index].parent else {
+                    break;
+                };
+                index = parent;
+            }
         }
+    }
+    fn group(&self, index: usize) -> bool {
+        self.items
+            .get(index + 1)
+            .is_some_and(|next| next.parent == Some(index))
+    }
+    fn indent(&self, index: usize) -> usize {
+        (self.depths[index] * 2).min(usize::from(self.rows.width.saturating_sub(5)))
+    }
+    fn item_index(&self, row: usize) -> Option<usize> {
+        if self.kind == Kind::Contents {
+            self.visible.get(row).copied()
+        } else {
+            (row < self.items.len()).then_some(row)
+        }
+    }
+    pub fn supplement(&self, edit: Edit) -> Option<&ContentsEntry> {
+        let Edit::Choose(row) = edit else {
+            return None;
+        };
+        let entry = self.items.get(self.item_index(row)?)?;
+        matches!(entry.target, Target::Supplement { .. }).then_some(entry)
+    }
+    fn fold(&mut self, row: usize, close: bool) {
+        let Some(&index) = self.visible.get(row) else {
+            return;
+        };
+        if close && (!self.group(index) || self.folded.contains(&index)) {
+            if let Some(parent) = self.items[index].parent
+                && let Ok(row) = self.visible.binary_search(&parent)
+            {
+                self.state.select(Some(row));
+            }
+            return;
+        }
+        if !self.group(index) {
+            return;
+        }
+        if close {
+            self.folded.insert(index);
+        } else if !self.folded.remove(&index) {
+            self.state.select(Some(row + 1));
+            return;
+        }
+        self.visible.clear();
+        let mut hidden_below = None;
+        for (i, &depth) in self.depths.iter().enumerate() {
+            if hidden_below.is_some_and(|d| depth > d) {
+                continue;
+            }
+            self.visible.push(i);
+            hidden_below = self.folded.contains(&i).then_some(depth);
+        }
+        self.state.select(Some(row));
     }
     pub fn draw_at(&mut self, f: &mut Frame, style: Style, area: Rect, popup: bool) {
         let title = match self.kind {
@@ -97,7 +175,7 @@ impl Navigation {
             format!(
                 " {}: {}",
                 if self.kind == Kind::Contents {
-                    "Chapters"
+                    "Sections"
                 } else {
                     "Notes"
                 },
@@ -125,16 +203,40 @@ impl Navigation {
         } else {
             if self.kind == Kind::Contents {
                 let last_start = self
-                    .items
+                    .visible
                     .len()
                     .saturating_sub(usize::from(self.rows.height));
                 *self.state.offset_mut() = self.state.offset().min(last_start);
             }
-            let entries = self
-                .items
-                .iter()
-                .enumerate()
-                .map(|(i, (_, label))| format!(" {:>2}  {}", i + 1, label));
+            let entries: Vec<_> = if self.kind == Kind::Contents {
+                self.visible
+                    .iter()
+                    .map(|&i| {
+                        let indent = self.indent(i);
+                        let marker = if !self.group(i) {
+                            " "
+                        } else if self.folded.contains(&i) {
+                            "▸"
+                        } else {
+                            "▾"
+                        };
+                        let label = format!(" {:indent$}{marker} {}", "", self.items[i].title);
+                        ratatui::widgets::ListItem::new(label).style(if self.group(i) {
+                            style.bold()
+                        } else {
+                            style
+                        })
+                    })
+                    .collect()
+            } else {
+                self.items
+                    .iter()
+                    .enumerate()
+                    .map(|(i, entry)| {
+                        ratatui::widgets::ListItem::new(format!(" {:>2}  {}", i + 1, entry.title))
+                    })
+                    .collect()
+            };
             f.render_stateful_widget(
                 List::new(entries)
                     .style(style)
@@ -151,11 +253,17 @@ impl Navigation {
         );
         if popup {
             f.render_widget(Paragraph::new("[ Back ]").style(style), self.back);
-            if self.kind == Kind::Search && inner.width >= 49 && inner.height >= 2 {
+            let hint = match self.kind {
+                Kind::Search => Some("F3 next · F4 previous"),
+                Kind::Contents if self.depths.iter().any(|&d| d > 0) => Some("← Fold · → Expand"),
+                _ => None,
+            };
+            if let Some(hint) = hint
+                && inner.width >= 35
+                && inner.height >= 2
+            {
                 f.render_widget(
-                    Paragraph::new("F3 next · F4 previous")
-                        .right_aligned()
-                        .style(style),
+                    Paragraph::new(hint).right_aligned().style(style),
                     Rect::new(
                         self.back.right(),
                         self.back.y,
@@ -173,6 +281,10 @@ impl Navigation {
             Event::Key(k) if k.kind != KeyEventKind::Release => match k.code {
                 KeyCode::Esc => Some(Edit::Back),
                 KeyCode::Enter => self.state.selected().map(Edit::Choose),
+                KeyCode::Left | KeyCode::Right if self.kind == Kind::Contents => self
+                    .state
+                    .selected()
+                    .map(|row| Edit::Fold(row, k.code == KeyCode::Left)),
                 KeyCode::Up => Some(Edit::Move(-1)),
                 KeyCode::Down => Some(Edit::Move(1)),
                 KeyCode::PageUp => Some(Edit::Move(-(self.rows.height as isize))),
@@ -195,9 +307,18 @@ impl Navigation {
             Event::Mouse(m) => {
                 let p = Position::new(m.column, m.row);
                 match m.kind {
-                    MouseEventKind::Down(MouseButton::Left) if self.rows.contains(p) => Some(
-                        Edit::Choose(self.state.offset() + (m.row - self.rows.y) as usize),
-                    ),
+                    MouseEventKind::Down(MouseButton::Left) if self.rows.contains(p) => {
+                        let row = self.state.offset() + (m.row - self.rows.y) as usize;
+                        if self.kind == Kind::Contents
+                            && let Some(&i) = self.visible.get(row)
+                            && self.group(i)
+                            && usize::from(m.column - self.rows.x) == 1 + self.indent(i)
+                        {
+                            Some(Edit::Fold(row, !self.folded.contains(&i)))
+                        } else {
+                            Some(Edit::Choose(row))
+                        }
+                    }
                     MouseEventKind::Down(MouseButton::Left) if self.back.contains(p) => {
                         Some(Edit::Back)
                     }
@@ -211,11 +332,20 @@ impl Navigation {
     }
     pub fn edit(&mut self, e: Edit) -> Option<Anchor> {
         match e {
-            Edit::Choose(i) => return self.items.get(i).map(|v| v.0),
+            Edit::Choose(row) => return self.items[self.item_index(row)?].anchor(),
+            Edit::Fold(row, close) => {
+                self.fold(row, close);
+                return None;
+            }
             Edit::Move(d) => {
                 if let Some(i) = self.state.selected() {
-                    self.state
-                        .select(Some(i.saturating_add_signed(d).min(self.items.len() - 1)));
+                    self.state.select(Some(i.saturating_add_signed(d).min(
+                        if self.kind == Kind::Contents {
+                            self.visible.len() - 1
+                        } else {
+                            self.items.len() - 1
+                        },
+                    )));
                 }
                 return None;
             }
@@ -248,7 +378,7 @@ impl Navigation {
             self.items = self
                 .hits
                 .iter()
-                .map(|hit| (hit.anchor, index.excerpt(hit)))
+                .map(|hit| ContentsEntry::passage(hit.anchor, index.excerpt(hit)))
                 .collect();
         }
         self.state =
@@ -256,12 +386,13 @@ impl Navigation {
     }
 }
 
-fn current(items: &[(Anchor, String)], place: Anchor) -> usize {
+fn current(items: &[ContentsEntry], place: Anchor) -> usize {
     items
         .iter()
         .enumerate()
-        .filter(|(_, (a, _))| *a <= place)
-        .max_by_key(|(_, (a, _))| *a)
+        .filter_map(|(i, e)| Some((i, e.anchor()?)))
+        .filter(|(_, a)| *a <= place)
+        .max_by_key(|(_, a)| *a)
         .map_or(0, |(i, _)| i)
 }
 
@@ -275,7 +406,7 @@ mod tests {
         let anchor = |block| Anchor { block, byte: 0 };
         let doc = Document {
             contents: (0..12)
-                .map(|i| (anchor(i), format!("Heading {i}")))
+                .map(|i| ContentsEntry::passage(anchor(i), format!("Heading {i}")))
                 .collect(),
             ..Document::default()
         };

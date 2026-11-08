@@ -77,7 +77,7 @@ pub(super) fn read_pages(
         sidebar.set_outline(
             doc.contents
                 .into_iter()
-                .map(|(anchor, title)| (anchor.block as u32 + 1, title))
+                .filter_map(|entry| Some((entry.anchor()?.block as u32 + 1, entry.title)))
                 .collect(),
         );
         std::sync::Arc::<[String]>::from(doc.image_pages)

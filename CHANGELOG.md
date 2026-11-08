@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.1.3 — 2026-11-08
+
+- The text reader preserves nested EPUB and FB2 contents. Fold a book or part, jump to a chapter within it, or open supplementary EPUB notes directly from the outline.
+
 ## 0.1.2 — 2026-11-08
 
 - Read image-only EPUBs as scanned books. Each scan fills its page, with spreads, continuous scrolling, zoom and local resume. Large albums no longer cycle through thumbnails while idle.

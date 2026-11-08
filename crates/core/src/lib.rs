@@ -18,10 +18,33 @@ pub struct Document {
     pub image_pages: Vec<String>,
     pub tables: std::collections::BTreeMap<usize, TableRow>,
     pub references: Vec<Reference>,
-    pub contents: Vec<(Anchor, String)>,
+    pub contents: Vec<ContentsEntry>,
     pub locations: Locations,
     pub title: String,
     pub blocks: Vec<Block>,
+}
+
+/// Preorder entry in the publisher's outline. Parent indexes refer to earlier entries.
+#[derive(Clone, Debug)]
+pub struct ContentsEntry {
+    pub title: String,
+    pub target: Target,
+    pub parent: Option<usize>,
+}
+impl ContentsEntry {
+    pub fn passage(anchor: Anchor, title: String) -> Self {
+        Self {
+            title,
+            target: Target::Passage(anchor),
+            parent: None,
+        }
+    }
+    pub fn anchor(&self) -> Option<Anchor> {
+        match self.target {
+            Target::Passage(anchor) => Some(anchor),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Clone, Debug)]

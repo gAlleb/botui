@@ -167,7 +167,8 @@ pub(super) fn read_book(reader: impl Read + Seek, fallback: &str) -> Result<Docu
             .and_then(|h| member_path(&package_path, h).ok())
             && let Ok(xml) = read_member(&mut archive, &path, &mut remaining)
         {
-            contents = super::toc::read(&path, &xml, is_ncx, &starts, &ids, blocks.len());
+            contents =
+                super::toc::read(&path, &xml, is_ncx, &starts, &ids, &resources, blocks.len());
             if !contents.is_empty() {
                 break;
             }

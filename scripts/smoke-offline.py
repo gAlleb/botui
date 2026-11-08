@@ -42,7 +42,7 @@ with tempfile.TemporaryDirectory() as name, shelf.Fixture(False) as server:
         term.click(shelf.BOOK, term.see(shelf.BOOK))
         term.see(shelf.FB2_MARK)
         term.keys("o")
-        term.wait("Contents overlay", lambda f:"[ Back ]" in f and "Chapters:" in f)
+        term.wait("Contents overlay", lambda f:"[ Back ]" in f and "Sections:" in f)
         term.keys("End", "Enter", "q")
         term.see("BookOrbit offline downloads")
         term.keys("DC"); term.see("Remove from this device?"); term.keys("Down", "Enter")
@@ -94,7 +94,7 @@ def chapter_book(place="coast"):
 
 def jump(term, number):
     term.keys("o")
-    term.see("Chapters:")
+    term.see("Sections:")
     term.click(f"Chapter {number}", term.see(f"Chapter {number}"))
     term.wait("Reader opens selected chapter", lambda f: f.strip().startswith(f"Chapter {number}"))
 

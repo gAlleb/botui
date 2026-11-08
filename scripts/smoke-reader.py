@@ -105,10 +105,10 @@ def check(tmp):
         wait_for("Two-page spread с клавиатуры", lambda s: heading in s and columns(s) == 2)
 
         keys("c")
-        toc=wait_for("Оглавление",lambda s:"Chapters:" in s and "Обратный рейс" in s)
+        toc=wait_for("Оглавление",lambda s:"Sections:" in s and "Обратный рейс" in s)
         row,line=next((i,l) for i,l in enumerate(toc.splitlines(),1) if "Обратный рейс" in l and " 3 " in l)
         mouse(0,line.index("Обратный рейс")+1,row)
-        wait_for("Переход к главе без панели",lambda s:s.strip().startswith("Обратный рейс") and "Chapters:" not in s)
+        wait_for("Переход к главе без панели",lambda s:s.strip().startswith("Обратный рейс") and "Sections:" not in s)
         keys("b","g")
         wait_for("Поставленная закладка",lambda s:"Bookmarks: 1" in s)
         keys("Escape");wait_for("Закрыли закладки",lambda s:"Bookmarks:" not in s);keys("/");wait_for("Строка поиска",lambda s:"Find:" in s);keys("-l",heading);wait_for("Найден заголовок",lambda s:heading in s and " 1 " in s);keys("Enter")

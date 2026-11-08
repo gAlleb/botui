@@ -56,7 +56,7 @@ def check(home):
         term.keys("DC"); term.see("Delete collection?"); term.keys("Right", "Enter")
         term.wait("Original folder still contains book", lambda f: name in f and "Fiction/Amber" in f)
         term.keys("4"); assert "Night shelf" not in term.see("New collection…")
-        term.keys("Escape"); term.see(name); term.keys("Enter"); term.see("Chapters: 3")
+        term.keys("Escape"); term.see(name); term.keys("Enter"); term.see("Sections: 3")
         term.keys("q"); term.see(name)
         term.click("3 Recently added", term.see("3 Recently added"))
         term.wait("Recently added shelf", lambda s: "Recently added" in s and name in s)

@@ -490,7 +490,7 @@ def check_collections(tmp, binary, fixture):
             term.click(label, formats(term))
             term.see(heading)
             if label == "FB2":
-                term.keys("z");term.wait("Zen",lambda s:"Z Zen" not in s);term.keys("o");term.see("Chapters:");term.keys("End","Enter")
+                term.keys("z");term.wait("Zen",lambda s:"Z Zen" not in s);term.keys("o");term.see("Sections:");term.keys("End","Enter")
                 term.wait("Конец книги FB2",lambda s:s.strip().startswith("Обратный рейс"))
                 term.keys("z");term.see("Z Zen")
             term.keys("q")

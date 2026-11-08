@@ -63,7 +63,9 @@ fn empty_xhtml_title_keeps_chapter_text_and_its_navigation_target() {
         ["First breath.", "Second breath."]
     );
     let anchor = botui_core::Anchor { block: 0, byte: 0 };
-    assert_eq!(book.contents, [(anchor, "Practice".into())]);
+    assert_eq!(book.contents.len(), 1);
+    assert_eq!(book.contents[0].anchor(), Some(anchor));
+    assert_eq!(book.contents[0].title, "Practice");
     assert_eq!(book.resolve_cfi(&book.cfi(anchor).unwrap()), Some(anchor));
 }
 
@@ -169,7 +171,7 @@ fn image_only_epub_keeps_two_spine_destinations_and_ignores_remote_art() {
     assert_eq!(
         book.contents
             .iter()
-            .map(|(a, _)| a.block)
+            .map(|e| e.anchor().unwrap().block)
             .collect::<Vec<_>>(),
         [0, 1]
     );
@@ -183,8 +185,8 @@ fn navigation_document_can_link_to_its_own_fragment_in_the_spine() {
         ("OPS/chap.xhtml",r##"<html><body><nav role="doc-toc"><ol><li><a href="#p%202">The coast</a></li></ol></nav><section id="p 2"><p>Far from the harbor.</p></section></body></html>"##),
     ]), "test").unwrap();
     assert_eq!(book.contents.len(), 1);
-    let (anchor, title) = &book.contents[0];
-    assert_eq!(title, "The coast");
+    let anchor = book.contents[0].anchor().unwrap();
+    assert_eq!(book.contents[0].title, "The coast");
     assert_eq!(book.blocks[anchor.block].text, "Far from the harbor.");
 }
 
@@ -196,14 +198,58 @@ fn fb2_contents_group_section_titles_and_inline_fragment_keeps_its_paragraph() {
         <section><title><p>Part 1</p></title><p>The <emphasis id="destination">coast</emphasis> is rough.</p><p>Another day.</p></section>
         </section></body></FictionBook>"##;
     let book = super::fb2::parse(src.as_bytes(), "example").unwrap();
-    let names: Vec<_> = book
-        .contents
-        .iter()
-        .map(|(_, title)| title.as_str())
-        .collect();
+    let names: Vec<_> = book.contents.iter().map(|e| e.title.as_str()).collect();
     assert_eq!(names, ["Book I The Shore", "Part 1"]);
+    assert_eq!(book.contents[1].parent, Some(0));
     let botui_core::Target::Passage(place) = book.references[0].target else {
         panic!("missing internal link")
     };
     assert_eq!(book.blocks[place.block].text, "The coast is rough.");
+}
+
+#[test]
+fn nested_contents_keep_duplicate_chapter_names_in_their_own_books() {
+    let chapters = r###"<html><body><h1 id="a">A</h1><p id="first">Text A</p><h1 id="b">B</h1><p id="second">Text B</p></body></html>"###;
+    let nav = r###"<nav role="doc-toc"><ol><li><a href="c#a">A</a><ol><li><a href="c#first">One</a></li></ol></li><li><span>B</span><ol><li><a href="c#second">One</a></li></ol></li><li><a href="notes#n">Notes</a></li></ol></nav>"###;
+    let ncx = r###"<ncx><navMap><navPoint><navLabel><text>A</text></navLabel><content src="c#a"/><navPoint><navLabel><text>One</text></navLabel><content src="c#first"/></navPoint></navPoint><navPoint><navLabel><text>B</text></navLabel><content src="c#b"/><navPoint><navLabel><text>One</text></navLabel><content src="c#second"/></navPoint></navPoint><navPoint><navLabel><text>Notes</text></navLabel><content src="notes#n"/></navPoint></navMap></ncx>"###;
+    for (index, mime, props) in [
+        (nav, "application/xhtml+xml", "properties='nav'"),
+        (ncx, "application/x-dtbncx+xml", ""),
+    ] {
+        let package = format!(
+            "<package><manifest><item id='c' href='c' media-type='application/xhtml+xml'/><item id='toc' href='toc' media-type='{mime}' {props}/><item id='n' href='notes' media-type='application/xhtml+xml'/></manifest><spine><itemref idref='c'/><itemref idref='n' linear='no'/></spine></package>"
+        );
+        let book = read_book(
+            archive(&[
+                (
+                    "META-INF/container.xml",
+                    "<container><rootfile full-path='p'/></container>",
+                ),
+                ("p", &package),
+                ("c", chapters),
+                ("toc", index),
+                ("notes", "<p id='n'>Commentary</p>"),
+            ]),
+            "test",
+        )
+        .unwrap();
+        assert_eq!(
+            book.contents
+                .iter()
+                .map(|e| (e.title.as_str(), e.parent))
+                .collect::<Vec<_>>(),
+            [
+                ("A", None),
+                ("One", Some(0)),
+                ("B", None),
+                ("One", Some(2)),
+                ("Notes", None)
+            ]
+        );
+        assert_eq!(book.contents[1].anchor().unwrap().block, 1);
+        assert_eq!(book.contents[3].anchor().unwrap().block, 3);
+        assert!(
+            matches!(&book.contents[4].target, botui_core::Target::Supplement { member, fragment, .. } if member == "notes" && fragment == "n")
+        );
+    }
 }

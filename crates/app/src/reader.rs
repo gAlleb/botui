@@ -574,6 +574,8 @@ impl Reader {
                     && matches!(
                         k.code,
                         KeyCode::Up
+                            | KeyCode::Left
+                            | KeyCode::Right
                             | KeyCode::Down
                             | KeyCode::PageUp
                             | KeyCode::PageDown
@@ -1152,6 +1154,21 @@ pub fn read_server(
                     break action;
                 }
             };
+            let supplement = match action {
+                Action::Sidebar(edit) => reader.sidebar.supplement(edit),
+                Action::NavEdit(edit) => reader.nav.as_ref().and_then(|nav| nav.supplement(edit)),
+                _ => None,
+            };
+            if let Some(entry) = supplement.cloned() {
+                if let Err(e) =
+                    resources::open_target(term, path, &entry.title, &entry.target, |f| {
+                        reader.draw(f, None)
+                    })
+                {
+                    notices.push(e.to_string());
+                }
+                continue;
+            }
             if matches!(
                 action,
                 Action::Note | Action::Export | Action::Navigate(Kind::Notes)

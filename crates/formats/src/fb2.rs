@@ -59,6 +59,7 @@ pub(super) fn parse(bytes: &[u8], fallback: &str) -> Result<Document> {
             }
             continue;
         }
+        let mut titled_sections = std::collections::HashMap::new();
         let paths = super::locations::FbPaths::new(body);
         // The preorder traversal emits a paragraph before visiting its inline children.
         let mut current_block = None;
@@ -86,13 +87,23 @@ pub(super) fn parse(bytes: &[u8], fallback: &str) -> Result<Document> {
                     parts.join(" ")
                 };
                 if !label.is_empty() {
-                    contents.push((
+                    let owner = node.parent_element().unwrap();
+                    let mut entry = botui_core::ContentsEntry::passage(
                         botui_core::Anchor {
                             block: blocks.len(),
                             byte: 0,
                         },
                         label,
-                    ));
+                    );
+                    entry.parent = owner
+                        .ancestors()
+                        .skip(1)
+                        .find_map(|parent| titled_sections.get(&parent.id()).copied());
+                    // A title directly in <body> is front matter, alongside the outer sections.
+                    if owner.has_tag_name("section") {
+                        titled_sections.insert(owner.id(), contents.len());
+                    }
+                    contents.push(entry);
                 }
             }
             if matches!(node.tag_name().name(), "a" | "image") {
