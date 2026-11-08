@@ -5,6 +5,7 @@ mod connection;
 mod cover;
 mod cover_viewer;
 mod diagnostic;
+mod live_progress;
 mod live_search;
 mod offline;
 mod overlay;
@@ -55,6 +56,7 @@ impl Screen {
             EnterAlternateScreen,
             Hide,
             EnableMouseCapture,
+            crossterm::event::EnableFocusChange,
             EnableBracketedPaste
         )?;
         let terminal = Terminal::new(CrosstermBackend::new(io::stdout()))?;
@@ -66,6 +68,7 @@ impl Drop for Screen {
     fn drop(&mut self) {
         let _ = execute!(
             io::stdout(),
+            crossterm::event::DisableFocusChange,
             DisableBracketedPaste,
             DisableMouseCapture,
             ResetColor,
@@ -178,7 +181,7 @@ fn open_local_doc(
                 scan::read_server(term, path, k, notices, Some(&base))?
             } else {
                 let (change, pct) =
-                    reader::read_server(term, path, open()?, notices, Some(&base), None)?;
+                    reader::read_server(term, path, open()?, notices, Some(&base), None, None)?;
                 (change, Some(pct))
             };
         if let Some(p) = percent {
@@ -277,6 +280,7 @@ fn opds_shelf(term: &mut AppTerminal, url: String, notices: &mut Vec<String>) ->
                                 notices,
                                 None,
                                 None,
+                                None,
                             )?;
                         }
                     }
@@ -331,36 +335,64 @@ fn bookorbit_shelf(
                     }
                     continue;
                 }
-                let at = notices.len();
-                let read = (|| -> Result<Option<botui_bookorbit::progress::Move>> {
-                    if let Some(k) =
-                        botui_formats::FileKind::from_path(&file).filter(|k| !k.readable())
-                    {
-                        Ok(scan::read_server(term, &file, k, notices, base.as_ref())?.0)
+                let mut base = base;
+                loop {
+                    let mut live = base.clone().and_then(|p| shelf.live_progress(&file, p));
+                    let at = notices.len();
+                    let read = (|| -> Result<Option<botui_bookorbit::progress::Move>> {
+                        if let Some(k) =
+                            botui_formats::FileKind::from_path(&file).filter(|k| !k.readable())
+                        {
+                            Ok(scan::read_pages(
+                                term,
+                                &file,
+                                k,
+                                notices,
+                                base.as_ref(),
+                                None,
+                                live.as_mut(),
+                            )?
+                            .0)
+                        } else {
+                            Ok(reader::read_server(
+                                term,
+                                &file,
+                                botui_formats::open_document(&file)?,
+                                notices,
+                                base.as_ref(),
+                                shelf.bookmarks.as_mut(),
+                                live.as_mut(),
+                            )?
+                            .0)
+                        }
+                    })();
+                    let read = if let Some(mut sync) = live {
+                        sync.collect()?;
+                        if Some(&sync.base) != base.as_ref() {
+                            shelf.synced(&sync.base);
+                        }
+                        base = Some(sync.base);
+                        if sync.reopen {
+                            continue;
+                        }
+                        read.map(|_| sync.pending)
                     } else {
-                        Ok(reader::read_server(
-                            term,
-                            &file,
-                            botui_formats::open_document(&file)?,
-                            notices,
-                            base.as_ref(),
-                            shelf.bookmarks.as_mut(),
-                        )?
-                        .0)
-                    }
-                })();
-                match read {
-                    Ok(Some(change)) => {
-                        if let Some(p) = base {
-                            shelf.save_move(file.to_path_buf(), p, change)
+                        read
+                    };
+                    match read {
+                        Ok(Some(change)) => {
+                            if let Some(p) = base {
+                                shelf.save_move(file.to_path_buf(), p, change)
+                            }
                         }
-                    }
-                    Ok(None) => {
-                        if let Some(msg) = notices.get(at) {
-                            shelf.set_error(msg.clone());
+                        Ok(None) => {
+                            if let Some(msg) = notices.get(at) {
+                                shelf.set_error(msg.clone());
+                            }
                         }
+                        Err(e) => shelf.set_error(format!("Could not open book: {e}")),
                     }
-                    Err(e) => shelf.set_error(format!("Could not open book: {e}")),
+                    break;
                 }
             }
         }

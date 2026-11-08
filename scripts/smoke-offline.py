@@ -115,6 +115,7 @@ with tempfile.TemporaryDirectory() as name, shelf.Fixture(False) as server:
         term.click("EPUB", shelf.formats(term))
         term.wait("First Read opens EPUB", lambda f: f.strip().startswith("Chapter 1"))
         jump(term, 5)
+        term.wait("Chapter five uploaded while reading", lambda f: "Chapter 5" in f and server.saved == [301])
         term.keys("q")
         shelf.formats(term)
         shelf.quit_shelf(term)
@@ -224,7 +225,29 @@ with tempfile.TemporaryDirectory() as name, shelf.Fixture(False) as server:
         term.see("Harbor Press")
         term.click("EPUB", shelf.formats(term))
         term.wait("Updated edition resumes at chapter eight", lambda f: f.strip().startswith("Chapter 8") and "shore" in f)
+        chapter_eight = dict(server.progress[301])
+        saves = len(server.saved)
+        jump(term, 9)
+        term.wait("Chapter nine uploaded while open", lambda f: len(server.saved) == saves + 1 and "Chapter 9" in f)
+        server.progress[301] = dict(chapter_eight, text={"cfi": None}, percentage=0, updatedAt="2026-11-07T14:00:00.000Z")
+        term.keys("-H", "1b", "5b", "49")
+        term.see("Go to BookOrbit position · 0%")
+        # The prompt stays open while the web reader turns pages in the background.
+        server.progress[301] = chapter_eight
+        label = f"Go to BookOrbit position · {chapter_eight['percentage']:.0f}%"
+        frame = term.wait("Visible prompt refreshes without input", lambda f: label in f, timeout=20)
+        # Another web write lands just before the click. A network error must
+        # leave the reader in the dialog instead of jumping to the cached target.
+        server.unavailable = True
+        term.click(label, frame)
+        term.see("BookOrbit unavailable · retry")
+        server.progress[301] = dict(chapter_eight, text={"cfi": pending["target"]["Text"]},
+                                    percentage=pending["percentage"], updatedAt="2026-11-07T15:00:00.000Z")
+        server.unavailable = False
+        term.keys("Enter")
+        term.wait("Resume latest web chapter", lambda f: f.strip().startswith("Chapter 7"))
         term.keys("q"); shelf.formats(term)
+        assert len(server.saved) == saves + 1
         index, = (downloads / ".editions").glob("*/301.json")
         assert (downloads / json.loads(index.read_text())["name"]).read_bytes() == updated
         assert [code for _, p, code in server.requests if p.endswith("/301/serve")] == [200, 304, 200]

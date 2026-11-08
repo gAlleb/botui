@@ -1070,7 +1070,7 @@ pub fn read(
     doc: Document,
     notices: &mut Vec<String>,
 ) -> io::Result<()> {
-    let (_, percent) = read_server(term, path, doc, notices, None, None)?;
+    let (_, percent) = read_server(term, path, doc, notices, None, None, None)?;
     if let Err(e) = botui_store::HistoryEntry::record(path, percent) {
         notices.push(e.to_string());
     }
@@ -1083,6 +1083,7 @@ pub fn read_server(
     notices: &mut Vec<String>,
     base: Option<&botui_bookorbit::progress::Progress>,
     mut remote: Option<&mut bookmarks::ServerMarks>,
+    mut live: Option<&mut crate::live_progress::Live>,
 ) -> io::Result<(Option<botui_bookorbit::progress::Move>, f64)> {
     if !doc.image_pages.is_empty() {
         // The raster page index is local to this EPUB. Its server location uses a text CFI.
@@ -1093,6 +1094,7 @@ pub fn read_server(
             notices,
             None,
             Some(doc),
+            None,
         )?;
         return Ok((change, percent.unwrap_or_default()));
     }
@@ -1145,6 +1147,7 @@ pub fn read_server(
     let opened = Instant::now();
     let start = reader.pager.anchor();
     let started_finished = reader.finished;
+    let mut observed = (start, reader.finished);
     let mut last_save = Instant::now();
     let result: io::Result<()> = (|| {
         loop {
@@ -1161,6 +1164,27 @@ pub fn read_server(
                         .map_or(reader.theme, |p| p.preview()),
                 )
             })?;
+            if can_sync && let Some(sync) = live.as_deref_mut() {
+                let anchor = reader.links.origin(reader.pager.anchor());
+                if observed != (anchor, reader.finished) {
+                    observed = (anchor, reader.finished);
+                    sync.moved(
+                        reader
+                            .doc
+                            .cfi(anchor)
+                            .map(|cfi| botui_bookorbit::progress::Move {
+                                target: botui_bookorbit::progress::Target::Text(cfi),
+                                percentage: reader.reading_percent(),
+                            }),
+                    );
+                }
+                if sync.tick(term)? {
+                    if sync.reopen {
+                        break;
+                    }
+                    continue;
+                }
+            }
             let action = loop {
                 let remaining = Duration::from_millis(600).saturating_sub(last_save.elapsed());
                 if reader.dirty && remaining.is_zero() {
@@ -1173,14 +1197,21 @@ pub fn read_server(
                     .dirty
                     .then_some(remaining)
                     .into_iter()
+                    .chain(live.as_ref().filter(|_| can_sync).map(|s| s.timeout()))
                     .chain(images.then_some(Duration::from_millis(70)))
                     .min();
                 let Some(e) = crate::settings::read_event_for(timeout)? else {
-                    if images {
+                    if images || (can_sync && live.is_some()) {
                         break Action::Resize;
                     }
                     continue;
                 };
+                if matches!(e, Event::FocusGained)
+                    && let Some(s) = live.as_mut()
+                {
+                    s.refresh();
+                    break Action::Resize;
+                }
                 if reader.menu.is_none()
                     && reader.nav.is_none()
                     && reader.palette.is_none()

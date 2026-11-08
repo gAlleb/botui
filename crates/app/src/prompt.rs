@@ -7,7 +7,11 @@ use ratatui::{
     style::Stylize,
     widgets::{Clear, Paragraph},
 };
-use std::io;
+use std::{
+    borrow::Cow,
+    io,
+    time::{Duration, Instant},
+};
 
 /// One-line prompt used by catalog search and the local file browser.
 pub fn edit(
@@ -85,7 +89,8 @@ pub fn choose(
     labels: &[String],
     selected: usize,
 ) -> io::Result<Option<usize>> {
-    choose_rows(term, title, labels, selected, false).map(|r| r.map(|(i, _)| i))
+    choose_rows(term, title, Cow::Borrowed(labels), selected, false, None)
+        .map(|r| r.map(|(i, _)| i))
 }
 
 pub fn choose_removable(
@@ -94,21 +99,49 @@ pub fn choose_removable(
     labels: &[String],
     selected: usize,
 ) -> io::Result<Option<(usize, bool)>> {
-    choose_rows(term, title, labels, selected, true)
+    choose_rows(term, title, Cow::Borrowed(labels), selected, true, None)
+}
+
+pub fn choose_live(
+    term: &mut AppTerminal,
+    title: &str,
+    labels: Vec<String>,
+    interval: Duration,
+    mut refresh: impl FnMut(&mut [String]),
+) -> io::Result<Option<usize>> {
+    choose_rows(
+        term,
+        title,
+        Cow::Owned(labels),
+        0,
+        false,
+        Some(Refresh {
+            interval,
+            update: &mut refresh,
+        }),
+    )
+    .map(|r| r.map(|(i, _)| i))
+}
+
+struct Refresh<'a> {
+    interval: Duration,
+    update: &'a mut dyn FnMut(&mut [String]),
 }
 
 fn choose_rows(
     term: &mut AppTerminal,
     title: &str,
-    labels: &[String],
+    mut labels: Cow<'_, [String]>,
     selected: usize,
     removable: bool,
+    mut refresh: Option<Refresh<'_>>,
 ) -> io::Result<Option<(usize, bool)>> {
     use ratatui::style::Style;
     use ratatui::widgets::{List, ListState};
     let mut list = ListState::default().with_selected(
         (!labels.is_empty()).then_some(selected.min(labels.len().saturating_sub(1))),
     );
+    let mut deadline = refresh.as_ref().map(|r| Instant::now() + r.interval);
     loop {
         let mut rows = Rect::default();
         let mut back = Rect::default();
@@ -167,7 +200,17 @@ fn choose_rows(
             }
             crate::settings::paint_interface(f);
         })?;
-        let event = crate::settings::read_event()?;
+        let timeout = deadline.map(|at| at.saturating_duration_since(Instant::now()));
+        let event = crate::settings::read_event_for(timeout)?;
+        if let Some(r) = &mut refresh
+            && (event.is_none()
+                || event == Some(Event::FocusGained)
+                || deadline.is_some_and(|at| Instant::now() >= at))
+        {
+            (r.update)(labels.to_mut());
+            deadline = Some(Instant::now() + r.interval);
+        }
+        let Some(event) = event else { continue };
         if removable {
             let target = match &event {
                 Event::Key(k) if k.kind != KeyEventKind::Release && k.code == KeyCode::Delete => {

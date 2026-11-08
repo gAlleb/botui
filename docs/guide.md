@@ -79,6 +79,8 @@ Results appear while BOTUI fetches catalog metadata in the background. Select wi
 
 **Read** downloads a BookOrbit edition on first use and keeps it on this device. Open it from its card again to read the saved file and load the account’s reading position and text bookmarks. **D Save offline** downloads ahead of time or checks a saved copy for updates.
 
+While reading a connected BookOrbit edition, pause for two seconds after turning a page to sync your place. Returning to the terminal checks for progress from another device. Choose **Go to BookOrbit position** to jump there, or **Stay here** to keep reading at your current spot. BOTUI also checks every 15 seconds while idle. The open prompt keeps checking for changes. Choosing **Go to BookOrbit position** fetches the latest saved location again.
+
 If BookOrbit reports a changed edition, BOTUI checks the server version before replacing the file.
 
 Without a connection, select **BookOrbit offline downloads** on the start screen. If you left an EPUB at chapter 5 online and read to chapter 7 offline, closing it queues chapter 7 for the same account and edition.

@@ -46,7 +46,7 @@ pub fn read_server(
     notices: &mut Vec<String>,
     base: Option<&botui_bookorbit::progress::Progress>,
 ) -> io::Result<(Option<botui_bookorbit::progress::Move>, Option<f64>)> {
-    read_pages(term, path, kind, notices, base, None)
+    read_pages(term, path, kind, notices, base, None, None)
 }
 
 pub(super) fn read_pages(
@@ -56,6 +56,7 @@ pub(super) fn read_pages(
     notices: &mut Vec<String>,
     base: Option<&botui_bookorbit::progress::Progress>,
     album: Option<botui_core::Document>,
+    mut live: Option<&mut crate::live_progress::Live>,
 ) -> io::Result<(Option<botui_bookorbit::progress::Move>, Option<f64>)> {
     let _uploads = crate::cover::ScanGraphics;
     let mut picker = graphics();
@@ -135,6 +136,7 @@ pub(super) fn read_pages(
     let mut finished = !fresh && saved.as_ref().is_some_and(|s| s.finished);
     let initial_finished = finished;
     let initial_offset = offset;
+    let mut observed = (n, offset, finished);
     let mut checkpoint = saved.unwrap_or_else(|| Saved {
         theme: "terminal".into(),
         ..Saved::default()
@@ -286,6 +288,22 @@ pub(super) fn read_pages(
             finished = true;
             dirty = true;
             finish_on_arrival = None;
+        }
+        if let Some(sync) = live.as_mut()
+            && let Some(count) = total
+            && base.is_some_and(|p| p.text.cfi.is_none())
+        {
+            if observed != (n, offset, finished) {
+                observed = (n, offset, finished);
+                sync.moved(Some(botui_bookorbit::progress::Move {
+                    target: botui_bookorbit::progress::Target::Page(n),
+                    percentage: scan_percent(n, offset, count, scrolling, finished && end_visible),
+                }));
+            }
+            sync.tick(term)?;
+            if sync.reopen {
+                break;
+            }
         }
         checkpoint.anchor = Anchor {
             block: n.saturating_sub(1) as usize,
@@ -480,10 +498,24 @@ pub(super) fn read_pages(
         } else {
             None
         };
+        let timeout = timeout
+            .into_iter()
+            .chain(
+                live.as_ref()
+                    .filter(|_| total.is_some() && base.is_some_and(|p| p.text.cfi.is_none()))
+                    .map(|s| s.timeout()),
+            )
+            .min();
         let event = crate::settings::read_scan_event(timeout, appearance.terminal_paper)?;
         let Some(e) = event else {
             continue;
         };
+        if matches!(e, Event::FocusGained)
+            && let Some(s) = live.as_mut()
+        {
+            s.refresh();
+            continue;
+        }
         let previous = Location {
             page: n,
             offset,

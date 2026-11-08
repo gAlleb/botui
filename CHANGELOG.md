@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.1.5 — 2026-11-08
+
+- Connected BookOrbit readers sync position after a pause in navigation and offer to resume changes from another device while the book stays open. The prompt refreshes while open and checks the latest position again when selected.
 
 - The BookOrbit dashboard shares the shelf view. Press V or click the view button to switch between covers and book lists.
 

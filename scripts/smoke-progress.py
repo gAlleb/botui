@@ -60,4 +60,26 @@ if __name__=='__main__':
         threading.Thread(target=f.serve_forever,daemon=True).start()
         try:run(tmp,f)
         finally:f.shutdown()
+    with tempfile.TemporaryDirectory() as tmp, s.Fixture(False) as server:
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        url = f"http://127.0.0.1:{server.server_port}/reader"
+        term = s.Terminal(Path(tmp), s.ROOT / "target/debug/botui", url)
+        try:
+            s.login(term, url)
+            term.keys("Enter")
+            term.click("PDF", s.formats(term))
+            term.see("1 / 3")
+            term.keys("Right")
+            term.wait("PDF page synced while open", lambda f: server.progress.get(303, {}).get("text", {}).get("page") == 2)
+            server.progress[303] = dict(server.progress[303], text={"page": 3}, percentage=100)
+            term.keys("-H", "1b", "5b", "49")
+            term.see("Go to BookOrbit position")
+            term.keys("Down", "Enter")
+            term.see("2 / 3")
+            term.keys("q")
+            s.formats(term)
+            assert server.saved == [303] and server.progress[303]["text"]["page"] == 3
+        finally:
+            term.run("kill-server", required=False)
+            server.shutdown()
     print('Проверены запись CFI для выбранного fileId, возврат из BookOrbit, конфликт и неизвестный CFI без перезаписи.')

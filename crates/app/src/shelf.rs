@@ -815,6 +815,24 @@ impl Shelf {
         );
     }
 
+    pub fn live_progress(
+        &self,
+        path: &std::path::Path,
+        base: Progress,
+    ) -> Option<crate::live_progress::Live> {
+        Some(crate::live_progress::Live::new(
+            self.session.clone()?,
+            path,
+            base,
+        ))
+    }
+    pub fn synced(&mut self, p: &Progress) {
+        self.complete(Loaded::Moved {
+            saved: true,
+            file: p.file_id,
+            percent: p.percentage.round().clamp(0., 100.) as u8,
+        });
+    }
     pub fn save_move(&mut self, path: std::path::PathBuf, base: Progress, change: Move) {
         if let Some(session) = self.session.clone() {
             self.fetch("Saving position to BookOrbit…", move |_| {

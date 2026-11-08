@@ -232,6 +232,8 @@ class Handler(BaseHTTPRequestHandler):
         return self.reply(200,{"results":[{"fileId":ident,"status":"saved"}]})
 
     def do_GET(self):
+        if getattr(self.server, "unavailable", False):
+            return self.reply(503, {})
         if self.headers.get("Authorization") != f"Bearer {self.server.token}":
             return self.reply(401, {"statusCode": 401})
         url = urlsplit(self.path)
@@ -361,8 +363,8 @@ class Terminal:
     def type(self, value):
         self.keys("-l", value)
 
-    def wait(self, description, predicate):
-        deadline = time.monotonic() + 8
+    def wait(self, description, predicate, timeout=8):
+        deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             frame = self.run("capture-pane", "-p", "-t", "shelf", required=False)
             if frame.returncode:
