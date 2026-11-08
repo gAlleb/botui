@@ -53,6 +53,25 @@ pub fn block<'a>() -> Block<'a> {
     }
     .border_style(border_style(false))
 }
+pub fn zen_progress(
+    frame: &mut ratatui::Frame,
+    page: usize,
+    total: usize,
+    percent: f64,
+    style: Style,
+) {
+    let screen = frame.area();
+    let row =
+        ratatui::layout::Rect::new(screen.x, screen.bottom().saturating_sub(1), screen.width, 1);
+    let label = format!("{page} / {total}  ·  {percent:.0}%");
+    frame.render_widget(
+        ratatui::widgets::Paragraph::new(label)
+            .centered()
+            .style(style.dim()),
+        row,
+    );
+}
+
 pub fn border_style(focused: bool) -> Style {
     let accent = Style::new().fg(Color::Cyan);
     if focused { accent.bold() } else { accent.dim() }

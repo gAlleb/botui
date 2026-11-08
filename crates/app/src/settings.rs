@@ -23,6 +23,7 @@ pub struct Settings {
     #[serde(default = "default_download_limit")]
     pub max_download_mib: u32,
     pub zen: bool,
+    pub zen_progress: bool,
     pub local_grid: bool,
     pub preserve_printed_lines: bool,
     pub hide_inline_images: bool,

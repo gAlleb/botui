@@ -66,6 +66,7 @@ pub(super) fn read_pages(
         .then(|| worker.start(move |cancel| botui_fixed::page_count(&p, kind, cancel)));
     let prefs = crate::settings::Settings::load()?;
     let mut zen = prefs.zen;
+    let mut zen_progress = prefs.zen_progress;
     let mut sidebar = contents::Contents::default();
     let mut splitter =
         crate::splitter::Splitter::new(crate::splitter::Pane::Contents, prefs.contents_width);
@@ -213,6 +214,7 @@ pub(super) fn read_pages(
             }
         }
         let screen = term.size()?;
+        let show_progress = zen && zen_progress && screen.height > 1;
         let (sidebar_area, body) = splitter.layout(
             Rect::new(0, 0, screen.width, screen.height),
             !zen && screen.width >= 78,
@@ -241,7 +243,9 @@ pub(super) fn read_pages(
         let view = flow::Viewport {
             side,
             width: crop.fit(body, false).width,
-            height: screen.height.saturating_sub(u16::from(!zen)),
+            height: screen
+                .height
+                .saturating_sub(u16::from(!zen || show_progress)),
             picker: &picker,
             crop,
             count: total.unwrap_or(0),
@@ -314,7 +318,7 @@ pub(super) fn read_pages(
             let screen = f.area();
             sidebar.draw(f, sidebar_area, shown, total.unwrap_or(0));
             let area = Rect {
-                height: body.height.saturating_sub(u16::from(!zen)),
+                height: body.height.saturating_sub(u16::from(!zen || show_progress)),
                 ..body
             };
             if !zen && screen.height > 0 {
@@ -357,6 +361,21 @@ pub(super) fn read_pages(
                     status.push_str(hints);
                 }
                 f.render_widget(Paragraph::new(status).dim(), Rect::new(area.x, y, space, 1));
+            }
+            if show_progress && let Some(count) = total.filter(|n| *n > 0) {
+                crate::appearance::zen_progress(
+                    f,
+                    shown as usize,
+                    count as usize,
+                    scan_percent(
+                        shown,
+                        shown_offset,
+                        count,
+                        scrolling,
+                        finished && end_visible && shown == n,
+                    ),
+                    Default::default(),
+                );
             }
             if scrolling {
                 strip.draw(f, area, shown, shown_offset);
@@ -559,6 +578,7 @@ pub(super) fn read_pages(
                 KeyCode::F(5) => 38,
                 KeyCode::Char(',') => 35,
                 KeyCode::Char('.') => 36,
+                KeyCode::Char('%') => 45,
                 KeyCode::Char('z' | 'Z') => 14,
                 KeyCode::Char('f' | 'F') => 15,
                 KeyCode::Char('q' | 'Q') => 5,
@@ -763,6 +783,7 @@ pub(super) fn read_pages(
                 )?;
                 let updated = crate::settings::Settings::load()?;
                 zen = updated.zen;
+                zen_progress = updated.zen_progress;
                 splitter.preferred = updated.contents_width;
                 if before != updated.reading_layout {
                     scrolling = updated.reading_layout.as_deref() == Some("scroll");
@@ -818,6 +839,10 @@ pub(super) fn read_pages(
                     .into();
                 }
             }
+            45 => {
+                zen_progress = !zen_progress;
+                crate::settings::Settings::update(|s| s.zen_progress = zen_progress)?;
+            }
             14 => {
                 zen = !zen;
                 crate::settings::Settings::update(|s| s.zen = zen)?;
@@ -867,15 +892,8 @@ pub(super) fn read_pages(
     {
         notices.push(e.to_string());
     }
-    let percentage = total.map(|count| {
-        if finished && end_visible {
-            100.
-        } else if scrolling {
-            ((f64::from(n - 1) + f64::from(offset) / 65535.) * 100. / f64::from(count)).min(99.)
-        } else {
-            (f64::from(n) * 100. / f64::from(count)).min(99.)
-        }
-    });
+    let percentage =
+        total.map(|count| scan_percent(n, offset, count, scrolling, finished && end_visible));
     Ok((
         if base.is_some_and(|p| p.text.cfi.is_none())
             && (n != start || finished != initial_finished || offset != initial_offset)
@@ -889,4 +907,14 @@ pub(super) fn read_pages(
         },
         percentage,
     ))
+}
+
+fn scan_percent(n: u32, offset: u16, count: u32, scrolling: bool, at_finish: bool) -> f64 {
+    if at_finish {
+        100.
+    } else if scrolling {
+        ((f64::from(n - 1) + f64::from(offset) / 65535.) * 100. / f64::from(count)).min(99.)
+    } else {
+        (f64::from(n) * 100. / f64::from(count)).min(99.)
+    }
 }

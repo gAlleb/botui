@@ -145,6 +145,7 @@ fn rows(tab: usize, s: &Settings) -> Vec<String> {
                 &s.contents_width
                     .map_or_else(|| "Auto".into(), |n| format!("{n} cells")),
             ),
+            pair("Zen progress", if s.zen_progress { "On" } else { "Off" }),
         ],
         2 => vec![
             pair(
@@ -291,6 +292,7 @@ pub fn show(term: &mut AppTerminal, start: Open, ctx: Context) -> io::Result<()>
                     (1,3)=>"Space between facing text pages. The W panel also lets you adjust this while reading.",
                     (1,4)=>"Reflow repairs words split across printed lines. Preserve keeps the book’s original breaks.",
                     (1,6)=>"Default for newly opened books: one page, a spread or continuous scroll.",
+                    (1,9)=>"Show the page and reading percentage at the bottom of zen mode. Toggle with %.",
                     (1,8)=>"Width of the contents panel. Drag its right edge in a book, or enter cells here.",
                     (1,7)=>"Indent the first line of a text paragraph by 0–8 cells. Wrapped lines keep their left edge.",
                     (1,_)=>"Display embedded illustrations on the page or open them from I when you need them.",

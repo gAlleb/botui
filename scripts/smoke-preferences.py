@@ -2,6 +2,7 @@
 """Open settings without a manual, operate with both a mouse and keys, and restart."""
 from pathlib import Path
 import importlib.util
+import re
 import tempfile
 import tomllib
 root=Path(__file__).resolve().parents[1]
@@ -63,6 +64,8 @@ def check(tmp):
         t.keys('Tab');t.click('Column gap',t.see('Column gap'));t.keys('C-u');t.type('10');t.keys('Enter');t.see('10 cells')
         t.click('First-line indent',t.see('First-line indent'));t.keys('C-u');t.type('3');t.keys('Enter');t.see('3 cells')
         assert cfg()['paragraph_indent']==3
+        t.click('Zen progress',t.see('Zen progress'))
+        t.wait('Zen progress enabled',lambda _:cfg()['zen_progress'])
         t.keys('Tab');t.click('Reading statistics',t.see('Reading statistics'));t.see('Editions opened');t.keys('Escape')
         t.click('Download limit',t.see('4096 MiB'));t.keys('C-u');t.type('2048');t.keys('Enter');t.see('2048 MiB');assert cfg()['max_download_mib']==2048
         t.keys('Tab')
@@ -100,7 +103,12 @@ def check(tmp):
     finally:t.run('kill-server',required=False)
     t=s.Terminal(tmp,root/'target/debug/botui',args=[str(root/'examples/first-light.fb2')])
     try:
-        t.see('Z Zen');t.keys('F2');t.see('Nord')
+        t.see('Z Zen');t.keys('z')
+        footer = re.compile(r'\d+ / \d+  ·  \d+%')
+        t.wait('Zen footer in text reader', lambda f: footer.search(f.splitlines()[-1]))
+        t.keys('%')
+        t.wait('Zen footer hidden', lambda f: not footer.search(f) and not cfg()['zen_progress'])
+        t.keys('F2');t.see('Nord')
         t.keys('Escape','?');t.see('Keyboard shortcuts');t.see('EPUB & FB2');t.keys('Escape','q')
     finally:t.run('kill-server',required=False)
 if __name__=='__main__':

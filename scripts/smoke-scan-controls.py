@@ -24,6 +24,12 @@ with tempfile.TemporaryDirectory(prefix="botui-width-") as tmp:
     term = scroll.start(root, book)
     try:
         term.see("1 / 3")
+        term.keys("z", "%")
+        term.see("1 / 3  ·  33%")
+        term.keys("Right")
+        term.see("2 / 3  ·  67%")
+        term.keys("Left", "%", "z")
+        term.see("Z Zen")
         term.keys("3")
         frame = term.wait("Paper fits pane", lambda f: "Fit width" in f and ":" * 60 in f)
         left, right = paper(frame)

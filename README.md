@@ -120,6 +120,7 @@ On the start screen, press **Enter** for your local library, **B** for BookOrbit
 | --- | --- |
 | Single page, two-page spread, continuous scroll | **1**, **2**, **3** |
 | Toggle zen mode or show the contents sidebar | **Z** |
+| Show or hide page and percentage in zen mode | **%** |
 | Adjust text width and column gap, or zoom a scan | **W** |
 | Search inside the book | **/** |
 | Go to a PDF or DjVu page | **P** |

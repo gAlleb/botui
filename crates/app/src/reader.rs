@@ -31,6 +31,7 @@ use crate::{AppTerminal, centered, theme::Theme};
 enum Action {
     Menu,
     Zen,
+    ZenProgress,
     Background,
     Borders,
     Sidebar(Edit),
@@ -72,7 +73,7 @@ enum Action {
     Resize,
 }
 
-const COMMANDS: [Action; 29] = [
+const COMMANDS: [Action; 30] = [
     Action::Resume,
     Action::Previous,
     Action::Next,
@@ -89,6 +90,7 @@ const COMMANDS: [Action; 29] = [
     Action::Bookmarks,
     Action::Layout,
     Action::Zen,
+    Action::ZenProgress,
     Action::Background,
     Action::Borders,
     Action::Note,
@@ -106,6 +108,7 @@ const COMMANDS: [Action; 29] = [
 
 struct Reader {
     zen: bool,
+    zen_progress: bool,
     opaque: bool,
     sidebar: navigation::Navigation,
     sidebar_rect: Rect,
@@ -186,6 +189,7 @@ impl Reader {
         let sidebar = navigation::Navigation::new(Kind::Contents, &doc, pager.anchor());
         Self {
             zen: settings.zen,
+            zen_progress: settings.zen_progress,
             opaque: settings.opaque_background,
             sidebar,
             sidebar_rect: Rect::default(),
@@ -225,7 +229,9 @@ impl Reader {
         let screen = frame.area();
         let mut page = screen;
         self.links.clear();
-        if !self.zen || self.links.visiting() {
+        let show_progress =
+            self.zen && self.zen_progress && screen.height > 1 && !self.links.visiting();
+        if !self.zen || self.links.visiting() || show_progress {
             page.height = page.height.saturating_sub(1);
         }
         (self.sidebar_rect, page) = self.splitter.layout(page, !self.zen && screen.width >= 78);
@@ -383,6 +389,15 @@ impl Reader {
                 Rect::new(foot.x, foot.y, right - cw - foot.x, foot.height),
             );
         }
+        if show_progress {
+            crate::appearance::zen_progress(
+                frame,
+                self.pager.page_number(),
+                self.pager.page_count(),
+                self.reading_percent(),
+                style,
+            );
+        }
         if self.links.visiting() {
             let footer = Rect::new(
                 screen.x,
@@ -476,6 +491,14 @@ impl Reader {
                 ),
                 Action::Bookmarks => ("Bookmarks".into(), "G"),
                 Action::Layout => ("Page width & column gap".into(), "W"),
+                Action::ZenProgress => (
+                    format!(
+                        "Zen progress · {}",
+                        if self.zen_progress { "On" } else { "Off" }
+                    )
+                    .into(),
+                    "%",
+                ),
                 Action::Zen => (
                     (if self.zen {
                         "Show contents sidebar"
@@ -631,6 +654,7 @@ impl Reader {
                 KeyCode::Char(',') => Some(Action::JumpBack),
                 KeyCode::Char('.') => Some(Action::JumpForward),
                 KeyCode::Char('u' | 'U') => Some(Action::Borders),
+                KeyCode::Char('%') => Some(Action::ZenProgress),
                 KeyCode::Char('z' | 'Z') => Some(Action::Zen),
                 KeyCode::Char('f' | 'F') => Some(Action::Background),
                 KeyCode::Char('w' | 'W') => Some(Action::Layout),
@@ -787,6 +811,10 @@ impl Reader {
                     self.dirty = true;
                     self.sidebar_focus = false;
                 }
+            }
+            Action::ZenProgress => {
+                self.zen_progress = !self.zen_progress;
+                self.menu = None;
             }
             Action::Zen => {
                 self.zen = !self.zen;
@@ -970,6 +998,14 @@ impl Reader {
         }
     }
 
+    fn reading_percent(&self) -> f64 {
+        if self.finished && self.pager.at_end() {
+            100.
+        } else {
+            self.doc.text_percentage(self.pager.anchor()).min(99.)
+        }
+    }
+
     fn flush(&mut self, state: &mut Option<LocalState>, notices: &mut Vec<String>) {
         if !self.dirty {
             return;
@@ -993,6 +1029,7 @@ fn bindings() -> io::Result<std::collections::HashMap<char, Action>> {
                 "previous" => Action::Previous,
                 "menu" => Action::Menu,
                 "zen" => Action::Zen,
+                "zen-progress" => Action::ZenProgress,
                 "background" => Action::Background,
                 "borders" => Action::Borders,
                 "cover" => Action::Cover,
@@ -1246,6 +1283,7 @@ pub fn read_server(
                 )?;
                 let new = crate::settings::Settings::load()?;
                 reader.zen = new.zen;
+                reader.zen_progress = new.zen_progress;
                 reader.splitter.preferred = new.contents_width;
                 if new.reading_layout != old.reading_layout {
                     reader.mode = match new.reading_layout.as_deref() {
@@ -1326,16 +1364,9 @@ pub fn read_server(
             }
             if action == Action::Statistics {
                 reader.menu = None;
-                if let Err(e) = crate::stats::show(
-                    term,
-                    state.as_ref(),
-                    opened,
-                    if reader.finished && reader.pager.at_end() {
-                        100.
-                    } else {
-                        reader.doc.text_percentage(reader.pager.anchor()).min(99.)
-                    },
-                ) {
+                if let Err(e) =
+                    crate::stats::show(term, state.as_ref(), opened, reader.reading_percent())
+                {
                     notices.push(e.to_string());
                 }
                 continue;
@@ -1378,6 +1409,7 @@ pub fn read_server(
             if matches!(
                 action,
                 Action::Zen
+                    | Action::ZenProgress
                     | Action::Background
                     | Action::Gap(_)
                     | Action::Margin(_)
@@ -1387,6 +1419,7 @@ pub fn read_server(
                     Action::Gap(_) => s.column_gap = Some(reader.gap),
                     Action::Margin(_) => s.page_width = Some(reader.page_width),
                     Action::Zen => s.zen = reader.zen,
+                    Action::ZenProgress => s.zen_progress = reader.zen_progress,
                     Action::Background => s.opaque_background = reader.opaque,
                     _ => s.theme = Some(reader.theme.id()),
                 });
@@ -1403,11 +1436,7 @@ pub fn read_server(
     crate::stats::finish(state.as_ref(), opened, notices);
     result?;
     let a = reader.pager.anchor();
-    let percent = if reader.finished && reader.pager.at_end() {
-        100.
-    } else {
-        reader.doc.text_percentage(a).min(99.)
-    };
+    let percent = reader.reading_percent();
     if can_sync && (a != start || reader.finished != started_finished) {
         if let Some(cfi) = reader.doc.cfi(a) {
             return Ok((

@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+## 0.1.4 — 2026-11-08
+
+- Press `%` to toggle a dim page count and reading percentage in zen mode. The preference is shared by the text and scan readers and can also be changed in Settings → Reader.
 - Text from a BookOrbit reading position starts on the first line in BOTUI, even when the saved word falls midway through a terminal line. Page turns that land between paragraphs save the first visible passage.
 - The EPUB and FB2 bookmark list (`G`) shows a passage from the book alongside the BookOrbit bookmark title.
 

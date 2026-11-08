@@ -13,6 +13,8 @@ interface_theme = "catppuccin-mocha"
 # Optional override. By default, solid Terminal paper follows the active terminal background.
 # opaque_color = "#1f2125"
 zen = false
+# Show a dim page count and percentage in zen mode. Toggle with %.
+zen_progress = false
 # PDF/DjVu zoom in percent. In scroll mode 100 fits the reading pane.
 scan_zoom = 100
 # Preferred width of one text page and the space between facing pages, in terminal cells.

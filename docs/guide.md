@@ -121,6 +121,7 @@ Positions and notes are local.
 | Adjust page width and column gap with a live preview | **W**, then click **− / +** on either row |
 | Adjust without opening the panel | **[** wider page, **]** narrower page. **{** smaller gap, **}** larger gap |
 | Zen mode / contents sidebar | **Z**. In the normal view, **Tab** changes focus |
+| Page number and percentage in zen mode | **%** toggles the dim footer. You can also use **F2 → Reader → Zen progress**. |
 | Contents / search / links and illustrations | **O / slash / I** |
 | Theme / opaque background / border style | **T / F / U** |
 | Toggle bookmark / open bookmarks | **B / G** |

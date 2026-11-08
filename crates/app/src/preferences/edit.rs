@@ -85,6 +85,9 @@ pub(super) fn setting(
                 }
             }
         }
+        (1, 9) => {
+            Settings::update(|s| s.zen_progress = !s.zen_progress)?;
+        }
         (1, 1) => {
             Settings::update(|s| s.zen = !s.zen)?;
         }
