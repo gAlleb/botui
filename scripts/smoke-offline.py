@@ -192,7 +192,7 @@ with tempfile.TemporaryDirectory() as name, shelf.Fixture(False) as server:
         server.progress[301]["updatedAt"] = "2026-11-07T12:00:00.000Z"
         before = len(server.saved)
         term.keys("b"); term.see("Continue reading"); term.keys("1")
-        term.see(shelf.BOOK); term.keys("Enter")
+        shelf.all_books(term); term.keys("Enter")
         term.click("EPUB", shelf.formats(term)); term.see("Use offline position")
         term.keys("Escape"); shelf.formats(term)
         assert len(server.saved) == before and json.loads(meta.read_text())["pending"] == local_move
@@ -221,7 +221,7 @@ with tempfile.TemporaryDirectory() as name, shelf.Fixture(False) as server:
         server.files[301] = ("epub", "application/epub+zip", updated)
         server.revision = "2"
         term.keys("b"); term.see("Continue reading"); term.keys("1")
-        term.see(shelf.BOOK); term.keys("Enter")
+        shelf.all_books(term); term.keys("Enter")
         term.see("Harbor Press")
         term.click("EPUB", shelf.formats(term))
         term.wait("Updated edition resumes at chapter eight", lambda f: f.strip().startswith("Chapter 8") and "shore" in f)

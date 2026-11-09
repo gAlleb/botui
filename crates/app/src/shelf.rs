@@ -26,7 +26,7 @@ use ratatui::{
 use std::{
     io,
     sync::{Arc, atomic::AtomicBool, mpsc::TryRecvError},
-    time::Duration,
+    time::{Duration, Instant},
 };
 use tempfile::TempPath;
 
@@ -323,6 +323,9 @@ enum AfterSave {
 }
 
 struct Pending {
+    started: Instant,
+    tab: Option<Tab>,
+    return_depth: Option<usize>,
     title: &'static str,
     closing: bool,
     saving: bool,
@@ -437,6 +440,9 @@ impl Shelf {
         task: impl FnOnce(&AtomicBool) -> botui_bookorbit::Result<Loaded> + Send + 'static,
     ) {
         self.pending = Some(Pending {
+            started: Instant::now(),
+            tab: None,
+            return_depth: None,
             title,
             closing: false,
             saving: false,
@@ -462,6 +468,9 @@ impl Shelf {
             "Opening edition…"
         };
         self.pending = Some(Pending {
+            started: Instant::now(),
+            tab: None,
+            return_depth: None,
             title,
             closing: false,
             saving: false,
@@ -593,6 +602,7 @@ impl Shelf {
             self.login_screen();
             return;
         };
+        self.pending = None;
         match tab {
             Tab::Dashboard => {
                 self.fetch("Loading dashboard…", move |_| dashboard::load(&session))
@@ -618,6 +628,9 @@ impl Shelf {
                     .map(Loaded::Collections)
             }),
         }
+        if let Some(job) = &mut self.pending {
+            job.tab = Some(tab);
+        }
     }
 
     fn show_directory(&mut self, section: Section, title: &str, rows: Vec<Row>) {
@@ -642,10 +655,14 @@ impl Shelf {
             self.login_screen();
             return;
         };
+        let tab = scope.tab();
         self.fetch("Loading books…", move |_| {
             let result = fetch_books(&session, &scope, page)?;
             Ok(Loaded::Books(scope, result))
         });
+        if let Some(job) = &mut self.pending {
+            job.tab = Some(tab);
+        }
     }
 
     fn open_files(&mut self, book: Book) {
@@ -963,6 +980,9 @@ impl Shelf {
         self.stack = vec![Pane::home(false)];
         // Logout must not wait behind a document download that is being cancelled.
         self.pending = Some(Pending {
+            started: Instant::now(),
+            tab: None,
+            return_depth: None,
             title: "Signing out…",
             closing: true,
             saving: false,
@@ -1276,7 +1296,8 @@ impl Shelf {
             .unwrap_or(0)
             .max(pane.selection.offset())
             .saturating_add(self.viewport() + 4);
-        if pane.tail_error || pane.tail.is_some() || end < pane.rows.len() {
+        if self.pending.is_some() || pane.tail_error || pane.tail.is_some() || end < pane.rows.len()
+        {
             return;
         }
         let ticket = match &pane.section {
@@ -1408,7 +1429,11 @@ impl Shelf {
             Err(TryRecvError::Empty) => return None,
             Err(TryRecvError::Disconnected) => Err("Background request interrupted.".into()),
         };
-        self.pending = None;
+        if let Some(depth) = self.pending.take().and_then(|job| job.return_depth)
+            && matches!(result, Ok(Loaded::Books(..)))
+        {
+            self.stack.truncate(depth);
+        }
         let after_save = self.after_save.take();
         let selection = match result {
             Ok(loaded) => self.complete(loaded),
@@ -1449,6 +1474,53 @@ impl Shelf {
         selection
     }
 
+    fn catalog_navigation(
+        &mut self,
+        event: &Event,
+        key: Option<KeyCode>,
+        click: Option<Position>,
+    ) -> bool {
+        if let Some(action) = self.rail.handle(event) {
+            match action {
+                Ok(Some(cmd)) => {
+                    let depth = matches!(cmd, Command::Books(..))
+                        .then(|| self.all_books_index())
+                        .flatten()
+                        .map(|i| i + 1);
+                    self.apply(cmd);
+                    if let Some(job) = &mut self.pending {
+                        job.return_depth = depth;
+                    }
+                }
+                Err(error) => self.notice = Some(error.to_string()),
+                Ok(None) => {}
+            }
+            return true;
+        }
+        if self.session.is_some() {
+            let current = self
+                .pending
+                .as_ref()
+                .and_then(|job| job.tab)
+                .unwrap_or_else(|| self.active_tab());
+            let tab = match key {
+                Some(KeyCode::Char(n @ '0'..='7')) => {
+                    Tab::ALL.get((n as u8 - b'0') as usize).copied()
+                }
+                Some(KeyCode::Tab) => Some(current.adjacent(true)),
+                Some(KeyCode::BackTab) => Some(current.adjacent(false)),
+                _ => click
+                    .and_then(|pos| self.tab_buttons.iter().position(|r| r.contains(pos)))
+                    .map(|i| Tab::ALL[i]),
+            };
+            if let Some(tab) = tab {
+                self.open_tab(tab);
+                return true;
+            }
+        }
+        false
+    }
+
     fn input(&mut self, event: Event) -> Option<Selection> {
         let click = match &event {
             Event::Mouse(m) if m.kind == MouseEventKind::Down(MouseButton::Left) => {
@@ -1470,6 +1542,21 @@ impl Shelf {
         if self.pending.as_ref().is_some_and(|p| p.closing) {
             return None;
         }
+        if self.login.is_none()
+            && self.info.is_none()
+            && self.view_available()
+            && (matches!(key, Some(KeyCode::Char('v' | 'V')))
+                || click.is_some_and(|pos| self.view_button.contains(pos)))
+        {
+            self.grid_view = !self.grid_view;
+            if !self.is_opds
+                && let Err(e) =
+                    crate::connection::remember(&self.server, &self.username, !self.grid_view)
+            {
+                self.set_error(format!("Could not save shelf view: {e}"));
+            }
+            return None;
+        }
         if self.pending.is_some() {
             if matches!(key, Some(KeyCode::Char('q' | 'Q'))) {
                 return self.source_home();
@@ -1485,6 +1572,9 @@ impl Shelf {
             }
             if key == Some(KeyCode::Esc) || click.is_some_and(|p| self.back_button.contains(p)) {
                 return self.back();
+            }
+            if self.pending.as_ref().is_some_and(|job| job.tab.is_some()) {
+                self.catalog_navigation(&event, key, click);
             }
             return None;
         }
@@ -1557,47 +1647,7 @@ impl Shelf {
                 return self.apply(cmd);
             }
         }
-        if let Some(action) = self.rail.handle(&event) {
-            match action {
-                Ok(Some(cmd)) => {
-                    if matches!(cmd, Command::Books(..))
-                        && let Some(i) = self.all_books_index()
-                    {
-                        self.stack.truncate(i + 1);
-                    }
-                    return self.apply(cmd);
-                }
-                Err(error) => self.notice = Some(error.to_string()),
-                Ok(None) => {}
-            }
-            return None;
-        }
-        if self.session.is_some() {
-            let tab = match key {
-                Some(KeyCode::Char(n @ '0'..='7')) => {
-                    Tab::ALL.get((n as u8 - b'0') as usize).copied()
-                }
-                Some(KeyCode::Tab) => Some(self.active_tab().adjacent(true)),
-                Some(KeyCode::BackTab) => Some(self.active_tab().adjacent(false)),
-                _ => click
-                    .and_then(|pos| self.tab_buttons.iter().position(|r| r.contains(pos)))
-                    .map(|i| Tab::ALL[i]),
-            };
-            if let Some(tab) = tab {
-                return self.apply(Command::OpenTab(tab));
-            }
-        }
-        if self.view_available()
-            && (matches!(key, Some(KeyCode::Char('v' | 'V')))
-                || click.is_some_and(|pos| self.view_button.contains(pos)))
-        {
-            self.grid_view = !self.grid_view;
-            if !self.is_opds
-                && let Err(e) =
-                    crate::connection::remember(&self.server, &self.username, !self.grid_view)
-            {
-                self.set_error(format!("Could not save shelf view: {e}"));
-            }
+        if self.catalog_navigation(&event, key, click) {
             return None;
         }
         if let Some(grid) = &self.grid {

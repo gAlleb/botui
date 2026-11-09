@@ -273,7 +273,7 @@ impl Shelf {
                         frame,
                         face,
                         book,
-                        self.covers.image(book.id),
+                        self.covers.artwork(book),
                         &self.graphics,
                         active,
                     );

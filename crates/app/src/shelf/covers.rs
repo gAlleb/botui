@@ -18,6 +18,11 @@ enum Entry {
     Missing,
     RetryAfter(Instant),
 }
+pub(crate) enum Artwork<'a> {
+    Loading,
+    Image(&'a Picture),
+    Jacket,
+}
 pub(crate) struct Covers {
     images: LruCache<u64, Entry>,
     slots: [Slot; 2],
@@ -52,6 +57,14 @@ impl Covers {
         match self.images.peek(&id) {
             Some(Entry::Image(p)) => Some(p),
             _ => None,
+        }
+    }
+    pub fn artwork(&self, book: &crate::catalog::Book) -> Artwork<'_> {
+        match self.images.peek(&book.id) {
+            Some(Entry::Image(p)) => Artwork::Image(p),
+            Some(Entry::Missing | Entry::RetryAfter(_)) => Artwork::Jacket,
+            None if book.has_cover == Some(false) => Artwork::Jacket,
+            None => Artwork::Loading,
         }
     }
     pub fn request(

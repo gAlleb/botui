@@ -75,6 +75,10 @@ class Fixture(ThreadingHTTPServer):
     def __init__(self, has_collections):
         super().__init__(("127.0.0.1", 0), Handler)
         self.has_collections = has_collections
+        self.thumbnail_ready = threading.Event()
+        self.thumbnail_ready.set()
+        self.directory_ready = threading.Event()
+        self.directory_ready.set()
         self.personal = {}
         self.requests = []
         self.token = TOKEN
@@ -252,6 +256,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.reply(200, items if key == "random" else {"books":items, "total":len(items)})
         for endpoint, total, target in [("authors",410,"Роджер Желязны"),("series",49,"Хроники Амбера")]:
             if url.path == f"{API}/{endpoint}":
+                if size > 1:
+                    assert self.server.directory_ready.wait(timeout=12)
                 assert query["sort"] == ["name"] and query["order"] == ["asc"]
                 groups = [{"id":n,"name":target if n==total else f"Group {n:04}", "bookCount":2}
                           for n in range(1,total+1)]
@@ -310,6 +316,7 @@ class Handler(BaseHTTPRequestHandler):
         if url.path == API + "/books/200/cover":
             return self.reply(200, ORIGINAL_COVER, "image/png")
         if url.path == API + "/books/200/thumbnail":
+            assert self.server.thumbnail_ready.wait(timeout=12)
             return self.reply(200, (ROOT / "scripts/fixtures/shelf-cover.jpg").read_bytes(), "image/jpeg")
         if url.path == API + "/books/201/thumbnail":
             return self.reply(404, {"statusCode": 404})
@@ -418,11 +425,15 @@ def login(term, url, wrong_password=False):
     term.keys("Enter")
     term.wait("Account dashboard", lambda frame:"Discover something new" in frame and "Continue reading" in frame and "37%" in frame)
     term.keys("1")
-    return term.wait("All books", lambda frame: BOOK in frame and OTHER_BOOK in frame)
+    return all_books(term)
+
+
+def all_books(term):
+    return term.wait("All books", lambda frame: "All books  ·" in frame and BOOK in frame and OTHER_BOOK in frame)
 
 
 def formats(term):
-    return term.wait("Выбор EPUB / FB2 / PDF", lambda s: sum(
+    return term.wait("Выбор EPUB / FB2 / PDF", lambda s: "Editions" in s and sum(
         1 for line in s.splitlines()
         if any(label in line for label in ("EPUB", "FB2", "PDF"))) >= 3)
 
@@ -482,7 +493,8 @@ def check_collections(tmp, binary, fixture):
         term.see(BOOK)
         term.run("resize-window", "-t", "shelf", "-x", "115", "-y", "30")
         term.keys("5")
-        term.see(COLLECTION)
+        term.wait("Collection directory is ready", lambda frame:
+                  "[N New collection]" in frame and COLLECTION in frame and BOOK not in frame)
         term.keys("Enter")
         term.see(BOOK)
         term.keys("PageDown")
@@ -542,7 +554,16 @@ def check_without_collections(tmp, binary, fixture):
     url = f"http://127.0.0.1:{fixture.server_port}/reader"
     term = Terminal(tmp, binary, url)
     try:
-        all_books = login(term, url)
+        fixture.thumbnail_ready.clear()
+        try:
+            frame = login(term, url)
+            # This two-book shelf has one real cover waiting on the fixture, and one confirmed jacket.
+            ornament_row = next(line for line in frame.splitlines() if "❧" in line)
+            assert ornament_row.count("❧") == 1 and ornament_row.index("❧") > 27, frame
+            assert "▀" not in frame, frame
+        finally:
+            fixture.thumbnail_ready.set()
+        term.see("▀")
         term.run("resize-window","-t","shelf","-x","148","-y","38")
         names = ["0 Dashboard","1 All books","2 Currently reading","3 Recently added","4 Libraries","5 Collections","6 Authors","7 Series"]
         def totals(frame):
@@ -569,8 +590,20 @@ def check_without_collections(tmp, binary, fixture):
         dash = term.wait("Dashboard shares catalog view", dashboard_list)
         term.click("[V Grid]", dash)
         dash = term.wait("Dashboard covers restored", lambda f: "[V List]" in f and "Discover something new" in f)
-        term.click("6 Authors",dash)
+        fixture.directory_ready.clear()
+        try:
+            term.click("6 Authors", dash)
+            waiting = term.see("Loading directory")
+            for label in ("Navigation", "Streak Builder", "Continue reading", "▀", "[ Cancel ]"):
+                assert label in waiting, waiting
+            term.keys("Escape")
+            term.wait("Cancel keeps the original dashboard and cover", lambda f:
+                      "Streak Builder" in f and "▀" in f and "[ Cancel ]" not in f)
+        finally:
+            fixture.directory_ready.set()
+        term.click("6 Authors", dash)
         term.see("Group 0001")
+        assert fixture.requests.count(("GET", API + "/books/200/thumbnail", 200)) == 1
         term.keys("v")
         def aligned_counts(frame):
             ends = [m.end(1) for m in re.finditer(r"(?m)^.*?(?:Group 000[123]|Роджер Желязны) +(\d+)", frame)]
@@ -644,7 +677,7 @@ def check_without_collections(tmp, binary, fixture):
         term.click("Add to Winter reading", term.see("Add to Winter reading"))
         term.see("Remove from Winter reading")
         assert fixture.personal[100][1] == {200}
-        term.keys("5"); term.see("[N New collection]"); term.keys("Enter")
+        term.keys("5"); term.see("[Del Delete collection]"); term.keys("Enter")
         term.see(BOOK); term.keys("Enter"); formats(term); term.keys("a")
         term.click("Remove from Winter reading", term.see("Remove from Winter reading"))
         term.see("Add to Winter reading")

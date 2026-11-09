@@ -33,7 +33,10 @@ def exercise(tmp, f):
         assert opened(2)==cover
         assert not any(path.endswith("/serve") for _,path,_ in f.requests)
         t.keys("Escape")
-        t.keys("2");t.click(s.OTHER_BOOK,t.see(s.OTHER_BOOK))
+        t.keys("2")
+        reading = t.wait("Current shelf is ready", lambda frame:
+                         "Currently reading  ·  1" in frame and s.OTHER_BOOK in frame)
+        t.click(s.OTHER_BOOK, reading)
         t.see("Harbor Press");t.see("Beacon #2");t.see("37% read");t.see("northern lighthouse")
         t.click("[C View cover]",t.see("[C View cover]"))
         art=opened(3).read_bytes()
@@ -53,7 +56,7 @@ def exercise(tmp, f):
         assert not f.saved and not any(path.endswith('/serve') for _,path,_ in f.requests)
         t.click("[H Put on hold]",t.see("[H Put on hold]"));t.see("Reading status: On hold")
         t.keys("Escape");t.wait("Paused title is gone from Currently reading",lambda a:"Currently reading" in a and s.OTHER_BOOK not in a)
-        t.keys("1");t.click(s.OTHER_BOOK,t.see(s.OTHER_BOOK));t.see("[H Resume reading]");t.keys("h");t.see("Reading status: Reading")
+        t.keys("1");t.click(s.OTHER_BOOK,s.all_books(t));t.see("[H Resume reading]");t.keys("h");t.see("Reading status: Reading")
         t.keys("x");t.see("cannot be undone.");t.keys("Enter");t.see("Editions");assert f.statuses[201]=="reading"
         t.keys("x");t.see("cannot be undone.");t.keys("Right","Enter");t.see("Reading state reset.");assert f.statuses[201]=="unread"
         t.keys("l");t.see("No reading sessions recorded");t.keys("Escape");t.see("Editions")

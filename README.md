@@ -72,6 +72,8 @@ mise run install
 
 The install task builds the release for your machine. To build static binaries for **both x86_64 and aarch64**, run `mise install` and `mise run dist`. The two binaries and `SHA256SUMS` appear in `./dist/`.
 
+Cargo caches the native build and each static target separately under `target/` by default. The first build of each target compiles its dependencies. Repeating the same task reuses that work.
+
 ### With Cargo
 
 The repository pins Rust in `rust-toolchain.toml`. With rustup, a C compiler and a linker installed, run:

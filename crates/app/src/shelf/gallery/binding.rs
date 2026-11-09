@@ -36,34 +36,33 @@ const CLOTH: [(u8, u8, u8); 8] = [
 struct Jackets {
     images: LruCache<Binding, Option<Picture>>,
     worker: Worker,
-    pending: Option<(Binding, Ticket<Option<DynamicImage>>)>,
+    pending: Vec<(Binding, Ticket<Option<DynamicImage>>)>,
 }
 impl Jackets {
     fn collect(&mut self) {
-        let Some((key, ticket)) = &self.pending else {
-            return;
-        };
-        let result = match ticket.receiver.try_recv() {
-            Ok(value) => value,
-            Err(std::sync::mpsc::TryRecvError::Empty) => return,
-            Err(_) => None,
-        };
-        self.images
-            .put(key.clone(), result.map(Picture::generated_cover));
-        self.pending = None;
+        self.pending.retain(|(key, ticket)| {
+            let image = match ticket.receiver.try_recv() {
+                Ok(image) => image,
+                Err(std::sync::mpsc::TryRecvError::Empty) => return true,
+                Err(_) => None,
+            };
+            self.images
+                .put(key.clone(), image.map(Picture::generated_cover));
+            false
+        });
     }
 }
 thread_local! {
     static JACKETS: RefCell<Jackets> = RefCell::new(Jackets {
         images: LruCache::new(NonZeroUsize::new(48).unwrap()),
         worker: Worker::new(),
-        pending: None,
+        pending: Vec::new(),
     });
 }
 
 pub(crate) fn busy() -> bool {
     JACKETS.with_borrow_mut(|cache| {
-        let pending = cache.pending.is_some();
+        let pending = !cache.pending.is_empty();
         cache.collect();
         pending
     })
@@ -125,24 +124,23 @@ impl Binding {
         crate::cover_viewer::png(self.render(3)?)
     }
 
-    pub(super) fn draw(&self, frame: &mut Frame, slot: Rect, picker: &Picker) -> bool {
+    pub(super) fn draw_or_wait(&self, frame: &mut Frame, slot: Rect, picker: &Picker) -> bool {
         JACKETS.with_borrow_mut(|cache| {
             cache.collect();
-            if let Some(picture) = cache.images.get(self).and_then(Option::as_ref) {
-                picture.draw(frame, slot, picker);
-                true
-            } else {
-                // Font discovery, SVG shaping and rasterization must never
-                // block entering a shelf. Use terminal lettering until ready.
-                if !cache.images.contains(self) && cache.pending.is_none() {
-                    let binding = self.clone();
-                    cache.pending = Some((
-                        self.clone(),
-                        cache.worker.start(move |_| binding.render(1).ok()),
-                    ));
+            if let Some(cached) = cache.images.get(self) {
+                if let Some(picture) = cached {
+                    picture.draw(frame, slot, picker);
                 }
-                false
+                return cached.is_some();
             }
+            // The caption already identifies the book while its jacket is prepared.
+            // Terminal lettering is the fallback if rasterization actually fails.
+            if cache.pending.len() < 12 && !cache.pending.iter().any(|(key, _)| key == self) {
+                let binding = self.clone();
+                let job = cache.worker.start(move |_| binding.render(1).ok());
+                cache.pending.push((self.clone(), job));
+            }
+            true
         })
     }
 

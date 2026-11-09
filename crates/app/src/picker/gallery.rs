@@ -66,7 +66,7 @@ impl Picker {
                 f,
                 inner,
                 &book,
-                self.covers.image(book.id),
+                self.covers.artwork(&book),
                 self.graphics.get_or_insert_with(crate::cover::graphics),
                 active,
             );

@@ -9,6 +9,7 @@ The table records how each reading or navigation scenario was checked. See the [
 | Sign in to BookOrbit with no personal collections. Choose a library, book and edition, then navigate back. | smoke-shelf |
 | Find a book beyond the first batch of results. Check progress on the current shelf, recent additions and continuous navigation in list and grid views. | smoke-shelf |
 | Open a shelf from the dashboard. Find an author or series beyond the first batch. Check counts before opening the index and verify volume order. | smoke-shelf and a separate Kitty session |
+| Hold the thumbnail response, then release it. Only the book with a missing cover gets a generated jacket. Delay a directory request, cancel it and check that the shelf, rail and cached cover stayed visible. | smoke-shelf and a pixel check in headless Kitty |
 | Migrate settings to TOML, start two instances and check plaintext passwords, password commands and account isolation. | smoke-config |
 | Adjust page width and gutter independently. Check shortcut alignment and rounded, square and hidden borders. | smoke-reader, smoke-library, layout tests and *Chaos and Amber* in Kitty |
 | Paste a folder path with the mouse, find a book in a subfolder, switch views and restart. | smoke-library and a local folder containing *Sign of the Unicorn* |

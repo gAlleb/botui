@@ -1,7 +1,7 @@
 //! Geometry is shared by drawing, keyboard navigation and mouse hit testing.
 pub(crate) mod binding;
 mod jacket_edge;
-use super::{Book, Command, Scope, Shelf, single_line};
+use super::{Book, Command, Scope, Shelf, covers::Artwork, single_line};
 use crate::centered;
 use ratatui::{
     Frame,
@@ -114,7 +114,7 @@ pub(super) fn caption(text: &str, width: u16, max_lines: usize) -> String {
 fn jacket(frame: &mut Frame, slot: Rect, book: &Book, graphics: &ratatui_image::picker::Picker) {
     let binding = binding::Binding::from(book);
     if graphics.protocol_type() != ratatui_image::picker::ProtocolType::Halfblocks
-        && binding.draw(frame, slot, graphics)
+        && binding.draw_or_wait(frame, slot, graphics)
     {
         return;
     }
@@ -172,11 +172,9 @@ fn jacket(frame: &mut Frame, slot: Rect, book: &Book, graphics: &ratatui_image::
 }
 impl Shelf {
     pub(super) fn artwork(&self, frame: &mut Frame, slot: Rect, book: &Book) {
-        if let Some(pic) = self.covers.image(book.id) {
-            pic.draw(frame, slot, &self.graphics)
-        } else if !slot.is_empty() {
-            jacket(frame, slot, book, &self.graphics)
-        }
+        self.covers
+            .artwork(book)
+            .draw(frame, slot, book, &self.graphics);
     }
     pub(super) fn draw_grid(&mut self, frame: &mut Frame, area: Rect) {
         let books = matches!(self.current().section, super::Section::Books { .. })
@@ -214,7 +212,7 @@ impl Shelf {
                         frame,
                         inner,
                         book,
-                        self.covers.image(book.id),
+                        self.covers.artwork(book),
                         &self.graphics,
                         active,
                     );
@@ -257,11 +255,30 @@ impl Shelf {
     }
 }
 
+impl Artwork<'_> {
+    fn draw(
+        self,
+        frame: &mut Frame,
+        area: Rect,
+        book: &Book,
+        graphics: &ratatui_image::picker::Picker,
+    ) {
+        if area.is_empty() {
+            return;
+        }
+        match self {
+            Self::Image(pic) => pic.draw(frame, area, graphics),
+            Self::Jacket => jacket(frame, area, book, graphics),
+            Self::Loading => {}
+        }
+    }
+}
+
 pub(crate) fn book_face(
     frame: &mut Frame,
     inner: Rect,
     book: &Book,
-    picture: Option<&crate::cover::Picture>,
+    artwork: Artwork<'_>,
     graphics: &ratatui_image::picker::Picker,
     selected: bool,
 ) {
@@ -272,11 +289,7 @@ pub(crate) fn book_face(
     let art = inner.height.saturating_sub(meta);
     let title = single_line(book.title.clone().unwrap_or_else(|| "Untitled".into()));
     let area = line(inner, 0, art);
-    if let Some(pic) = picture {
-        pic.draw(frame, area, graphics);
-    } else if !area.is_empty() {
-        jacket(frame, area, book, graphics);
-    }
+    artwork.draw(frame, area, book, graphics);
     frame.render_widget(
         Paragraph::new(Text::styled(
             caption(&title, inner.width, if meta == 4 { 2 } else { 1 }),

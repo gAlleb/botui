@@ -8,7 +8,6 @@ from pathlib import Path
 import pty
 import re
 import select
-import shutil
 import signal
 import struct
 import tempfile
@@ -18,11 +17,23 @@ import time
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def write_book(path, embedded=False):
+    cover = ""
+    if embedded:
+        image = b64encode((ROOT / "scripts/fixtures/shelf-cover.jpg").read_bytes()).decode()
+        cover = (
+            '<description><title-info><coverpage><image href="#cover"/>'
+            '</coverpage></title-info></description>'
+            f'<binary id="cover" content-type="image/jpeg">{image}</binary>'
+        )
+    path.write_text(f"<FictionBook>{cover}<body><section><p>{path.stem}</p></section></body></FictionBook>")
+
+
 def check(binary, directory, listing=False):
     library = directory / "Library"
     library.mkdir()
     if listing:
-        shutil.copyfile(ROOT / "examples/first-light.fb2", library / "Lighthouse.fb2")
+        write_book(library / "Lighthouse.fb2", embedded=True)
         visible = b"Lighthouse.fb2"
     else:
         (library / "Amber").mkdir()
@@ -72,10 +83,12 @@ def check(binary, directory, listing=False):
                         break
                 else:
                     raise AssertionError("Cover grid did not query image support")
+                deadline = time.monotonic() + 5
                 while time.monotonic() < deadline:
                     if select.select([terminal], [], [], .01)[0]:
                         stream += os.read(terminal, 65536)
-                    if b"a=T" in stream or b"a=t" in stream:
+                    sizes = re.findall(rb"a=[Tt][^;]*?s=(\d+),v=(\d+)", stream)
+                    if any(int(w) > 20 and int(h) > 20 for w, h in sizes):
                         print("Cover grid still transfers Kitty images after lazy discovery.")
                         return
                 raise AssertionError("No Kitty image after protocol discovery")
@@ -91,16 +104,8 @@ def covers(binary, directory, embedded=False):
     library = directory / "Library"
     books = library / "Books"
     books.mkdir(parents=True)
-    image = b64encode((ROOT / "scripts/fixtures/shelf-cover.jpg").read_bytes()).decode()
     for i in range(6):
-        cover = (
-            '<description><title-info><coverpage><image href="#cover"/>'
-            '</coverpage></title-info></description>'
-            f'<binary id="cover" content-type="image/jpeg">{image}</binary>'
-        ) if embedded else ""
-        (books / f"Book {i}.fb2").write_text(
-            f"<FictionBook>{cover}<body><section><p>Text {i}</p></section></body></FictionBook>"
-        )
+        write_book(books / f"Book {i}.fb2", embedded)
     config = directory / "botui"
     config.mkdir()
     (config / "config.toml").write_text('local_grid = true\ninterface_theme = "catppuccin-mocha"\n')

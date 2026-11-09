@@ -36,6 +36,73 @@ impl Shelf {
     }
 
     pub(super) fn draw(&mut self, frame: &mut Frame) {
+        self.draw_pane(frame);
+        if self
+            .pending
+            .as_ref()
+            .is_some_and(|job| job.started.elapsed() >= std::time::Duration::from_millis(160))
+        {
+            self.draw_pending_status(frame);
+        }
+    }
+
+    fn draw_pending_status(&mut self, frame: &mut Frame) {
+        let Some(job) = &self.pending else { return };
+        let screen = frame.area();
+        if screen.is_empty() {
+            return;
+        }
+        let (x, y) = if self.back_button.is_empty() {
+            (screen.x, screen.bottom() - 1)
+        } else {
+            (self.back_button.x, self.back_button.y)
+        };
+        let footer = Rect::new(x, y, screen.right().saturating_sub(x.saturating_add(1)), 1);
+        frame.render_widget(Clear, footer);
+        let mut text = job.title.to_owned();
+        if let Some((progress, finishing)) = &job.transfer {
+            let (received, total, complete) = progress.snapshot();
+            if complete {
+                text = finishing.to_string();
+            } else if received > 0 && !self.is_opds {
+                text = "Downloading book…".into();
+            }
+            if received > 0 || self.is_opds {
+                let amount = super::format_size(received);
+                match total {
+                    Some(total) => text.push_str(&format!(
+                        "  {amount} / {}  ·  {}%",
+                        super::format_size(total),
+                        (received.saturating_mul(100) / total.max(1)).min(100)
+                    )),
+                    None => text.push_str(&format!("  {amount} received")),
+                }
+            }
+        }
+        self.back_button = Rect::default();
+        self.file_button = Rect::default();
+        let mut left = footer.x;
+        if !job.closing && !job.saving {
+            for (label, hit) in [
+                ("[ Cancel ]", &mut self.back_button),
+                ("[ Local library ]", &mut self.file_button),
+            ] {
+                let width = label.len() as u16;
+                if footer.right().saturating_sub(left) < width + 2 {
+                    break;
+                }
+                *hit = Rect::new(left, y, width, 1);
+                frame.render_widget(Paragraph::new(label), *hit);
+                left += width + 2;
+            }
+        }
+        frame.render_widget(
+            Paragraph::new(text).style(heading()),
+            Rect::new(left, y, footer.right().saturating_sub(left), 1),
+        );
+    }
+
+    fn draw_pane(&mut self, frame: &mut Frame) {
         self.prefs_buttons = Default::default();
         self.home_hits.clear();
         self.home_controls.clear();
@@ -56,57 +123,13 @@ impl Shelf {
         } else {
             centered(frame.area(), 84, 18)
         };
-        let wide = self.pending.is_none()
-            && self.login.is_none()
+        let wide = self.login.is_none()
             && self.session.is_some()
             && self.info.is_none()
             && panel.width >= 123
             && panel.height >= 20
             && self.view_available();
         let (side, panel) = self.rail.splitter.layout(panel, wide);
-        if let Some(job) = &self.pending {
-            let panel = centered(frame.area(), 54, 7);
-            let border = crate::appearance::block().title(if self.is_opds {
-                " OPDS "
-            } else {
-                " BookOrbit "
-            });
-            let inner = border.inner(panel);
-            frame.render_widget(border, panel);
-            let mut title = job.title;
-            if let Some((progress, finishing)) = &job.transfer {
-                let (received, total, complete) = progress.snapshot();
-                if complete {
-                    title = finishing;
-                } else if received > 0 && !self.is_opds {
-                    title = "Downloading book…";
-                }
-                let received_label = super::format_size(received);
-                let detail = if let Some(total) = total {
-                    let percent = (received.saturating_mul(100) / total).min(100);
-                    format!(
-                        "{received_label} / {}  ·  {percent}%",
-                        super::format_size(total)
-                    )
-                } else {
-                    format!("{received_label} received")
-                };
-                if inner.height > 2 && (received > 0 || self.is_opds) {
-                    frame.render_widget(
-                        Paragraph::new(detail),
-                        Rect::new(inner.x, inner.y + 1, inner.width, 1),
-                    );
-                }
-            }
-            frame.render_widget(
-                Paragraph::new(title).style(heading()),
-                Rect::new(inner.x, inner.y, inner.width, inner.height.min(1)),
-            );
-            if !job.closing && !job.saving {
-                self.draw_buttons(frame, inner, "[ Cancel ]", true);
-            }
-            return;
-        }
         if let Some(form) = &mut self.login {
             form.draw(frame, self.notice.as_deref());
             return;
@@ -435,7 +458,7 @@ impl Shelf {
             );
             frame.render_widget(Paragraph::new(label), self.file_button);
         }
-        if self.pending.is_none() && self.info.is_none() {
+        if self.info.is_none() {
             let mut x = if local {
                 self.file_button.right() + 1
             } else {
