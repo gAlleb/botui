@@ -55,15 +55,17 @@ pub fn block<'a>() -> Block<'a> {
 }
 pub fn zen_progress(
     frame: &mut ratatui::Frame,
-    page: usize,
-    total: usize,
+    pages: Option<(usize, usize)>,
     percent: f64,
     style: Style,
 ) {
     let screen = frame.area();
     let row =
         ratatui::layout::Rect::new(screen.x, screen.bottom().saturating_sub(1), screen.width, 1);
-    let label = format!("{page} / {total}  ·  {percent:.0}%");
+    let label = pages.map_or_else(
+        || format!("{percent:.0}%"),
+        |(page, total)| format!("{page} / {total}  ·  {percent:.0}%"),
+    );
     frame.render_widget(
         ratatui::widgets::Paragraph::new(label)
             .centered()

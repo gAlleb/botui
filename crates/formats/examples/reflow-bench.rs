@@ -1,6 +1,6 @@
 //! Run with a release build and a local EPUB/FB2 path; no account or state is changed.
 use botui_core::{LayoutMode, Pager};
-use std::{path::Path, time::Instant};
+use std::{path::Path, sync::Arc, time::Instant};
 
 #[cfg(target_env = "musl")]
 #[global_allocator]
@@ -8,7 +8,7 @@ static ALLOCATOR: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     for path in std::env::args().skip(1) {
-        let doc = botui_formats::open_document(Path::new(&path))?;
+        let doc = Arc::new(botui_formats::open_document(Path::new(&path))?);
         println!("{} ({} blocks)", doc.title, doc.blocks.len());
         let start = Instant::now();
         let mut pager = Pager::new(&doc, 104, 28, LayoutMode::Spread);
@@ -25,8 +25,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             ("resize", 108, 36, LayoutMode::Spread, 8),
         ] {
             let start = Instant::now();
-            pager.relayout_with_gap(&doc, width, height, mode, gap);
-            println!("  {label}: {:.2} ms", start.elapsed().as_secs_f64() * 1000.);
+            pager.resize_for_display(&doc, width, height, mode, gap);
+            let visible = start.elapsed().as_secs_f64() * 1000.;
+            pager.finish_resize();
+            let complete = start.elapsed().as_secs_f64() * 1000.;
+            println!("  {label}: {visible:.2} ms visible, {complete:.2} ms fully paginated");
         }
     }
     Ok(())

@@ -121,7 +121,7 @@ struct Reader {
     future: Vec<botui_core::Anchor>,
     source: std::path::PathBuf,
     illustrations: Option<crate::shelf::covers::Covers>,
-    doc: Document,
+    doc: std::sync::Arc<Document>,
     pager: Pager,
     mode: LayoutMode,
     layout_panel: Option<layout::Panel>,
@@ -209,7 +209,7 @@ impl Reader {
             future: vec![],
             source: source.into(),
             illustrations: None,
-            doc,
+            doc: std::sync::Arc::new(doc),
             pager,
             mode,
             page_width,
@@ -229,6 +229,21 @@ impl Reader {
         }
     }
 
+    fn save_appearance(&self, action: Action, notices: &mut Vec<String>) {
+        let result = crate::settings::Settings::update(|s| match action {
+            Action::Gap(_) => s.column_gap = Some(self.gap),
+            Action::Margin(_) => s.page_width = Some(self.page_width),
+            Action::Zen => s.zen = self.zen,
+            Action::ZenProgress => s.zen_progress = self.zen_progress,
+            Action::Background => s.opaque_background = self.opaque,
+            Action::Pick(theme_picker::Edit::Accept(_)) => s.theme = Some(self.theme.id()),
+            _ => (),
+        });
+        if let Err(e) = result {
+            notices.push(e.to_string());
+        }
+    }
+
     fn draw(&mut self, frame: &mut Frame, notice: Option<&str>) {
         let screen = frame.area();
         self.links.clear();
@@ -241,14 +256,12 @@ impl Reader {
         }
         let (text, actual, gap) =
             layout::geometry(page, self.mode, self.page_width, self.gap, self.zen);
-        let size_before = (self.pager.column_width(), self.pager.viewport());
         self.pager
-            .relayout_with_gap(&self.doc, text.width, text.height, actual, gap);
-        if !self.doc.styled.is_empty()
-            && size_before != (self.pager.column_width(), self.pager.viewport())
-        {
-            self.search.reflow(&self.pager, &self.doc);
-        }
+            .resize_for_display(&self.doc, text.width, text.height, actual, gap);
+        self.search.update(&self.pager, &self.doc);
+        let view = self.pager.viewport_rows();
+        let pages = (!self.pager.is_paginating())
+            .then(|| (self.pager.page_number(), self.pager.page_count()));
         let mut style = self
             .palette
             .as_ref()
@@ -262,12 +275,11 @@ impl Reader {
             p.collect();
         }
         let mut figures = Vec::new();
-        for c in 0..self.pager.columns() {
+        for c in 0..view.columns() {
             let x = text
                 .x
-                .saturating_add(c as u16 * (self.pager.column_width() + self.pager.gutter()));
-            for (y, line) in self
-                .pager
+                .saturating_add(c as u16 * (view.width() + view.gutter()));
+            for (y, line) in view
                 .lines(c)
                 .iter()
                 .take(usize::from(text.height))
@@ -276,7 +288,7 @@ impl Reader {
                 let rect = Rect::new(
                     x + line.indent,
                     text.y + y as u16,
-                    self.pager.column_width() - line.indent,
+                    view.width() - line.indent,
                     1,
                 );
                 for figure in &line.figures {
@@ -385,16 +397,16 @@ impl Reader {
                     r,
                 );
             }
-            let count = format!(
-                " {}{} / {} ",
-                if self.mode == LayoutMode::Scroll {
-                    "Scroll · "
-                } else {
-                    ""
-                },
-                self.pager.page_number(),
-                self.pager.page_count()
+            let position = pages.map_or_else(
+                || format!("{:.0}%", self.reading_percent()),
+                |(page, total)| format!("{page} / {total}"),
             );
+            let prefix = if self.mode == LayoutMode::Scroll {
+                "Scroll · "
+            } else {
+                ""
+            };
+            let count = format!(" {prefix}{position} ");
             let cw = (count.len() as u16).min(right - foot.x);
             frame.render_widget(
                 Paragraph::new(count).style(style),
@@ -407,13 +419,7 @@ impl Reader {
             );
         }
         if show_progress {
-            crate::appearance::zen_progress(
-                frame,
-                self.pager.page_number(),
-                self.pager.page_count(),
-                self.reading_percent(),
-                style,
-            );
+            crate::appearance::zen_progress(frame, pages, self.reading_percent(), style);
         }
         if self.links.visiting() {
             let footer = Rect::new(
@@ -429,10 +435,10 @@ impl Reader {
             panel.draw(
                 frame,
                 style,
-                self.pager.column_width(),
+                view.width(),
                 self.page_width,
                 self.gap,
-                (self.pager.columns() == 2).then(|| self.pager.gutter()),
+                (view.columns() == 2).then(|| view.gutter()),
             );
             return;
         }
@@ -456,7 +462,7 @@ impl Reader {
         frame.render_widget(block, popup);
         let header = inner.height.min(1);
         let status = u16::from(notice.is_some() && inner.height >= 4);
-        let counter = format!("{}/{}", self.pager.page_number(), self.pager.page_count());
+        let counter = pages.map_or_else(String::new, |(page, total)| format!("{page}/{total}"));
         let count_width = inner.width.min(counter.len() as u16);
         frame.render_widget(
             Paragraph::new(self.doc.title.as_str()),
@@ -847,6 +853,7 @@ impl Reader {
                 self.menu = None;
                 let mut nav = navigation::Navigation::new(kind, &self.doc, self.pager.anchor());
                 if kind == Kind::Search {
+                    self.pager.finish_resize();
                     nav.index = Some(self.search.index(&self.pager, &self.doc));
                 }
                 self.nav = Some(nav);
@@ -899,7 +906,8 @@ impl Reader {
             Action::Margin(d) => {
                 self.page_width = self
                     .pager
-                    .column_width()
+                    .viewport_rows()
+                    .width()
                     .saturating_add_signed(-2 * i16::from(d))
                     .clamp(32, 240);
                 self.margin = (self.margin + d).clamp(-2, 4);
@@ -928,6 +936,7 @@ impl Reader {
                 }
             }
             Action::Previous | Action::Next | Action::Lines(_) => {
+                self.pager.finish_resize();
                 let old = self.pager.anchor();
                 let forward = match action {
                     Action::Lines(n) => {
@@ -1166,12 +1175,13 @@ pub fn read_server(
     let started_finished = reader.finished;
     let mut observed = (start, reader.finished);
     let mut last_save = Instant::now();
+    let mut save_after_draw = None;
     let result: io::Result<()> = (|| {
         loop {
             if let Some(message) = viewer.collect() {
                 crate::prompt::message(term, "View cover", &message)?;
             }
-            term.draw(|frame| {
+            let frame_result = term.draw(|frame| {
                 reader.draw(frame, notices[before..].last().map(String::as_str));
                 crate::settings::paint_book(
                     frame,
@@ -1180,7 +1190,13 @@ pub fn read_server(
                         .as_ref()
                         .map_or(reader.theme, |p| p.preview()),
                 )
-            })?;
+            });
+            reader.pager.start_pagination();
+            // Publish the new geometry before syncing its settings file to disk.
+            if let Some(action) = save_after_draw.take() {
+                reader.save_appearance(action, notices);
+            }
+            frame_result?;
             if can_sync && let Some(sync) = live.as_deref_mut() {
                 let anchor = reader.links.origin(reader.pager.anchor());
                 if observed != (anchor, reader.finished) {
@@ -1215,10 +1231,16 @@ pub fn read_server(
                     .then_some(remaining)
                     .into_iter()
                     .chain(live.as_ref().filter(|_| can_sync).map(|s| s.timeout()))
+                    .chain(
+                        reader
+                            .pager
+                            .is_paginating()
+                            .then_some(Duration::from_millis(55)),
+                    )
                     .chain(images.then_some(Duration::from_millis(70)))
                     .min();
                 let Some(e) = crate::settings::read_event_for(timeout)? else {
-                    if images || (can_sync && live.is_some()) {
+                    if reader.pager.is_paginating() || images || (can_sync && live.is_some()) {
                         break Action::Resize;
                     }
                     continue;
@@ -1460,26 +1482,14 @@ pub fn read_server(
                 notices.push(e.to_string());
             }
             reader.apply(action);
-            if matches!(
-                action,
-                Action::Zen
-                    | Action::ZenProgress
-                    | Action::Background
-                    | Action::Gap(_)
-                    | Action::Margin(_)
-                    | Action::Pick(theme_picker::Edit::Accept(_))
-            ) {
-                let result = crate::settings::Settings::update(|s| match action {
-                    Action::Gap(_) => s.column_gap = Some(reader.gap),
-                    Action::Margin(_) => s.page_width = Some(reader.page_width),
-                    Action::Zen => s.zen = reader.zen,
-                    Action::ZenProgress => s.zen_progress = reader.zen_progress,
-                    Action::Background => s.opaque_background = reader.opaque,
-                    _ => s.theme = Some(reader.theme.id()),
-                });
-                if let Err(e) = result {
-                    notices.push(e.to_string());
+            match action {
+                Action::Zen | Action::ZenProgress | Action::Gap(_) | Action::Margin(_) => {
+                    save_after_draw = Some(action)
                 }
+                Action::Background | Action::Pick(theme_picker::Edit::Accept(_)) => {
+                    reader.save_appearance(action, notices)
+                }
+                _ => (),
             }
         }
         Ok(())

@@ -12,7 +12,7 @@ use blitz_traits::{
 use std::{
     collections::{BTreeMap, HashMap},
     ops::Range,
-    sync::{Arc, LazyLock, OnceLock},
+    sync::{Arc, LazyLock},
 };
 
 const CELL: f32 = 8.0;
@@ -22,95 +22,86 @@ const ROW: f32 = 16.0;
 /// Resizing reuses the engine's incremental layout instead of parsing the book
 /// again. Retain at most 2 MiB of markup and 24,000 source tags; larger books
 /// still render normally without growing this cache without bound.
-#[derive(Default)]
 pub(super) struct Reflow {
-    pool: OnceLock<Option<rayon::ThreadPool>>,
-    serial: Worker,
+    pool: Option<rayon::ThreadPool>,
+    owners: BTreeMap<usize, usize>,
 }
 
 impl Reflow {
-    pub fn layout_all(
-        &mut self,
-        doc: &super::Document,
-        layout: super::Layout,
-        printed: &[bool],
-        options: super::ReflowOptions,
-        resume: Option<Anchor>,
-    ) -> BTreeMap<usize, Vec<PageLine>> {
-        let count = self.pool.get().and_then(|p| p.as_ref()).map_or_else(
-            || {
-                std::thread::available_parallelism()
-                    .map_or(1, |n| n.get())
-                    .min(8)
-                    .min(doc.styled.len())
-                    .max(1)
-            },
-            |p| p.current_num_threads(),
-        );
-        // Chapter sizes vary greatly; assigning every nth chapter can leave
-        // most workers idle behind one very long part of the book.
+    pub fn new(doc: &super::Document) -> Self {
+        let count = std::thread::available_parallelism()
+            .map_or(1, |n| n.get())
+            .min(8)
+            .min(doc.styled.len());
+        let pool = (count > 0)
+            .then(|| {
+                rayon::ThreadPoolBuilder::new()
+                    .num_threads(count)
+                    .thread_name(|i| format!("epub-layout-{i}"))
+                    .build()
+                    .ok()
+            })
+            .flatten();
+        // A chapter keeps its cached DOM on the same worker across viewport changes.
         let mut weights: Vec<_> = doc
             .styled
-            .values()
-            .enumerate()
-            .map(|(i, c)| (i, c.html.len()))
+            .iter()
+            .map(|(&start, c)| (start, c.html.len()))
             .collect();
-        weights.sort_unstable_by_key(|&(i, size)| (std::cmp::Reverse(size), i));
-        let mut loads = vec![0; count];
-        let mut assignments = vec![0; weights.len()];
-        for (i, size) in weights {
-            let worker = loads
-                .iter()
+        weights.sort_unstable_by_key(|&(start, size)| (std::cmp::Reverse(size), start));
+        let mut loads = vec![0; count.max(1)];
+        let mut owners = BTreeMap::new();
+        for (start, size) in weights {
+            let (owner, load) = loads
+                .iter_mut()
                 .enumerate()
-                .min_by_key(|&(_, load)| load)
-                .unwrap()
-                .0;
-            assignments[i] = worker;
-            loads[worker] += size;
+                .min_by_key(|(_, load)| **load)
+                .unwrap();
+            owners.insert(start, owner);
+            *load += size;
         }
-        let render = |worker: &mut Worker, index: usize, count: usize| {
+        Self { pool, owners }
+    }
+
+    pub fn layout(
+        &self,
+        doc: &super::Document,
+        layout: super::Layout,
+        text: &super::BookLayout,
+        include: impl Fn(usize) -> bool + Sync,
+    ) -> BTreeMap<usize, Vec<PageLine>> {
+        let render = |worker: &mut Worker, owner: Option<usize>| {
             doc.styled
                 .iter()
-                .enumerate()
-                .filter_map(|(i, (&start, chapter))| {
-                    if (count > 1 && assignments[i] != index)
+                .filter_map(|(&start, chapter)| {
+                    if owner.is_some_and(|i| self.owners[&start] != i)
+                        || !include(start)
                         || (!chapter.preserve_structure
-                            && printed[start..chapter.end].contains(&true))
+                            && text.printed[start..chapter.end].contains(&true))
                     {
                         return None;
                     }
-                    let at = resume.filter(|a| (start..chapter.end).contains(&a.block));
+                    let at = text
+                        .resume
+                        .filter(|a| (start..chapter.end).contains(&a.block));
                     Some((
                         start,
-                        worker.layout(start, chapter, layout, options, &doc.blocks, at),
+                        worker.layout(start, chapter, layout, text.options, &doc.blocks, at),
                     ))
                 })
                 .collect::<Vec<_>>()
         };
-        if count < 2 {
-            return render(&mut self.serial, 0, 1).into_iter().collect();
-        }
-        let pool = self.pool.get_or_init(|| {
-            rayon::ThreadPoolBuilder::new()
-                .num_threads(count)
-                .thread_name(|i| format!("epub-layout-{i}"))
-                .build()
-                .ok()
-        });
-        let Some(pool) = pool else {
-            return render(&mut self.serial, 0, 1).into_iter().collect();
+        let Some(pool) = &self.pool else {
+            return render(&mut Worker::default(), None).into_iter().collect();
         };
-        // Each chapter stays on the same worker. Native layout trees never
-        // cross threads, and are dropped with this pager's private pool.
         thread_local! {
             static CACHE: std::cell::RefCell<Worker> = std::cell::RefCell::new(Worker::default());
         }
         pool.broadcast(|context| {
             CACHE.with(|cache| {
                 let mut worker = cache.borrow_mut();
-                let count = pool.current_num_threads();
-                worker.partitions = count;
-                render(&mut worker, context.index(), count)
+                worker.partitions = pool.current_num_threads();
+                render(&mut worker, Some(context.index()))
             })
         })
         .into_iter()

@@ -41,6 +41,9 @@ impl Links {
         self.keep = Rect::default();
     }
     pub fn mark_line(&mut self, f: &mut Frame, doc: &Document, line: &PageLine, rect: Rect) {
+        if self.by_block.is_empty() {
+            return;
+        }
         let mut blocks = vec![line.anchor().block];
         for at in line.spans.iter().filter_map(|span| span.source) {
             if blocks.last() != Some(&at.block) {

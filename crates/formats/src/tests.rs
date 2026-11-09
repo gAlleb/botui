@@ -597,3 +597,76 @@ fn resizing_and_cached_layouts_match_a_fresh_epub_layout() {
     let mut cold = Pager::with_start(&doc, 48, 40, LayoutMode::Single, changed, Some(at));
     assert_eq!(snapshot(&mut warm), snapshot(&mut cold));
 }
+
+#[test]
+fn visible_chapters_match_complete_pagination_across_resizes_and_page_turns() {
+    use botui_core::{Anchor, LayoutMode, Pager};
+    use std::sync::Arc;
+    let doc = Arc::new(read_book(archive(&[
+        ("META-INF/container.xml", "<container><rootfile full-path='p'/></container>"),
+        ("p","<package><manifest><item id='a' href='a' media-type='application/xhtml+xml'/><item id='b' href='b' media-type='application/xhtml+xml'/><item id='c' href='c' media-type='application/xhtml+xml'/><item id='i' href='img.png' media-type='image/png'/></manifest><spine><itemref idref='a'/><itemref idref='b'/><itemref idref='c'/></spine></package>"),
+        ("a","<html><body><p>Opening chapter with some words to wrap and an ending.</p><p>Last words of the opening chapter</p></body></html>"),
+        ("b","<html><head><style>.hidden{display:none}@media(min-width:400px){.wide{display:none}}</style></head><body><p class='hidden'>Hidden</p><p>Middle chapter with <em>emphasis</em>.</p><p class='wide'>Only narrow</p><table><tr><td rowspan='2'>Spanning</td><td>A</td></tr><tr><td>B</td></tr></table><p>End of middle</p></body></html>"),
+        ("c","<html><body><math><mfrac><mi>up</mi><mi>down</mi></mfrac></math><img src='img.png'/><p>End of book.</p></body></html>"),
+    ]),"Chapters").unwrap());
+    let location = |text: &str| Anchor {
+        block: doc
+            .blocks
+            .iter()
+            .position(|b| b.text.contains(text))
+            .unwrap(),
+        byte: 0,
+    };
+    let mut reader = Pager::new(&doc, 80, 7, LayoutMode::Single);
+    let snapshot = |p: &Pager| {
+        let view = p.viewport_rows();
+        (0..view.columns())
+            .flat_map(|c| view.lines(c))
+            .map(|l| format!("{l:?}"))
+            .collect::<Vec<_>>()
+    };
+    for (label, width, height, mode) in [
+        ("Last words", 84, 6, LayoutMode::Spread),
+        ("Middle chapter", 51, 9, LayoutMode::Single),
+        ("End of middle", 105, 8, LayoutMode::Spread),
+        ("End of book", 33, 5, LayoutMode::Scroll),
+        ("Hidden", 64, 9, LayoutMode::Single),
+    ] {
+        let at = location(label);
+        reader.seek(at);
+        // Replace an unfinished resize, like two successive mouse drags.
+        reader.resize_for_display(&doc, 39, 6, LayoutMode::Single, 4);
+        reader.start_pagination();
+        reader.resize_for_display(&doc, width, height, mode, 4);
+        let mut full = Pager::new(&doc, width, height, mode);
+        full.seek(at);
+        if label == "Middle chapter" {
+            assert!(reader.is_paginating());
+        }
+        assert_eq!(snapshot(&reader), snapshot(&full), "first frame at {label}");
+        assert_eq!(reader.anchor(), at);
+        if mode == LayoutMode::Spread {
+            reader.start_pagination();
+        }
+        reader.finish_resize();
+        assert_eq!(
+            snapshot(&reader),
+            snapshot(&full),
+            "complete frame at {label}"
+        );
+        assert_eq!(reader.page_number(), full.page_number());
+        assert_eq!(reader.page_count(), full.page_count());
+        assert_eq!(
+            reader.search_index(&doc).matches("Only narrow").len(),
+            full.search_index(&doc).matches("Only narrow").len()
+        );
+        reader.previous();
+        full.previous();
+        assert_eq!(reader.anchor(), full.anchor());
+        assert_eq!(snapshot(&reader), snapshot(&full));
+        reader.next();
+        full.next();
+        assert_eq!(reader.anchor(), full.anchor());
+        assert_eq!(reader.at_end(), full.at_end());
+    }
+}

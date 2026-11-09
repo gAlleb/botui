@@ -383,8 +383,7 @@ pub(super) fn read_pages(
             if show_progress && let Some(count) = total.filter(|n| *n > 0) {
                 crate::appearance::zen_progress(
                     f,
-                    shown as usize,
-                    count as usize,
+                    Some((shown as usize, count as usize)),
                     scan_percent(
                         shown,
                         shown_offset,

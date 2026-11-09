@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Changing width or opening the contents sidebar in a multi-chapter EPUB lays out the visible spread first. BOTUI finishes the book-wide page count in the background and keeps the same reading position.
 - Toggling zen progress leaves the text in place and no longer repaginates the book. EPUB resizing reuses parsed chapters and a bounded cache of recent layouts; chapter layout runs in parallel, with a faster allocator in static musl builds.
 - Local folders and list views open without waiting for image protocol discovery. Switching to cover view still detects terminal graphics when needed.
 - Generated jackets are prepared in the background instead of blocking entry to a cover shelf. Completed terminal frames use synchronized updates to avoid exposing partially drawn navigation and covers; small illustrations retain both visible spread sizes.

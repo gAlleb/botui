@@ -3,11 +3,15 @@
 mod location;
 mod media;
 pub use media::TableRow;
+mod pagination;
 mod printed;
 pub mod publisher;
 mod reference;
 mod reflow_cache;
+use pagination::BookLayout;
+pub use pagination::Viewport;
 pub use reference::{Reference, Target};
+use std::sync::Arc;
 mod search;
 pub use location::{Locations, Run};
 pub use search::{SearchIndex, SearchMatch};
@@ -173,12 +177,9 @@ pub struct ReflowOptions {
 }
 
 pub struct Pager {
-    reflow: publisher::Reflow,
+    book: Arc<BookLayout>,
     reflow_cache: reflow_cache::Cache,
-    resume: Option<Anchor>,
-    paragraph_indent: u8,
-    printed: Vec<bool>,
-    inline_images: bool,
+    pending: Option<pagination::Pending>,
     layout: Layout,
     lines: Vec<PageLine>,
     source_lines: Vec<(Anchor, usize)>,
@@ -252,57 +253,14 @@ impl Pager {
         options: ReflowOptions,
         resume: Option<Anchor>,
     ) -> Self {
-        let ReflowOptions {
-            repair_printed,
-            inline_images,
-            paragraph_indent,
-        } = options;
-        let mut printed = if repair_printed {
-            printed::printed_lines(&doc.blocks)
-        } else {
-            vec![false; doc.blocks.len()]
-        };
-        for (&start, row) in &doc.tables {
-            for v in printed
-                .iter_mut()
-                .skip(start)
-                .take(row.end.saturating_sub(start))
-            {
-                *v = false;
-            }
-        }
-        for r in &doc.references {
-            if let Some(p) = printed.get_mut(r.source) {
-                *p = false;
-            }
-        }
-        for (&start, chapter) in &doc.styled {
-            if chapter.preserve_structure {
-                printed[start..chapter.end].fill(false);
-            }
-            if start > 0 {
-                printed[start - 1] = false;
-            }
-        }
         let layout = Layout::new(width, height, mode, gap);
-        let mut reflow = publisher::Reflow::default();
-        let lines = wrap_document(
-            doc,
-            layout,
-            &printed,
-            inline_images,
-            paragraph_indent,
-            resume,
-            &mut reflow,
-        );
+        let book = Arc::new(BookLayout::new(doc, options, resume));
+        let lines = book.lines(doc, layout, 0..doc.blocks.len());
         let mut pager = Self {
-            reflow,
+            book,
             reflow_cache: reflow_cache::Cache::default(),
-            resume,
+            pending: None,
             layout,
-            paragraph_indent,
-            inline_images,
-            printed,
             source_lines: Self::source_index(doc, &lines),
             lines,
             first: 0,
@@ -330,7 +288,7 @@ impl Pager {
         options: ReflowOptions,
     ) {
         let focus = self.focus;
-        *self = Self::with_start_and_gap(doc, width, height, mode, gap, options, self.resume);
+        *self = Self::with_start_and_gap(doc, width, height, mode, gap, options, self.book.resume);
         self.seek(focus);
     }
 
@@ -343,40 +301,44 @@ impl Pager {
         gap: u16,
     ) {
         let layout = Layout::new(width, height, mode, gap);
+        self.pending = None;
+        if !self.use_cached_layout(layout) {
+            let lines = self.book.lines(doc, layout, 0..doc.blocks.len());
+            self.install(
+                reflow_cache::Snapshot {
+                    size: self.book.size(layout),
+                    sources: Self::source_index(doc, &lines),
+                    lines,
+                },
+                layout,
+            );
+        }
+    }
+
+    fn use_cached_layout(&mut self, layout: Layout) -> bool {
         if self.layout == layout {
-            return;
+            return true;
         }
-        let uses_height = !doc.styled.is_empty()
-            || self.inline_images
-                && doc
-                    .references
-                    .iter()
-                    .any(|r| matches!(r.target, Target::Image(_)));
-        if self.layout.width != layout.width || (uses_height && layout.height != self.layout.height)
-        {
-            let size = |l: Layout| (l.width, if uses_height { l.height } else { 0 });
-            let previous = reflow_cache::Snapshot {
-                size: size(self.layout),
-                lines: std::mem::take(&mut self.lines),
-                sources: std::mem::take(&mut self.source_lines),
-            };
-            if let Some(snapshot) = self.reflow_cache.take(size(layout)) {
-                self.lines = snapshot.lines;
-                self.source_lines = snapshot.sources;
-            } else {
-                self.lines = wrap_document(
-                    doc,
-                    layout,
-                    &self.printed,
-                    self.inline_images,
-                    self.paragraph_indent,
-                    self.resume,
-                    &mut self.reflow,
-                );
-                self.source_lines = Self::source_index(doc, &self.lines);
-            }
-            self.reflow_cache.put(previous);
+        let size = self.book.size(layout);
+        if size == self.book.size(self.layout) {
+            self.layout = layout;
+            self.seek(self.focus);
+            return true;
         }
+        let Some(snapshot) = self.reflow_cache.take(size) else {
+            return false;
+        };
+        self.install(snapshot, layout);
+        true
+    }
+
+    fn install(&mut self, snapshot: reflow_cache::Snapshot, layout: Layout) {
+        let previous = reflow_cache::Snapshot {
+            size: self.book.size(self.layout),
+            lines: std::mem::replace(&mut self.lines, snapshot.lines),
+            sources: std::mem::replace(&mut self.source_lines, snapshot.sources),
+        };
+        self.reflow_cache.put(previous);
         self.layout = layout;
         self.seek(self.focus);
     }
@@ -411,28 +373,26 @@ impl Pager {
     }
 
     pub fn seek(&mut self, anchor: Anchor) {
+        self.finish_resize();
         self.focus = anchor;
-        if !self.source_lines.is_empty() {
-            let index = self.source_lines.partition_point(|(at, _)| *at <= anchor);
-            self.first = self.source_lines[index.saturating_sub(1)].1;
-            return;
+        self.first = Self::line_at(anchor, &self.lines, &self.source_lines);
+    }
+
+    fn line_at(anchor: Anchor, lines: &[PageLine], sources: &[(Anchor, usize)]) -> usize {
+        if !sources.is_empty() {
+            let i = sources.partition_point(|(at, _)| *at <= anchor);
+            return sources[i.saturating_sub(1)].1;
         }
-        // Anchors are in document order, including the paragraph separators.
-        let first = self.lines.partition_point(|line| line.start < anchor);
-        self.first = if self.lines.get(first).is_some_and(|l| l.start == anchor) {
+        let first = lines.partition_point(|line| line.start < anchor);
+        if lines.get(first).is_some_and(|line| line.start == anchor) {
             first
         } else {
             first.saturating_sub(1)
-        };
+        }
     }
 
     pub fn lines(&self, column: usize) -> &[PageLine] {
-        if column >= self.layout.columns {
-            return &[];
-        }
-        let start = (self.first + column * self.layout.height).min(self.lines.len());
-        let end = (start + self.layout.height).min(self.lines.len());
-        &self.lines[start..end]
+        Viewport::new(self.layout, &self.lines, self.first).lines(column)
     }
 
     pub fn page_count(&self) -> usize {
@@ -444,6 +404,7 @@ impl Pager {
     }
 
     pub fn next(&mut self) {
+        self.finish_resize();
         let first = self.first + self.layout.columns * self.layout.height;
         if first != self.first && first < self.lines.len() {
             self.move_to(first);
@@ -451,6 +412,7 @@ impl Pager {
     }
 
     pub fn previous(&mut self) {
+        self.finish_resize();
         let first = self
             .first
             .saturating_sub(self.layout.columns * self.layout.height);
@@ -460,6 +422,7 @@ impl Pager {
     }
 
     pub fn scroll(&mut self, lines: isize) {
+        self.finish_resize();
         let max = self.lines.len().saturating_sub(self.layout.height.max(1));
         let first = self.first.saturating_add_signed(lines).min(max);
         if !self.lines.is_empty() && first != self.first {
@@ -490,135 +453,6 @@ impl Pager {
             .unwrap_or(line)
             .start;
     }
-}
-
-fn wrap_document(
-    doc: &Document,
-    layout: Layout,
-    printed: &[bool],
-    inline_images: bool,
-    paragraph_indent: u8,
-    resume: Option<Anchor>,
-    reflow: &mut publisher::Reflow,
-) -> Vec<PageLine> {
-    let width = layout.width;
-    let mut lines = Vec::new();
-    if width == 0 {
-        return lines;
-    }
-    let mut styled = reflow.layout_all(
-        doc,
-        layout,
-        printed,
-        ReflowOptions {
-            repair_printed: false,
-            inline_images,
-            paragraph_indent,
-        },
-        resume,
-    );
-    let positioned: std::collections::HashSet<_> = doc
-        .styled
-        .values()
-        .flat_map(|c| c.images.iter().flatten().copied())
-        .collect();
-    let mut images = std::collections::BTreeMap::<usize, Vec<usize>>::new();
-    for (i, r) in doc.references.iter().enumerate() {
-        if inline_images && matches!(r.target, Target::Image(_)) && !positioned.contains(&i) {
-            images
-                .entry(r.source.min(doc.blocks.len()))
-                .or_default()
-                .push(i);
-        }
-    }
-    let draw_images = |lines: &mut Vec<PageLine>, boundary: usize| {
-        if let Some(ids) = images.get(&boundary) {
-            let anchor = if boundary == 0 {
-                Anchor::default()
-            } else {
-                Anchor {
-                    block: boundary - 1,
-                    byte: doc.blocks[boundary - 1].text.len(),
-                }
-            };
-            for &id in ids {
-                for _ in 0..(layout.height * 2 / 3)
-                    .max(1)
-                    .min(usize::from(width) / 2 + 1)
-                {
-                    lines.push(PageLine {
-                        start: anchor,
-                        figures: vec![Figure {
-                            reference: id,
-                            x: 0,
-                            width,
-                        }],
-                        ..Default::default()
-                    });
-                }
-            }
-        }
-    };
-    let mut start = 0;
-    while start < doc.blocks.len() {
-        if let Some(chapter) = doc.styled.get(&start)
-            && (chapter.preserve_structure || !printed[start..chapter.end].contains(&true))
-        {
-            draw_images(&mut lines, start);
-            lines.extend(styled.remove(&start).unwrap_or_default());
-            start = chapter.end;
-            continue;
-        }
-        draw_images(&mut lines, start);
-        if let Some(row) = doc.tables.get(&start) {
-            media::table(&mut lines, start, row, width.into());
-            let end = row.end.clamp(start + 1, doc.blocks.len());
-            for i in start + 1..end {
-                draw_images(&mut lines, i);
-            }
-            start = end;
-            continue;
-        }
-        let end = printed::end(&doc.blocks, printed, start);
-        let end = (start + 1..=end)
-            .find(|i| {
-                images.contains_key(i) || doc.tables.contains_key(i) || doc.styled.contains_key(i)
-            })
-            .map_or(end, |i| i - 1);
-        let block = &doc.blocks[end];
-        let before = lines.len();
-        printed::wrap(
-            &mut lines,
-            &doc.blocks[start..=end],
-            start,
-            usize::from(width),
-            paragraph_indent,
-            resume.filter(|a| (start..=end).contains(&a.block)),
-        );
-        start = end + 1;
-        if lines.len() > before {
-            lines.push(PageLine {
-                spans: Vec::new(),
-                indent: 0,
-                figures: Vec::new(),
-                table_header: false,
-                text: String::new(),
-                heading: false,
-                start: Anchor {
-                    block: end,
-                    byte: block.text.len(),
-                },
-            });
-        }
-    }
-    if lines
-        .last()
-        .is_some_and(|l| l.figures.is_empty() && l.text.is_empty())
-    {
-        lines.pop();
-    }
-    draw_images(&mut lines, doc.blocks.len());
-    lines
 }
 
 fn breaks_word(c: char) -> bool {

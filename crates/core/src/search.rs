@@ -18,7 +18,7 @@ impl Pager {
         let mut rows = vec![];
         let mut start = 0;
         while start < doc.blocks.len() {
-            let end = printed::end(&doc.blocks, &self.printed, start);
+            let end = printed::end(&doc.blocks, &self.book.printed, start);
             let (text, offsets) = printed::join(&doc.blocks[start..=end]);
             let folded = text.to_lowercase();
             rows.push(Paragraph {
@@ -31,7 +31,8 @@ impl Pager {
         }
         let mut visible = std::collections::BTreeMap::<usize, Vec<Range<usize>>>::new();
         for (&start, chapter) in &doc.styled {
-            if chapter.preserve_structure || !self.printed[start..chapter.end].contains(&true) {
+            if chapter.preserve_structure || !self.book.printed[start..chapter.end].contains(&true)
+            {
                 for block in start..chapter.end {
                     visible.insert(block, Vec::new());
                 }

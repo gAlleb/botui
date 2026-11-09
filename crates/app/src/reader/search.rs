@@ -9,6 +9,7 @@ use std::rc::Rc;
 #[derive(Default)]
 pub(super) struct Search {
     index: Option<Rc<SearchIndex>>,
+    geometry: (u16, usize),
     hits: Vec<SearchMatch>,
     selected: usize,
     query: String,
@@ -16,6 +17,8 @@ pub(super) struct Search {
 
 impl Search {
     pub fn index(&mut self, pager: &Pager, doc: &Document) -> Rc<SearchIndex> {
+        self.update(pager, doc);
+        self.geometry = (pager.column_width(), pager.viewport());
         self.index
             .get_or_insert_with(|| Rc::new(pager.search_index(doc)))
             .clone()
@@ -25,7 +28,13 @@ impl Search {
         self.hits = hits;
         self.selected = selected;
     }
+    pub fn update(&mut self, pager: &Pager, doc: &Document) {
+        if !doc.styled.is_empty() && self.geometry != (pager.column_width(), pager.viewport()) {
+            self.reflow(pager, doc);
+        }
+    }
     pub fn reflow(&mut self, pager: &Pager, doc: &Document) {
+        self.geometry = (pager.column_width(), pager.viewport());
         if self.index.is_none() {
             return;
         }
@@ -62,7 +71,7 @@ impl Search {
             .hits
             .get(self.selected)
             .and_then(|h| self.index.as_ref()?.visible_range(h, line));
-        if line.spans.is_empty() && hit.is_none() {
+        if hit.is_none() && line.spans.iter().all(|s| s.face == Default::default()) {
             return Line::raw(&line.text);
         }
         let mut styled = Vec::new();

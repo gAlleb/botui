@@ -50,7 +50,7 @@ The table records how each reading or navigation scenario was checked. See the [
 
 Compare release binaries on the same machine, book and terminal dimensions, with separate temporary profiles. Include the last release before a rendering change, not just the broken build. Measure zen progress, sidebar, page modes, width, gap, themes, page turns and contents. Let image loading finish before measuring steady-state input; record cold image loading separately.
 
-The core benchmark excludes terminal drawing and image decoding:
+The core benchmark reports the time until the visible spread is laid out and the total time until the page count is ready. Terminal drawing and image decoding are measured separately.
 
 ```sh
 cargo run --locked --release -p botui-formats --example reflow-bench -- /path/to/book.epub
