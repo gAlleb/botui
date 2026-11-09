@@ -63,7 +63,6 @@ pub(super) fn read_book(reader: impl Read + Seek, fallback: &str) -> Result<Docu
     let mut starts = HashMap::new();
     let mut ids = HashMap::new();
     let mut raw = vec![];
-    let mut preformatted = Default::default();
     let mut tables = Default::default();
     for item in spine
         .children()
@@ -95,13 +94,7 @@ pub(super) fn read_book(reader: impl Read + Seek, fallback: &str) -> Result<Docu
         } else {
             xhtml::parse_document(&html)
         };
-        for (id, block) in xhtml::append_blocks(
-            &dom,
-            &mut blocks,
-            &mut links,
-            &mut preformatted,
-            &mut tables,
-        ) {
+        for (id, block) in xhtml::append_blocks(&dom, &mut blocks, &mut links, &mut tables) {
             ids.entry((member.clone(), id)).or_insert(block);
         }
         let member: std::sync::Arc<str> = member.into();
@@ -258,7 +251,6 @@ pub(super) fn read_book(reader: impl Read + Seek, fallback: &str) -> Result<Docu
         .collect();
     Ok(Document {
         image_pages,
-        preformatted,
         tables,
         references,
         contents,

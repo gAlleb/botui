@@ -1,9 +1,5 @@
 # Changelog
 
-## Unreleased
-
-- EPUB text layout preserves table spans and preformatted lines and distinguishes common MathML expressions. Press 4 to preview publisher CSS and typeset equations using the optional Vivliostyle CLI.
-
 ## 0.1.5 — 2026-11-08
 
 - Connected BookOrbit readers sync position after a pause in navigation and offer to resume changes from another device while the book stays open. The prompt refreshes while open and checks the latest position again when selected.

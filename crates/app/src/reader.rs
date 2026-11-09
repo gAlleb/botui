@@ -4,7 +4,6 @@ mod links;
 mod mark_list;
 mod navigation;
 pub(crate) mod notes;
-mod publisher;
 mod resources;
 mod search;
 pub(crate) mod theme_picker;
@@ -46,7 +45,6 @@ enum Action {
     Statistics,
     Resources,
     Cover,
-    Publisher,
     VisibleLinks,
     Follow(usize),
     ReturnLink,
@@ -75,14 +73,13 @@ enum Action {
     Resize,
 }
 
-const COMMANDS: [Action; 31] = [
+const COMMANDS: [Action; 30] = [
     Action::Resume,
     Action::Previous,
     Action::Next,
     Action::Single,
     Action::Spread,
     Action::Scroll,
-    Action::Publisher,
     Action::Theme,
     Action::Navigate(Kind::Contents),
     Action::Navigate(Kind::Search),
@@ -533,7 +530,6 @@ impl Reader {
                 Action::Statistics => ("Reading statistics".into(), "S"),
                 Action::Settings => ("Settings".into(), "F2"),
                 Action::Help => ("Keyboard shortcuts".into(), "?"),
-                Action::Publisher => ("Publisher layout (EPUB)".into(), "4"),
                 Action::Cover => ("View cover".into(), "C"),
                 Action::Resources => (
                     format!("Links & illustrations ({})", self.doc.references.len()).into(),
@@ -643,7 +639,6 @@ impl Reader {
                 {
                     self.bindings.get(&c).copied()
                 }
-                KeyCode::Char('4') => Some(Action::Publisher),
                 KeyCode::Char('n' | 'N') => Some(Action::Note),
                 KeyCode::Char('c' | 'C')
                     if !k
@@ -974,7 +969,6 @@ impl Reader {
                 }
             }
             Action::Resources
-            | Action::Publisher
             | Action::Cover
             | Action::VisibleLinks
             | Action::Follow(_)
@@ -1104,7 +1098,6 @@ pub fn read_server(
         )?;
         return Ok((change, percent.unwrap_or_default()));
     }
-    let mut publisher = publisher::Preview::default();
     let mut viewer = crate::cover_viewer::Viewer::default();
     let before = notices.len();
     let (mut state, mut saved) = match LocalState::for_file(path).and_then(|store| {
@@ -1300,14 +1293,6 @@ pub fn read_server(
                     notices.push(e.to_string());
                     reader.menu = Some(TableState::default().with_selected(Some(0)));
                 }
-                continue;
-            }
-            if action == Action::Publisher {
-                reader.menu = None;
-                if let Err(e) = publisher.open(term, path, notices) {
-                    crate::prompt::message(term, "Publisher layout", &e.to_string())?;
-                }
-                term.clear()?;
                 continue;
             }
             if action == Action::Cover {

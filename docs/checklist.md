@@ -40,8 +40,6 @@ The table records how each reading or navigation scenario was checked. See the [
 ## Coverage limits
 
 - **BookOrbit.** Bookmark responses were checked against a personal server for specific EPUB and FB2 editions. A local HTTP fixture exercises status changes, resets and progress conflicts. A full web → iPhone → TUI check requires a physical device and the same edition file.
-- EPUB and FB2 support simple text tables and embedded raster images.
-- Check merged headers, a fraction and preformatted whitespace in text view. In publisher layout (4), verify CSS-hidden text stays hidden and the fraction is vertically typeset.
-- When fixing these cases, check single-page and spread wrapping, search, bookmarks and BookOrbit resume immediately before and after a table or equation.
+- **EPUB and FB2.** The reader supports reflowable text tables and embedded raster images. Full CSS layout, merged cells and MathML are outside this coverage.
 - **OPDS 1 and 2.** Tests cover direct file acquisition. DRM and separate lending workflows are unsupported.
 - **PDF and DjVu.** Image-only pages are readable. Search requires an existing text layer. The server syncs the page number, and the device also saves the scroll offset.

@@ -134,7 +134,6 @@ pub fn synopsis(input: &str) -> String {
         &mut blocks,
         &mut vec![],
         &mut Default::default(),
-        &mut Default::default(),
     );
     blocks
         .into_iter()

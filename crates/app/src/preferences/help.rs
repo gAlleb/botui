@@ -93,7 +93,6 @@ pub(super) fn entries(ctx: Context, p: &Settings) -> Vec<Entry> {
                     ("C", "Open the embedded cover in your image viewer"),
                     ("← / →", "Previous / next page (or scroll)"),
                     ("1 / 2 / 3", "Single page / spread / continuous scroll"),
-                    ("4", "Publisher layout for EPUB (Vivliostyle)"),
                     ("%", "Show or hide page and progress in zen mode"),
                     ("W", "Set page width and column gap"),
                     ("[ / ]", "Widen / narrow each page"),

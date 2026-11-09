@@ -172,7 +172,6 @@ fn a_repeated_epub_passage_has_its_own_file_address() {
         &super::xhtml::parse_document(html),
         &mut d.blocks,
         &mut vec![],
-        &mut d.preformatted,
         &mut d.tables,
     );
     super::locations::epub(html, "/6/2", 0, &d.blocks, &mut d.locations);
@@ -280,34 +279,4 @@ fn nested_contents_keep_duplicate_chapter_names_in_their_own_books() {
             matches!(&book.contents[4].target, botui_core::Target::Supplement { member, fragment, .. } if member == "notes" && fragment == "n")
         );
     }
-}
-
-#[test]
-fn technical_epub_preserves_spans_equations_and_preformatted_lines() {
-    let mut book = botui_core::Document::default();
-    let dom = super::xhtml::parse_document(
-        r#"<html><body>
-        <table><tr><th rowspan="2">Group</th><th colspan="2">Range</th></tr>
-        <tr><td>Low</td><td>High</td></tr></table>
-        <p><math><semantics><mfrac><mi>a</mi><msup><mi>b</mi><mn>2</mn></msup></mfrac>
-        <annotation encoding="application/x-tex">duplicate</annotation></semantics></math></p>
-        <pre>first
-    second</pre><p>After</p></body></html>"#,
-    );
-    super::xhtml::append_blocks(
-        &dom,
-        &mut book.blocks,
-        &mut vec![],
-        &mut book.preformatted,
-        &mut book.tables,
-    );
-    let mut rows = book.tables.values();
-    let header = rows.next().unwrap();
-    assert_eq!((header.columns, &header.spans[..]), (3, &[1, 2][..]));
-    let second = rows.next().unwrap();
-    assert_eq!(second.cells, ["", "Low", "High"]);
-    assert!(book.blocks.iter().any(|b| b.text == "(a)/(b^(2))"));
-    let code = *book.preformatted.first().unwrap();
-    assert_eq!(book.blocks[code].text, "first\n    second");
-    assert_eq!(book.blocks[code + 1].text, "After");
 }

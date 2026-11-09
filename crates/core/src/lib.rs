@@ -16,7 +16,6 @@ use unicode_width::UnicodeWidthStr;
 pub struct Document {
     /// Ordered archive members when the entire reading order consists of raster plates.
     pub image_pages: Vec<String>,
-    pub preformatted: std::collections::BTreeSet<usize>,
     pub tables: std::collections::BTreeMap<usize, TableRow>,
     pub references: Vec<Reference>,
     pub contents: Vec<ContentsEntry>,
@@ -409,11 +408,6 @@ fn wrap_document(
     let mut start = 0;
     while start < doc.blocks.len() {
         draw_images(&mut lines, start);
-        if doc.preformatted.contains(&start) {
-            media::preformatted(&mut lines, &doc.blocks[start].text, start, width.into());
-            start += 1;
-            continue;
-        }
         if let Some(row) = doc.tables.get(&start) {
             media::table(&mut lines, start, row, width.into());
             let end = row.end.clamp(start + 1, doc.blocks.len());
@@ -425,9 +419,7 @@ fn wrap_document(
         }
         let end = printed::end(&doc.blocks, printed, start);
         let end = (start + 1..=end)
-            .find(|i| {
-                images.contains_key(i) || doc.tables.contains_key(i) || doc.preformatted.contains(i)
-            })
+            .find(|i| images.contains_key(i) || doc.tables.contains_key(i))
             .map_or(end, |i| i - 1);
         let block = &doc.blocks[end];
         let before = lines.len();
@@ -540,7 +532,6 @@ mod tests {
     fn document(paragraphs: &[&str]) -> Document {
         Document {
             image_pages: vec![],
-            preformatted: Default::default(),
             tables: Default::default(),
             title: "Книга".into(),
             references: vec![],

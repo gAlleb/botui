@@ -128,7 +128,6 @@ pub(super) fn append_blocks(
     dom: &Html,
     blocks: &mut Vec<Block>,
     links: &mut Vec<RawLink>,
-    preformatted: &mut std::collections::BTreeSet<usize>,
     tables: &mut std::collections::BTreeMap<usize, botui_core::TableRow>,
 ) -> Vec<(String, botui_core::Anchor)> {
     let Some(body) = dom
@@ -145,7 +144,6 @@ pub(super) fn append_blocks(
     let mut table_start = None;
     let mut table_rows = vec![];
     let mut columns = 0;
-    let mut occupied = Vec::new();
     for edge in body.traverse() {
         match edge {
             Edge::Open(node) if hidden.is_none() => match node.value() {
@@ -182,8 +180,14 @@ pub(super) fn append_blocks(
                             .filter(|c| matches!(c.value().name(), "td" | "th"))
                             .collect();
                         let header = cells.iter().any(|c| c.value().name() == "th");
-                        let (labels, spans) = place_cells(&cells, &mut occupied);
-                        table_start = Some((blocks.len(), header, labels, spans));
+                        table_start = Some((
+                            blocks.len(),
+                            header,
+                            cells
+                                .iter()
+                                .map(|c| clean(&c.text().collect::<Vec<_>>().join(" ")))
+                                .collect::<Vec<_>>(),
+                        ));
                     }
                     if el.attr("hidden").is_none()
                         && !matches!(name, "script" | "style" | "template" | "noscript")
@@ -202,39 +206,6 @@ pub(super) fn append_blocks(
                     if matches!(name, "script" | "style" | "template" | "svg" | "noscript")
                         || el.attr("hidden").is_some()
                     {
-                        hidden = Some(node.id());
-                    } else if name == "pre" {
-                        flush(&mut buffer, is_heading, blocks);
-                        let element = scraper::ElementRef::wrap(node).unwrap();
-                        let mut text = String::new();
-                        for edge in element.traverse() {
-                            if let Edge::Open(n) = edge {
-                                match n.value() {
-                                    Node::Element(el) if el.name() == "br" => text.push('\n'),
-                                    Node::Text(run) => {
-                                        for ch in run.chars() {
-                                            match ch {
-                                                '\t' => text.push_str("    "),
-                                                '\n' => text.push(ch),
-                                                ch if !ch.is_control() => text.push(ch),
-                                                _ => {}
-                                            }
-                                        }
-                                    }
-                                    _ => {}
-                                }
-                            }
-                        }
-                        preformatted.insert(blocks.len());
-                        blocks.push(Block {
-                            text,
-                            heading: false,
-                        });
-                        hidden = Some(node.id());
-                    } else if name == "math" {
-                        if let Some(element) = scraper::ElementRef::wrap(node) {
-                            append_text(&mut buffer, &math_text(element, 0));
-                        }
                         hidden = Some(node.id());
                     } else if matches!(name, "a" | "img") {
                         let image = name == "img";
@@ -293,18 +264,17 @@ pub(super) fn append_blocks(
                         }
                     }
                     columns = 0;
-                    occupied.clear();
                 } else if hidden.is_none()
                     && let Some(el) = node.value().as_element()
                     && boundary(el.name())
                 {
                     flush(&mut buffer, is_heading, blocks);
                     if el.name() == "tr"
-                        && let Some((start, header, cells, spans)) = table_start.take()
+                        && let Some((start, header, cells)) = table_start.take()
                         && start < blocks.len()
                         && !cells.is_empty()
                     {
-                        columns = columns.max(spans.iter().sum());
+                        columns = columns.max(cells.len());
                         table_rows.push(start);
                         tables.insert(
                             start,
@@ -312,7 +282,6 @@ pub(super) fn append_blocks(
                                 end: blocks.len(),
                                 header,
                                 cells,
-                                spans,
                                 columns: 0,
                             },
                         );
@@ -327,77 +296,4 @@ pub(super) fn append_blocks(
     }
     flush(&mut buffer, is_heading, blocks);
     ids
-}
-
-/// Keep a logical column occupied until the final row of a vertical span.
-fn place_cells(
-    cells: &[scraper::ElementRef<'_>],
-    occupied: &mut Vec<usize>,
-) -> (Vec<String>, Vec<usize>) {
-    let mut labels = Vec::new();
-    let mut spans = Vec::new();
-    let mut column = 0;
-    for cell in cells {
-        let span = |key| {
-            cell.attr(key)
-                .and_then(|v| v.parse::<usize>().ok())
-                .unwrap_or(1)
-                .clamp(1, 256)
-        };
-        let width = span("colspan");
-        while occupied
-            .get(column..)
-            .unwrap_or_default()
-            .iter()
-            .take(width)
-            .any(|&v| v > 0)
-        {
-            labels.push(String::new());
-            spans.push(1);
-            column += 1;
-        }
-        let end = column + width;
-        // Wide tables already use the stacked layout. Bound the occupancy map
-        // even if an input has thousands of cells with oversized spans.
-        if end <= 256 {
-            occupied.resize(occupied.len().max(end), 0);
-            occupied[column..end].fill(span("rowspan"));
-        }
-        labels.push(clean(&cell.text().collect::<Vec<_>>().join(" ")));
-        spans.push(width);
-        column = end;
-    }
-    for value in occupied {
-        *value = value.saturating_sub(1);
-    }
-    (labels, spans)
-}
-
-fn math_text(element: scraper::ElementRef<'_>, depth: usize) -> String {
-    if depth >= 64 {
-        return "…".into();
-    }
-    let parts: Vec<_> = element
-        .child_elements()
-        .filter(|child| !matches!(child.value().name(), "annotation" | "annotation-xml"))
-        .map(|child| math_text(child, depth + 1))
-        .collect();
-    match (element.value().name(), parts.as_slice()) {
-        ("mfrac", [a, b]) => format!("({a})/({b})"),
-        ("msqrt", args) => format!("√({})", args.join("")),
-        ("mroot", [a, b]) => format!("root({b}, {a})"),
-        ("msup", [a, b]) => format!("{a}^({b})"),
-        ("msub", [a, b]) => format!("{a}_({b})"),
-        ("msubsup", [a, b, c]) => format!("{a}_({b})^({c})"),
-        ("mfenced", args) => format!(
-            "{}{}{}",
-            element.attr("open").unwrap_or("("),
-            args.join(", "),
-            element.attr("close").unwrap_or(")")
-        ),
-        ("mtr", args) => args.join(", "),
-        ("mtable", args) => format!("[{}]", args.join(" ; ")),
-        (_, []) => clean(&element.text().collect::<String>()),
-        (_, args) => args.join(""),
-    }
 }
