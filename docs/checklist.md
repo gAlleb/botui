@@ -58,6 +58,8 @@ Compare release binaries on the same machine, book and terminal dimensions, with
 
 The core benchmark reports the time until the visible spread is laid out and the total time until the page count is ready. Terminal drawing and image decoding are measured separately.
 
+When changing the release profile, compare uncompressed executables built for the same architecture and C library. Check page-width changes and sidebar opening on a novel and an illustrated textbook, and compare the rendered table and equation in a technical EPUB.
+
 ```sh
 cargo run --locked --release -p botui-formats --example reflow-bench -- /path/to/book.epub
 ```
@@ -82,7 +84,7 @@ The canvas regression compares grouped rendering with individual shaping cluster
 
 ## Next reader improvements
 
-1. **Illustrated EPUBs.** Render inline SVG diagrams and externally referenced SVG figures. Test a textbook with labelled paths, a formula supplied as SVG and a fixed-layout spread with text over an image.
+1. **SVG illustrations in EPUBs.** Display drawings stored as inline SVG or linked SVG files. Test a labelled diagram, a formula supplied as a picture and a fixed-layout spread with text over an image. The reader already typesets equations written in MathML or marked TeX.
 2. **Search in scans.** Offer on-demand OCR for PDF and DjVu pages without text. Cache results per edition and page so a second search works offline.
 3. **Quoting a passage.** Let a reader select exact text with the mouse or keyboard, then copy it or attach a note to the selection. Keep both endpoints across a resize. [Bookokrat selection command](https://github.com/bugzmanov/bookokrat/blob/9c02ee3b3a0f86791b3917cb1a93436d92a8603e/src/keybindings/action.rs#L354)
 

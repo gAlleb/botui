@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Release binaries use size optimization while EPUB reflow and image resizing retain speed optimization.
 - Author and series cards keep their positions as more results arrive. F6 focuses the current BookOrbit section, including after navigation by number.
 - Shelf cards center the cover itself and leave a small gap above its title. Downloaded covers and generated jackets use the same spacing across BookOrbit, OPDS and local grids.
 - BookOrbit shows a single loading dialog during sign-in with saved credentials. A rejected password opens the form for retry.

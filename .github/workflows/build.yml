@@ -32,7 +32,7 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: linux-dist-${{ runner.arch }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml', 'mise.toml') }}
+          key: linux-dist-${{ runner.arch }}-${{ hashFiles('Cargo.toml', 'crates/*/Cargo.toml', 'Cargo.lock', 'rust-toolchain.toml', 'mise.toml') }}
 
       - name: Build static Linux binaries
         run: mise run dist

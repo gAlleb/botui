@@ -13,3 +13,18 @@ publish = false
 strip = "symbols"
 lto = "thin"
 codegen-units = 1
+opt-level = "s"
+
+# Width changes and opening the contents sidebar reflow the visible EPUB chapter.
+[profile.release.package.botui-core]
+opt-level = 3
+
+[profile.release.package.blitz-dom]
+opt-level = 3
+
+[profile.release.package.stylo]
+opt-level = 3
+
+# Scans, cover thumbnails and inline figures share the image resampler.
+[profile.release.package.image]
+opt-level = 3
