@@ -179,6 +179,7 @@ enum Section {
     Groups {
         directory: Directory,
         query: String,
+        total: u64,
         next: Option<u32>,
     },
     Feed {
@@ -325,6 +326,7 @@ enum AfterSave {
 struct Pending {
     started: Instant,
     tab: Option<Tab>,
+    open_selection: bool,
     return_depth: Option<usize>,
     title: &'static str,
     closing: bool,
@@ -354,7 +356,6 @@ pub(crate) struct Shelf {
     downloads: Worker,
     pending: Option<Pending>,
     covers: covers::Covers,
-    graphics: ratatui_image::picker::Picker,
     rail: rail::Rail,
     card: detail::Card,
     dirty_shelves: [bool; 2],
@@ -398,7 +399,6 @@ impl Shelf {
             downloads: Worker::new(),
             pending: None,
             covers: covers::Covers::new(),
-            graphics: crate::cover::graphics(),
             rail: rail::Rail::saved(),
             card: Default::default(),
             dirty_shelves: [false; 2],
@@ -442,6 +442,7 @@ impl Shelf {
         self.pending = Some(Pending {
             started: Instant::now(),
             tab: None,
+            open_selection: false,
             return_depth: None,
             title,
             closing: false,
@@ -470,6 +471,7 @@ impl Shelf {
         self.pending = Some(Pending {
             started: Instant::now(),
             tab: None,
+            open_selection: false,
             return_depth: None,
             title,
             closing: false,
@@ -982,6 +984,7 @@ impl Shelf {
         self.pending = Some(Pending {
             started: Instant::now(),
             tab: None,
+            open_selection: false,
             return_depth: None,
             title: "Signing out…",
             closing: true,
@@ -1117,6 +1120,7 @@ impl Shelf {
                     Section::Groups {
                         directory,
                         query,
+                        total: page.total,
                         next,
                     },
                     &format!("{label}  ·  {}", page.total),
@@ -1320,6 +1324,7 @@ impl Shelf {
                 directory,
                 query,
                 next: Some(next),
+                ..
             } => {
                 let session = self.session.clone().expect("native catalog");
                 let (d, q, n) = (*directory, query.clone(), *next);
@@ -1429,14 +1434,35 @@ impl Shelf {
             Err(TryRecvError::Empty) => return None,
             Err(TryRecvError::Disconnected) => Err("Background request interrupted.".into()),
         };
-        if let Some(depth) = self.pending.take().and_then(|job| job.return_depth)
+        let pending = self.pending.take()?;
+        if let Some(depth) = pending.return_depth
             && matches!(result, Ok(Loaded::Books(..)))
         {
             self.stack.truncate(depth);
         }
         let after_save = self.after_save.take();
         let selection = match result {
-            Ok(loaded) => self.complete(loaded),
+            Ok(loaded) => {
+                let saved_edition = matches!(
+                    loaded,
+                    Loaded::Moved { saved: true, .. } | Loaded::Status(..)
+                );
+                let selection = self.complete(loaded);
+                if pending.open_selection
+                    && after_save.is_none()
+                    && selection.is_none()
+                    && let Some(action) = self.current().action()
+                    && match action {
+                        Command::Books(..) | Command::Files(_) => pending.tab.is_some(),
+                        Command::File(_) => saved_edition,
+                        _ => false,
+                    }
+                {
+                    self.apply(action)
+                } else {
+                    selection
+                }
+            }
             Err(e) => {
                 if botui_bookorbit::is_unauthorized(e.as_ref()) {
                     if self.login.is_some() {
@@ -1562,6 +1588,22 @@ impl Shelf {
                 return self.source_home();
             }
             if self.pending.as_ref().is_some_and(|p| p.saving) {
+                if self.after_save.is_none() && matches!(self.current().section, Section::Files(_))
+                {
+                    let row = click.and_then(|pos| self.clicked_row(pos));
+                    if let Some(index) = row {
+                        self.current_mut().selection.select(Some(index));
+                    }
+                    if row.is_some()
+                        || matches!(key, Some(KeyCode::Enter | KeyCode::Char('r' | 'R')))
+                        || matches!(
+                            click.and_then(|p| self.card.action_at(p)),
+                            Some(detail::Act::Read)
+                        )
+                    {
+                        self.pending.as_mut()?.open_selection = true;
+                    }
+                }
                 return None;
             }
             if key == Some(KeyCode::Char('o')) {
@@ -1573,8 +1615,23 @@ impl Shelf {
             if key == Some(KeyCode::Esc) || click.is_some_and(|p| self.back_button.contains(p)) {
                 return self.back();
             }
-            if self.pending.as_ref().is_some_and(|job| job.tab.is_some()) {
-                self.catalog_navigation(&event, key, click);
+            if self.pending.as_ref().is_some_and(|job| job.tab.is_some())
+                && !self.catalog_navigation(&event, key, click)
+                && !matches!(self.current().section, Section::Home)
+            {
+                if key == Some(KeyCode::Enter) {
+                    self.pending.as_mut()?.open_selection = true;
+                } else if let Some(index) = click.and_then(|p| self.clicked_row(p))
+                    && matches!(
+                        self.current().rows[index].action,
+                        Command::Files(_) | Command::File(_) | Command::Books(..)
+                    )
+                {
+                    // The outgoing shelf is still on screen. Open the item the user actually clicked.
+                    self.pending = None;
+                    self.current_mut().selection.select(Some(index));
+                    return self.apply(self.current().action()?);
+                }
             }
             return None;
         }
@@ -1650,17 +1707,11 @@ impl Shelf {
         if self.catalog_navigation(&event, key, click) {
             return None;
         }
+        if let Some(i) = click.and_then(|p| self.clicked_row(p)) {
+            self.current_mut().selection.select(Some(i));
+            return self.apply(self.current().action()?);
+        }
         if let Some(grid) = &self.grid {
-            if let Some(pos) = click
-                && self.list_area.contains(pos)
-            {
-                if let Some(i) = grid.hit(pos) {
-                    self.current_mut().selection.select(Some(i));
-                    let action = self.current().action()?;
-                    return self.apply(action);
-                }
-                return None;
-            }
             if self.grid_view
                 && let Section::Dashboard(d) = &self.current().section
             {
@@ -1750,21 +1801,25 @@ impl Shelf {
                     self.current_mut().move_by(1);
                     None
                 }
-                MouseEventKind::Down(MouseButton::Left) => {
-                    let pane = self.current_mut();
-                    let i = pane.selection.offset() + usize::from(m.row - list_area.y);
-                    if i < pane.rows.len() {
-                        pane.selection.select(Some(i));
-                        pane.action()
-                    } else {
-                        None
-                    }
-                }
                 _ => None,
             },
             _ => None,
         };
         action.and_then(|cmd| self.apply(cmd))
+    }
+
+    fn clicked_row(&self, pos: Position) -> Option<usize> {
+        if !self.list_area.contains(pos) {
+            return None;
+        }
+        match &self.grid {
+            Some(grid) => grid.hit(pos),
+            None => {
+                let index =
+                    self.current().selection.offset() + usize::from(pos.y - self.list_area.y);
+                (index < self.current().rows.len()).then_some(index)
+            }
+        }
     }
 
     /// A conflict is durable across restarts. Resolve it before the connected

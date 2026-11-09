@@ -358,6 +358,9 @@ impl Reader {
                 }
             }
         }
+        if let Some(pictures) = &mut self.illustrations {
+            pictures.finish_frame();
+        }
         if !self.zen {
             if !self.sidebar_rect.is_empty() {
                 if !self.sidebar_focus {

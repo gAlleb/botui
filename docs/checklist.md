@@ -9,7 +9,12 @@ The table records how each reading or navigation scenario was checked. See the [
 | Sign in to BookOrbit with no personal collections. Choose a library, book and edition, then navigate back. | smoke-shelf |
 | Find a book beyond the first batch of results. Check progress on the current shelf, recent additions and continuous navigation in list and grid views. | smoke-shelf |
 | Open a shelf from the dashboard. Find an author or series beyond the first batch. Check counts before opening the index and verify volume order. | smoke-shelf and a separate Kitty session |
+| Hold the second page of Authors and Series in grid and list view. Check that the first 24 entries keep their coordinates, click a card at its original position, and use F6 to move from Series to Authors. | smoke-shelf |
 | Hold the thumbnail response, then release it. Only the book with a missing cover gets a generated jacket. Delay a directory request, cancel it and check that the shelf, rail and cached cover stayed visible. | smoke-shelf and a pixel check in headless Kitty |
+| Delay sign-in and the first dashboard response with saved credentials. Check that both show Loading and that a rejected password opens the sign-in form. | smoke-config |
+| Press a shelf shortcut and immediately press Enter. Close a book and click another edition while progress is being saved. Check which book and edition open. | smoke-shelf and smoke-progress |
+| Change the Kitty font size with a cover grid open. Compare the settled grid with a fresh launch at the same font size. | Pixel comparison in headless Kitty |
+| Check a portrait cover in adjacent cards of odd and even widths. Measure both side margins and the gap above the caption on the rendered image. | Cover geometry test and a headless Kitty capture at 11 × 23 pixels per cell |
 | Migrate settings to TOML, start two instances and check plaintext passwords, password commands and account isolation. | smoke-config |
 | Adjust page width and gutter independently. Check shortcut alignment and rounded, square and hidden borders. | smoke-reader, smoke-library, layout tests and *Chaos and Amber* in Kitty |
 | Paste a folder path with the mouse, find a book in a subfolder, switch views and restart. | smoke-library and a local folder containing *Sign of the Unicorn* |
@@ -80,3 +85,8 @@ The canvas regression compares grouped rendering with individual shaping cluster
 1. **Illustrated EPUBs.** Render inline SVG diagrams and externally referenced SVG figures. Test a textbook with labelled paths, a formula supplied as SVG and a fixed-layout spread with text over an image.
 2. **Search in scans.** Offer on-demand OCR for PDF and DjVu pages without text. Cache results per edition and page so a second search works offline.
 3. **Quoting a passage.** Let a reader select exact text with the mouse or keyboard, then copy it or attach a note to the selection. Keep both endpoints across a resize. [Bookokrat selection command](https://github.com/bugzmanov/bookokrat/blob/9c02ee3b3a0f86791b3917cb1a93436d92a8603e/src/keybindings/action.rs#L354)
+
+### Follow-up checks
+
+- Repeat the cover-spacing check in Alacritty at two font sizes. In Authors and Series, click the same card before and after the next batch arrives and confirm that both clicks open the same entry.
+- Read the same EPUB edition in BOTUI, the BookOrbit web reader and on an iPhone, then return to BOTUI. Compare the first visible phrase at each handoff and open the same bookmark on all three devices.

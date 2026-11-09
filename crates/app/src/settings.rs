@@ -71,7 +71,11 @@ pub(crate) fn read_scan_event(
     timeout: Option<std::time::Duration>,
     paper: bool,
 ) -> io::Result<Option<crossterm::event::Event>> {
-    crate::terminal_input::read(&TERMINAL, timeout, opaque() || paper)
+    let event = crate::terminal_input::read(&TERMINAL, timeout, opaque() || paper)?;
+    if matches!(event, Some(crossterm::event::Event::Resize(..))) {
+        crate::cover::resized();
+    }
+    Ok(event)
 }
 pub(crate) fn scan_colors() -> ([u8; 3], [u8; 3]) {
     let t = TERMINAL.get();

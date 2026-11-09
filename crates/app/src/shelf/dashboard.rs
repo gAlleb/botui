@@ -269,14 +269,7 @@ impl Shelf {
                     let border = crate::appearance::card(active);
                     let face = border.inner(tile);
                     frame.render_widget(border, tile);
-                    book_face(
-                        frame,
-                        face,
-                        book,
-                        self.covers.artwork(book),
-                        &self.graphics,
-                        active,
-                    );
+                    book_face(frame, face, book, self.covers.artwork(book), active);
                     if book.has_cover != Some(false) {
                         wanted.push(book.id);
                     }

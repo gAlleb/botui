@@ -48,7 +48,6 @@ pub struct Picker {
     grid_view: bool,
     grid: Option<crate::shelf::gallery::Grid>,
     covers: crate::shelf::covers::Covers,
-    graphics: Option<ratatui_image::picker::Picker>,
     view_button: Rect,
     view: LocalView,
     shelves: [Rect; 3],
@@ -91,8 +90,6 @@ impl Picker {
             grid_view: settings.local_grid,
             grid: None,
             covers: crate::shelf::covers::Covers::new(),
-            // Folder and list views need no image protocol negotiation.
-            graphics: None,
             view_button: Rect::default(),
             root: dir.clone(),
             view: LocalView::Directory,
@@ -158,6 +155,13 @@ impl Picker {
     }
 
     fn draw(&mut self, frame: &mut Frame) {
+        crate::shelf::gallery::binding::collect();
+        self.draw_directory(frame);
+        self.covers.finish_frame();
+        crate::shelf::gallery::binding::finish_frame();
+    }
+
+    fn draw_directory(&mut self, frame: &mut Frame) {
         let area = frame.area();
         frame.render_widget(Clear, area);
         let panel = if self.source.is_some() {

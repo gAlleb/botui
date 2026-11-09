@@ -36,14 +36,34 @@ impl Shelf {
     }
 
     pub(super) fn draw(&mut self, frame: &mut Frame) {
-        self.draw_pane(frame);
-        if self
-            .pending
-            .as_ref()
-            .is_some_and(|job| job.started.elapsed() >= std::time::Duration::from_millis(160))
+        super::gallery::binding::collect();
+        self.clear_controls();
+        if !self.is_opds
+            && matches!(self.current().section, Section::Home)
+            && self.pending.as_ref().is_some_and(|job| !job.closing)
         {
-            self.draw_pending_status(frame);
+            self.rail.splitter.layout(frame.area(), false);
+            let panel = centered(frame.area(), 44, 5);
+            let border = crate::appearance::block().title(" BookOrbit ");
+            let inner = border.inner(panel);
+            frame.render_widget(border, panel);
+            frame.render_widget(
+                Paragraph::new("Loading…").style(heading()).centered(),
+                inner,
+            );
+            self.draw_buttons(frame, inner, "[ Cancel ]", true);
+        } else {
+            self.draw_pane(frame);
+            if self
+                .pending
+                .as_ref()
+                .is_some_and(|job| job.started.elapsed() >= std::time::Duration::from_millis(160))
+            {
+                self.draw_pending_status(frame);
+            }
         }
+        self.covers.finish_frame();
+        super::gallery::binding::finish_frame();
     }
 
     fn draw_pending_status(&mut self, frame: &mut Frame) {
@@ -102,7 +122,7 @@ impl Shelf {
         );
     }
 
-    fn draw_pane(&mut self, frame: &mut Frame) {
+    fn clear_controls(&mut self) {
         self.prefs_buttons = Default::default();
         self.home_hits.clear();
         self.home_controls.clear();
@@ -118,6 +138,9 @@ impl Shelf {
         self.file_button = Rect::default();
         self.list_area = Rect::default();
         self.tab_buttons = [Rect::default(); Tab::ALL.len()];
+    }
+
+    fn draw_pane(&mut self, frame: &mut Frame) {
         let panel = if self.session.is_some() || self.is_opds {
             frame.area()
         } else {
@@ -458,7 +481,7 @@ impl Shelf {
             );
             frame.render_widget(Paragraph::new(label), self.file_button);
         }
-        if self.info.is_none() {
+        if self.info.is_none() && self.pending.is_none() {
             let mut x = if local {
                 self.file_button.right() + 1
             } else {

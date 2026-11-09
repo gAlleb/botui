@@ -1,7 +1,10 @@
 //! BOTUI's clothbound jacket, shared by every catalog and the desktop cover viewer.
 use super::caption;
 use crate::shelf::background::{Ticket, Worker};
-use crate::{catalog::Book, cover::Picture};
+use crate::{
+    catalog::Book,
+    cover::{ImagePlacement, Picture},
+};
 use image::{DynamicImage, RgbaImage};
 use lru::LruCache;
 use ratatui::{Frame, layout::Rect};
@@ -37,6 +40,7 @@ struct Jackets {
     images: LruCache<Binding, Option<Picture>>,
     worker: Worker,
     pending: Vec<(Binding, Ticket<Option<DynamicImage>>)>,
+    visible: Vec<Binding>,
 }
 impl Jackets {
     fn collect(&mut self) {
@@ -51,21 +55,41 @@ impl Jackets {
             false
         });
     }
+
+    fn finish_frame(&mut self) {
+        // Dropping a ticket skips its job if the worker hasn't started it yet.
+        self.pending.retain(|(key, _)| self.visible.contains(key));
+        for key in self.visible.drain(..) {
+            if self.pending.len() >= 12 {
+                break;
+            }
+            if !self.pending.iter().any(|(pending, _)| pending == &key) {
+                let binding = key.clone();
+                let job = self.worker.start(move |_| binding.render(1).ok());
+                self.pending.push((key, job));
+            }
+        }
+    }
 }
 thread_local! {
     static JACKETS: RefCell<Jackets> = RefCell::new(Jackets {
         images: LruCache::new(NonZeroUsize::new(48).unwrap()),
         worker: Worker::new(),
         pending: Vec::new(),
+        visible: Vec::new(),
     });
 }
 
+pub(crate) fn collect() {
+    JACKETS.with_borrow_mut(Jackets::collect);
+}
+
+pub(crate) fn finish_frame() {
+    JACKETS.with_borrow_mut(Jackets::finish_frame);
+}
+
 pub(crate) fn busy() -> bool {
-    JACKETS.with_borrow_mut(|cache| {
-        let pending = !cache.pending.is_empty();
-        cache.collect();
-        pending
-    })
+    JACKETS.with_borrow(|cache| !cache.pending.is_empty())
 }
 
 impl From<&Book> for Binding {
@@ -124,21 +148,24 @@ impl Binding {
         crate::cover_viewer::png(self.render(3)?)
     }
 
-    pub(super) fn draw_or_wait(&self, frame: &mut Frame, slot: Rect, picker: &Picker) -> bool {
+    pub(super) fn draw_or_wait(
+        &self,
+        frame: &mut Frame,
+        slot: Rect,
+        picker: &Picker,
+        placement: ImagePlacement,
+    ) -> bool {
         JACKETS.with_borrow_mut(|cache| {
-            cache.collect();
             if let Some(cached) = cache.images.get(self) {
                 if let Some(picture) = cached {
-                    picture.draw(frame, slot, picker);
+                    picture.draw_cover(frame, slot, picker, placement);
                 }
                 return cached.is_some();
             }
             // The caption already identifies the book while its jacket is prepared.
             // Terminal lettering is the fallback if rasterization actually fails.
-            if cache.pending.len() < 12 && !cache.pending.iter().any(|(key, _)| key == self) {
-                let binding = self.clone();
-                let job = cache.worker.start(move |_| binding.render(1).ok());
-                cache.pending.push((self.clone(), job));
+            if !cache.visible.contains(self) {
+                cache.visible.push(self.clone());
             }
             true
         })
@@ -239,6 +266,40 @@ fn fonts() -> &'static Arc<usvg::fontdb::Database> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn changing_shelves_replaces_waiting_jackets_in_the_same_frame() {
+        use std::{sync::mpsc, time::Duration};
+        JACKETS.with_borrow_mut(|cache| {
+            let (release, gate) = mpsc::channel();
+            let _hold = cache.worker.start(move |_| gate.recv().unwrap());
+            let (started, jobs) = mpsc::channel();
+            for i in 0..12 {
+                let key = Binding::new(&format!("Book {i}"), &[], None, None);
+                let started = started.clone();
+                let job = cache.worker.start(move |_| {
+                    started.send(i).unwrap();
+                    None
+                });
+                cache.pending.push((key, job));
+            }
+            let keep = cache.pending[11].0.clone();
+            let new = Binding::new("Next shelf", &[], None, None);
+            cache.visible.extend([keep.clone(), new.clone()]);
+            cache.finish_frame();
+            assert_eq!(cache.pending.len(), 2);
+            release.send(()).unwrap();
+            let drained = cache.worker.start(|_| ());
+            drained
+                .receiver
+                .recv_timeout(Duration::from_secs(10))
+                .unwrap();
+            cache.collect();
+            assert!(cache.images.contains(&new) && cache.images.contains(&keep));
+            assert_eq!(jobs.try_iter().collect::<Vec<_>>(), [11]);
+        });
+    }
+
     #[test]
     fn series_has_one_cloth_and_keeps_distinct_titles_and_volume_numbers() {
         let one = Binding::new("A & B", &[], Some("Amber"), Some("1"));

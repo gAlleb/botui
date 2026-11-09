@@ -26,6 +26,7 @@ pub(super) struct Rail {
     viewport: Rect,
     pub(super) focused: bool,
     cursor: usize,
+    active_row: usize,
     offset: usize,
     folded: [bool; 2],
 }
@@ -44,6 +45,7 @@ impl Rail {
                     groups.authors = groups.authors.or(self.data.authors);
                     groups.series = groups.series.or(self.data.series);
                     self.data = groups;
+                    self.rebuild_rows();
                     self.work = None;
                 }
                 Err(TryRecvError::Disconnected) => self.work = None,
@@ -61,10 +63,11 @@ impl Rail {
             data: Sidebar::default(),
             work: None,
             hits: vec![],
-            rows: vec![],
+            rows: Tab::ALL.into_iter().map(Command::OpenTab).collect(),
             viewport: Rect::default(),
             focused: false,
             cursor: 0,
+            active_row: 0,
             offset: 0,
             folded: [
                 c.bookorbit.libraries_collapsed,
@@ -78,6 +81,45 @@ impl Rail {
             Tab::Collections => Some(1),
             _ => None,
         }
+    }
+    fn row_index(&self, tab: Tab, scope: Option<&Scope>) -> usize {
+        let mut heading = 0;
+        for (i, row) in self.rows.iter().enumerate() {
+            match (row, scope) {
+                (Command::OpenTab(t), _) if *t == tab => heading = i,
+                (Command::Books(Scope::Library(l), _), Some(Scope::Library(s))) if l.id == s.id => {
+                    return i;
+                }
+                (Command::Books(Scope::Collection(c), _), Some(Scope::Collection(s)))
+                    if c.id == s.id =>
+                {
+                    return i;
+                }
+                _ => {}
+            }
+        }
+        heading
+    }
+    fn rebuild_rows(&mut self) {
+        let previous = self.rows.get(self.cursor).cloned();
+        self.rows.clear();
+        for tab in Tab::ALL {
+            self.rows.push(Command::OpenTab(tab));
+            if Self::slot(tab).is_some_and(|i| !self.folded[i]) {
+                self.rows.extend(
+                    self.data
+                        .groups
+                        .iter()
+                        .filter(|g| g.tab() == tab)
+                        .map(|s| Command::Books(s.clone(), 0)),
+                );
+            }
+        }
+        self.cursor = match previous {
+            Some(Command::OpenTab(tab)) => self.row_index(tab, None),
+            Some(Command::Books(s, _)) => self.row_index(s.tab(), Some(&s)),
+            _ => 0,
+        };
     }
     fn parent(&self) -> Option<Tab> {
         match self.rows.get(self.cursor)? {
@@ -101,11 +143,8 @@ impl Rail {
             }
         })?;
         self.folded[i] = value;
-        self.cursor = self
-            .rows
-            .iter()
-            .position(|c| matches!(c,Command::OpenTab(tab) if *tab==t))
-            .unwrap_or(0);
+        self.cursor = self.row_index(t, None);
+        self.rebuild_rows();
         Ok(())
     }
     fn activate(&mut self) -> std::io::Result<Option<Command>> {
@@ -126,7 +165,10 @@ impl Rail {
         let bottom = self.rows.len().saturating_sub(1);
         match e {
             Event::Key(k) if k.kind != KeyEventKind::Release && k.code == KeyCode::F(6) => {
-                self.focused = !self.focused
+                self.focused = !self.focused;
+                if self.focused {
+                    self.cursor = self.active_row;
+                }
             }
             Event::Key(k) if self.focused && k.kind != KeyEventKind::Release => match k.code {
                 KeyCode::Esc => self.focused = false,
@@ -230,19 +272,11 @@ impl Rail {
         let inner = edge.inner(area);
         f.render_widget(edge, area);
         self.viewport = inner;
-        self.rows.clear();
-        for tab in Tab::ALL {
-            self.rows.push(Command::OpenTab(tab));
-            if Self::slot(tab).is_some_and(|i| !self.folded[i]) {
-                self.rows.extend(
-                    self.data
-                        .groups
-                        .iter()
-                        .filter(|g| g.tab() == tab)
-                        .map(|s| Command::Books(s.clone(), 0)),
-                );
-            }
+        let active_row = self.row_index(active, scope);
+        if !self.focused && self.active_row != active_row {
+            self.cursor = active_row;
         }
+        self.active_row = active_row;
         if inner.is_empty() {
             return;
         }
@@ -260,13 +294,10 @@ impl Rail {
             .take(inner.height as usize)
             .enumerate()
         {
-            let (prefix, label, count, on, heading) = match cmd {
+            let on = i == active_row;
+            let (prefix, label, count, heading) = match cmd {
                 Command::OpenTab(t) => {
                     let is_group = Self::slot(*t);
-                    let on = active == *t
-                        && (is_group.is_none()
-                            || scope.is_none()
-                            || is_group.is_some_and(|v| self.folded[v]));
                     let prefix = match is_group {
                         Some(i) if self.folded[i] => "▸ ",
                         Some(_) => "▾ ",
@@ -278,12 +309,10 @@ impl Rail {
                         prefix,
                         format!("{} {}", number, t.titles()[0]),
                         self.count(*t),
-                        on,
                         true,
                     )
                 }
                 Command::Books(group, _) => {
-                    let on = scope == Some(group);
                     let count = match group {
                         Scope::Library(l) => l.book_count,
                         Scope::Collection(c) => Some(c.book_count),
@@ -293,7 +322,6 @@ impl Rail {
                         if on { "     ▸ " } else { "       " },
                         super::single_line(group.name().to_owned()),
                         count,
-                        on,
                         false,
                     )
                 }

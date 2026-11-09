@@ -42,7 +42,7 @@ def run(name,f):
         t.keys('b');t.see('Continue reading')
         assert sum(1 for method,path,status in f.requests if method=="POST" and path.endswith("/auth/login") and status==200)==before
         # Force the write to remain outstanding while Ctrl+C arrives. Logout must come afterwards.
-        t.keys('1');t.see('All books');t.click(s.BOOK,t.see(s.BOOK));t.click('FB2',s.formats(t))
+        t.keys('1');t.click(s.BOOK,s.all_books(t));t.click('FB2',s.formats(t))
         t.see(s.FB2_MARK);t.keys('o');t.see('Sections:');t.keys('End','Enter');t.see('Обратный рейс')
         f.save_entered=threading.Event();f.allow_save=threading.Event()
         t.keys('q');assert f.save_entered.wait(4);t.keys('C-c')
@@ -55,6 +55,35 @@ def run(name,f):
             time.sleep(.04)
         assert f.saved==[302,302,302] and f.token is None
     finally:t.run('kill-server',required=False)
+
+def change_edition_during_save(tmp, server):
+    url = f"http://127.0.0.1:{server.server_port}/reader"
+    term = s.Terminal(Path(tmp), s.ROOT / "target/debug/botui", url)
+    try:
+        s.login(term, url)
+        term.keys("Enter")
+        term.click("FB2", s.formats(term))
+        term.see(s.FB2_MARK)
+        term.keys("o")
+        term.see("Sections:")
+        term.keys("End", "Enter")
+        term.see("Обратный рейс")
+        server.save_entered = threading.Event()
+        server.allow_save = threading.Event()
+        term.keys("q")
+        assert server.save_entered.wait(4)
+        try:
+            card = term.see("Saving position to BookOrbit")
+            term.click("EPUB", card)
+            term.see("Saving position to BookOrbit")
+            assert not server.saved
+        finally:
+            server.allow_save.set()
+        term.see(s.EPUB_MARK)
+        assert server.saved == [302]
+    finally:
+        term.run("kill-server", required=False)
+
 def publisher_progress(tmp, server):
     """The HTTP double and the TUI independently resolve words in a merged cell."""
     import io
@@ -125,6 +154,10 @@ def publisher_progress(tmp, server):
 
 
 if __name__=='__main__':
+    with tempfile.TemporaryDirectory() as tmp, s.Fixture(False) as server:
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        try: change_edition_during_save(tmp, server)
+        finally: server.shutdown()
     with tempfile.TemporaryDirectory() as tmp, s.Fixture(False) as server:
         threading.Thread(target=server.serve_forever, daemon=True).start()
         try: publisher_progress(tmp, server)

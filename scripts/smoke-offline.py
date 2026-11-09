@@ -112,6 +112,9 @@ with tempfile.TemporaryDirectory() as name, shelf.Fixture(False) as server:
     try:
         shelf.login(term, url)
         term.keys("Enter")
+        # This scenario counts validations of a known revision. Opening before
+        # metadata arrives may legitimately require a later If-None-Match.
+        term.see("Harbor Press")
         term.click("EPUB", shelf.formats(term))
         term.wait("First Read opens EPUB", lambda f: f.strip().startswith("Chapter 1"))
         jump(term, 5)

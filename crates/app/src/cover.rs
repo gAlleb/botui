@@ -15,9 +15,36 @@ use std::{
     io::Cursor,
 };
 
+thread_local! { static GRAPHICS: RefCell<Option<(Picker, Option<Size>)>> = const { RefCell::new(None) }; }
+
+fn cell_pixels() -> Option<Size> {
+    let w = crossterm::terminal::window_size().ok()?;
+    let width = w.width.checked_div(w.columns)?;
+    let height = w.height.checked_div(w.rows)?;
+    (width > 0 && height > 0).then_some(Size::new(width, height))
+}
+
 pub(crate) fn graphics() -> Picker {
-    thread_local! { static PICKER: Picker = detect(); }
-    PICKER.with(Clone::clone)
+    GRAPHICS.with_borrow_mut(|cache| {
+        cache
+            .get_or_insert_with(|| (detect(), cell_pixels()))
+            .0
+            .clone()
+    })
+}
+
+pub(crate) fn resized() {
+    GRAPHICS.with_borrow_mut(|cache| {
+        if let Some((picker, previous)) = cache
+            && picker.protocol_type() != ProtocolType::Halfblocks
+            && let Some(current) = cell_pixels()
+            && *previous != Some(current)
+        {
+            // A font or DPI change invalidates the capabilities query's cell size.
+            // A plain window resize can keep using the existing picker.
+            *cache = None;
+        }
+    });
 }
 fn detect() -> Picker {
     let term = std::env::var("TERM").unwrap_or_default();
@@ -133,20 +160,47 @@ impl Drop for ScanGraphics {
         COVER_EPOCH.set(COVER_EPOCH.get().wrapping_add(1));
     }
 }
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ImagePlacement {
+    Fit,
+    ShelfCard,
+}
+
+impl ImagePlacement {
+    pub(crate) fn text_area(self, slot: Rect) -> Rect {
+        if self == Self::ShelfCard && slot.height >= 6 && slot.width >= 6 {
+            slot.inner(ratatui::layout::Margin::new(1, 1))
+        } else {
+            slot
+        }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct Rendition {
+    size: Size,
+    crop: Crop,
+    rounded: bool,
+    placement: ImagePlacement,
+}
+
 pub(crate) struct Picture {
     epoch: Cell<u64>,
+    cell_pixels: Cell<Size>,
     sliced: RefCell<Option<(CellStrip, SlicedProtocol)>>,
     source: DynamicImage,
     is_cover: bool,
     strip: RefCell<Option<(StripKey, Box<Picture>)>>,
     strip_cells: RefCell<Option<(CellStrip, image::RgbImage)>>,
-    ready: RefCell<Vec<(Size, Crop, bool, Protocol)>>,
+    ready: RefCell<Vec<(Rendition, Protocol)>>,
 }
 
 impl Picture {
     pub fn new(source: DynamicImage) -> Self {
         Self {
             epoch: Cell::default(),
+            cell_pixels: Cell::default(),
             sliced: Default::default(),
             source,
             is_cover: false,
@@ -188,6 +242,14 @@ impl Picture {
     pub fn dimensions(&self) -> (u32, u32) {
         (self.source.width(), self.source.height())
     }
+    fn refresh_resolution(&self, picker: &Picker) {
+        let font = picker.font_size();
+        let pixels = Size::new(font.width, font.height);
+        if self.cell_pixels.replace(pixels) != pixels {
+            self.ready.borrow_mut().clear();
+            self.sliced.take();
+        }
+    }
     pub fn draw_strip(
         &self,
         f: &mut Frame,
@@ -200,6 +262,7 @@ impl Picture {
         if area.is_empty() || rows == 0 {
             return;
         }
+        self.refresh_resolution(picker);
         if picker.protocol_type() == ProtocolType::Halfblocks || monochrome() {
             let key = CellStrip {
                 width: area.width,
@@ -321,7 +384,29 @@ impl Picture {
         self.draw_region(frame, area, picker, Crop::default());
     }
     pub fn draw_region(&self, frame: &mut Frame, area: Rect, picker: &Picker, crop: Crop) {
-        self.draw_region_mode(frame, area, picker, crop, monochrome());
+        self.draw_region_mode(frame, area, picker, crop, monochrome(), ImagePlacement::Fit);
+    }
+    pub fn draw_cover(
+        &self,
+        frame: &mut Frame,
+        area: Rect,
+        picker: &Picker,
+        placement: ImagePlacement,
+    ) {
+        // Half blocks have no alpha channel. Leave the margin as terminal
+        // cells so it keeps the current background, including transparency.
+        if picker.protocol_type() == ProtocolType::Halfblocks {
+            self.draw(frame, placement.text_area(area), picker);
+            return;
+        }
+        self.draw_region_mode(
+            frame,
+            area,
+            picker,
+            Crop::default(),
+            monochrome(),
+            placement,
+        );
     }
     fn draw_region_mode(
         &self,
@@ -330,10 +415,12 @@ impl Picture {
         picker: &Picker,
         crop: Crop,
         monochrome: bool,
+        placement: ImagePlacement,
     ) {
         if area.is_empty() {
             return;
         }
+        self.refresh_resolution(picker);
         let rounded = self.is_cover
             && crate::appearance::BordersStyle::current()
                 == crate::appearance::BordersStyle::Rounded;
@@ -383,17 +470,31 @@ impl Picture {
             ready.clear();
         }
 
-        let hit = ready.iter().position(|(old, view, corners, _)| {
-            *old == size && *view == crop && *corners == rounded
-        });
+        let key = Rendition {
+            size,
+            crop,
+            rounded,
+            placement,
+        };
+        let hit = ready.iter().position(|(entry, _)| *entry == key);
         let index = if let Some(index) = hit {
             index
         } else {
-            let Ok(protocol) = picker.new_protocol(
-                source(),
-                size,
-                Resize::Scale(Some(image::imageops::FilterType::Triangle)),
-            ) else {
+            let source = source();
+            let result = match placement {
+                ImagePlacement::Fit => picker.new_protocol(
+                    source,
+                    size,
+                    Resize::Scale(Some(image::imageops::FilterType::Triangle)),
+                ),
+                ImagePlacement::ShelfCard => {
+                    let font = picker.font_size();
+                    let (image, cells) =
+                        card_raster(&source, size, Size::new(font.width, font.height));
+                    picker.new_protocol(image, cells, Resize::Fit(None))
+                }
+            };
+            let Ok(protocol) = result else {
                 return;
             };
             // One inline picture may occupy both columns at different heights.
@@ -407,16 +508,52 @@ impl Picture {
             if ready.len() == limit {
                 ready.remove(0);
             }
-            ready.push((size, crop, rounded, protocol));
+            ready.push((key, protocol));
             ready.len() - 1
         };
-        let p = &ready[index].3;
+        let p = &ready[index].1;
         let size = p.size();
         frame.render_widget(
             Image::new(p),
             crate::centered(area, size.width, size.height),
         );
     }
+}
+
+fn card_raster(source: &DynamicImage, slot: Size, cell: Size) -> (DynamicImage, Size) {
+    let cw = u32::from(cell.width.max(1));
+    let ch = u32::from(cell.height.max(1));
+    let width = u32::from(slot.width) * cw;
+    let height = u32::from(slot.height) * ch;
+    // Reserve a third of a text line on each edge, including above the caption.
+    let padding = if slot.height >= 3 {
+        (2 * ch + 1) / 3
+    } else {
+        0
+    };
+    let image = source.resize(
+        width.saturating_sub(padding).max(1),
+        height.saturating_sub(padding).max(1),
+        image::imageops::FilterType::Triangle,
+    );
+    // Drop equal numbers of whole blank cells from opposite edges. Keep the
+    // sub-cell margins in the upload so every protocol centers the actual ink.
+    let canvas_axis = |available: u32, ink: u32, cell: u32| {
+        available - (available - ink) / (2 * cell) * (2 * cell)
+    };
+    let w = canvas_axis(width, image.width(), cw);
+    let h = canvas_axis(height, image.height(), ch);
+    let mut canvas = image::RgbaImage::new(w, h);
+    image::imageops::replace(
+        &mut canvas,
+        &image,
+        i64::from((w - image.width()) / 2),
+        i64::from((h - image.height()) / 2),
+    );
+    (
+        DynamicImage::ImageRgba8(canvas),
+        Size::new((w / cw) as u16, (h / ch) as u16),
+    )
 }
 
 fn rounded_cover(source: &DynamicImage) -> DynamicImage {
@@ -448,6 +585,72 @@ mod tests {
     use super::*;
 
     #[test]
+    fn halfblock_card_margins_keep_the_terminal_background() {
+        use ratatui::{
+            style::{Color, Style},
+            widgets::Block,
+        };
+        let picture = Picture::generated_cover(DynamicImage::new_rgb8(100, 150));
+        let picker = Picker::halfblocks();
+        let background = Color::Blue;
+        let mut terminal =
+            ratatui::Terminal::new(ratatui::backend::TestBackend::new(20, 12)).unwrap();
+        terminal
+            .draw(|frame| {
+                let area = frame.area();
+                frame.render_widget(Block::new().style(Style::new().bg(background)), area);
+                picture.draw_cover(frame, area, &picker, ImagePlacement::ShelfCard);
+            })
+            .unwrap();
+        let frame = terminal.backend().buffer();
+        for x in 0..20 {
+            for y in [0, 11] {
+                assert_eq!(frame[(x, y)].bg, background);
+                assert_eq!(frame[(x, y)].symbol(), " ");
+            }
+        }
+    }
+
+    #[test]
+    fn shelf_art_is_centered_in_pixels_and_leaves_space_above_the_caption() {
+        for (source, slot, cell, expected) in [
+            ((240, 360), (24, 16), (11, 23), (235, 353)),
+            ((240, 360), (25, 16), (11, 23), (235, 353)),
+            ((360, 240), (24, 16), (11, 23), (249, 166)),
+            ((90, 360), (25, 16), (11, 23), (88, 353)),
+            ((240, 360), (20, 10), (10, 20), (125, 187)),
+            ((240, 360), (1, 1), (1, 2), (1, 2)),
+        ] {
+            let (slot, cell) = (Size::new(slot.0, slot.1), Size::new(cell.0, cell.1));
+            let source = DynamicImage::new_rgb8(source.0, source.1);
+            let (image, footprint) = card_raster(&source, slot, cell);
+            let ink = image.as_rgba8().unwrap();
+            let mut bounds = (ink.width(), ink.height(), 0, 0);
+            for (x, y, pixel) in ink.enumerate_pixels().filter(|(_, _, p)| p[3] != 0) {
+                assert_eq!(pixel[3], 255);
+                bounds = (
+                    bounds.0.min(x),
+                    bounds.1.min(y),
+                    bounds.2.max(x + 1),
+                    bounds.3.max(y + 1),
+                );
+            }
+            assert_eq!((bounds.2 - bounds.0, bounds.3 - bounds.1), expected);
+            assert!(bounds.0.abs_diff(ink.width() - bounds.2) <= 1);
+            assert!(bounds.1.abs_diff(ink.height() - bounds.3) <= 1);
+            assert_eq!((slot.width - footprint.width) % 2, 0);
+            assert_eq!((slot.height - footprint.height) % 2, 0);
+            assert_eq!(
+                (ink.width(), ink.height()),
+                (
+                    u32::from(footprint.width) * u32::from(cell.width),
+                    u32::from(footprint.height) * u32::from(cell.height)
+                )
+            );
+        }
+    }
+
+    #[test]
     fn two_visible_sizes_reuse_the_same_small_picture_protocols() {
         let picture = Picture::new(DynamicImage::new_rgb8(100, 150));
         let picker = Picker::halfblocks();
@@ -462,6 +665,7 @@ mod tests {
                         &picker,
                         Crop::default(),
                         false,
+                        ImagePlacement::Fit,
                     )
                 })
                 .unwrap();
@@ -469,7 +673,7 @@ mod tests {
         let ready = picture.ready.borrow();
         assert_eq!(ready.len(), 2);
         // Reusing a size does not discard the other side of the spread.
-        assert_eq!(ready[0].0, Size::new(20, 10));
-        assert_eq!(ready[1].0, Size::new(20, 8));
+        assert_eq!(ready[0].0.size, Size::new(20, 10));
+        assert_eq!(ready[1].0.size, Size::new(20, 8));
     }
 }

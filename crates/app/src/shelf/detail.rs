@@ -25,7 +25,7 @@ pub(super) struct Card {
     pub viewer: crate::cover_viewer::Viewer,
 }
 #[derive(Clone, Copy)]
-enum Act {
+pub(super) enum Act {
     Read,
     Cover,
     Save,
@@ -50,6 +50,12 @@ pub(super) fn status_label(s: &str) -> &str {
     }
 }
 impl Card {
+    pub(super) fn action_at(&self, pos: Position) -> Option<Act> {
+        self.hits
+            .iter()
+            .find(|(area, _)| area.contains(pos))
+            .map(|(_, action)| *action)
+    }
     pub fn open(id: u64, session: Option<Arc<Session>>) -> Self {
         Self {
             id,
@@ -373,12 +379,9 @@ impl Shelf {
                 KeyCode::Char('i' | 'I') => Some(Act::More),
                 _ => None,
             },
-            Event::Mouse(m) if m.kind == MouseEventKind::Down(MouseButton::Left) => self
-                .card
-                .hits
-                .iter()
-                .find(|(r, _)| r.contains(Position::new(m.column, m.row)))
-                .map(|(_, a)| *a),
+            Event::Mouse(m) if m.kind == MouseEventKind::Down(MouseButton::Left) => {
+                self.card.action_at(Position::new(m.column, m.row))
+            }
             _ => None,
         };
         let Some(act) = action else { return Ok(false) };

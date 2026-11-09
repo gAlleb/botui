@@ -79,6 +79,8 @@ class Fixture(ThreadingHTTPServer):
         self.thumbnail_ready.set()
         self.directory_ready = threading.Event()
         self.directory_ready.set()
+        self.directory_tail_ready = threading.Event()
+        self.directory_tail_ready.set()
         self.personal = {}
         self.requests = []
         self.token = TOKEN
@@ -254,10 +256,14 @@ class Handler(BaseHTTPRequestHandler):
             indexes = {"continue-reading":[i-200 for i,st in self.server.statuses.items() if st in ("reading","rereading")], "recently-added":[0,1], "random":[0]}[key]
             items = [self.server.card(i) for i in indexes]
             return self.reply(200, items if key == "random" else {"books":items, "total":len(items)})
+        if url.path == API + "/authors/1/books":
+            return send_page([self.server.card(1)])
         for endpoint, total, target in [("authors",410,"Роджер Желязны"),("series",49,"Хроники Амбера")]:
             if url.path == f"{API}/{endpoint}":
                 if size > 1:
                     assert self.server.directory_ready.wait(timeout=12)
+                if page > 0:
+                    assert self.server.directory_tail_ready.wait(timeout=12)
                 assert query["sort"] == ["name"] and query["order"] == ["asc"]
                 groups = [{"id":n,"name":target if n==total else f"Group {n:04}", "bookCount":2}
                           for n in range(1,total+1)]
@@ -267,6 +273,8 @@ class Handler(BaseHTTPRequestHandler):
                 assert query["sort"] == (["title"] if endpoint=="authors" else ["seriesIndex"])
                 assert query["order"] == ["asc"] and (endpoint=="series" or query["collapseSeries"] == ["false"])
                 return send_page([self.server.card(i) for i in ([0,1] if endpoint=="authors" else [1,0])])
+            if url.path == f"{API}/{endpoint}/21/books":
+                return send_page([self.server.card(1)])
         if url.path == API + "/books/201/sessions":
             page = int(query['page'][0])
             size = int(query['pageSize'][0])
@@ -550,6 +558,37 @@ def check_collections(tmp, binary, fixture):
         term.run("kill-server", required=False)
 
 
+def group_positions(frame):
+    return {
+        name.group(): (row, name.start())
+        for row, line in enumerate(frame.splitlines())
+        for name in re.finditer(r"Group \d{4}", line)
+    }
+
+
+def check_directory_positions(term, fixture, tab, frame):
+    heading = tab.split(" ", 1)[1] + "  ·  "
+    def page(frame, last):
+        return heading in frame and last in frame
+    fixture.directory_tail_ready.clear()
+    try:
+        term.click(tab, frame)
+        first = term.wait("First page of " + tab, lambda f: page(f, "Group 0024"))
+        assert "Group 0025" not in first
+        before = group_positions(first)
+        term.keys("Down")
+        fixture.directory_tail_ready.set()
+        after = group_positions(term.wait("More entries in " + tab, lambda f: page(f, "Group 0025")))
+        assert before == {name: after.get(name) for name in before}, (tab, before, after)
+        # Use the coordinates captured before page two arrived.
+        term.click("Group 0021", first)
+        term.see("Group 0021  ·  1")
+        term.keys("Escape")
+        return term.wait("Return to " + tab, lambda f: page(f, "Group 0025"))
+    finally:
+        fixture.directory_tail_ready.set()
+
+
 def check_without_collections(tmp, binary, fixture):
     url = f"http://127.0.0.1:{fixture.server_port}/reader"
     term = Terminal(tmp, binary, url)
@@ -601,14 +640,44 @@ def check_without_collections(tmp, binary, fixture):
                       "Streak Builder" in f and "▀" in f and "[ Cancel ]" not in f)
         finally:
             fixture.directory_ready.set()
-        term.click("6 Authors", dash)
-        term.see("Group 0001")
+        fixture.directory_ready.clear()
+        try:
+            term.keys("6", "Enter")
+            term.see("Loading directory")
+            fixture.directory_ready.set()
+            term.wait("Early Enter opens the incoming author's books", lambda f:
+                      "Group 0001  ·  1" in f and OTHER_BOOK in f)
+        finally:
+            fixture.directory_ready.set()
+        term.keys("0")
+        dash = term.see("Streak Builder")
+        fixture.directory_ready.clear()
+        try:
+            term.keys("6")
+            waiting = term.see("Loading directory")
+            term.click(OTHER_BOOK, waiting)
+            term.wait("Click opens the still-visible book", lambda f:
+                      OTHER_BOOK in f and "Harbor Press" in f)
+        finally:
+            fixture.directory_ready.set()
+        term.keys("Escape")
+        dash = term.see("Streak Builder")
+        for view in ("[V List]", "[V Grid]"):
+            if view not in dash:
+                term.keys("v")
+                dash = term.see(view)
+            for tab in ("7 Series", "6 Authors"):
+                dash = check_directory_positions(term, fixture, tab, dash)
         assert fixture.requests.count(("GET", API + "/books/200/thumbnail", 200)) == 1
-        term.keys("v")
         def aligned_counts(frame):
             ends = [m.end(1) for m in re.finditer(r"(?m)^.*?(?:Group 000[123]|Роджер Желязны) +(\d+)", frame)]
             return len(ends) >= 3 and len({end - frame.rfind("\n", 0, end) for end in ends}) == 1
         term.wait("Authors share one count column", aligned_counts)
+        term.keys("7")
+        term.see("Series  ·  49")
+        term.keys("F6", "Up", "Enter")
+        term.wait("F6 starts at Series and Up opens Authors", lambda f:
+                  "Authors  ·  410" in f and aligned_counts(f))
         term.keys("End")
         term.wait("Directory auto-pagination",lambda f:any(f"page=1&" in path and "/authors?" in path for _,path,_ in fixture.requests))
         term.keys("/")

@@ -59,7 +59,6 @@ pub(super) fn read_pages(
     mut live: Option<&mut crate::live_progress::Live>,
 ) -> io::Result<(Option<botui_bookorbit::progress::Move>, Option<f64>)> {
     let _uploads = crate::cover::ScanGraphics;
-    let mut picker = graphics();
     let worker = Worker::new();
     let p = path.to_owned();
     let count_job = album
@@ -227,6 +226,7 @@ pub(super) fn read_pages(
         } else {
             1
         };
+        let mut picker = graphics();
         let size = picker.font_size();
         let side = (available / cols)
             .saturating_mul(size.width)

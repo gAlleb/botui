@@ -54,7 +54,21 @@ def credentials(tmp):
     cfg = tmp/"config/botui"
     cfg.mkdir(parents=True)
     path = cfg/"config.toml"
+    # Hold each response separately so even a fast machine observes both startup frames.
+    stages = {shelf.API + route: (threading.Event(), threading.Event())
+              for route in ("/auth/login", "/dashboard/widgets/batch")}
+
+    class PausedStartup(shelf.Handler):
+        def do_POST(self):
+            if gate := stages.get(self.path):
+                arrived, release = gate
+                arrived.set()
+                if not release.wait(8):
+                    return self.reply(503, {})
+            super().do_POST()
+
     with shelf.Fixture(False) as server, shelf.Fixture(False) as other:
+        server.RequestHandlerClass = PausedStartup
         for f in (server, other):
             threading.Thread(target=f.serve_forever,daemon=True).start()
         url = f"http://127.0.0.1:{server.server_port}/reader"
@@ -66,11 +80,20 @@ def credentials(tmp):
         prefix = f'# Keep config comments\n[bookorbit]\nserver = "{url}"\nusername = "{shelf.USER}"\n'
         auth_cmd = "password_command = " + json.dumps([str(helper), str(marker), shelf.PASSWORD])
         for auth in [f'password = "{shelf.PASSWORD}"', auth_cmd, f'''password_command = "printf '%s' {shelf.PASSWORD}"''']:
+            for arrived, release in stages.values():
+                arrived.clear()
+                release.clear()
             path.write_text(prefix + auth + ' # Keep credential comment\n')
             t = shelf.Terminal(tmp, BIN, url)
             try:
                 t.see("Connect to BookOrbit")
                 t.keys("Enter")
+                for arrived, release in stages.values():
+                    assert arrived.wait(5), "Expected a startup request"
+                    frame = t.wait("Loading screen during BookOrbit startup",
+                                   lambda s: "Loading…" in s, timeout=2)
+                    assert "Password" not in frame and "Choose a library" not in frame, frame
+                    release.set()
                 t.see("Continue reading")
                 t.keys("1")
                 frame = t.see(shelf.BOOK)
@@ -80,6 +103,8 @@ def credentials(tmp):
                 shelf.quit_shelf(t)
                 assert "# Keep credential comment" in path.read_text() and "# Keep config comments" in path.read_text()
             finally:
+                for _, release in stages.values():
+                    release.set()
                 t.run("kill-server",required=False)
         assert marker.exists()
         marker.unlink()
@@ -89,6 +114,18 @@ def credentials(tmp):
             shelf.login(t,alt)
             shelf.quit_shelf(t)
             assert not marker.exists() and tomllib.loads(path.read_text())["bookorbit"]["server"] == url
+        finally:
+            t.run("kill-server",required=False)
+        path.write_text(prefix + 'password = "wrong"\n')
+        t = shelf.Terminal(tmp, BIN, url)
+        try:
+            t.see("Connect to BookOrbit")
+            t.keys("Enter")
+            assert "Password" in t.see("Sign-in declined (401)")
+            t.type(shelf.PASSWORD)
+            t.keys("Enter")
+            t.see("Continue reading")
+            shelf.quit_shelf(t)
         finally:
             t.run("kill-server",required=False)
         # A failed helper may print a secret before exiting. It cannot authenticate or leak it.
@@ -115,4 +152,4 @@ if __name__=="__main__":
         root=Path(directory)
         migration(root/"migration")
         credentials(root/"auth")
-    print("Passed TOML migration, concurrent startup, credential sourcing, account isolation and error redaction.")
+    print("Passed TOML migration, configured BookOrbit sign-in and retry, account isolation and error redaction.")

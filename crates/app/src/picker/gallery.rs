@@ -20,6 +20,7 @@ impl Picker {
             self.rows,
             books,
             self.entries.len(),
+            None,
             selected,
             self.list.offset_mut(),
         );
@@ -62,14 +63,7 @@ impl Picker {
                 page.write_to(&mut out, image::ImageFormat::Png)?;
                 Ok(Some(out.into_inner()))
             });
-            book_face(
-                f,
-                inner,
-                &book,
-                self.covers.artwork(&book),
-                self.graphics.get_or_insert_with(crate::cover::graphics),
-                active,
-            );
+            book_face(f, inner, &book, self.covers.artwork(&book), active);
         }
         self.grid = Some(grid);
     }

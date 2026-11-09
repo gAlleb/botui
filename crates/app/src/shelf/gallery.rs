@@ -3,6 +3,7 @@ pub(crate) mod binding;
 mod jacket_edge;
 use super::{Book, Command, Scope, Shelf, covers::Artwork, single_line};
 use crate::centered;
+use crate::cover::ImagePlacement;
 use ratatui::{
     Frame,
     layout::{Position, Rect},
@@ -20,12 +21,17 @@ impl Grid {
         area: Rect,
         books: bool,
         count: usize,
+        total: Option<u64>,
         selected: usize,
         offset: &mut usize,
     ) -> Self {
         let cols = (area.width / if books { 27 } else { 29 }).clamp(1, 6) as usize;
+        // Directory rows keep their final height while later pages are still in flight.
+        let layout_count = total.map_or(count, |n| {
+            usize::try_from(n).unwrap_or(usize::MAX).max(count)
+        });
         let rows = ((area.height / if books { 16 } else { 4 }).max(1) as usize)
-            .min(count.div_ceil(cols).max(1));
+            .min(layout_count.div_ceil(cols).max(1));
         let height = (area.height / rows as u16).min(if books { 22 } else { 5 });
         let first = (*offset / cols)
             .min(selected / cols)
@@ -111,10 +117,16 @@ pub(super) fn caption(text: &str, width: u16, max_lines: usize) -> String {
 
 /// A cloth binding and foil ornament drawn as terminal cells. The same title
 /// and author always get the same jacket, independent of sorting and resizing.
-fn jacket(frame: &mut Frame, slot: Rect, book: &Book, graphics: &ratatui_image::picker::Picker) {
+fn jacket(
+    frame: &mut Frame,
+    slot: Rect,
+    book: &Book,
+    graphics: &ratatui_image::picker::Picker,
+    placement: ImagePlacement,
+) {
     let binding = binding::Binding::from(book);
     if graphics.protocol_type() != ratatui_image::picker::ProtocolType::Halfblocks
-        && binding.draw_or_wait(frame, slot, graphics)
+        && binding.draw_or_wait(frame, slot, graphics, placement)
     {
         return;
     }
@@ -124,6 +136,7 @@ fn jacket(frame: &mut Frame, slot: Rect, book: &Book, graphics: &ratatui_image::
         .bg(Color::Rgb(r, g, b))
         .fg(Color::Rgb(246, 229, 191));
     let gold = cloth.fg(Color::Rgb(222, 192, 139));
+    let slot = placement.text_area(slot);
     let area = centered(slot, (slot.height * 4 / 3).max(4), slot.height);
     let area = jacket_edge::paper(frame, area, cloth, (r, g, b), graphics);
     if area.is_empty() {
@@ -174,7 +187,7 @@ impl Shelf {
     pub(super) fn artwork(&self, frame: &mut Frame, slot: Rect, book: &Book) {
         self.covers
             .artwork(book)
-            .draw(frame, slot, book, &self.graphics);
+            .draw(frame, slot, book, ImagePlacement::Fit);
     }
     pub(super) fn draw_grid(&mut self, frame: &mut Frame, area: Rect) {
         let books = matches!(self.current().section, super::Section::Books { .. })
@@ -186,10 +199,15 @@ impl Shelf {
                     .any(|r| matches!(r.action, Command::Files(_)));
         let pane = self.current_mut();
         let selected = pane.selection.selected().unwrap_or(0);
+        let total = match &pane.section {
+            super::Section::Groups { total, .. } => Some(*total),
+            _ => None,
+        };
         let grid = Grid::new(
             area,
             books,
             pane.rows.len(),
+            total,
             selected,
             pane.selection.offset_mut(),
         );
@@ -208,14 +226,7 @@ impl Shelf {
                     if book.has_cover != Some(false) {
                         wanted.push(book.id);
                     }
-                    book_face(
-                        frame,
-                        inner,
-                        book,
-                        self.covers.artwork(book),
-                        &self.graphics,
-                        active,
-                    );
+                    book_face(frame, inner, book, self.covers.artwork(book), active);
                 }
                 Command::Books(scope, _) => {
                     let n = match scope {
@@ -256,19 +267,13 @@ impl Shelf {
 }
 
 impl Artwork<'_> {
-    fn draw(
-        self,
-        frame: &mut Frame,
-        area: Rect,
-        book: &Book,
-        graphics: &ratatui_image::picker::Picker,
-    ) {
+    fn draw(self, frame: &mut Frame, area: Rect, book: &Book, placement: ImagePlacement) {
         if area.is_empty() {
             return;
         }
         match self {
-            Self::Image(pic) => pic.draw(frame, area, graphics),
-            Self::Jacket => jacket(frame, area, book, graphics),
+            Self::Image(pic) => pic.draw_cover(frame, area, &crate::cover::graphics(), placement),
+            Self::Jacket => jacket(frame, area, book, &crate::cover::graphics(), placement),
             Self::Loading => {}
         }
     }
@@ -279,7 +284,6 @@ pub(crate) fn book_face(
     inner: Rect,
     book: &Book,
     artwork: Artwork<'_>,
-    graphics: &ratatui_image::picker::Picker,
     selected: bool,
 ) {
     if inner.is_empty() {
@@ -289,7 +293,7 @@ pub(crate) fn book_face(
     let art = inner.height.saturating_sub(meta);
     let title = single_line(book.title.clone().unwrap_or_else(|| "Untitled".into()));
     let area = line(inner, 0, art);
-    artwork.draw(frame, area, book, graphics);
+    artwork.draw(frame, area, book, ImagePlacement::ShelfCard);
     frame.render_widget(
         Paragraph::new(Text::styled(
             caption(&title, inner.width, if meta == 4 { 2 } else { 1 }),

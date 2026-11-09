@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Author and series cards keep their positions as more results arrive. F6 focuses the current BookOrbit section, including after navigation by number.
+- Shelf cards center the cover itself and leave a small gap above its title. Downloaded covers and generated jackets use the same spacing across BookOrbit, OPDS and local grids.
+- BookOrbit shows a single loading dialog during sign-in with saved credentials. A rejected password opens the form for retry.
+- BookOrbit remembers Enter while a shelf loads and a click on an edition while the previous reading position is being saved. Clicking a book still visible during navigation opens that book.
+- Visible thumbnails load continuously across two workers. When the shelf changes, queued thumbnails and generated jackets give way to the books now on screen. Cover art and scanned pages follow changes to the terminal font size.
 - BookOrbit keeps the current shelf, navigation and covers visible while the next section loads. A book with an incoming cover shows its title immediately and displays the image as soon as it arrives. The local library and OPDS use the same cover behavior.
 - Changing width or opening the contents sidebar in a multi-chapter EPUB lays out the visible spread first. BOTUI finishes the book-wide page count in the background and keeps the same reading position.
 - Toggling zen progress leaves the text in place and no longer repaginates the book. EPUB resizing reuses parsed chapters and a bounded cache of recent layouts; chapter layout runs in parallel, with a faster allocator in static musl builds.
