@@ -140,6 +140,19 @@ pub fn epub(html: &str, spine: &str, start: usize, blocks: &[Block], map: &mut L
         *counts.entry(&b.text).or_insert(0) += 1;
     }
     // Memoize sibling numbers, so large chapters do not walk every preceding paragraph for each word.
+    let numbers = sibling_steps(&dom);
+    // Both parsers walk visible prose in document order. Match repeated paragraphs
+    // only when every occurrence has a source, never the first equal string by default.
+    by_text.retain(|text, nodes| counts.get(text) == Some(&nodes.len()));
+    for (i, b) in blocks.iter().enumerate() {
+        if let Some(n) = by_text.get_mut(&b.text).and_then(|ns| ns.pop_front())
+            && let Some(runs) = build(n, &b.text, |c| text_path(c, spine, &numbers))
+        {
+            map.0.insert(start + i, runs);
+        }
+    }
+}
+pub(super) fn sibling_steps(dom: &Document<'_>) -> HashMap<roxmltree::NodeId, (usize, usize)> {
     let mut numbers = HashMap::new();
     for n in dom.descendants().filter(Node::is_element) {
         let mut elems = 0;
@@ -155,26 +168,22 @@ pub fn epub(html: &str, spine: &str, start: usize, blocks: &[Block], map: &mut L
             }
         }
     }
-    // Both parsers walk visible prose in document order. Match repeated paragraphs
-    // only when every occurrence has a source, never the first equal string by default.
-    by_text.retain(|text, nodes| counts.get(text) == Some(&nodes.len()));
-    for (i, b) in blocks.iter().enumerate() {
-        if let Some(n) = by_text.get_mut(&b.text).and_then(|ns| ns.pop_front())
-            && let Some(runs) = build(n, &b.text, |c| {
-                let mut steps = vec![];
-                for n in c.ancestors().take_while(|n| n.parent_element().is_some()) {
-                    steps.push(numbers.get(&n.id())?.0);
-                }
-                let mut p = format!("{spine}!");
-                for i in steps.iter().rev() {
-                    p.push_str(&format!("/{i}"));
-                }
-                Some((p, numbers.get(&c.id())?.1))
-            })
-        {
-            map.0.insert(start + i, runs);
-        }
+    numbers
+}
+pub(super) fn text_path(
+    c: Node<'_, '_>,
+    spine: &str,
+    numbers: &HashMap<roxmltree::NodeId, (usize, usize)>,
+) -> Option<(String, usize)> {
+    let mut steps = vec![];
+    for n in c.ancestors().take_while(|n| n.parent_element().is_some()) {
+        steps.push(numbers.get(&n.id())?.0);
     }
+    let mut p = format!("{spine}!");
+    for i in steps.iter().rev() {
+        p.push_str(&format!("/{i}"));
+    }
+    Some((p, numbers.get(&c.id())?.1))
 }
 // A deliberately restricted subset of the FB2 → XHTML transform: address ordinary prose,
 // headings and inline markup in the first body. Skip poetry/notes rather than guess a CFI.

@@ -1,0 +1,56 @@
+/* Reader defaults. The book's styles cascade over these rules. */
+html, body { margin: 0; padding: 0; font: 16px/16px monospace; }
+/* Each terminal glyph occupies whole cells at a single font size. Using
+   publisher point sizes here would insert gaps inside words and headings. */
+*|* { font-size: 16px !important; line-height: 16px !important; letter-spacing: normal !important; }
+body { overflow-wrap: anywhere; }
+p, blockquote, pre, figure, table, h1, h2, h3, h4, h5, h6 { margin: 0 0 16px; }
+h1, h2, h3, h4, h5, h6 { font-size: 1em; line-height: 1; text-align: center; }
+p { text-indent: var(--botui-indent, 0px) !important; }
+blockquote { margin-inline: 2ch; }
+table { border-spacing: 1ch 0; }
+td, th { padding: 0; }
+pre { white-space: pre-wrap; tab-size: 4; }
+img, svg { max-width: 100%; }
+[data-botui-image] { display:inline-block; max-width:100%; max-height:65vh; aspect-ratio:var(--botui-ratio, 1.5); }
+[data-botui-image]:not([width]):not([height]) { width:min(100%, var(--botui-intrinsic, 100%), calc(65vh * var(--botui-ratio, 1.5))); }
+
+/* Presentation MathML. The grid keeps the two arguments of a fraction and
+   each pair of scripts attached when the surrounding paragraph wraps. */
+*|math { display: inline-block; vertical-align: middle; text-indent: 0; white-space: nowrap; }
+*|math[display="block"] { display: block; text-align: center; margin-block: 1em; }
+*|math * { text-indent: 0; }
+*|mrow, *|mfenced, *|mstyle, *|msqrt, *|mroot, *|semantics, *|mpadded { display: inline-block; }
+*|mi { font-style: italic; }
+*|mo { padding-inline: .25ch; }
+*|mfrac, *|msub, *|msup, *|msubsup, *|munder, *|mover, *|munderover { display: inline-grid; vertical-align: middle; text-align: center; }
+*|msub > *, *|msup > *, *|msubsup > *, *|munder > *, *|mover > *, *|munderover > * { display: block; }
+*|mfrac { grid-template-columns: auto; }
+*|mfrac > * { display: block; padding-inline: 1ch; }
+*|mfrac > :nth-child(2) { border-top: 16px solid; }
+*|mfrac[linethickness="0"] > :nth-child(2) { border: 0; }
+*|msup > :first-child, *|msubsup > :first-child { grid-column: 1; grid-row: 2; }
+*|msup > :nth-child(2), *|msubsup > :nth-child(3) { grid-column: 2; grid-row: 1; }
+*|msub > :first-child { grid-column: 1; grid-row: 1; }
+*|msub > :nth-child(2) { grid-column: 2; grid-row: 2; }
+*|msubsup > :nth-child(2) { grid-column: 2; grid-row: 3; }
+*|mover > :first-child, *|munderover > :first-child { grid-column: 1; grid-row: 2; }
+*|mover > :nth-child(2), *|munderover > :nth-child(3) { grid-column: 1; grid-row: 1; }
+*|munder > :first-child { grid-column: 1; grid-row: 1; }
+*|munder > :nth-child(2) { grid-column: 1; grid-row: 2; }
+*|munderover > :nth-child(2) { grid-column: 1; grid-row: 3; }
+*|msqrt { border-top: 16px solid; }
+*|msqrt::before, *|mroot::before { content: "√"; }
+*|mroot { display: inline-flex; align-items: baseline; }
+*|mroot > :nth-child(2) { order: -1; }
+*|mfenced::before { content: "("; }
+*|mfenced::after { content: ")"; }
+*|mfenced[open]::before { content: attr(open); }
+*|mfenced[close]::after { content: attr(close); }
+*|mfenced > :not(:last-child)::after { content: ","; }
+*|mtable { display: inline-table; border-spacing: 1ch 0; }
+*|mtr, *|mlabeledtr { display: table-row; }
+*|mtd { display: table-cell; text-align: center; }
+*|annotation, *|annotation-xml, *|mphantom { visibility: hidden; }
+*|semantics > :not(:first-child) { display: none; }
+*|semantics > *|annotation:first-child { visibility: visible; }

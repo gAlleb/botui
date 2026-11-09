@@ -72,11 +72,12 @@ pub(super) fn table(lines: &mut Vec<PageLine>, start: usize, row: &TableRow, wid
             }
         }
         lines.push(PageLine {
+            spans: Vec::new(),
             indent: 0,
             text: line,
             heading: false,
             start: anchor,
-            image: None,
+            figures: Vec::new(),
             table_header: row.header,
         });
     }

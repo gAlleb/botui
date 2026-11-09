@@ -8,6 +8,18 @@ use ratatui::{
     widgets::{Clear, Paragraph},
 };
 
+pub(super) fn panes(
+    mut screen: Rect,
+    splitter: &mut crate::splitter::Splitter,
+    zen: bool,
+    extra_footer: bool,
+) -> (Rect, Rect) {
+    if !zen || extra_footer {
+        screen.height = screen.height.saturating_sub(1);
+    }
+    splitter.layout(screen, !zen && screen.width >= 78)
+}
+
 pub(super) fn geometry(
     area: Rect,
     mode: LayoutMode,

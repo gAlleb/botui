@@ -14,6 +14,7 @@ BOTUI is a terminal book reader for Linux. Open a book from disk, browse an OPDS
 - **BookOrbit (https://github.com/bookorbit/bookorbit).** Browse authors, series and collections. Opening an edition saves it on your device. Read offline and sync your position when you reconnect.
 - **OPDS.** Browse OPDS 1 and 2 catalogs, download an edition and find it later on the OPDS downloads shelf.
 - **The reader.** Read EPUB and FB2 as text, or view the original pages of a PDF or DjVu. Choose a single page, a spread or continuous scrolling. Follow footnotes, bookmark a passage or export notes to Markdown.
+- **Technical EPUBs.** Read tables with merged cells, equations and code listings in the same view as the surrounding text. Bookmarks and BookOrbit progress follow the passage when the window changes size.
 
 ## Screenshots
 

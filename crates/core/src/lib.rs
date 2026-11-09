@@ -4,6 +4,7 @@ mod location;
 mod media;
 pub use media::TableRow;
 mod printed;
+pub mod publisher;
 mod reference;
 pub use reference::{Reference, Target};
 mod search;
@@ -16,6 +17,7 @@ use unicode_width::UnicodeWidthStr;
 pub struct Document {
     /// Ordered archive members when the entire reading order consists of raster plates.
     pub image_pages: Vec<String>,
+    pub styled: std::collections::BTreeMap<usize, publisher::Chapter>,
     pub tables: std::collections::BTreeMap<usize, TableRow>,
     pub references: Vec<Reference>,
     pub contents: Vec<ContentsEntry>,
@@ -68,22 +70,58 @@ pub enum LayoutMode {
     Spread,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug)]
+pub struct Figure {
+    pub reference: usize,
+    pub x: u16,
+    pub width: u16,
+}
+
+#[derive(Clone, Debug, Default)]
 pub struct PageLine {
     /// Leading cells on the first visual line of a prose paragraph.
     pub indent: u16,
-    pub image: Option<usize>,
+    pub figures: Vec<Figure>,
     pub table_header: bool,
     pub text: String,
     pub heading: bool,
     start: Anchor,
+    pub spans: Vec<publisher::TextSpan>,
 }
 
 impl PageLine {
     pub fn anchor(&self) -> Anchor {
         self.start
     }
+    pub(crate) fn source_range(
+        &self,
+        block: usize,
+        bytes: &std::ops::Range<usize>,
+    ) -> Option<std::ops::Range<usize>> {
+        let mut visible: Option<std::ops::Range<usize>> = None;
+        for span in &self.spans {
+            let Some(at) = span.source else { continue };
+            if at.block != block || at.byte >= bytes.end || span.source_end <= bytes.start {
+                continue;
+            }
+            let range = if span.bytes.len() == span.source_end - at.byte {
+                span.bytes.start + bytes.start.saturating_sub(at.byte)
+                    ..span.bytes.end - span.source_end.saturating_sub(bytes.end)
+            } else {
+                span.bytes.clone()
+            };
+            match &mut visible {
+                Some(r) if r.end == range.start => r.end = range.end,
+                Some(_) => break,
+                None => visible = Some(range),
+            }
+        }
+        visible
+    }
     pub fn link_range(&self, doc: &Document, link: &Reference) -> Option<std::ops::Range<usize>> {
+        if !self.spans.is_empty() {
+            return self.source_range(link.source, link.bytes.as_ref()?);
+        }
         if link.source != self.start.block || self.text.is_empty() {
             return None;
         }
@@ -140,6 +178,7 @@ pub struct Pager {
     inline_images: bool,
     layout: Layout,
     lines: Vec<PageLine>,
+    source_lines: Vec<(Anchor, usize)>,
     first: usize,
     focus: Anchor,
 }
@@ -198,6 +237,18 @@ impl Pager {
         options: ReflowOptions,
         resume: Option<Anchor>,
     ) -> Self {
+        Self::with_start_and_gap(doc, width, height, mode, SPREAD_GAP, options, resume)
+    }
+
+    pub fn with_start_and_gap(
+        doc: &Document,
+        width: u16,
+        height: u16,
+        mode: LayoutMode,
+        gap: u16,
+        options: ReflowOptions,
+        resume: Option<Anchor>,
+    ) -> Self {
         let ReflowOptions {
             repair_printed,
             inline_images,
@@ -222,10 +273,18 @@ impl Pager {
                 *p = false;
             }
         }
-        let layout = Layout::new(width, height, mode, SPREAD_GAP);
+        for (&start, chapter) in &doc.styled {
+            if chapter.preserve_structure {
+                printed[start..chapter.end].fill(false);
+            }
+            if start > 0 {
+                printed[start - 1] = false;
+            }
+        }
+        let layout = Layout::new(width, height, mode, gap);
         let lines = wrap_document(
             doc,
-            layout.width,
+            layout,
             &printed,
             inline_images,
             paragraph_indent,
@@ -237,6 +296,7 @@ impl Pager {
             paragraph_indent,
             inline_images,
             printed,
+            source_lines: Self::source_index(doc, &lines),
             lines,
             first: 0,
             focus: Anchor::default(),
@@ -251,6 +311,22 @@ impl Pager {
     pub fn relayout(&mut self, doc: &Document, width: u16, height: u16, mode: LayoutMode) {
         self.relayout_with_gap(doc, width, height, mode, SPREAD_GAP)
     }
+    /// Changing typography keeps the current passage. Only the original
+    /// resume address can introduce a break in the middle of a paragraph.
+    pub fn reconfigure(
+        &mut self,
+        doc: &Document,
+        width: u16,
+        height: u16,
+        mode: LayoutMode,
+        gap: u16,
+        options: ReflowOptions,
+    ) {
+        let focus = self.focus;
+        *self = Self::with_start_and_gap(doc, width, height, mode, gap, options, self.resume);
+        self.seek(focus);
+    }
+
     pub fn relayout_with_gap(
         &mut self,
         doc: &Document,
@@ -263,15 +339,23 @@ impl Pager {
         if self.layout == layout {
             return;
         }
-        if self.layout.width != layout.width {
+        let uses_height = !doc.styled.is_empty()
+            || self.inline_images
+                && doc
+                    .references
+                    .iter()
+                    .any(|r| matches!(r.target, Target::Image(_)));
+        if self.layout.width != layout.width || (uses_height && layout.height != self.layout.height)
+        {
             self.lines = wrap_document(
                 doc,
-                layout.width,
+                layout,
                 &self.printed,
                 self.inline_images,
                 self.paragraph_indent,
                 self.resume,
             );
+            self.source_lines = Self::source_index(doc, &self.lines);
         }
         self.layout = layout;
         self.seek(self.focus);
@@ -290,8 +374,29 @@ impl Pager {
         self.focus
     }
 
+    fn source_index(doc: &Document, lines: &[PageLine]) -> Vec<(Anchor, usize)> {
+        if doc.styled.is_empty() {
+            return Vec::new();
+        }
+        let mut index = Vec::new();
+        for (i, line) in lines.iter().enumerate() {
+            if line.spans.is_empty() && (!line.text.trim().is_empty() || !line.figures.is_empty()) {
+                index.push((line.start, i));
+            }
+            index.extend(line.spans.iter().filter_map(|s| s.source.map(|a| (a, i))));
+        }
+        index.sort_unstable();
+        index.dedup_by_key(|v| v.0);
+        index
+    }
+
     pub fn seek(&mut self, anchor: Anchor) {
         self.focus = anchor;
+        if !self.source_lines.is_empty() {
+            let index = self.source_lines.partition_point(|(at, _)| *at <= anchor);
+            self.first = self.source_lines[index.saturating_sub(1)].1;
+            return;
+        }
         // Anchors are in document order, including the paragraph separators.
         let first = self.lines.partition_point(|line| line.start < anchor);
         self.first = if self.lines.get(first).is_some_and(|l| l.start == anchor) {
@@ -352,29 +457,42 @@ impl Pager {
         // The blank row between paragraphs belongs to the layout. Its source
         // address is the end of the preceding paragraph, often on another page.
         let line = &self.lines[first];
-        self.focus = if line.text.is_empty() && line.image.is_none() {
-            self.lines.get(first + 1).unwrap_or(line).start
-        } else {
-            line.start
-        };
+        self.focus = self.lines[first..]
+            .iter()
+            .find(|row| {
+                !row.figures.is_empty()
+                    || if row.spans.is_empty() {
+                        !row.text.trim().is_empty()
+                    } else {
+                        row.spans.iter().any(|s| s.source.is_some())
+                    }
+            })
+            .unwrap_or(line)
+            .start;
     }
 }
 
 fn wrap_document(
     doc: &Document,
-    width: u16,
+    layout: Layout,
     printed: &[bool],
     inline_images: bool,
     paragraph_indent: u8,
     resume: Option<Anchor>,
 ) -> Vec<PageLine> {
+    let width = layout.width;
     let mut lines = Vec::new();
     if width == 0 {
         return lines;
     }
+    let positioned: std::collections::HashSet<_> = doc
+        .styled
+        .values()
+        .flat_map(|c| c.images.iter().flatten().copied())
+        .collect();
     let mut images = std::collections::BTreeMap::<usize, Vec<usize>>::new();
     for (i, r) in doc.references.iter().enumerate() {
-        if inline_images && matches!(r.target, Target::Image(_)) {
+        if inline_images && matches!(r.target, Target::Image(_)) && !positioned.contains(&i) {
             images
                 .entry(r.source.min(doc.blocks.len()))
                 .or_default()
@@ -392,14 +510,18 @@ fn wrap_document(
                 }
             };
             for &id in ids {
-                for _ in 0..(width / 7).clamp(3, 9) {
+                for _ in 0..(layout.height * 2 / 3)
+                    .max(1)
+                    .min(usize::from(width) / 2 + 1)
+                {
                     lines.push(PageLine {
-                        indent: 0,
-                        text: String::new(),
-                        heading: false,
                         start: anchor,
-                        image: Some(id),
-                        table_header: false,
+                        figures: vec![Figure {
+                            reference: id,
+                            x: 0,
+                            width,
+                        }],
+                        ..Default::default()
                     });
                 }
             }
@@ -407,6 +529,25 @@ fn wrap_document(
     };
     let mut start = 0;
     while start < doc.blocks.len() {
+        if let Some(chapter) = doc.styled.get(&start)
+            && (chapter.preserve_structure || !printed[start..chapter.end].contains(&true))
+        {
+            draw_images(&mut lines, start);
+            let options = ReflowOptions {
+                repair_printed: false,
+                inline_images,
+                paragraph_indent,
+            };
+            lines.extend(chapter.layout(
+                width,
+                layout.height,
+                options,
+                &doc.blocks,
+                resume.filter(|a| (start..chapter.end).contains(&a.block)),
+            ));
+            start = chapter.end;
+            continue;
+        }
         draw_images(&mut lines, start);
         if let Some(row) = doc.tables.get(&start) {
             media::table(&mut lines, start, row, width.into());
@@ -419,7 +560,9 @@ fn wrap_document(
         }
         let end = printed::end(&doc.blocks, printed, start);
         let end = (start + 1..=end)
-            .find(|i| images.contains_key(i) || doc.tables.contains_key(i))
+            .find(|i| {
+                images.contains_key(i) || doc.tables.contains_key(i) || doc.styled.contains_key(i)
+            })
             .map_or(end, |i| i - 1);
         let block = &doc.blocks[end];
         let before = lines.len();
@@ -434,8 +577,9 @@ fn wrap_document(
         start = end + 1;
         if lines.len() > before {
             lines.push(PageLine {
+                spans: Vec::new(),
                 indent: 0,
-                image: None,
+                figures: Vec::new(),
                 table_header: false,
                 text: String::new(),
                 heading: false,
@@ -448,7 +592,7 @@ fn wrap_document(
     }
     if lines
         .last()
-        .is_some_and(|l| l.image.is_none() && l.text.is_empty())
+        .is_some_and(|l| l.figures.is_empty() && l.text.is_empty())
     {
         lines.pop();
     }
@@ -469,8 +613,9 @@ fn wrap_block(lines: &mut Vec<PageLine>, block: &Block, index: usize, width: usi
     let mut used = indent;
     let emit = |lines: &mut Vec<PageLine>, row: &mut String, byte, indent: &mut usize| {
         lines.push(PageLine {
+            spans: Vec::new(),
             indent: std::mem::take(indent) as u16,
-            image: None,
+            figures: Vec::new(),
             table_header: false,
             text: std::mem::take(row),
             heading: block.heading,
@@ -532,6 +677,7 @@ mod tests {
     fn document(paragraphs: &[&str]) -> Document {
         Document {
             image_pages: vec![],
+            styled: Default::default(),
             tables: Default::default(),
             title: "Книга".into(),
             references: vec![],

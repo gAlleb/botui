@@ -25,6 +25,21 @@ impl Search {
         self.hits = hits;
         self.selected = selected;
     }
+    pub fn reflow(&mut self, pager: &Pager, doc: &Document) {
+        if self.index.is_none() {
+            return;
+        }
+        // A media query can hide the current match after a resize.
+        let previous = self.hits.get(self.selected).map(|hit| hit.anchor);
+        let index = Rc::new(pager.search_index(doc));
+        self.hits = index.matches(&self.query);
+        self.selected = previous.map_or(0, |at| {
+            self.hits
+                .partition_point(|hit| hit.anchor < at)
+                .min(self.hits.len().saturating_sub(1))
+        });
+        self.index = Some(index);
+    }
     pub fn restore(&self, nav: &mut super::navigation::Navigation) {
         nav.query.clone_from(&self.query);
         nav.hits.clone_from(&self.hits);
@@ -43,16 +58,44 @@ impl Search {
         Some(self.hits[self.selected].anchor)
     }
     pub fn line<'a>(&self, line: &'a PageLine) -> Line<'a> {
-        if let Some(hit) = self.hits.get(self.selected)
-            && let Some(bytes) = self.index.as_ref().and_then(|i| i.visible_range(hit, line))
-        {
-            Line::from(vec![
-                Span::raw(&line.text[..bytes.start]),
-                Span::styled(&line.text[bytes.clone()], Modifier::REVERSED),
-                Span::raw(&line.text[bytes.end..]),
-            ])
-        } else {
-            Line::raw(&line.text)
+        let hit = self
+            .hits
+            .get(self.selected)
+            .and_then(|h| self.index.as_ref()?.visible_range(h, line));
+        if line.spans.is_empty() && hit.is_none() {
+            return Line::raw(&line.text);
         }
+        let mut styled = Vec::new();
+        let mut byte = 0;
+        let mut push = |start: usize, end: usize, style: Modifier| {
+            if start == end {
+                return;
+            }
+            let mut cuts = [start, start, end, end];
+            if let Some(hit) = &hit {
+                cuts[1] = hit.start.clamp(start, end);
+                cuts[2] = hit.end.clamp(start, end);
+            }
+            for (a, b) in cuts.iter().zip(cuts.iter().skip(1)).filter(|(a, b)| a < b) {
+                let modifier = if hit.as_ref().is_some_and(|h| h.contains(a)) {
+                    style | Modifier::REVERSED
+                } else {
+                    style
+                };
+                styled.push(Span::styled(&line.text[*a..*b], modifier));
+            }
+        };
+        for s in &line.spans {
+            push(byte, s.bytes.start, Modifier::empty());
+            let mut style = Modifier::empty();
+            style.set(Modifier::BOLD, s.face.bold);
+            style.set(Modifier::ITALIC, s.face.italic);
+            style.set(Modifier::UNDERLINED, s.face.underline);
+            style.set(Modifier::CROSSED_OUT, s.face.strike);
+            push(s.bytes.start, s.bytes.end, style);
+            byte = s.bytes.end;
+        }
+        push(byte, line.text.len(), Modifier::empty());
+        Line::from(styled)
     }
 }

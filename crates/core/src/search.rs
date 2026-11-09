@@ -8,7 +8,11 @@ struct Paragraph {
     text: String,
     folded: String,
 }
-pub struct SearchIndex(Vec<Paragraph>);
+pub struct SearchIndex {
+    paragraphs: Vec<Paragraph>,
+    /// CSS can hide an entire paragraph or just a span inside one.
+    visible: std::collections::BTreeMap<usize, Vec<Range<usize>>>,
+}
 impl Pager {
     pub fn search_index(&self, doc: &Document) -> SearchIndex {
         let mut rows = vec![];
@@ -25,7 +29,40 @@ impl Pager {
             });
             start = end + 1;
         }
-        SearchIndex(rows)
+        let mut visible = std::collections::BTreeMap::<usize, Vec<Range<usize>>>::new();
+        for (&start, chapter) in &doc.styled {
+            if chapter.preserve_structure || !self.printed[start..chapter.end].contains(&true) {
+                for block in start..chapter.end {
+                    visible.insert(block, Vec::new());
+                }
+            }
+        }
+        for span in self.lines.iter().flat_map(|line| &line.spans) {
+            if let Some(at) = span.source
+                && let Some(ranges) = visible.get_mut(&at.block)
+            {
+                ranges.push(at.byte..span.source_end);
+            }
+        }
+        for (block, ranges) in &mut visible {
+            let text = &doc.blocks[*block].text;
+            ranges.sort_by_key(|r| r.start);
+            let mut merged = Vec::<Range<usize>>::new();
+            for range in ranges.drain(..) {
+                if let Some(last) = merged.last_mut()
+                    && (range.start <= last.end || text[last.end..range.start].trim().is_empty())
+                {
+                    last.end = last.end.max(range.end);
+                } else {
+                    merged.push(range)
+                }
+            }
+            *ranges = merged;
+        }
+        SearchIndex {
+            paragraphs: rows,
+            visible,
+        }
     }
 }
 /// Source offsets in a logical paragraph are stable when the reader changes its width.
@@ -43,7 +80,7 @@ impl SearchIndex {
             return hits;
         }
         let q = query.to_lowercase();
-        for (paragraph, p) in self.0.iter().enumerate() {
+        for (paragraph, p) in self.paragraphs.iter().enumerate() {
             // Case conversion can expand one source character into multiple code points.
             // Walk source and folded bytes together, once per paragraph.
             let mut source = p
@@ -67,11 +104,20 @@ impl SearchIndex {
                 };
                 let start = first.start;
                 let part = p.offsets.partition_point(|n| *n <= start).saturating_sub(1);
+                let anchor = Anchor {
+                    block: p.start + part,
+                    byte: start - p.offsets[part],
+                };
+                if let Some(ranges) = self.visible.get(&anchor.block) {
+                    let i = ranges.partition_point(|r| r.end <= anchor.byte);
+                    if !ranges.get(i).is_some_and(|r| {
+                        r.start <= anchor.byte && last.end - p.offsets[part] <= r.end
+                    }) {
+                        continue;
+                    }
+                }
                 hits.push(SearchMatch {
-                    anchor: Anchor {
-                        block: p.start + part,
-                        byte: start - p.offsets[part],
-                    },
+                    anchor,
                     paragraph,
                     bytes: start..last.end,
                 });
@@ -84,7 +130,7 @@ impl SearchIndex {
     }
 
     pub fn excerpt(&self, hit: &SearchMatch) -> String {
-        self.0[hit.paragraph].text[hit.bytes.start..]
+        self.paragraphs[hit.paragraph].text[hit.bytes.start..]
             .chars()
             .take(120)
             .collect()
@@ -99,7 +145,13 @@ impl SearchIndex {
 
     /// Map the part of this occurrence visible on a rendered line back to its UTF-8 bytes.
     pub fn visible_range(&self, hit: &SearchMatch, line: &PageLine) -> Option<Range<usize>> {
-        let p = self.0.get(hit.paragraph)?;
+        let p = self.paragraphs.get(hit.paragraph)?;
+        if !line.spans.is_empty() {
+            return line.source_range(
+                hit.anchor.block,
+                &(hit.anchor.byte..hit.anchor.byte + hit.bytes.len()),
+            );
+        }
         let part = line.start.block.checked_sub(p.start)?;
         let from = p.offsets.get(part)?.checked_add(line.start.byte)?;
         let to = from.checked_add(line.text.len())?;

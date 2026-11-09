@@ -17,6 +17,8 @@ zip = { version = "9.4", default-features = false, features = ["deflate"] }
 xml = "1"
 encoding_rs_io = "0.1"
 xmlparser = "0.13.6"
+math-core = "0.9"
+imagesize = "0.13"
 
 [dev-dependencies]
 serde_json = "1"

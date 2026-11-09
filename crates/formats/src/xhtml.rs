@@ -116,6 +116,7 @@ fn flush(buffer: &mut String, is_heading: bool, blocks: &mut Vec<Block>) {
 }
 
 pub(super) struct RawLink {
+    pub node: ego_tree::NodeId,
     pub block: usize,
     pub byte: usize,
     pub backlink: bool,
@@ -124,11 +125,24 @@ pub(super) struct RawLink {
     pub label: String,
     pub href: String,
 }
+pub(super) type TextOrigins =
+    std::collections::HashMap<ego_tree::NodeId, (botui_core::Anchor, usize)>;
+
 pub(super) fn append_blocks(
     dom: &Html,
     blocks: &mut Vec<Block>,
     links: &mut Vec<RawLink>,
     tables: &mut std::collections::BTreeMap<usize, botui_core::TableRow>,
+) -> Vec<(String, botui_core::Anchor)> {
+    extract(dom, blocks, links, tables, None)
+}
+
+pub(super) fn extract(
+    dom: &Html,
+    blocks: &mut Vec<Block>,
+    links: &mut Vec<RawLink>,
+    tables: &mut std::collections::BTreeMap<usize, botui_core::TableRow>,
+    mut origins: Option<&mut TextOrigins>,
 ) -> Vec<(String, botui_core::Anchor)> {
     let Some(body) = dom
         .root_element()
@@ -161,6 +175,7 @@ pub(super) fn append_blocks(
                                 .find(|(key, _)| matches!(*key, "href" | "xlink:href"))
                             {
                                 links.push(RawLink {
+                                    node: node.id(),
                                     block: blocks.len(),
                                     byte: 0,
                                     backlink: false,
@@ -203,7 +218,8 @@ pub(super) fn append_blocks(
                             },
                         ));
                     }
-                    if matches!(name, "script" | "style" | "template" | "svg" | "noscript")
+                    if (matches!(name, "script" | "style" | "template" | "svg" | "noscript")
+                        && !super::tex::script(el))
                         || el.attr("hidden").is_some()
                     {
                         hidden = Some(node.id());
@@ -224,6 +240,7 @@ pub(super) fn append_blocks(
                                     .unwrap_or_default()
                             };
                             links.push(RawLink {
+                                node: node.id(),
                                 block: blocks.len(),
                                 byte: buffer.len(),
                                 id: el.attr("id").or_else(|| el.attr("name")).map(str::to_owned),
@@ -246,7 +263,24 @@ pub(super) fn append_blocks(
                         buffer.push(' ');
                     }
                 }
-                Node::Text(text) => append_text(&mut buffer, text),
+                Node::Text(text) => {
+                    let byte = buffer.len();
+                    append_text(&mut buffer, text);
+                    if byte < buffer.len()
+                        && let Some(origins) = origins.as_deref_mut()
+                    {
+                        origins.insert(
+                            node.id(),
+                            (
+                                botui_core::Anchor {
+                                    block: blocks.len(),
+                                    byte,
+                                },
+                                buffer.len(),
+                            ),
+                        );
+                    }
+                }
                 _ => {}
             },
             Edge::Close(node) => {

@@ -166,12 +166,24 @@ impl Reader {
             .unwrap_or_else(|| 78u16.saturating_add_signed(-6 * i16::from(margin)))
             .clamp(32, 240);
         let gap = settings.column_gap.unwrap_or(4).min(32);
-        let (text, mode_for_size, _) = layout::geometry(area, mode, page_width, gap, settings.zen);
-        let pager = Pager::with_start(
+        let mut splitter = crate::splitter::Splitter::new(
+            crate::splitter::Pane::Contents,
+            settings.contents_width,
+        );
+        let (_, page) = layout::panes(
+            area,
+            &mut splitter,
+            settings.zen,
+            settings.zen_progress && area.height > 1,
+        );
+        let (text, mode_for_size, actual_gap) =
+            layout::geometry(page, mode, page_width, gap, settings.zen);
+        let pager = Pager::with_start_and_gap(
             &doc,
             text.width,
             text.height,
             mode_for_size,
+            actual_gap,
             ReflowOptions {
                 repair_printed: !settings.preserve_printed_lines,
                 inline_images: !settings.hide_inline_images,
@@ -193,10 +205,7 @@ impl Reader {
             opaque: settings.opaque_background,
             sidebar,
             sidebar_rect: Rect::default(),
-            splitter: crate::splitter::Splitter::new(
-                crate::splitter::Pane::Contents,
-                settings.contents_width,
-            ),
+            splitter,
             footer: [Rect::default(); 6],
             remote_marked: false,
             sidebar_focus: false,
@@ -227,21 +236,29 @@ impl Reader {
 
     fn draw(&mut self, frame: &mut Frame, notice: Option<&str>) {
         let screen = frame.area();
-        let mut page = screen;
         self.links.clear();
         let show_progress =
             self.zen && self.zen_progress && screen.height > 1 && !self.links.visiting();
-        if !self.zen || self.links.visiting() || show_progress {
-            page.height = page.height.saturating_sub(1);
-        }
-        (self.sidebar_rect, page) = self.splitter.layout(page, !self.zen && screen.width >= 78);
+        let (sidebar, page) = layout::panes(
+            screen,
+            &mut self.splitter,
+            self.zen,
+            self.links.visiting() || show_progress,
+        );
+        self.sidebar_rect = sidebar;
         if self.sidebar_rect.is_empty() {
             self.sidebar_focus = false;
         }
         let (text, actual, gap) =
             layout::geometry(page, self.mode, self.page_width, self.gap, self.zen);
+        let size_before = (self.pager.column_width(), self.pager.viewport());
         self.pager
             .relayout_with_gap(&self.doc, text.width, text.height, actual, gap);
+        if !self.doc.styled.is_empty()
+            && size_before != (self.pager.column_width(), self.pager.viewport())
+        {
+            self.search.reflow(&self.pager, &self.doc);
+        }
         let mut style = self
             .palette
             .as_ref()
@@ -272,17 +289,27 @@ impl Reader {
                     self.pager.column_width() - line.indent,
                     1,
                 );
-                if let Some(image) = line.image {
-                    if let Some((id, area)) = figures.last_mut() as Option<&mut (usize, Rect)>
-                        && *id == image
-                        && area.x == rect.x
-                        && area.bottom() == rect.y
+                for figure in &line.figures {
+                    let image = Rect::new(rect.x.saturating_add(figure.x), rect.y, figure.width, 1)
+                        .intersection(rect);
+                    if image.is_empty() {
+                        continue;
+                    }
+                    if let Some((_, area)) =
+                        figures
+                            .iter_mut()
+                            .rev()
+                            .find(|(id, area): &&mut (usize, Rect)| {
+                                *id == figure.reference
+                                    && area.x == image.x
+                                    && area.width == image.width
+                                    && area.bottom() == image.y
+                            })
                     {
                         area.height += 1;
                     } else {
-                        figures.push((image, rect));
+                        figures.push((figure.reference, image));
                     }
-                    continue;
                 }
                 let mut para = Paragraph::new(self.search.line(line)).style(if line.table_header {
                     style.add_modifier(Modifier::BOLD)
@@ -1341,23 +1368,34 @@ pub fn read_server(
                     || old.hide_inline_images != new.hide_inline_images
                     || old.paragraph_indent != new.paragraph_indent
                 {
-                    let focus = reader.pager.anchor();
                     let size = term.size()?;
-                    reader.pager = Pager::with_start(
-                        &reader.doc,
-                        size.width,
-                        size.height,
+                    let screen = Rect::new(0, 0, size.width, size.height);
+                    let (_, page) = layout::panes(
+                        screen,
+                        &mut reader.splitter,
+                        reader.zen,
+                        reader.links.visiting() || reader.zen_progress && size.height > 1,
+                    );
+                    let (text, mode, gap) = layout::geometry(
+                        page,
                         reader.mode,
+                        reader.page_width,
+                        reader.gap,
+                        reader.zen,
+                    );
+                    reader.pager.reconfigure(
+                        &reader.doc,
+                        text.width,
+                        text.height,
+                        mode,
+                        gap,
                         ReflowOptions {
                             repair_printed: !new.preserve_printed_lines,
                             inline_images: !new.hide_inline_images,
                             paragraph_indent: new.paragraph_indent,
                         },
-                        Some(focus),
                     );
-                    if old.preserve_printed_lines != new.preserve_printed_lines {
-                        reader.search = Default::default();
-                    }
+                    reader.search.reflow(&reader.pager, &reader.doc);
                 }
                 continue;
             }
@@ -1480,5 +1518,16 @@ pub fn read_server(
         }
         notices.push("Could not map this passage to BookOrbit. Saved locally.".into());
     }
-    Ok((None, percent))
+    let shelf_percent = if base.is_none()
+        && let Some(saved) = state.as_ref().and_then(|s| s.load().ok()).flatten()
+    {
+        if saved.finished {
+            100.
+        } else {
+            reader.doc.text_percentage(saved.anchor).min(99.)
+        }
+    } else {
+        percent
+    };
+    Ok((None, shelf_percent))
 }

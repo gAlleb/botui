@@ -57,6 +57,18 @@ pub(super) fn read_book(reader: impl Read + Seek, fallback: &str) -> Result<Docu
             ))
         })
         .collect();
+    let mut sheets = botui_core::publisher::Stylesheets::default();
+    let mut css_remaining = MAX_MEMBER;
+    for (path, mime) in &resources {
+        if *mime == "text/css"
+            && let Ok(css) = read_member(&mut archive, path, &mut css_remaining)
+        {
+            sheets.insert(path, css);
+        }
+    }
+    let sheets = std::sync::Arc::new(sheets);
+    let mut image_sizes = HashMap::new();
+    let mut styled = std::collections::BTreeMap::new();
     let spine = section("spine").ok_or_else(|| invalid("Missing EPUB reading order"))?;
     let mut locations = botui_core::Locations::default();
     let mut blocks = Vec::<Block>::new();
@@ -89,13 +101,52 @@ pub(super) fn read_book(reader: impl Read + Seek, fallback: &str) -> Result<Docu
         let start = blocks.len();
         starts.insert(member.clone(), start);
         let mut links = vec![];
-        let dom = if item.attribute("media-type") == Some("text/html") {
+        let mut dom = if item.attribute("media-type") == Some("text/html") {
             scraper::Html::parse_document(&html)
         } else {
             xhtml::parse_document(&html)
         };
-        for (id, block) in xhtml::append_blocks(&dom, &mut blocks, &mut links, &mut tables) {
+        let mut origins = crate::publisher::uses_layout(&dom).then(xhtml::TextOrigins::new);
+        for (id, block) in
+            xhtml::extract(&dom, &mut blocks, &mut links, &mut tables, origins.as_mut())
+        {
             ids.entry((member.clone(), id)).or_insert(block);
+        }
+        if let Some(origins) = origins.filter(|_| blocks.len() > start) {
+            crate::publisher::map_locations(
+                &html,
+                &dom,
+                &origins,
+                &spine_path,
+                &blocks,
+                &mut locations,
+            );
+            let figures = links
+                .iter()
+                .enumerate()
+                .filter(|(_, l)| l.image)
+                .map(|(i, l)| {
+                    let size = member_path(&member, &l.href).ok().and_then(|member| {
+                        *image_sizes.entry(member.clone()).or_insert_with(|| {
+                            let file = archive.by_name(&member).ok()?;
+                            let mut header = Vec::new();
+                            file.take(32 * 1024).read_to_end(&mut header).ok()?;
+                            imagesize::blob_size(&header)
+                                .ok()
+                                .map(|s| (s.width, s.height))
+                        })
+                    });
+                    (l.node, raw.len() + i, size)
+                });
+            let chapter = crate::publisher::chapter(
+                &mut dom,
+                origins,
+                blocks.len(),
+                &member,
+                sheets.clone(),
+                figures,
+            );
+            styled.insert(start, chapter);
         }
         let member: std::sync::Arc<str> = member.into();
         raw.extend(links.into_iter().map(|v| (member.clone(), v)));
@@ -175,9 +226,11 @@ pub(super) fn read_book(reader: impl Read + Seek, fallback: &str) -> Result<Docu
         }
     }
     use botui_core::{Anchor, Reference, Target};
-    let references = raw
+    let mut by_raw = vec![None; raw.len()];
+    let references: Vec<Reference> = raw
         .into_iter()
-        .filter_map(|(base, link)| {
+        .enumerate()
+        .filter_map(|(index, (base, link))| {
             let label = if link.label.trim().is_empty() {
                 link.href
                     .rsplit('/')
@@ -236,21 +289,35 @@ pub(super) fn read_book(reader: impl Read + Seek, fallback: &str) -> Result<Docu
                         .then_some(start..start + label.len())
                 })
                 .flatten();
-            Some(Reference {
-                bytes,
-                backlink: link.backlink,
-                source: if link.image {
-                    link.block.min(blocks.len())
-                } else {
-                    link.block.min(blocks.len() - 1)
+            Some((
+                index,
+                Reference {
+                    bytes,
+                    backlink: link.backlink,
+                    source: if link.image {
+                        link.block.min(blocks.len())
+                    } else {
+                        link.block.min(blocks.len() - 1)
+                    },
+                    label,
+                    target,
                 },
-                label,
-                target,
-            })
+            ))
+        })
+        .enumerate()
+        .map(|(id, (index, r))| {
+            by_raw[index] = Some(id);
+            r
         })
         .collect();
+    for chapter in styled.values_mut() {
+        for id in &mut chapter.images {
+            *id = id.and_then(|i| by_raw[i]);
+        }
+    }
     Ok(Document {
         image_pages,
+        styled,
         tables,
         references,
         contents,

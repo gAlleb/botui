@@ -41,9 +41,14 @@ impl Links {
         self.keep = Rect::default();
     }
     pub fn mark_line(&mut self, f: &mut Frame, doc: &Document, line: &PageLine, rect: Rect) {
-        let Some(ids) = self.by_block.get(&line.anchor().block) else {
-            return;
-        };
+        let mut blocks = vec![line.anchor().block];
+        for at in line.spans.iter().filter_map(|span| span.source) {
+            if blocks.last() != Some(&at.block) {
+                blocks.push(at.block);
+            }
+        }
+        blocks.sort_unstable();
+        blocks.dedup();
         let offset = if line.heading {
             rect.width
                 .saturating_sub(Line::raw(&line.text).width() as u16)
@@ -51,7 +56,7 @@ impl Links {
         } else {
             0
         };
-        for &i in ids {
+        for &i in blocks.iter().filter_map(|b| self.by_block.get(b)).flatten() {
             if let Some(bytes) = line.link_range(doc, &doc.references[i]) {
                 let x = rect.x + offset + Line::raw(&line.text[..bytes.start]).width() as u16;
                 let w = Line::raw(&line.text[bytes]).width() as u16;

@@ -56,8 +56,26 @@ struct Record {
     margin: i8,
 }
 
+#[derive(Default, Clone, Copy, PartialEq, Eq)]
+struct ReadingPoint {
+    anchor: Anchor,
+    scan_offset: u16,
+    finished: bool,
+}
+impl From<&Saved> for ReadingPoint {
+    fn from(s: &Saved) -> Self {
+        Self {
+            anchor: s.anchor,
+            scan_offset: s.scan_offset,
+            finished: s.finished,
+        }
+    }
+}
+
 pub struct LocalState {
     path: PathBuf,
+    // The snapshot last observed by this reader, including the initially empty state.
+    baseline: std::cell::Cell<Option<ReadingPoint>>,
 }
 
 pub fn state_dir() -> io::Result<PathBuf> {
@@ -169,10 +187,18 @@ impl LocalState {
         };
         Ok(Self {
             path: dir.join(format!("{key}.json")),
+            baseline: Default::default(),
         })
     }
 
     pub fn load(&self) -> io::Result<Option<Saved>> {
+        let current = self.read_saved()?;
+        self.baseline.set(Some(
+            current.as_ref().map(ReadingPoint::from).unwrap_or_default(),
+        ));
+        Ok(current)
+    }
+    fn read_saved(&self) -> io::Result<Option<Saved>> {
         let file = match fs::File::open(&self.path) {
             Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(None),
             other => other?,
@@ -225,11 +251,28 @@ impl LocalState {
     /// A position checkpoint from another window may carry an older bookmark list.
     pub fn save_position(&self, saved: &Saved) -> io::Result<()> {
         let _lock = self.lock()?;
-        let current = self.load()?;
+        let current = self.read_saved()?;
+        let point = ReadingPoint::from(saved);
+        let mut merged;
+        let snapshot = if self.baseline.get() == Some(point)
+            && let Some(disk) = &current
+            && ReadingPoint::from(disk) != point
+        {
+            // A theme/width change in a stale window must not rewind the book.
+            merged = saved.clone();
+            merged.anchor = disk.anchor;
+            merged.scan_offset = disk.scan_offset;
+            merged.finished = disk.finished;
+            &merged
+        } else {
+            saved
+        };
         let marks = current
             .as_ref()
             .map_or(saved.marks.as_slice(), |s| &s.marks);
-        self.write(saved, marks)
+        self.write(snapshot, marks)?;
+        self.baseline.set(Some(point));
+        Ok(())
     }
 
     pub fn set_bookmark(
@@ -239,7 +282,7 @@ impl LocalState {
         present: bool,
     ) -> io::Result<Vec<Anchor>> {
         let _lock = self.lock()?;
-        let mut saved = self.load()?.unwrap_or_else(|| initial.clone());
+        let mut saved = self.read_saved()?.unwrap_or_else(|| initial.clone());
         saved.marks.sort_unstable();
         saved.marks.dedup();
         match (saved.marks.binary_search(&at), present) {
@@ -283,10 +326,43 @@ mod tests {
     use super::*;
 
     #[test]
+    fn changing_appearance_in_a_second_window_preserves_a_newer_reading_point() -> io::Result<()> {
+        let directory = tempfile::tempdir()?;
+        let window = || LocalState {
+            path: directory.path().join("same-book.json"),
+            baseline: Default::default(),
+        };
+        let a = window();
+        let b = window();
+        let mut first = a.load()?.unwrap_or_default();
+        let mut second = b.load()?.unwrap_or_default();
+        first.anchor = Anchor {
+            block: 25,
+            byte: 10,
+        };
+        first.scan_offset = 3400;
+        a.save_position(&first)?;
+        second.theme = "sepia".into();
+        b.save_position(&second)?;
+        second.spread = true;
+        b.save_position(&second)?;
+        let actual = window().load()?.unwrap();
+        assert_eq!(actual.anchor, first.anchor);
+        assert_eq!(actual.scan_offset, 3400);
+        assert_eq!(actual.theme, "sepia");
+        // Deliberately reading backwards still updates other windows.
+        second.anchor = Anchor { block: 3, byte: 5 };
+        b.save_position(&second)?;
+        assert_eq!(window().load()?.unwrap().anchor, second.anchor);
+        Ok(())
+    }
+
+    #[test]
     fn stale_positions_preserve_bookmark_edits_from_both_readers() -> io::Result<()> {
         let directory = tempfile::tempdir()?;
         let state = LocalState {
             path: directory.path().join("edition.json"),
+            baseline: Default::default(),
         };
         fs::write(
             &state.path,

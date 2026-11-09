@@ -9,8 +9,10 @@ mod fb2;
 mod locations;
 mod resources;
 pub use resources::{Supplement, illustration, supplement, supplementary_note};
+mod publisher;
 #[cfg(test)]
 mod tests;
+mod tex;
 mod toc;
 mod xhtml;
 

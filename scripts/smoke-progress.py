@@ -55,7 +55,80 @@ def run(name,f):
             time.sleep(.04)
         assert f.saved==[302,302,302] and f.token is None
     finally:t.run('kill-server',required=False)
+def publisher_progress(tmp, server):
+    """The HTTP double and the TUI independently resolve words in a merged cell."""
+    import io
+    import re
+    import zipfile
+    words = " ".join(f"marker{i:03}" for i in range(500))
+    cell_path = "/6/2!/4/4/2/2/4/1"
+    markup = (
+        '<html xmlns="http://www.w3.org/1999/xhtml"><head><title>Technical edition</title>'
+        '<style>table{width:100%}.hidden{display:none}</style></head><body>'
+        '<h1>Technical edition</h1><table><tbody><tr><td rowspan="2">One</td>'
+        f'<td colspan="2">{words}</td></tr><tr><td>Two</td><td>Three</td></tr>'
+        '</tbody></table><p class="hidden">HIDDEN TRAP</p></body></html>'
+    )
+    data = io.BytesIO()
+    with zipfile.ZipFile(io.BytesIO(s.epub())) as source, zipfile.ZipFile(data, "w") as out:
+        for member in source.namelist():
+            out.writestr(member, markup if member == "c.xhtml" else source.read(member))
+    server.files[301] = ("epub", "application/epub+zip", data.getvalue())
+    marker = "marker147"
+    server.progress[301] = {
+        "fileId": 301,
+        "percentage": 20,
+        "updatedAt": "2026-11-08T10:00:00.000Z",
+        "text": {"cfi": f"epubcfi({cell_path}:{words.index(marker)})"},
+    }
+    url = f"http://127.0.0.1:{server.server_port}/reader"
+    t = s.Terminal(Path(tmp), s.ROOT / "target/debug/botui", url)
+    try:
+        s.login(t, url)
+        t.keys("Enter")
+        t.click("EPUB", s.formats(t))
+        t.see(marker)
+        t.keys("z", "3")
+        first = t.wait(
+            "BookOrbit position in a merged cell",
+            lambda frame: "Sections:" not in frame
+            and any(marker in line for line in frame.splitlines()[:2]),
+        )
+        for _ in range(4):
+            t.keys("j")
+            previous = first.strip().splitlines()[0]
+            first = t.wait(
+                "Scroll the merged cell",
+                lambda frame: bool(re.search(r"marker\d+", frame))
+                and frame.strip().splitlines()[0] != previous,
+            )
+        t.keys("q")
+        s.formats(t)
+        t.wait("Published source position", lambda _: server.saved == [301])
+        cfi = server.progress[301]["text"]["cfi"]
+        prefix = f"epubcfi({cell_path}:"
+        assert cfi.startswith(prefix) and cfi.endswith(")"), cfi
+        offset = int(cfi[len(prefix):-1])
+        restored = words[offset:].split()[0]
+        assert words.index(marker) < offset and restored in first.strip().splitlines()[0], cfi
+        for position in (Path(tmp) / "state/botui/positions").glob("*.json"):
+            position.unlink()
+        t.click("EPUB", s.formats(t))
+        t.wait(
+            "Reopen the saved word from the API",
+            lambda frame: bool(frame.strip()) and restored in frame.strip().splitlines()[0],
+        )
+        t.keys("q")
+        s.formats(t)
+    finally:
+        t.run("kill-server", required=False)
+
+
 if __name__=='__main__':
+    with tempfile.TemporaryDirectory() as tmp, s.Fixture(False) as server:
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        try: publisher_progress(tmp, server)
+        finally: server.shutdown()
     with tempfile.TemporaryDirectory() as tmp,s.Fixture(False) as f:
         threading.Thread(target=f.serve_forever,daemon=True).start()
         try:run(tmp,f)

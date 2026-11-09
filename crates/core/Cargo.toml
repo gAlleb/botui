@@ -8,3 +8,7 @@ publish = false
 [dependencies]
 unicode-segmentation = "1.13"
 unicode-width = "0.2"
+blitz-dom = { version = "=0.3.0-beta.4", default-features = false, features = ["floats"] }
+blitz-html = "=0.3.0-beta.4"
+blitz-traits = { version = "=0.3.0-beta.4", default-features = false }
+parley = { version = "0.12", default-features = false, features = ["std"] }

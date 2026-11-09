@@ -74,13 +74,14 @@ def check(tmp):
         wait_for("Начальный разворот", lambda s: heading in s and columns(s) == 2)
         keys("z");wait_for("Zen hides contents",lambda s:"Z Zen" not in s and heading in s)
         mouse(0, 30, 6)
-        menu = wait_for("Меню по щелчку", lambda s: "Resume" in s)
+        actions = ("Resume", "Single page", "Two-page spread", "Theme", "Add bookmark", "Page width & column gap")
+        menu = wait_for("Меню по щелчку", lambda s: all(name in s for name in actions))
         def key_column(frame, action):
             line = next(line for line in frame.splitlines() if action in line)
             match = re.search(r"(?:Esc|[12TBGZFW])(?=│)", line)
             assert match, line
             return match.end()
-        assert len({key_column(menu, name) for name in ("Resume","Single page","Two-page spread","Theme","Add bookmark","Page width & column gap")}) == 1
+        assert len({key_column(menu, name) for name in actions}) == 1
         row,line = next((i,line) for i,line in enumerate(menu.splitlines(),1) if "Page width & column gap" in line)
         mouse(0,line.index("Page width")+1,row)
         panel = wait_for("Live page layout",lambda f:"Column gap" in f and "[ Done ]" in f)
@@ -106,8 +107,13 @@ def check(tmp):
 
         keys("c")
         toc=wait_for("Оглавление",lambda s:"Sections:" in s and "Обратный рейс" in s)
-        row,line=next((i,l) for i,l in enumerate(toc.splitlines(),1) if "Обратный рейс" in l and " 3 " in l)
-        mouse(0,line.index("Обратный рейс")+1,row)
+        for row, line in enumerate(toc.splitlines(), 1):
+            entry = re.search(r"│[ ▸▾]*(Обратный рейс) *│", line)
+            if entry:
+                mouse(0, entry.start(1) + 1, row)
+                break
+        else:
+            raise AssertionError(f"Chapter missing from the contents tree\n{toc}")
         wait_for("Переход к главе без панели",lambda s:s.strip().startswith("Обратный рейс") and "Sections:" not in s)
         keys("b","g")
         wait_for("Поставленная закладка",lambda s:"Bookmarks: 1" in s)

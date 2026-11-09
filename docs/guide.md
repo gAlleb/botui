@@ -141,6 +141,14 @@ In EPUB and FB2, click an underlined reference or press **F6** to follow a link 
 
 When you visit a note or glossary entry at the end of the book, **Esc** or **Back** restores your reading position; **Enter · Read here** makes an in-book destination your new reading position. Supplementary notes open over the current page. **I** still lists resources from the whole book.
 
+### Tables, equations and illustrations
+
+Open a technical EPUB as you would a novel. The reader applies styles packaged with the edition, including merged table cells, side-by-side columns, lists and preformatted code. Equations in presentation MathML and TeX explicitly marked as math appear in the passage. A fraction has its numerator above its denominator. Change the page width with **W** to give a wide table more room.
+
+The terminal supplies the typeface and cell size. The reader theme supplies the ink and paper colors. Search, footnotes, bookmarks and BookOrbit resume use the source text even when a table wraps differently.
+
+Embedded raster illustrations use the available page height. **I** opens an illustration separately. **F2 → Reader → Illustrations** switches to the separate viewer only.
+
 ### PDF and DjVu
 
 For **PDF and DjVu**, press **Enter** or click the edition to start reading. **1 / 2 / 3** select single page, spread or continuous scroll. At **100%**, a scrolling sheet fits the reading pane. Press **−** once for **90%**, again for **80%**, or **+** to enlarge it. **0** restores fit.
@@ -157,7 +165,7 @@ In Kitty, **F** toggles the solid fill: with it off, the window’s wallpaper sh
 
 BOTUI remembers the view for each edition and checkpoints your place while reading. Local resume remembers your position within a sheet; BookOrbit syncs the page number. Image-only scans have no searchable text without OCR. [PDF in Kitty](images/pdf-scroll.png).
 
-Embedded raster illustrations appear in the text; **I** also opens the separate viewer. Tables adapt to the available width. Set **F2 → Reader → Illustrations** to viewer only if desired. **S** displays book statistics; **F2 → Library → Reading statistics** shows totals on this device.
+**S** displays book statistics. **F2 → Library → Reading statistics** shows totals on this device.
 
 Across all four formats, **F3 / F4** move to the next / previous search result; **F5** reopens the list. EPUB/FB2 highlight the selected phrase. For scans the list shows page numbers and text excerpts; **, / .** retrace jumps.
 

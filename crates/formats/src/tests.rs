@@ -280,3 +280,257 @@ fn nested_contents_keep_duplicate_chapter_names_in_their_own_books() {
         );
     }
 }
+
+#[test]
+fn reads_styled_epub_with_math_and_spanning_table_in_ordinary_pager() {
+    use botui_core::{LayoutMode, Pager};
+    let doc = read_book(archive(&[
+        ("META-INF/container.xml", r#"<container><rootfile full-path="O/book.opf"/></container>"#),
+        ("O/book.opf", r#"<package><manifest><item id="a" href="Text/a.xhtml" media-type="application/xhtml+xml"/><item id="css" href="Styles/layout.css" media-type="text/css"/><item id="more" href="Styles/more.css" media-type="text/css"/></manifest><spine><itemref idref="a"/></spine></package>"#),
+        ("O/Styles/layout.css", "@import url(more.css?v=1); .hidden { display:none } .pair { display:grid; grid-template-columns: 12ch 1fr }"),
+        ("O/Styles/more.css", "@import url(layout.css); .elsewhere {display:none} @media (max-width: 300px) { .pair {margin-left:2ch} .wide {display:none} }"),
+        ("O/Text/a.xhtml", r#"<html xmlns="http://www.w3.org/1999/xhtml"><head><title>Technical</title><link rel="stylesheet" href="missing.css"/><link rel="stylesheet" href="https://example.invalid/remote.css"/><link rel="stylesheet" href="../Styles/layout.css?edition=2#sheet"/></head><body><p class="hidden">INVISIBLE</p><p class="elsewhere">IMPORTED</p><section class="pair"><div>Left</div><div>Right</div></section><table><tr><th rowspan="2">Group</th><th colspan="2">Range</th></tr><tr><td>Low</td><td>High</td></tr><tr><td>Name</td><td colspan="2">Long cell with multiple words including κείμενο and 重 used when checking the exact continuation position inside this cell.</td></tr></table><math xmlns="http://www.w3.org/1998/Math/MathML" display="block"><semantics><mfrac><mi>num</mi><mi>den</mi></mfrac><annotation encoding="application/x-tex">HIDDEN-TEX</annotation></semantics></math><pre>first
+    second</pre><p class="wide">END-MARK</p></body></html>"#),
+    ]), "technical").unwrap();
+    let mut pager = Pager::new(&doc, 50, 150, LayoutMode::Single);
+    let lines: Vec<_> = pager.lines(0).iter().map(|l| l.text.trim_end()).collect();
+    let page = lines.join("\n");
+
+    assert!(
+        !page.contains("INVISIBLE") && !page.contains("IMPORTED") && !page.contains("HIDDEN-TEX"),
+        "{page}"
+    );
+    assert!(
+        lines
+            .iter()
+            .any(|l| l.contains("Left") && l.find("Right") == Some(12))
+    );
+    let cells = lines
+        .iter()
+        .find(|l| l.contains("Low") && l.contains("High"))
+        .unwrap();
+    assert!(cells.find("Low").unwrap() > 0);
+    let num = lines.iter().position(|l| l.contains("num")).unwrap();
+    let den = lines.iter().position(|l| l.contains("den")).unwrap();
+    assert!(den > num + 1 && lines[num + 1..den].iter().any(|l| l.contains('─')));
+    assert!(lines.iter().any(|l| l.starts_with("    second")));
+    let index = pager.search_index(&doc);
+    for hidden in ["INVISIBLE", "IMPORTED", "HIDDEN-TEX"] {
+        assert!(index.matches(hidden).is_empty(), "{hidden}");
+    }
+    let hit = index.matches("exact continuation").pop().unwrap();
+    let cfi = doc.cfi(hit.anchor).unwrap();
+    assert_eq!(doc.resolve_cfi(&cfi), Some(hit.anchor));
+    for width in [50, 29, 79] {
+        pager.relayout(&doc, width, 7, LayoutMode::Single);
+        assert_eq!(
+            pager.search_index(&doc).matches("END-MARK").is_empty(),
+            width == 29
+        );
+        pager.seek(doc.resolve_cfi(&cfi).unwrap());
+        let line = &pager.lines(0)[0];
+        assert!(line.text.contains("exact"), "{width}: {}", line.text);
+        assert!(index.visible_range(&hit, line).is_some(), "{}", line.text);
+    }
+}
+
+fn styled_fixture(body: &str, css: &str) -> botui_core::Document {
+    let html = format!(
+        r#"<html xmlns="http://www.w3.org/1999/xhtml"><head><title>Read</title><style>{css}</style></head><body>{body}</body></html>"#
+    );
+    read_book(archive(&[
+        ("META-INF/container.xml","<container><rootfile full-path='p'/></container>"),
+        ("p", "<package><manifest><item id='text' href='chapter' media-type='application/xhtml+xml'/><item id='pic' href='fig.png' media-type='image/png'/></manifest><spine><itemref idref='text'/></spine></package>"),
+        ("chapter", &html)
+    ]),"Test book").unwrap()
+}
+
+#[test]
+fn prose_preserves_words_indentation_footnotes_and_spread_page_turns() {
+    use botui_core::{LayoutMode, Pager, ReflowOptions, Target};
+    let mut body = String::from("<h1>Диалоги</h1>");
+    for n in 0..36 {
+        body.push_str(&format!("<p>— Реплика {n}. Кто видел <em>Кита 🐋 и Маяк</em> рядом с <a href='#n'>башней</a>?</p>"));
+    }
+    body.push_str("<p id='n'>Сноска к диалогу.</p>");
+    let doc = styled_fixture(&body, "h1 {font-size:2.5em} p {text-indent:1em}");
+    let options = ReflowOptions {
+        repair_printed: true,
+        inline_images: true,
+        paragraph_indent: 3,
+    };
+    let mut pager = Pager::with_options(&doc, 100, 8, LayoutMode::Spread, options);
+    let text = |p: &Pager| {
+        (0..p.columns())
+            .flat_map(|c| p.lines(c))
+            .map(|l| l.text.clone())
+            .collect::<Vec<_>>()
+    };
+    let opening = text(&pager);
+    assert!(opening.iter().any(|l| l.contains("Диалоги")), "{opening:?}");
+    assert!(
+        opening.iter().any(|l| l.starts_with("   — Реплика 0.")),
+        "{opening:?}"
+    );
+    pager.next();
+    let second = text(&pager);
+    assert!(!second.iter().any(|l| l.contains("Реплика 0.")));
+    pager.previous();
+    assert_eq!(text(&pager), opening);
+    // Independently authored CFI: after a supplementary-plane character in the em of the first paragraph.
+    let cfi = "epubcfi(/4/2!/4/4/2/1:10)";
+    let at = doc.resolve_cfi(cfi).unwrap();
+    assert!(doc.blocks[at.block].text[at.byte..].starts_with("Маяк"));
+    let reopened = Pager::with_start(&doc, 100, 8, LayoutMode::Spread, options, Some(at));
+    assert!(
+        reopened.lines(0)[0].text.trim_start().starts_with("Маяк"),
+        "{:?}",
+        text(&reopened)
+    );
+    assert_eq!(doc.cfi(reopened.anchor()).as_deref(), Some(cfi));
+    let foot = &doc.references[0];
+    assert!(matches!(foot.target, Target::Passage(_)));
+    assert!(
+        reopened
+            .lines(0)
+            .iter()
+            .any(|l| l.link_range(&doc, foot).is_some())
+    );
+}
+
+#[test]
+fn latex_is_typeset_in_place_and_dollar_amounts_stay_literal() {
+    use botui_core::{LayoutMode, Pager};
+    let doc = styled_fixture(
+        r#"<p>Tickets cost $20 per reader.</p><div class="math display">\[\frac{up}{dn}\]</div><script type="math/tex; mode=display">\sqrt{x}</script><p>Later</p>"#,
+        "",
+    );
+    let p = Pager::new(&doc, 60, 60, LayoutMode::Single);
+    let lines: Vec<_> = p.lines(0).iter().map(|l| l.text.trim()).collect();
+    assert!(lines.contains(&"Tickets cost $20 per reader."), "{lines:?}");
+    let bar = lines
+        .iter()
+        .position(|s| s.contains('─'))
+        .expect("fraction");
+    assert!(
+        bar > 0 && lines[bar - 1] == "up" && lines[bar + 1] == "dn",
+        "{lines:?}"
+    );
+    assert!(lines.iter().any(|l| l.contains('√')), "{lines:?}");
+    let at = p.lines(0)[bar - 1].anchor();
+    assert!(doc.blocks[at.block].text.contains("frac") && doc.cfi(at).is_some());
+}
+
+#[test]
+fn technical_epub_keeps_row_groups_math_scripts_matrices_and_flex_columns() {
+    use botui_core::{LayoutMode, Pager};
+    let doc = styled_fixture(
+        r#"<section class="pair"><div>First</div><div>Second</div></section><table><tbody><tr><td rowspan="0">Group</td><td>One</td></tr><tr><td>Two</td></tr><tr><td>Three</td></tr></tbody><tbody><tr><td>Next</td><td>Four</td></tr></tbody></table><math xmlns="http://www.w3.org/1998/Math/MathML" display="block"><msubsup><mi>base</mi><mi>sub</mi><mi>sup</mi></msubsup></math><math xmlns="http://www.w3.org/1998/Math/MathML" display="block"><mtable><mtr><mtd><mi>aa</mi></mtd><mtd><mi>bb</mi></mtd></mtr><mtr><mtd><mi>cc</mi></mtd><mtd><mi>dd</mi></mtd></mtr></mtable></math>"#,
+        ".pair{display:flex;gap:3ch} td{vertical-align:top}",
+    );
+    let pager = Pager::new(&doc, 60, 80, LayoutMode::Single);
+    let rows: Vec<_> = pager.lines(0).iter().map(|l| l.text.as_str()).collect();
+    let pos = |word: &str| {
+        rows.iter()
+            .enumerate()
+            .find_map(|(y, row)| row.find(word).map(|x| (y, x)))
+            .unwrap_or_else(|| panic!("{word:?} missing from {rows:?}"))
+    };
+    assert_eq!(pos("Second"), (pos("First").0, pos("First").1 + 8));
+    assert_eq!(pos("Two").1, pos("One").1);
+    assert_eq!(pos("Three").1, pos("One").1);
+    assert_eq!(pos("Next").1, pos("Group").1);
+    assert_eq!(pos("Four").0, pos("Next").0);
+    assert!(
+        pos("sup").0 < pos("base").0 && pos("base").0 < pos("sub").0,
+        "{rows:?}"
+    );
+    assert_eq!(pos("aa").0, pos("bb").0);
+    assert_eq!(pos("cc").0, pos("dd").0);
+    assert_eq!(pos("aa").1, pos("cc").1);
+    assert!(pos("aa").0 < pos("cc").0 && pos("aa").1 < pos("bb").1);
+}
+
+#[test]
+fn justified_prose_wraps_contiguously_and_separates_dialogue_paragraphs() {
+    use botui_core::{LayoutMode, Pager};
+    let paragraph = "The sailor read the tide and watched the coast. ".repeat(6);
+    let doc = styled_fixture(
+        &format!("<p>{paragraph}</p><p>— First line.</p><p>— Second line.</p>"),
+        "p { text-align:justify }",
+    );
+    let pager = Pager::new(&doc, 40, 40, LayoutMode::Single);
+    let rows: Vec<_> = pager.lines(0).iter().map(|l| l.text.trim()).collect();
+    let first = rows.iter().position(|&s| s == "— First line.").unwrap();
+    assert!(
+        first > 4 && rows[..first - 1].iter().all(|s| !s.is_empty()),
+        "{rows:?}"
+    );
+    assert_eq!(
+        &rows[first..first + 3],
+        ["— First line.", "", "— Second line."]
+    );
+}
+
+#[test]
+fn justification_keeps_every_word_intact_at_terminal_widths() {
+    use botui_core::{LayoutMode, Pager};
+    let paragraph = "Миновав плац, я направился к дорожке, что вела в южный угол дворцового сада. Рядом стояла беседка. На деревянном столе лежала раскрытая книга.";
+    let marked = paragraph.replace("южный", "ю<em>жн</em>ый");
+    let doc = styled_fixture(&format!("<p>{marked}</p>"), "p { text-align:justify }");
+    for width in 26..60 {
+        let pager = Pager::new(&doc, width, 40, LayoutMode::Single);
+        let words: Vec<_> = pager
+            .lines(0)
+            .iter()
+            .flat_map(|l| l.text.split_whitespace())
+            .collect();
+        assert_eq!(
+            words,
+            paragraph.split_whitespace().collect::<Vec<_>>(),
+            "column width {width}"
+        );
+    }
+}
+
+#[test]
+fn illustrations_fit_the_viewport_and_hidden_figures_take_no_space() {
+    use botui_core::{LayoutMode, Pager, ReflowOptions};
+    let doc = styled_fixture(
+        r#"<p>Heading</p><img src="fig.png"/><img src="fig.png" class="omit"/><p>After the diagram</p>"#,
+        ".omit{display:none}",
+    );
+    let mut pager = Pager::new(&doc, 90, 22, LayoutMode::Single);
+    let height = |p: &Pager| {
+        p.lines(0)
+            .iter()
+            .flat_map(|l| &l.figures)
+            .inspect(|r| assert_eq!(r.reference, 0))
+            .count()
+    };
+    let short = height(&pager);
+    pager.relayout(&doc, 90, 42, LayoutMode::Single);
+    assert!(
+        short > 1 && height(&pager) > short && height(&pager) > 9,
+        "{short} -> {}",
+        height(&pager)
+    );
+    let hidden = Pager::with_options(
+        &doc,
+        90,
+        42,
+        LayoutMode::Single,
+        ReflowOptions {
+            repair_printed: true,
+            inline_images: false,
+            paragraph_indent: 0,
+        },
+    );
+    assert_eq!(height(&hidden), 0);
+    assert!(
+        hidden
+            .lines(0)
+            .iter()
+            .any(|l| l.text.contains("After the diagram"))
+    );
+}

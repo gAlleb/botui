@@ -919,13 +919,28 @@ pub(super) fn read_pages(
     }
     crate::stats::finish(store.as_ref(), opened, notices);
     if (dirty || save_failed)
-        && let Some(store) = store
+        && let Some(store) = &store
         && let Err(e) = store.save_position(&checkpoint)
     {
         notices.push(e.to_string());
     }
     let percentage =
         total.map(|count| scan_percent(n, offset, count, scrolling, finished && end_visible));
+    let shelf_percent = if base.is_none()
+        && let (Some(count), Some(saved)) =
+            (total, store.as_ref().and_then(|s| s.load().ok()).flatten())
+    {
+        let page = (saved.anchor.block.saturating_add(1)).min(count as usize) as u32;
+        Some(scan_percent(
+            page.max(1),
+            saved.scan_offset,
+            count,
+            saved.scrolling,
+            saved.finished,
+        ))
+    } else {
+        percentage
+    };
     Ok((
         if base.is_some_and(|p| p.text.cfi.is_none())
             && (n != start || finished != initial_finished || offset != initial_offset)
@@ -937,7 +952,7 @@ pub(super) fn read_pages(
         } else {
             None
         },
-        percentage,
+        shelf_percent,
     ))
 }
 

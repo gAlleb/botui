@@ -36,10 +36,22 @@ The table records how each reading or navigation scenario was checked. See the [
 | Click the publisher’s footnote [1] in *Sign of the Unicorn* or follow it with F6. Return to the same passage using Esc or the publisher’s ↩ link. | The EPUB in an isolated profile. smoke-resources also checks glossary entries, backlinks and resizing. |
 | Jump to a help section or search for a command with readable columns at 42 × 14 cells. | smoke-preferences |
 | Open the reader description in About and the adjacent Legal tab. Follow the attribution link with the mouse and read the full licenses from the CLI. | smoke-about |
+| Open a styled EPUB with a missing sheet, local imports, a media query, merged cells, code and equations at three widths. Search the visible text. | botui-formats |
+| Open a BookOrbit position inside a long merged cell, scroll, close, remove the device position and open the server position again. | smoke-progress, using an independently authored UTF-16 EPUB CFI |
+| Resolve BOTUI locations in the BookOrbit web engine and pass them back. Check exact characters and source offsets. | BookOrbit 3.6.0 Foliate in headless Chromium, 10 positions in a novel and 11 in a technical EPUB |
+| Search an illustrated 790 MiB EPUB and jump to the matching passage. | *The Joy of Sanskrit*, isolated tmux |
+| Open a Cyrillic novel, jump via the contents, turn a spread and reopen it. Check headings and paragraph gaps. | *Sign of the Unicorn* in isolated tmux, plus botui-formats |
+| Advance in one window, then change the appearance of the stale window. Deliberately navigate back afterwards. | botui-store |
 
 ## Coverage limits
 
 - **BookOrbit.** Bookmark responses were checked against a personal server for specific EPUB and FB2 editions. A local HTTP fixture exercises status changes, resets and progress conflicts. A full web → iPhone → TUI check requires a physical device and the same edition file.
-- **EPUB and FB2.** The reader supports reflowable text tables and embedded raster images. Full CSS layout, merged cells and MathML are outside this coverage.
+- **EPUB layout.** Tests cover local CSS, Grid, Flexbox, table spans, fractions, roots, scripts, matrices and marked TeX. The terminal supplies one font size and the reader supplies the palette. Pixel-faithful fixed-layout pages and arbitrary SVG diagrams are outside this coverage. FB2 has its own text and raster-image reader.
 - **OPDS 1 and 2.** Tests cover direct file acquisition. DRM and separate lending workflows are unsupported.
 - **PDF and DjVu.** Image-only pages are readable. Search requires an existing text layer. The server syncs the page number, and the device also saves the scroll offset.
+
+## Next reader improvements
+
+1. **Illustrated EPUBs.** Render inline SVG diagrams and externally referenced SVG figures. Test a textbook with labelled paths, a formula supplied as SVG and a fixed-layout spread with text over an image.
+2. **Search in scans.** Offer on-demand OCR for PDF and DjVu pages without text. Cache results per edition and page so a second search works offline.
+3. **Quoting a passage.** Let a reader select exact text with the mouse or keyboard, then copy it or attach a note to the selection. Keep both endpoints across a resize. [Bookokrat selection command](https://github.com/bugzmanov/bookokrat/blob/9c02ee3b3a0f86791b3917cb1a93436d92a8603e/src/keybindings/action.rs#L354)
