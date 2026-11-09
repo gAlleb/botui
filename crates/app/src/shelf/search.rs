@@ -32,6 +32,18 @@ impl Source for Catalog {
     type Key = u64;
     type Action = Command;
 
+    fn row_label<'a>(action: &Command, label: &'a str, width: u16) -> std::borrow::Cow<'a, str> {
+        if let Command::Books(Scope::Group(_, group), _) = action {
+            super::view::directory_line(
+                label,
+                &group.book_count.map(|n| n.to_string()).unwrap_or_default(),
+                width,
+            )
+            .into()
+        } else {
+            label.into()
+        }
+    }
     fn busy(&self) -> bool {
         self.next.is_some() || self.pending.is_some()
     }
@@ -53,15 +65,12 @@ impl Source for Catalog {
                     let directory = self.directory.expect("directory response");
                     for group in page.items {
                         let name = single_line(group.name.clone());
-                        let label = group
-                            .book_count
-                            .map_or_else(|| name.clone(), |n| format!("{name}  ·  {n}"));
                         batch.push(Item {
                             key: group.id,
                             action: Command::Books(Scope::Group(directory, group), 0),
                             text: name.clone(),
+                            label: name.clone(),
                             name,
-                            label,
                         });
                     }
                 }

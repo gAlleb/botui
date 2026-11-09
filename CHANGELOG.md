@@ -6,6 +6,8 @@
 - Inline EPUB and FB2 illustrations grow with the reading pane. Changing appearance in a second local reader preserves the position saved by the window used for reading.
 - Justified EPUB prose keeps words intact even when a word crosses a change of emphasis or falls on a half-cell boundary.
 
+- Author and series lists align book counts in a separate column, including live search results.
+
 ## 0.1.5 — 2026-11-08
 
 - Connected BookOrbit readers sync position after a pause in navigation and offer to resume changes from another device while the book stays open. The prompt refreshes while open and checks the latest position again when selected.

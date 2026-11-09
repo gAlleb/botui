@@ -266,6 +266,20 @@ impl Shelf {
                 Rect::new(left.x, list_area.y - 1, left.width, 1),
             );
         }
+        if !self.grid_view
+            && gap > 0
+            && let Section::Groups { directory, .. } = &self.current().section
+        {
+            let name = match directory {
+                super::Directory::Authors => "Author",
+                super::Directory::Series => "Series",
+            };
+            frame.render_widget(
+                Paragraph::new(directory_line(name, "Books", list_area.width))
+                    .style(Style::new().dim()),
+                Rect::new(left.x, list_area.y - 1, left.width, 1),
+            );
+        }
         if self.grid_view
             && self.view_available()
             && !self.current().rows.is_empty()
@@ -308,6 +322,11 @@ impl Shelf {
             let pane = self.current_mut();
             let rows = pane.rows.iter().map(|row| match &row.action {
                 super::Command::Files(b) => ListItem::new(book_line(Some(b), list_area.width)),
+                super::Command::Books(Scope::Group(_, group), _) => ListItem::new(directory_line(
+                    &row.label,
+                    &group.book_count.map(|n| n.to_string()).unwrap_or_default(),
+                    list_area.width,
+                )),
                 _ => ListItem::new(format!(" {}", row.label)),
             });
             frame.render_stateful_widget(
@@ -445,6 +464,22 @@ impl Shelf {
                 .draw(frame, Rect::new(x, y, inner.right().saturating_sub(x), 1));
         }
     }
+}
+
+pub(super) fn directory_line(name: &str, books: &str, width: u16) -> String {
+    use unicode_truncate::UnicodeTruncateStr;
+    let width = usize::from(width).saturating_sub(2).min(58);
+    let count_width = books.len().max(5);
+    if width <= count_width + 2 {
+        return name.unicode_truncate(width).0.to_owned();
+    }
+    let name_width = width - count_width - 2;
+    let name = super::gallery::caption(name, name_width as u16, 1);
+    let used = ratatui::text::Line::from(name.as_str()).width();
+    format!(
+        " {name}{}  {books:>count_width$}",
+        " ".repeat(name_width.saturating_sub(used))
+    )
 }
 
 pub(super) fn book_line(b: Option<&super::Book>, width: u16) -> ratatui::text::Line<'static> {

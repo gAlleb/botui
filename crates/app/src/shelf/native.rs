@@ -65,10 +65,7 @@ pub(super) fn group_rows(directory: super::Directory, groups: Vec<super::Group>)
         .into_iter()
         .map(|group| {
             Row::new(
-                group.book_count.map_or_else(
-                    || group.name.clone(),
-                    |n| format!("{}   ·   {n}", group.name),
-                ),
+                group.name.clone(),
                 Command::Books(Scope::Group(directory, group), 0),
             )
         })

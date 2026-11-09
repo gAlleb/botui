@@ -33,6 +33,9 @@ pub(crate) trait Source {
     type Action: Clone;
     fn collect(&mut self, batch: &mut Vec<Item<Self::Key, Self::Action>>) -> io::Result<()>;
     fn busy(&self) -> bool;
+    fn row_label<'a>(_action: &Self::Action, label: &'a str, _width: u16) -> Cow<'a, str> {
+        Cow::Borrowed(label)
+    }
     fn detail(_action: &Self::Action) -> Option<Cow<'_, str>> {
         None
     }
@@ -169,7 +172,8 @@ impl<S: Source> Search<S> {
             .skip(self.first)
             .take(rows.height.into())
         {
-            let label = &self.items[id].label;
+            let item = &self.items[id];
+            let label = S::row_label(&item.action, &item.label, w);
             let (shown, _) = label.unicode_truncate(w.into());
             let row = if shown.len() == label.len() {
                 Paragraph::new(shown)
