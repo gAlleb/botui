@@ -108,12 +108,15 @@ On the start screen, press **Enter** for your local library, **B** for BookOrbit
 | While reading | Control |
 | --- | --- |
 | Single page, two-page spread, continuous scroll | **1**, **2**, **3** |
+| EPUB publisher layout | **4** |
 | Toggle zen mode or show the contents sidebar | **Z** |
 | Show or hide page and percentage in zen mode | **%** |
 | Adjust text width and column gap, or zoom a scan | **W** |
 | Search inside the book | **/** |
 | Go to a PDF or DjVu page | **P** |
 | Return to the shelf | **Q** |
+
+For textbooks with complex tables or equations, press **4** in an open EPUB to view the publisher’s layout in the PDF reader. This requires [Vivliostyle CLI](https://docs.vivliostyle.org/en/cli/getting-started/) (`vivliostyle` on PATH). Set `BOTUI_PUBLISHER_BROWSER` to use a specific compatible Chromium executable. **Q** returns to your original text position. Preview pages are independent of the EPUB position synced to BookOrbit.
 
 ## Settings and help
 

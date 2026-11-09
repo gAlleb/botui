@@ -148,6 +148,7 @@ pub(super) fn parse(bytes: &[u8], fallback: &str) -> Result<Document> {
                         botui_core::TableRow {
                             end: blocks.len() + count,
                             columns: cells.len(),
+                            spans: Vec::new(),
                             cells,
                             header,
                         },
@@ -269,6 +270,7 @@ pub(super) fn parse(bytes: &[u8], fallback: &str) -> Result<Document> {
         })
         .collect();
     Ok(Document {
+        preformatted: Default::default(),
         image_pages: vec![],
         tables,
         references,
