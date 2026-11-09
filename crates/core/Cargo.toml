@@ -12,3 +12,5 @@ blitz-dom = { version = "=0.3.0-beta.4", default-features = false, features = ["
 blitz-html = "=0.3.0-beta.4"
 blitz-traits = { version = "=0.3.0-beta.4", default-features = false }
 parley = { version = "0.12", default-features = false, features = ["std"] }
+style = { package = "stylo", version = "0.22.0" }
+rayon = "1.12"

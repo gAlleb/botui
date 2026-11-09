@@ -19,10 +19,17 @@ mod shelf;
 mod shell_theme;
 mod splitter;
 mod stats;
+mod terminal_frame;
 mod terminal_input;
 mod theme;
 
 use std::env;
+
+// The system allocator in static musl builds serializes concurrent EPUB layout
+// allocations. Keep the distribution binaries responsive during reflow.
+#[cfg(target_env = "musl")]
+#[global_allocator]
+static ALLOCATOR: mimalloc::MiMalloc = mimalloc::MiMalloc;
 use std::error::Error;
 use std::io::{self, IsTerminal};
 use std::path::PathBuf;
@@ -35,9 +42,9 @@ use crossterm::{
     style::ResetColor,
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
-use ratatui::{Terminal, backend::CrosstermBackend, layout::Rect};
+use ratatui::layout::Rect;
 
-type AppTerminal = Terminal<CrosstermBackend<io::Stdout>>;
+use terminal_frame::AppTerminal;
 type Result<T> = std::result::Result<T, Box<dyn Error>>;
 
 const HELP: &str = "botui [FILE | DIRECTORY | --local [DIRECTORY] | --resume | --library DIRECTORY | --server URL | --opds URL]\n\nOpen a book or remember a local library folder. Use --resume for the last unfinished local book or offline download. With no arguments, choose a source. F2 settings and About, ? shortcuts, --license for license texts. Use --config-path to locate config.toml or --check-bookmarks TITLE to inspect server bookmarks without editing them.\nBookOrbit: 0 dashboard, 1 all books, 2 reading, 3 recent, 4 libraries, 5 collections, 6 authors, 7 series. / search, V grid/list, U borders.\nIn EPUB or FB2: 1/2/3 single/spread/scroll, arrows or wheel to read, W page layout, [/] width, {/} column gap, Z zen, O contents, T theme, F background, B/G bookmarks, M menu, Q close.\nPDF and DjVu: 1/2/3 single/spread/scroll, P go to page (Ctrl+G also works), / find text, N next match, W width, +/- zoom, 0 fit, Z zen, G bookmarks.\n";
@@ -59,7 +66,7 @@ impl Screen {
             crossterm::event::EnableFocusChange,
             EnableBracketedPaste
         )?;
-        let terminal = Terminal::new(CrosstermBackend::new(io::stdout()))?;
+        let terminal = AppTerminal::new()?;
         Ok((guard, terminal))
     }
 }

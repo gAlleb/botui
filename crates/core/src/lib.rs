@@ -6,6 +6,7 @@ pub use media::TableRow;
 mod printed;
 pub mod publisher;
 mod reference;
+mod reflow_cache;
 pub use reference::{Reference, Target};
 mod search;
 pub use location::{Locations, Run};
@@ -172,6 +173,8 @@ pub struct ReflowOptions {
 }
 
 pub struct Pager {
+    reflow: publisher::Reflow,
+    reflow_cache: reflow_cache::Cache,
     resume: Option<Anchor>,
     paragraph_indent: u8,
     printed: Vec<bool>,
@@ -282,6 +285,7 @@ impl Pager {
             }
         }
         let layout = Layout::new(width, height, mode, gap);
+        let mut reflow = publisher::Reflow::default();
         let lines = wrap_document(
             doc,
             layout,
@@ -289,8 +293,11 @@ impl Pager {
             inline_images,
             paragraph_indent,
             resume,
+            &mut reflow,
         );
         let mut pager = Self {
+            reflow,
+            reflow_cache: reflow_cache::Cache::default(),
             resume,
             layout,
             paragraph_indent,
@@ -347,15 +354,28 @@ impl Pager {
                     .any(|r| matches!(r.target, Target::Image(_)));
         if self.layout.width != layout.width || (uses_height && layout.height != self.layout.height)
         {
-            self.lines = wrap_document(
-                doc,
-                layout,
-                &self.printed,
-                self.inline_images,
-                self.paragraph_indent,
-                self.resume,
-            );
-            self.source_lines = Self::source_index(doc, &self.lines);
+            let size = |l: Layout| (l.width, if uses_height { l.height } else { 0 });
+            let previous = reflow_cache::Snapshot {
+                size: size(self.layout),
+                lines: std::mem::take(&mut self.lines),
+                sources: std::mem::take(&mut self.source_lines),
+            };
+            if let Some(snapshot) = self.reflow_cache.take(size(layout)) {
+                self.lines = snapshot.lines;
+                self.source_lines = snapshot.sources;
+            } else {
+                self.lines = wrap_document(
+                    doc,
+                    layout,
+                    &self.printed,
+                    self.inline_images,
+                    self.paragraph_indent,
+                    self.resume,
+                    &mut self.reflow,
+                );
+                self.source_lines = Self::source_index(doc, &self.lines);
+            }
+            self.reflow_cache.put(previous);
         }
         self.layout = layout;
         self.seek(self.focus);
@@ -479,12 +499,24 @@ fn wrap_document(
     inline_images: bool,
     paragraph_indent: u8,
     resume: Option<Anchor>,
+    reflow: &mut publisher::Reflow,
 ) -> Vec<PageLine> {
     let width = layout.width;
     let mut lines = Vec::new();
     if width == 0 {
         return lines;
     }
+    let mut styled = reflow.layout_all(
+        doc,
+        layout,
+        printed,
+        ReflowOptions {
+            repair_printed: false,
+            inline_images,
+            paragraph_indent,
+        },
+        resume,
+    );
     let positioned: std::collections::HashSet<_> = doc
         .styled
         .values()
@@ -533,18 +565,7 @@ fn wrap_document(
             && (chapter.preserve_structure || !printed[start..chapter.end].contains(&true))
         {
             draw_images(&mut lines, start);
-            let options = ReflowOptions {
-                repair_printed: false,
-                inline_images,
-                paragraph_indent,
-            };
-            lines.extend(chapter.layout(
-                width,
-                layout.height,
-                options,
-                &doc.blocks,
-                resume.filter(|a| (start..chapter.end).contains(&a.block)),
-            ));
+            lines.extend(styled.remove(&start).unwrap_or_default());
             start = chapter.end;
             continue;
         }
@@ -820,6 +841,61 @@ mod tests {
             assert_eq!(pager.columns(), columns);
             if width > 1 {
                 assert!(pager.lines(0)[0].text.contains("речку"));
+            }
+        }
+    }
+
+    #[test]
+    fn cached_chapters_keep_source_order_and_do_not_leak_between_books() {
+        use publisher::{Chapter, SourceText, Stylesheets};
+        use std::sync::Arc;
+        let book = |name: &str| {
+            let mut doc = Document::default();
+            let sheets = Arc::new(Stylesheets::default());
+            for block in 0..12 {
+                let text = format!("{name} chapter {block}");
+                let html = format!(
+                    "<!doctype html><html><body><p data-botui-text='0'>{text}</p></body></html>"
+                );
+                let sources = vec![vec![SourceText {
+                    start: Anchor { block, byte: 0 },
+                    end: text.len(),
+                    child: 0,
+                }]];
+                doc.blocks.push(Block {
+                    text,
+                    heading: false,
+                });
+                doc.styled.insert(
+                    block,
+                    Chapter::new(
+                        block + 1,
+                        html,
+                        &format!("chapter{block}"),
+                        sheets.clone(),
+                        sources,
+                    ),
+                );
+            }
+            doc
+        };
+        let first = book("First");
+        let second = book("Second");
+        let mut a = Pager::new(&first, 60, 100, LayoutMode::Single);
+        let mut b = Pager::new(&second, 60, 100, LayoutMode::Single);
+        for width in [48, 62, 60, 48, 70] {
+            for (pager, doc) in [(&mut a, &first), (&mut b, &second)] {
+                pager.relayout(doc, width, 100, LayoutMode::Single);
+                let rows: Vec<_> = pager
+                    .lines(0)
+                    .iter()
+                    .filter(|l| !l.text.is_empty())
+                    .collect();
+                assert_eq!(rows.len(), doc.blocks.len());
+                for (i, line) in rows.iter().enumerate() {
+                    assert_eq!(line.text, doc.blocks[i].text);
+                    assert_eq!(line.anchor(), Anchor { block: i, byte: 0 });
+                }
             }
         }
     }

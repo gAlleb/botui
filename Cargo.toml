@@ -11,3 +11,5 @@ publish = false
 
 [profile.release]
 strip = "symbols"
+lto = "thin"
+codegen-units = 1

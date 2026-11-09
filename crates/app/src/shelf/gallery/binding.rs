@@ -1,5 +1,6 @@
 //! BOTUI's clothbound jacket, shared by every catalog and the desktop cover viewer.
 use super::caption;
+use crate::shelf::background::{Ticket, Worker};
 use crate::{catalog::Book, cover::Picture};
 use image::{DynamicImage, RgbaImage};
 use lru::LruCache;
@@ -31,6 +32,42 @@ const CLOTH: [(u8, u8, u8); 8] = [
     (44, 76, 91),
     (94, 71, 49),
 ];
+
+struct Jackets {
+    images: LruCache<Binding, Option<Picture>>,
+    worker: Worker,
+    pending: Option<(Binding, Ticket<Option<DynamicImage>>)>,
+}
+impl Jackets {
+    fn collect(&mut self) {
+        let Some((key, ticket)) = &self.pending else {
+            return;
+        };
+        let result = match ticket.receiver.try_recv() {
+            Ok(value) => value,
+            Err(std::sync::mpsc::TryRecvError::Empty) => return,
+            Err(_) => None,
+        };
+        self.images
+            .put(key.clone(), result.map(Picture::generated_cover));
+        self.pending = None;
+    }
+}
+thread_local! {
+    static JACKETS: RefCell<Jackets> = RefCell::new(Jackets {
+        images: LruCache::new(NonZeroUsize::new(48).unwrap()),
+        worker: Worker::new(),
+        pending: None,
+    });
+}
+
+pub(crate) fn busy() -> bool {
+    JACKETS.with_borrow_mut(|cache| {
+        let pending = cache.pending.is_some();
+        cache.collect();
+        pending
+    })
+}
 
 impl From<&Book> for Binding {
     fn from(book: &Book) -> Self {
@@ -89,17 +126,21 @@ impl Binding {
     }
 
     pub(super) fn draw(&self, frame: &mut Frame, slot: Rect, picker: &Picker) -> bool {
-        thread_local! {
-            static JACKETS: RefCell<LruCache<Binding, Option<Picture>>> =
-                RefCell::new(LruCache::new(NonZeroUsize::new(32).unwrap()));
-        }
         JACKETS.with_borrow_mut(|cache| {
-            let picture =
-                cache.get_or_insert_ref(self, || self.render(1).ok().map(Picture::generated_cover));
-            if let Some(picture) = picture {
+            cache.collect();
+            if let Some(picture) = cache.images.get(self).and_then(Option::as_ref) {
                 picture.draw(frame, slot, picker);
                 true
             } else {
+                // Font discovery, SVG shaping and rasterization must never
+                // block entering a shelf. Use terminal lettering until ready.
+                if !cache.images.contains(self) && cache.pending.is_none() {
+                    let binding = self.clone();
+                    cache.pending = Some((
+                        self.clone(),
+                        cache.worker.start(move |_| binding.render(1).ok()),
+                    ));
+                }
                 false
             }
         })

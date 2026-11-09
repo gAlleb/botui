@@ -1807,6 +1807,7 @@ impl Shelf {
             })?;
             self.prefetch();
             let busy = self.pending.is_some()
+                || gallery::binding::busy()
                 || self.current().tail.is_some()
                 || self.covers.busy()
                 || self.rail.busy()

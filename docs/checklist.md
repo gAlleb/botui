@@ -12,6 +12,7 @@ The table records how each reading or navigation scenario was checked. See the [
 | Migrate settings to TOML, start two instances and check plaintext passwords, password commands and account isolation. | smoke-config |
 | Adjust page width and gutter independently. Check shortcut alignment and rounded, square and hidden borders. | smoke-reader, smoke-library, layout tests and *Chaos and Amber* in Kitty |
 | Paste a folder path with the mouse, find a book in a subfolder, switch views and restart. | smoke-library and a local folder containing *Sign of the Unicorn* |
+| Enter folders and list views without waiting for unused image queries. Enter a cover folder, wait for all generated jackets, leave and return; check balanced synchronized frame updates. | smoke-local-startup in an isolated PTY with Kitty protocol replies |
 | Change background and theme, switch between regular and Zen reading, use the mouse and restore a saved position. | smoke-reader and Kitty in regular and Zen modes |
 | Switch between one page and a spread. Adjust the margins of both columns. Find a word rejoined across a line break and return to its original location. | botui-core and a Gesar EPUB |
 | Search an OPDS catalog, authenticate with HTTP Basic, follow feeds and choose an edition. | smoke-sources |
@@ -44,6 +45,29 @@ The table records how each reading or navigation scenario was checked. See the [
 | Advance in one window, then change the appearance of the stale window. Deliberately navigate back afterwards. | botui-store |
 
 ## Coverage limits
+
+### Reader performance
+
+Compare release binaries on the same machine, book and terminal dimensions, with separate temporary profiles. Include the last release before a rendering change, not just the broken build. Measure zen progress, sidebar, page modes, width, gap, themes, page turns and contents. Let image loading finish before measuring steady-state input; record cold image loading separately.
+
+The core benchmark excludes terminal drawing and image decoding:
+
+```sh
+cargo run --locked --release -p botui-formats --example reflow-bench -- /path/to/book.epub
+```
+
+For distribution timings:
+
+```sh
+cargo zigbuild --locked --release -p botui-formats --example reflow-bench --target x86_64-unknown-linux-musl
+target/x86_64-unknown-linux-musl/release/examples/reflow-bench /path/to/book.epub
+```
+
+Avoid concurrent builds or other benchmarks. Repeated layouts must match a fresh layout, including CSS media queries, table spans, equations, images, search and source positions. `smoke-reader` also checks that toggling zen progress leaves every text row unchanged.
+
+The canvas regression compares grouped rendering with individual shaping clusters across widths, justification, word spacing, case transformations, Cyrillic, combining characters, CJK and bidirectional text. Compare text, styles and source addresses, not only page counts.
+
+### Functional limits
 
 - **BookOrbit.** Bookmark responses were checked against a personal server for specific EPUB and FB2 editions. A local HTTP fixture exercises status changes, resets and progress conflicts. A full web → iPhone → TUI check requires a physical device and the same edition file.
 - **EPUB layout.** Tests cover local CSS, Grid, Flexbox, table spans, fractions, roots, scripts, matrices and marked TeX. The terminal supplies one font size and the reader supplies the palette. Pixel-faithful fixed-layout pages and arbitrary SVG diagrams are outside this coverage. FB2 has its own text and raster-image reader.

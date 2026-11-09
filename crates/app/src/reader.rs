@@ -170,12 +170,7 @@ impl Reader {
             crate::splitter::Pane::Contents,
             settings.contents_width,
         );
-        let (_, page) = layout::panes(
-            area,
-            &mut splitter,
-            settings.zen,
-            settings.zen_progress && area.height > 1,
-        );
+        let (_, page) = layout::panes(area, &mut splitter, settings.zen);
         let (text, mode_for_size, actual_gap) =
             layout::geometry(page, mode, page_width, gap, settings.zen);
         let pager = Pager::with_start_and_gap(
@@ -239,12 +234,7 @@ impl Reader {
         self.links.clear();
         let show_progress =
             self.zen && self.zen_progress && screen.height > 1 && !self.links.visiting();
-        let (sidebar, page) = layout::panes(
-            screen,
-            &mut self.splitter,
-            self.zen,
-            self.links.visiting() || show_progress,
-        );
+        let (sidebar, page) = layout::panes(screen, &mut self.splitter, self.zen);
         self.sidebar_rect = sidebar;
         if self.sidebar_rect.is_empty() {
             self.sidebar_focus = false;
@@ -1370,12 +1360,7 @@ pub fn read_server(
                 {
                     let size = term.size()?;
                     let screen = Rect::new(0, 0, size.width, size.height);
-                    let (_, page) = layout::panes(
-                        screen,
-                        &mut reader.splitter,
-                        reader.zen,
-                        reader.links.visiting() || reader.zen_progress && size.height > 1,
-                    );
+                    let (_, page) = layout::panes(screen, &mut reader.splitter, reader.zen);
                     let (text, mode, gap) = layout::geometry(
                         page,
                         reader.mode,

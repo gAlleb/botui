@@ -48,7 +48,7 @@ pub struct Picker {
     grid_view: bool,
     grid: Option<crate::shelf::gallery::Grid>,
     covers: crate::shelf::covers::Covers,
-    graphics: ratatui_image::picker::Picker,
+    graphics: Option<ratatui_image::picker::Picker>,
     view_button: Rect,
     view: LocalView,
     shelves: [Rect; 3],
@@ -91,7 +91,8 @@ impl Picker {
             grid_view: settings.local_grid,
             grid: None,
             covers: crate::shelf::covers::Covers::new(),
-            graphics: crate::cover::graphics(),
+            // Folder and list views need no image protocol negotiation.
+            graphics: None,
             view_button: Rect::default(),
             root: dir.clone(),
             view: LocalView::Directory,
@@ -514,7 +515,8 @@ impl Picker {
                 self.draw(frame);
                 crate::settings::paint_interface(frame)
             })?;
-            let busy = self.covers.busy() || self.index.busy();
+            let busy =
+                self.covers.busy() || self.index.busy() || crate::shelf::gallery::binding::busy();
             let timeout = busy.then(|| std::time::Duration::from_millis(60));
             let event = crate::settings::read_event_for(timeout)?;
             self.covers.collect();

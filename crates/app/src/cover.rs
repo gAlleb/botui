@@ -140,7 +140,7 @@ pub(crate) struct Picture {
     is_cover: bool,
     strip: RefCell<Option<(StripKey, Box<Picture>)>>,
     strip_cells: RefCell<Option<(CellStrip, image::RgbImage)>>,
-    ready: RefCell<Option<(Size, Crop, bool, Protocol)>>,
+    ready: RefCell<Vec<(Size, Crop, bool, Protocol)>>,
 }
 
 impl Picture {
@@ -152,7 +152,7 @@ impl Picture {
             is_cover: false,
             strip: Default::default(),
             strip_cells: Default::default(),
-            ready: RefCell::new(None),
+            ready: RefCell::new(Vec::new()),
         }
     }
 
@@ -321,6 +321,16 @@ impl Picture {
         self.draw_region(frame, area, picker, Crop::default());
     }
     pub fn draw_region(&self, frame: &mut Frame, area: Rect, picker: &Picker, crop: Crop) {
+        self.draw_region_mode(frame, area, picker, crop, monochrome());
+    }
+    fn draw_region_mode(
+        &self,
+        frame: &mut Frame,
+        area: Rect,
+        picker: &Picker,
+        crop: Crop,
+        monochrome: bool,
+    ) {
         if area.is_empty() {
             return;
         }
@@ -344,7 +354,7 @@ impl Picture {
                 h,
             )
         };
-        if monochrome() {
+        if monochrome {
             let raster = source()
                 .thumbnail(u32::from(area.width), u32::from(area.height) * 2)
                 .into_luma_alpha8();
@@ -370,28 +380,42 @@ impl Picture {
             && picker.protocol_type() == ProtocolType::Kitty
             && self.epoch.replace(COVER_EPOCH.get()) != COVER_EPOCH.get()
         {
-            *ready = None;
+            ready.clear();
         }
 
-        if ready.as_ref().is_none_or(|(old, view, corners, _)| {
-            *old != size || *view != crop || *corners != rounded
-        }) {
-            *ready = picker
-                .new_protocol(
-                    source(),
-                    size,
-                    Resize::Scale(Some(image::imageops::FilterType::Triangle)),
-                )
-                .ok()
-                .map(|p| (size, crop, rounded, p));
-        }
-        if let Some((_, _, _, p)) = &*ready {
-            let size = p.size();
-            frame.render_widget(
-                Image::new(p),
-                crate::centered(area, size.width, size.height),
-            );
-        }
+        let hit = ready.iter().position(|(old, view, corners, _)| {
+            *old == size && *view == crop && *corners == rounded
+        });
+        let index = if let Some(index) = hit {
+            index
+        } else {
+            let Ok(protocol) = picker.new_protocol(
+                source(),
+                size,
+                Resize::Scale(Some(image::imageops::FilterType::Triangle)),
+            ) else {
+                return;
+            };
+            // One inline picture may occupy both columns at different heights.
+            // Retain both small renditions instead of resizing twice per frame.
+            // Large scans retain only one rendition to bound raster memory.
+            let limit = if self.source.width() <= 720 && self.source.height() <= 540 {
+                2
+            } else {
+                1
+            };
+            if ready.len() == limit {
+                ready.remove(0);
+            }
+            ready.push((size, crop, rounded, protocol));
+            ready.len() - 1
+        };
+        let p = &ready[index].3;
+        let size = p.size();
+        frame.render_widget(
+            Image::new(p),
+            crate::centered(area, size.width, size.height),
+        );
     }
 }
 
@@ -417,4 +441,35 @@ fn rounded_cover(source: &DynamicImage) -> DynamicImage {
         }
     }
     DynamicImage::ImageRgba8(pixels)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn two_visible_sizes_reuse_the_same_small_picture_protocols() {
+        let picture = Picture::new(DynamicImage::new_rgb8(100, 150));
+        let picker = Picker::halfblocks();
+        let mut terminal =
+            ratatui::Terminal::new(ratatui::backend::TestBackend::new(30, 20)).unwrap();
+        for height in [10, 8, 10, 8] {
+            terminal
+                .draw(|f| {
+                    picture.draw_region_mode(
+                        f,
+                        Rect::new(0, 0, 20, height),
+                        &picker,
+                        Crop::default(),
+                        false,
+                    )
+                })
+                .unwrap();
+        }
+        let ready = picture.ready.borrow();
+        assert_eq!(ready.len(), 2);
+        // Reusing a size does not discard the other side of the spread.
+        assert_eq!(ready[0].0, Size::new(20, 10));
+        assert_eq!(ready[1].0, Size::new(20, 8));
+    }
 }

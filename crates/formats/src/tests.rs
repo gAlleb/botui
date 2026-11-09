@@ -534,3 +534,66 @@ fn illustrations_fit_the_viewport_and_hidden_figures_take_no_space() {
             .any(|l| l.text.contains("After the diagram"))
     );
 }
+
+#[test]
+fn resizing_and_cached_layouts_match_a_fresh_epub_layout() {
+    use botui_core::{Anchor, LayoutMode, Pager, ReflowOptions};
+    let doc = styled_fixture(
+        r#"<p>Opening with <em>emphasis</em> and more words to wrap across the page.</p>
+        <div class="wide">Wide screen</div><div class="tall">Tall screen</div>
+        <div class="pair"><p>Left column</p><p>Right column</p></div>
+        <table><tr><td rowspan="2">Both rows</td><td>Upper cell</td></tr><tr><td>Lower cell</td></tr></table>
+        <math><mfrac><mi>numerator</mi><mi>denominator</mi></mfrac></math>
+        <img src="fig.png"/><p>Last paragraph after the illustration.</p>"#,
+        ".pair{display:flex;gap:2ch}.wide,.tall{display:none}@media(min-width:500px){.wide{display:block}}@media(min-height:500px){.tall{display:block}}",
+    );
+    let options = ReflowOptions {
+        repair_printed: true,
+        inline_images: true,
+        paragraph_indent: 2,
+    };
+    let at = Anchor { block: 0, byte: 8 };
+    let mut warm = Pager::with_start(&doc, 80, 20, LayoutMode::Single, options, Some(at));
+    let snapshot = |p: &mut Pager| {
+        p.seek(Anchor::default());
+        let mut rows = Vec::new();
+        loop {
+            for col in 0..p.columns() {
+                rows.extend(p.lines(col).iter().map(|l| format!("{l:?}")));
+            }
+            if p.at_end() {
+                break;
+            }
+            p.next();
+        }
+        rows
+    };
+    // Cross media-query boundaries, resize images, and revisit cached geometries.
+    for (width, height, mode) in [
+        (48, 20, LayoutMode::Single),
+        (48, 40, LayoutMode::Single),
+        (80, 40, LayoutMode::Single),
+        (48, 40, LayoutMode::Single),
+        (100, 40, LayoutMode::Spread),
+        (80, 20, LayoutMode::Scroll),
+    ] {
+        warm.relayout(&doc, width, height, mode);
+        let mut cold = Pager::with_start(&doc, width, height, mode, options, Some(at));
+        warm.seek(at);
+        cold.seek(at);
+        assert_eq!(warm.anchor(), cold.anchor());
+        assert_eq!(
+            snapshot(&mut warm),
+            snapshot(&mut cold),
+            "{width}x{height} {mode:?}"
+        );
+    }
+    let changed = ReflowOptions {
+        inline_images: false,
+        paragraph_indent: 5,
+        ..options
+    };
+    warm.reconfigure(&doc, 48, 40, LayoutMode::Single, 4, changed);
+    let mut cold = Pager::with_start(&doc, 48, 40, LayoutMode::Single, changed, Some(at));
+    assert_eq!(snapshot(&mut warm), snapshot(&mut cold));
+}

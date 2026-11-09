@@ -365,12 +365,16 @@ class Terminal:
 
     def wait(self, description, predicate, timeout=8):
         deadline = time.monotonic() + timeout
+        previous = None
         while time.monotonic() < deadline:
             frame = self.run("capture-pane", "-p", "-t", "shelf", required=False)
             if frame.returncode:
                 raise AssertionError(f"{description}: окно закрылось")
-            if predicate(frame.stdout):
+            # capture-pane can observe half of a redraw. Check the completed
+            # frame, not a mixture of the previous shelf and its replacement.
+            if frame.stdout == previous and predicate(frame.stdout):
                 return frame.stdout
+            previous = frame.stdout
             time.sleep(0.04)
         raise AssertionError(f"{description}\n{frame.stdout}")
 

@@ -10,13 +10,171 @@ use blitz_traits::{
     shell::{ColorScheme, Viewport},
 };
 use std::{
-    collections::HashMap,
+    collections::{BTreeMap, HashMap},
     ops::Range,
-    sync::{Arc, LazyLock},
+    sync::{Arc, LazyLock, OnceLock},
 };
 
 const CELL: f32 = 8.0;
 const ROW: f32 = 16.0;
+
+/// Parsed CSS/DOM belongs to an open pager, not to the portable source document.
+/// Resizing reuses the engine's incremental layout instead of parsing the book
+/// again. Retain at most 2 MiB of markup and 24,000 source tags; larger books
+/// still render normally without growing this cache without bound.
+#[derive(Default)]
+pub(super) struct Reflow {
+    pool: OnceLock<Option<rayon::ThreadPool>>,
+    serial: Worker,
+}
+
+impl Reflow {
+    pub fn layout_all(
+        &mut self,
+        doc: &super::Document,
+        layout: super::Layout,
+        printed: &[bool],
+        options: super::ReflowOptions,
+        resume: Option<Anchor>,
+    ) -> BTreeMap<usize, Vec<PageLine>> {
+        let count = self.pool.get().and_then(|p| p.as_ref()).map_or_else(
+            || {
+                std::thread::available_parallelism()
+                    .map_or(1, |n| n.get())
+                    .min(8)
+                    .min(doc.styled.len())
+                    .max(1)
+            },
+            |p| p.current_num_threads(),
+        );
+        // Chapter sizes vary greatly; assigning every nth chapter can leave
+        // most workers idle behind one very long part of the book.
+        let mut weights: Vec<_> = doc
+            .styled
+            .values()
+            .enumerate()
+            .map(|(i, c)| (i, c.html.len()))
+            .collect();
+        weights.sort_unstable_by_key(|&(i, size)| (std::cmp::Reverse(size), i));
+        let mut loads = vec![0; count];
+        let mut assignments = vec![0; weights.len()];
+        for (i, size) in weights {
+            let worker = loads
+                .iter()
+                .enumerate()
+                .min_by_key(|&(_, load)| load)
+                .unwrap()
+                .0;
+            assignments[i] = worker;
+            loads[worker] += size;
+        }
+        let render = |worker: &mut Worker, index: usize, count: usize| {
+            doc.styled
+                .iter()
+                .enumerate()
+                .filter_map(|(i, (&start, chapter))| {
+                    if (count > 1 && assignments[i] != index)
+                        || (!chapter.preserve_structure
+                            && printed[start..chapter.end].contains(&true))
+                    {
+                        return None;
+                    }
+                    let at = resume.filter(|a| (start..chapter.end).contains(&a.block));
+                    Some((
+                        start,
+                        worker.layout(start, chapter, layout, options, &doc.blocks, at),
+                    ))
+                })
+                .collect::<Vec<_>>()
+        };
+        if count < 2 {
+            return render(&mut self.serial, 0, 1).into_iter().collect();
+        }
+        let pool = self.pool.get_or_init(|| {
+            rayon::ThreadPoolBuilder::new()
+                .num_threads(count)
+                .thread_name(|i| format!("epub-layout-{i}"))
+                .build()
+                .ok()
+        });
+        let Some(pool) = pool else {
+            return render(&mut self.serial, 0, 1).into_iter().collect();
+        };
+        // Each chapter stays on the same worker. Native layout trees never
+        // cross threads, and are dropped with this pager's private pool.
+        thread_local! {
+            static CACHE: std::cell::RefCell<Worker> = std::cell::RefCell::new(Worker::default());
+        }
+        pool.broadcast(|context| {
+            CACHE.with(|cache| {
+                let mut worker = cache.borrow_mut();
+                let count = pool.current_num_threads();
+                worker.partitions = count;
+                render(&mut worker, context.index(), count)
+            })
+        })
+        .into_iter()
+        .flatten()
+        .collect()
+    }
+}
+
+struct Worker {
+    documents: HashMap<usize, HtmlDocument>,
+    markup: usize,
+    tags: usize,
+    partitions: usize,
+}
+impl Default for Worker {
+    fn default() -> Self {
+        Self {
+            documents: HashMap::new(),
+            markup: 0,
+            tags: 0,
+            partitions: 1,
+        }
+    }
+}
+impl Worker {
+    fn layout(
+        &mut self,
+        start: usize,
+        chapter: &Chapter,
+        layout: super::Layout,
+        options: super::ReflowOptions,
+        blocks: &[Block],
+        resume: Option<Anchor>,
+    ) -> Vec<PageLine> {
+        let viewport = Viewport::new(
+            u32::from(layout.width) * CELL as u32,
+            layout.height.max(1) as u32 * ROW as u32,
+            1.0,
+            ColorScheme::Light,
+        );
+        if let Some(doc) = self.documents.get_mut(&start) {
+            doc.set_viewport(viewport);
+            doc.resolve(0.0);
+            return canvas::lines(doc, layout.width, &chapter.sources, blocks, &chapter.images);
+        }
+        let doc = chapter.document(viewport, options, blocks, resume);
+        let lines = canvas::lines(
+            &doc,
+            layout.width,
+            &chapter.sources,
+            blocks,
+            &chapter.images,
+        );
+        let tags = chapter.html.bytes().filter(|b| *b == b'<').count();
+        if self.markup + chapter.html.len() <= 2 * 1024 * 1024 / self.partitions
+            && self.tags + tags <= 24_000 / self.partitions
+        {
+            self.markup += chapter.html.len();
+            self.tags += tags;
+            self.documents.insert(start, doc);
+        }
+        lines
+    }
+}
 
 fn marker(el: &blitz_dom::ElementData, name: &str) -> Option<usize> {
     el.attrs()
@@ -137,14 +295,13 @@ impl Chapter {
             preserve_structure: false,
         }
     }
-    pub(super) fn layout(
+    fn document(
         &self,
-        width: u16,
-        height: usize,
+        viewport: Viewport,
         options: super::ReflowOptions,
         blocks: &[Block],
         resume: Option<Anchor>,
-    ) -> Vec<PageLine> {
+    ) -> HtmlDocument {
         thread_local! {
             static FONT: parley::FontContext = build_single_font_ctx(include_bytes!("cells.ttf"));
         }
@@ -160,12 +317,7 @@ impl Chapter {
             u16::from(options.paragraph_indent) * CELL as u16
         );
         let options = DocumentConfig {
-            viewport: Some(Viewport::new(
-                u32::from(width) * CELL as u32,
-                height.max(1) as u32 * ROW as u32,
-                1.0,
-                ColorScheme::Light,
-            )),
+            viewport: Some(viewport),
             base_url: Some(self.url.clone()),
             net_provider: Some(self.sheets.clone()),
             font_ctx: Some(FONT.with(Clone::clone)),
@@ -180,7 +332,7 @@ impl Chapter {
             self.break_at(&mut doc, blocks, at);
         }
         doc.resolve(0.0);
-        canvas::lines(&doc, width, &self.sources, blocks, &self.images)
+        doc
     }
 }
 

@@ -2,9 +2,13 @@ use super::{Anchor, Block, CELL, Face, PageLine, ROW, SourceText, TextSpan};
 use blitz_dom::{BaseDocument, Node};
 use blitz_traits::node_id::NodeId;
 use std::collections::{BTreeMap, HashMap};
+use style::{
+    computed_values::visibility::T as Visibility,
+    values::{computed::font::FontStyle, specified::text::TextDecorationLine},
+};
 use unicode_width::UnicodeWidthStr;
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 struct Paint {
     owner: Option<usize>,
     face: Face,
@@ -22,23 +26,28 @@ impl Paint {
                 .filter_map(|n| n.element_data())
                 .find_map(|e| super::marker(e, "data-botui-equation"))
         };
-        let style = |name| doc.resolved_style_value(id, name);
-        let decoration = style("text-decoration-line");
+        let values = doc.get_node(id).and_then(|n| n.primary_styles());
+        let face = values.as_ref().map_or(Face::default(), |s| {
+            let decoration = s.clone_text_decoration_line();
+            Face {
+                bold: s.clone_font_weight().value() >= 600.,
+                italic: s.clone_font_style() != FontStyle::NORMAL,
+                underline: decoration.contains(TextDecorationLine::UNDERLINE),
+                strike: decoration.contains(TextDecorationLine::LINE_THROUGH),
+            }
+        });
         Self {
             owner,
             equation,
-            visible: !matches!(style("visibility").as_str(), "hidden" | "collapse"),
-            face: Face {
-                bold: style("font-weight").parse::<u16>().is_ok_and(|v| v >= 600),
-                italic: matches!(style("font-style").as_str(), "italic" | "oblique"),
-                underline: decoration.contains("underline"),
-                strike: decoration.contains("line-through"),
-            },
+            visible: values
+                .as_ref()
+                .is_none_or(|s| s.clone_visibility() == Visibility::Visible),
+            face,
         }
     }
 }
 
-#[derive(Default)]
+#[derive(Clone, Copy, Default)]
 struct Cursor {
     part: usize,
     offset: usize,
@@ -104,6 +113,16 @@ pub(super) fn lines(
     blocks: &[Block],
     images: &[Option<usize>],
 ) -> Vec<PageLine> {
+    paint_lines::<true>(doc, width, sources, blocks, images)
+}
+
+fn paint_lines<const GROUPED: bool>(
+    doc: &BaseDocument,
+    width: u16,
+    sources: &[Vec<SourceText>],
+    blocks: &[Block],
+    images: &[Option<usize>],
+) -> Vec<PageLine> {
     let mut figures = BTreeMap::<usize, Vec<crate::Figure>>::new();
     let mut rows = Rows::new();
     let mut cursors: Vec<Cursor> = (0..sources.len()).map(|_| Cursor::default()).collect();
@@ -119,10 +138,8 @@ pub(super) fn lines(
         let area = node.final_layout();
         let pos = node.absolute_position(0., 0.);
         let visible = || {
-            !matches!(
-                doc.resolved_style_value(id, "visibility").as_str(),
-                "hidden" | "collapse"
-            )
+            node.primary_styles()
+                .is_none_or(|s| s.clone_visibility() == Visibility::Visible)
         };
         if let Some(reference) = node
             .element_data()
@@ -159,7 +176,7 @@ pub(super) fn lines(
         {
             draw_border(node, width, &mut rows);
         }
-        draw_text(
+        draw_text::<GROUPED>(
             doc,
             node,
             &mut rows,
@@ -216,7 +233,7 @@ fn draw_border(node: &Node, width: u16, rows: &mut Rows<'_>) {
     }
 }
 
-fn draw_text<'a>(
+fn draw_text<'a, const GROUPED: bool>(
     doc: &'a BaseDocument,
     node: &'a Node,
     rows: &mut Rows<'a>,
@@ -236,10 +253,93 @@ fn draw_text<'a>(
     let area = node.final_layout();
     let left = pos.x + area.border.left + area.padding.left;
     let top = pos.y + area.border.top + area.padding.top + inline.block_offset;
+    let columns = (doc.viewport().window_size.0 / CELL as u32).max(1) as usize;
+    let mut glyphs = Vec::new();
     for line in inline.layout.lines() {
         let y = ((top + line.metrics().block_min_coord) / ROW)
             .round()
             .max(0.) as usize;
+        // One style with simple one-glyph characters can use the shaper's
+        // positioned glyphs directly, including expanded justification spaces.
+        // Complex scripts, mixed styles and transformed/source-split text keep
+        // the cluster path below. The CSS engine still owns every advance.
+        let mut items = line.items();
+        if GROUPED
+            && let Some(parley::PositionedLayoutItem::GlyphRun(run)) = items.next()
+            && items.next().is_none()
+            && !run.run().is_rtl()
+        {
+            let text = &inline.text[line.text_range()];
+            let simple = |c: char| {
+                matches!(c, ' '..='~' | '—' | '–' | '«' | '»' | '…')
+                    || matches!(c, '\u{400}'..='\u{52f}')
+                        && unicode_width::UnicodeWidthChar::width(c) == Some(1)
+            };
+            if !text.is_empty()
+                && text.chars().all(simple)
+                && run.glyphs().count() == text.chars().count()
+            {
+                let id = run.style().brush.id;
+                let paint = *styles.entry(id).or_insert_with(|| Paint::for_node(doc, id));
+                if let Some(i) = paint.owner {
+                    let mut cursor = cursors[i];
+                    if let Some((source, end)) = cursor.take(&sources[i], blocks, text)
+                        && end - source.byte == text.len()
+                    {
+                        cursors[i] = cursor;
+                        if paint.visible {
+                            let row = rows.entry(y).or_default();
+                            let mut x = f64::from(left) + f64::from(run.offset());
+                            let mut begin = 0;
+                            let mut first = 0;
+                            let mut previous = None;
+                            for ((byte, _), glyph) in text.char_indices().zip(run.glyphs()) {
+                                let at = ((x * 64.).round() / (64. * f64::from(CELL)))
+                                    .round()
+                                    .max(0.) as usize;
+                                x += f64::from(glyph.advance);
+                                if let Some(prev) = previous
+                                    && (at != prev + 1 || at / columns != first / columns)
+                                {
+                                    row.push(Ink {
+                                        x: first,
+                                        text: &text[begin..byte],
+                                        source: Some((
+                                            Anchor {
+                                                byte: source.byte + begin,
+                                                ..source
+                                            },
+                                            source.byte + byte,
+                                        )),
+                                        face: paint.face,
+                                        rule: false,
+                                    });
+                                    begin = byte;
+                                }
+                                if begin == byte {
+                                    first = at;
+                                }
+                                previous = Some(at);
+                            }
+                            row.push(Ink {
+                                x: first,
+                                text: &text[begin..],
+                                source: Some((
+                                    Anchor {
+                                        byte: source.byte + begin,
+                                        ..source
+                                    },
+                                    end,
+                                )),
+                                face: paint.face,
+                                rule: false,
+                            });
+                        }
+                        continue;
+                    }
+                }
+            }
+        }
         for run in line.runs() {
             let clusters = run.visual_clusters();
             // Justification yields fractional spaces. Keep the fraction while
@@ -253,7 +353,8 @@ fn draw_text<'a>(
                         .unwrap_or_default(),
                 );
             // Map in logical order, including RTL runs; then place in visual order.
-            let mut glyphs = Vec::new();
+            glyphs.clear();
+            let mut last_paint = None;
             for c in clusters {
                 // Round the shaper's f32 positions to subpixels first so two
                 // runs meeting at a half cell choose the same boundary.
@@ -267,29 +368,90 @@ fn draw_text<'a>(
                     continue;
                 }
                 let id = c.style().brush.id;
-                let paint = *styles.entry(id).or_insert_with(|| Paint::for_node(doc, id));
-                glyphs.push((at, text, paint));
+                let paint = match last_paint {
+                    Some((last, paint)) if last == id => paint,
+                    _ => {
+                        let paint = *styles.entry(id).or_insert_with(|| Paint::for_node(doc, id));
+                        last_paint = Some((id, paint));
+                        paint
+                    }
+                };
+                glyphs.push((at, range, paint, text.width()));
             }
             if run.is_rtl() {
                 glyphs.reverse();
             }
-            for (x, text, paint) in glyphs {
-                let source = paint
-                    .owner
-                    .and_then(|i| cursors.get_mut(i)?.take(&sources[i], blocks, text))
-                    .or_else(|| {
-                        let s = sources.get(paint.equation?)?.first()?;
-                        Some((s.start, s.end.min(blocks.get(s.start.block)?.text.len())))
-                    });
-                if paint.visible && text != "\u{fffc}" {
-                    rows.entry(y).or_default().push(Ink {
-                        x,
-                        text,
-                        source,
-                        face: paint.face,
-                        rule: false,
-                    });
+            // A word normally consists of many adjacent shaping clusters.
+            // Keep it as one paint span rather than allocating/sorting a cell
+            // for each character. Split at gaps, styles, source boundaries,
+            // RTL changes and terminal-column edges.
+            let mut begin = 0;
+            while begin < glyphs.len() {
+                let (x, range, paint, first_cells) = &glyphs[begin];
+                let mut end = begin + 1;
+                let mut cells = *first_cells;
+                while GROUPED
+                    && let Some((next_x, next_range, next_paint, next_cells)) = glyphs.get(end)
+                {
+                    if paint != next_paint
+                        || glyphs[end - 1].1.end != next_range.start
+                        || x + cells != *next_x
+                        || x % columns + cells + next_cells > columns
+                        || inline.text[next_range.clone()].contains('\u{fffc}')
+                    {
+                        break;
+                    }
+                    cells += next_cells;
+                    end += 1;
                 }
+                let range = range.start..glyphs[end - 1].1.end;
+                let text = &inline.text[range.clone()];
+                let whole = paint.owner.and_then(|i| {
+                    if !GROUPED || text.contains('\u{fffc}') {
+                        return None;
+                    }
+                    let mut cursor = *cursors.get(i)?;
+                    let source = cursor.take(&sources[i], blocks, text)?;
+                    if source.1 - source.0.byte != text.len() {
+                        return None;
+                    }
+                    cursors[i] = cursor;
+                    Some(source)
+                });
+                if let Some(source) = whole {
+                    if paint.visible {
+                        rows.entry(y).or_default().push(Ink {
+                            x: *x,
+                            text,
+                            source: Some(source),
+                            face: paint.face,
+                            rule: false,
+                        });
+                    }
+                } else {
+                    // A CSS run may cross source spans, transform characters,
+                    // or contain an equation. Preserve cluster-level anchors.
+                    for (x, range, paint, _) in &glyphs[begin..end] {
+                        let text = &inline.text[range.clone()];
+                        let source = paint
+                            .owner
+                            .and_then(|i| cursors.get_mut(i)?.take(&sources[i], blocks, text))
+                            .or_else(|| {
+                                let s = sources.get(paint.equation?)?.first()?;
+                                Some((s.start, s.end.min(blocks.get(s.start.block)?.text.len())))
+                            });
+                        if paint.visible && text != "\u{fffc}" {
+                            rows.entry(y).or_default().push(Ink {
+                                x: *x,
+                                text,
+                                source,
+                                face: paint.face,
+                                rule: false,
+                            });
+                        }
+                    }
+                }
+                begin = end;
             }
         }
     }
@@ -319,6 +481,15 @@ fn compose_rows(
         // the column edge. It must not create a whole extra line of book text.
         while glyphs.last().is_some_and(|g| g.text.trim().is_empty()) {
             glyphs.pop();
+        }
+        if let Some(last) = glyphs.last_mut() {
+            let trimmed = last.text.trim_end();
+            if let Some((start, end)) = last.source.as_mut()
+                && *end - start.byte == last.text.len()
+            {
+                *end -= last.text.len() - trimmed.len();
+            }
+            last.text = trimmed;
         }
         let mut line = PageLine {
             figures: figures.remove(&y).unwrap_or_default(),
@@ -386,4 +557,86 @@ fn finish(rows: &mut Vec<PageLine>, line: &mut PageLine, anchor: &mut Anchor) {
     }
     line.start = *anchor;
     rows.push(std::mem::take(line));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::publisher::{Chapter, Stylesheets};
+    use blitz_traits::shell::{ColorScheme, Viewport};
+    use std::sync::Arc;
+
+    #[test]
+    fn grouped_paint_keeps_cluster_text_styles_and_source_addresses() {
+        for text in [
+            "— Простая реплика. Several words in a longer paragraph, repeated words words.",
+            "  Spaces   and\u{a0}nonbreaking\u{a0}spaces. а\u{301}б 👩‍💻 🌄 漢字.",
+            "שלום עולם — English words — مرحبا بالعالم",
+            "mixed Case and CAPS, a link and another word.",
+            "Кириллица а\u{483} и\u{486} Ёжик, Ѱ, й; punctuation — «слово»…",
+        ] {
+            let blocks = [Block {
+                text: text.into(),
+                heading: false,
+            }];
+            // A run can cross original source spans even when its face is uniform.
+            let split = text.char_indices().nth(7).map_or(text.len(), |(i, _)| i);
+            let sources = vec![vec![
+                SourceText {
+                    start: Anchor::default(),
+                    end: split,
+                    child: 0,
+                },
+                SourceText {
+                    start: Anchor {
+                        block: 0,
+                        byte: split,
+                    },
+                    end: text.len(),
+                    child: 0,
+                },
+            ]];
+            for css in [
+                "",
+                "text-align:justify",
+                "text-transform:uppercase",
+                "word-spacing:3px",
+                "direction:rtl",
+                "visibility:hidden",
+            ] {
+                let chapter = Chapter::new(
+                    1,
+                    format!(
+                        "<html><body><p style='{css}' data-botui-text='0'>{text}</p></body></html>"
+                    ),
+                    "chapter.xhtml",
+                    Arc::new(Stylesheets::default()),
+                    sources.clone(),
+                );
+                for width in [18, 32, 47, 80] {
+                    let doc = chapter.document(
+                        Viewport::new(u32::from(width) * CELL as u32, 480, 1., ColorScheme::Light),
+                        crate::ReflowOptions {
+                            repair_printed: true,
+                            inline_images: true,
+                            paragraph_indent: 0,
+                        },
+                        &blocks,
+                        None,
+                    );
+                    assert_eq!(
+                        format!(
+                            "{:?}",
+                            paint_lines::<true>(&doc, width, &sources, &blocks, &[])
+                        ),
+                        format!(
+                            "{:?}",
+                            paint_lines::<false>(&doc, width, &sources, &blocks, &[])
+                        ),
+                        "{text:?}, {css}, width {width}",
+                    );
+                }
+            }
+        }
+    }
 }

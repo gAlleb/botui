@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Toggling zen progress leaves the text in place and no longer repaginates the book. EPUB resizing reuses parsed chapters and a bounded cache of recent layouts; chapter layout runs in parallel, with a faster allocator in static musl builds.
+- Local folders and list views open without waiting for image protocol discovery. Switching to cover view still detects terminal graphics when needed.
+- Generated jackets are prepared in the background instead of blocking entry to a cover shelf. Completed terminal frames use synchronized updates to avoid exposing partially drawn navigation and covers; small illustrations retain both visible spread sizes.
 - Styled EPUB chapters use embedded CSS layout in the regular reader. Merged cells, equations in MathML or marked TeX, and preformatted listings share the book’s navigation, search, bookmarks and BookOrbit positions.
 - Inline EPUB and FB2 illustrations grow with the reading pane. Changing appearance in a second local reader preserves the position saved by the window used for reading.
 - Justified EPUB prose keeps words intact even when a word crosses a change of emphasis or falls on a half-cell boundary.

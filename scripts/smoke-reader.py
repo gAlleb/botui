@@ -73,6 +73,14 @@ def check(tmp):
         open_book()
         wait_for("Начальный разворот", lambda s: heading in s and columns(s) == 2)
         keys("z");wait_for("Zen hides contents",lambda s:"Z Zen" not in s and heading in s)
+        # Showing a footer must not resize/reflow either page or move the passage.
+        before = tmux("capture-pane", "-p", "-t", "reader").stdout.splitlines()
+        keys("%")
+        shown = wait_for("Zen progress", lambda s: re.search(r"\d+ / \d+  ·  \d+%", s)).splitlines()
+        assert shown[:-1] == before[:-1], "Progress footer moved the book text"
+        keys("%")
+        hidden = wait_for("Hide zen progress", lambda s: not re.search(r"\d+ / \d+  ·  \d+%", s)).splitlines()
+        assert hidden == before, "Hiding progress changed the page"
         mouse(0, 30, 6)
         actions = ("Resume", "Single page", "Two-page spread", "Theme", "Add bookmark", "Page width & column gap")
         menu = wait_for("Меню по щелчку", lambda s: all(name in s for name in actions))

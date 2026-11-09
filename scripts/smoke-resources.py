@@ -54,7 +54,9 @@ def check(tmp):
     fb2.write_text('<FictionBook xmlns:xlink="http://www.w3.org/1999/xlink"><body><section><title><p>Evening tide</p></title><p>Read <a xlink:href="#n">Footnote one</a>.</p><image xlink:href="#chart"/></section></body><body name="notes"><section id="n"><p>The tide was high.</p></section></body><binary id="chart" content-type="image/jpeg">'+b64encode(pic).decode()+'</binary></FictionBook>')
     t = shelf.Terminal(tmp, BINARY, args=[str(fb2)])
     try:
-        start = t.see("Evening tide")
+        # A direct-file reader negotiates graphics when the first image arrives.
+        # Wait for that response/timeout before sending interactive test keys.
+        start = t.wait("FB2 inline illustration ready", lambda f: "Evening tide" in f and ("▀" in f or "▄" in f))
         assert "The tide was high." not in start
         select(t,"Footnote one");t.see("The tide was high.")
         t.keys("Escape");t.wait("closed note",lambda f:"The tide was high." not in f)
