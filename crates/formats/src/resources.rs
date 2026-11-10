@@ -15,16 +15,8 @@ pub fn illustration(path: &Path, member: &str) -> Result<Vec<u8>> {
     match FileKind::from_path(path) {
         Some(FileKind::Epub) => {
             let mut zip = zip::ZipArchive::new(BufReader::new(File::open(path)?))?;
-            let file = zip.by_name(member)?;
-            if file.size() > LIMIT {
-                return Err(invalid("Illustration exceeds size limit").into());
-            }
-            let mut bytes = vec![];
-            file.take(LIMIT + 1).read_to_end(&mut bytes)?;
-            if bytes.len() as u64 > LIMIT {
-                return Err(invalid("Illustration exceeds size limit").into());
-            }
-            Ok(bytes)
+            let mut budget = LIMIT;
+            super::svg::read(&mut zip, member, &mut budget)
         }
         Some(FileKind::Fb2) => {
             let mut bytes = vec![];

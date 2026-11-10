@@ -9,3 +9,4 @@ publish.workspace = true
 botui-formats = { path = "../formats" }
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "pnm", "webp"] }
 tempfile = "3"
+resvg = { version = "0.45", default-features = false, features = ["text", "system-fonts", "raster-images"] }

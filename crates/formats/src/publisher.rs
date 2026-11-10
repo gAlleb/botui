@@ -27,6 +27,8 @@ pub(super) fn uses_layout(dom: &Html) -> bool {
                     | "i"
                     | "code"
                     | "img"
+                    | "svg"
+                    | "object"
             )
             || el.attr("style").is_some()
             || (el.name() == "link"
@@ -100,6 +102,14 @@ pub(super) fn chapter(
             set_attr(el, "style", &style);
         }
         images.push(Some(raw));
+        // Vector labels belong to the illustration. Never feed them to the text
+        // layout a second time. Keep the root tag so publisher svg/object CSS
+        // selectors and dimensions continue to match.
+        if matches!(el.name(), "svg" | "object") {
+            while let Some(mut child) = node.first_child() {
+                child.detach();
+            }
+        }
     }
     normalize_spans(dom);
     let preserve_structure = dom.tree.nodes().filter_map(ElementRef::wrap).any(|e| {

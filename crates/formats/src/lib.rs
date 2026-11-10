@@ -8,6 +8,7 @@ pub use cover::cover;
 mod fb2;
 mod locations;
 mod resources;
+mod svg;
 pub use resources::{Supplement, illustration, supplement, supplementary_note};
 mod publisher;
 #[cfg(test)]

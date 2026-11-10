@@ -1,4 +1,5 @@
 //! Page rasterization without a terminal, account, or network dependency.
+pub mod svg;
 use botui_formats::FileKind;
 use image::DynamicImage;
 use std::{

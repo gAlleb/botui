@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.1.6 — 2026-11-10
+
+- EPUB displays static inline and linked SVG illustrations, including labels, shapes, transforms and embedded archive images, in the ordinary reader and image-only albums. Visible illustrations rasterize on existing background workers and reuse the image cache; source text addresses remain unchanged.
+
 - Generated jackets reuse a bounded disk cache between launches. Font discovery uses the system font index when available, without blocking shelf navigation or flashing temporary artwork.
 - PDF and DjVu contents retain nested sections and support folding with the mouse or arrow keys. Outline levels use shades from the active theme in text and scan readers; reopening a book keeps the current section selected without hiding a short outline above it.
 - Continuous PDF/DjVu scrolling marks page boundaries across the reading pane with a muted dotted line. Kitty reuses bounded page uploads even in wide windows; neighboring pages prepare their graphics on render workers instead of blocking at page boundaries.

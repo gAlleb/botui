@@ -158,34 +158,29 @@ pub(super) fn extract(
     let mut table_start = None;
     let mut table_rows = vec![];
     let mut columns = 0;
+    let mut svg_index = 0;
     for edge in body.traverse() {
         match edge {
             Edge::Open(node) if hidden.is_none() => match node.value() {
                 Node::Element(el) => {
                     let name = el.name();
                     if name == "svg" && el.attr("hidden").is_none() {
-                        for n in node
-                            .descendants()
-                            .filter_map(scraper::ElementRef::wrap)
-                            .filter(|n| n.value().name() == "image")
-                        {
-                            if let Some((_, href)) = n
-                                .value()
-                                .attrs()
-                                .find(|(key, _)| matches!(*key, "href" | "xlink:href"))
-                            {
-                                links.push(RawLink {
-                                    node: node.id(),
-                                    block: blocks.len(),
-                                    byte: 0,
-                                    backlink: false,
-                                    id: None,
-                                    image: true,
-                                    label: String::new(),
-                                    href: href.into(),
-                                });
-                            }
-                        }
+                        links.push(RawLink {
+                            node: node.id(),
+                            block: blocks.len(),
+                            byte: 0,
+                            backlink: false,
+                            id: None,
+                            image: true,
+                            label: scraper::ElementRef::wrap(node)
+                                .and_then(|e| {
+                                    e.child_elements().find(|n| n.value().name() == "title")
+                                })
+                                .map(|e| clean(&e.text().collect::<String>()))
+                                .unwrap_or_default(),
+                            href: format!("{}{}", super::svg::INLINE, svg_index),
+                        });
+                        svg_index += 1;
                     }
                     if name == "tr" && el.attr("hidden").is_none() {
                         flush(&mut buffer, is_heading, blocks);
@@ -223,10 +218,16 @@ pub(super) fn extract(
                         || el.attr("hidden").is_some()
                     {
                         hidden = Some(node.id());
-                    } else if matches!(name, "a" | "img") {
-                        let image = name == "img";
+                    } else if matches!(name, "a" | "img" | "object") {
+                        let image = name != "a";
                         if let Some(href) = el
-                            .attr(if image { "src" } else { "href" })
+                            .attr(if name == "object" {
+                                "data"
+                            } else if image {
+                                "src"
+                            } else {
+                                "href"
+                            })
                             .filter(|v| !v.trim().is_empty())
                         {
                             let label = if image {

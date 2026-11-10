@@ -192,7 +192,7 @@ fn image_only_epub_keeps_two_spine_destinations_and_ignores_remote_art() {
         ("b.xhtml",r#"<html><body><img alt="Last plate" src="i.jpg"/></body></html>"#),
         ("toc.xhtml",r#"<html><body><nav epub:type="toc"><ol><li><a href="a.xhtml">First</a></li><li><a href="b.xhtml">Last</a></li></ol></nav></body></html>"#),
     ]),"album").unwrap();
-    assert_eq!(book.image_pages, ["i.jpg", "i.jpg"]);
+    assert_eq!(book.image_pages, ["botui-inline-svg:0:a.xhtml", "i.jpg"]);
     assert_eq!(book.blocks.len(), 2);
     assert_eq!(book.blocks[1].text, "Last plate");
     assert_eq!(
@@ -778,4 +778,87 @@ fn fb2_faces_survive_wrapping_and_resume_without_changing_source_offsets() {
     );
     assert!(reopened.lines(0)[0].text.starts_with("жирный"));
     assert!(reopened.lines(0)[0].spans[0].face.bold);
+}
+
+#[test]
+fn svg_figures_are_images_not_prose_and_keep_source_positions() {
+    use botui_core::{Anchor, LayoutMode, Pager, Target};
+    let svg = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 120"><defs><path id="line" d="M10 10L100 100"/></defs><use href="#line" stroke="blue"/><text x="15" y="25">VectorLabel</text></svg>"##;
+    let html = format!(
+        r#"<html xmlns="http://www.w3.org/1999/xhtml"><body><p>Before the diagram.</p>{svg}<p id="after">After the diagram.</p><img src="fig.svg"/><p>Second caption.</p><object type="image/svg+xml" data="fig.svg"/><p>End.</p></body></html>"#
+    );
+    let input = archive(&[
+        (
+            "META-INF/container.xml",
+            r#"<container><rootfile full-path="book.opf"/></container>"#,
+        ),
+        (
+            "book.opf",
+            r#"<package><manifest><item id="c" href="c.xhtml" media-type="application/xhtml+xml"/><item id="i" href="fig.svg" media-type="image/svg+xml"/></manifest><spine><itemref idref="c"/></spine></package>"#,
+        ),
+        ("c.xhtml", &html),
+        ("fig.svg", svg),
+    ]);
+    let doc = read_book(input, "SVG book").unwrap();
+    assert_eq!(
+        doc.blocks
+            .iter()
+            .map(|b| b.text.as_str())
+            .collect::<Vec<_>>(),
+        [
+            "Before the diagram.",
+            "After the diagram.",
+            "Second caption.",
+            "End."
+        ]
+    );
+    assert_eq!(doc.references.len(), 3);
+    assert!(
+        matches!(&doc.references[0].target,Target::Image(s) if s=="botui-inline-svg:0:c.xhtml")
+    );
+    let at = Anchor { block: 1, byte: 6 };
+    assert_eq!(doc.cfi(at).as_deref(), Some("epubcfi(/4/2!/2/6/1:6)"));
+    assert_eq!(doc.resolve_cfi(&doc.cfi(at).unwrap()), Some(at));
+    for mode in [LayoutMode::Single, LayoutMode::Spread, LayoutMode::Scroll] {
+        let mut p = Pager::new(&doc, 80, 24, mode);
+        let mut found = std::collections::BTreeSet::new();
+        loop {
+            for col in 0..p.columns() {
+                for line in p.lines(col) {
+                    assert!(!line.text.contains("VectorLabel"));
+                    for f in &line.figures {
+                        found.insert(f.reference);
+                    }
+                }
+            }
+            if p.at_end() {
+                break;
+            }
+            p.next();
+        }
+        assert_eq!(found, [0, 1, 2].into_iter().collect(), "{mode:?}");
+    }
+}
+
+#[test]
+fn svg_archive_resources_are_self_contained_and_bounded() {
+    use super::svg;
+    let inline = r##"<html xmlns="http://www.w3.org/1999/xhtml"><body><svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="240" height="120"><title>Chart</title><g transform="translate(10 5)"><image xlink:href="../img/pixel.png" width="40" height="40"/><path d="M0 0L10 10"/></g><image href="file:///etc/passwd"/><image href="https://example.org/a.png"/></svg></body></html>"##;
+    let mut input = archive(&[
+        ("text/c.xhtml", inline),
+        ("img/pixel.png", "PNG-placeholder"),
+    ]);
+    let mut zip = zip::ZipArchive::new(&mut input).unwrap();
+    let out = svg::read(&mut zip, "botui-inline-svg:0:text/c.xhtml", &mut (1 << 20)).unwrap();
+    let xml = String::from_utf8(out).unwrap();
+    assert!(xml.contains("data:text/plain;base64,UE5HLXBsYWNlaG9sZGVy"));
+    assert!(xml.contains("translate(10 5)") && xml.contains("<path"));
+    assert!(!xml.contains("file://") && !xml.contains("example.org"));
+    roxmltree::Document::parse(&xml).unwrap();
+    assert!(svg::read(&mut zip, "botui-inline-svg:0:text/c.xhtml", &mut 10).is_err());
+    assert_eq!(svg::header_size(xml.as_bytes()), Some((240, 120)));
+    assert_eq!(
+        svg::header_size(br#"<svg viewBox="0 0 400 200" width="2in">"#),
+        Some((192, 96))
+    );
 }

@@ -121,30 +121,37 @@ pub(super) fn read_book(reader: impl Read + Seek, fallback: &str) -> Result<Docu
                 &blocks,
                 &mut locations,
             );
-            let figures = links
+            let figures: Vec<_> = links
                 .iter()
                 .enumerate()
                 .filter(|(_, l)| l.image)
                 .map(|(i, l)| {
-                    let size = member_path(&member, &l.href).ok().and_then(|member| {
-                        *image_sizes.entry(member.clone()).or_insert_with(|| {
-                            let file = archive.by_name(&member).ok()?;
-                            let mut header = Vec::new();
-                            file.take(32 * 1024).read_to_end(&mut header).ok()?;
-                            imagesize::blob_size(&header)
-                                .ok()
-                                .map(|s| (s.width, s.height))
+                    let size = if l.href.starts_with(super::svg::INLINE) {
+                        scraper::ElementRef::wrap(dom.tree.get(l.node).unwrap())
+                            .and_then(|e| super::svg::size(|key| e.attr(key)))
+                    } else {
+                        member_path(&member, &l.href).ok().and_then(|member| {
+                            *image_sizes.entry(member.clone()).or_insert_with(|| {
+                                let file = archive.by_name(&member).ok()?;
+                                let mut header = Vec::new();
+                                file.take(32 * 1024).read_to_end(&mut header).ok()?;
+                                imagesize::blob_size(&header)
+                                    .ok()
+                                    .map(|s| (s.width, s.height))
+                                    .or_else(|| super::svg::header_size(&header))
+                            })
                         })
-                    });
+                    };
                     (l.node, raw.len() + i, size)
-                });
+                })
+                .collect();
             let chapter = crate::publisher::chapter(
                 &mut dom,
                 origins,
                 blocks.len(),
                 &member,
                 sheets.clone(),
-                figures,
+                figures.into_iter(),
             );
             styled.insert(start, chapter);
         }
@@ -157,10 +164,11 @@ pub(super) fn read_book(reader: impl Read + Seek, fallback: &str) -> Result<Docu
         let mut plates = HashMap::<String, (usize, usize)>::new();
         for (base, link) in &mut raw {
             if link.image
-                && let Ok(member) = member_path(base, &link.href)
-                && resources
-                    .get(&member)
-                    .is_some_and(|m| super::resources::raster(m))
+                && let Ok(member) = super::svg::locator(base, &link.href)
+                && (member.starts_with(super::svg::INLINE)
+                    || resources
+                        .get(&member)
+                        .is_some_and(|m| super::resources::raster(m) || *m == "image/svg+xml"))
             {
                 image_pages.push(member);
                 link.block = blocks.len();
@@ -240,7 +248,9 @@ pub(super) fn read_book(reader: impl Read + Seek, fallback: &str) -> Result<Docu
             } else {
                 link.label
             };
-            let target = if super::resources::web(&link.href) && !link.image {
+            let target = if link.image && link.href.starts_with(super::svg::INLINE) {
+                Target::Image(super::svg::locator(&base, &link.href).ok()?)
+            } else if super::resources::web(&link.href) && !link.image {
                 Target::Web(link.href)
             } else {
                 let (part, id) = link.href.split_once('#').unwrap_or((&link.href, ""));

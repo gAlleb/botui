@@ -42,7 +42,11 @@ pub fn cover(path: &Path) -> Result<Option<Vec<u8>>> {
             let Some(href) = image.and_then(|n| n.attribute("href")) else {
                 return Ok(None);
             };
-            let member = zip.by_name(&epub::member_path(opf, href)?)?;
+            let member_path = epub::member_path(opf, href)?;
+            if image.and_then(|n| n.attribute("media-type")) == Some("image/svg+xml") {
+                return super::svg::read(&mut zip, &member_path, &mut (8 << 20)).map(Some);
+            }
+            let member = zip.by_name(&member_path)?;
             if member.size() > MAX_COVER {
                 return Ok(None);
             }

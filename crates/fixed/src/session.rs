@@ -41,6 +41,11 @@ impl PageReader {
                 .map_err(|e| io::Error::other(e.to_string()))?;
             let mut decoder =
                 image::ImageReader::new(io::Cursor::new(bytes)).with_guessed_format()?;
+            if decoder.format().is_none() {
+                let side = u32::from(side.clamp(200, 1920));
+                return svg::render(decoder.into_inner().get_ref(), side, side)
+                    .ok_or_else(|| io::Error::other("Cannot render EPUB SVG page"));
+            }
             let mut limits = image::Limits::default();
             limits.max_alloc = Some(64 << 20);
             limits.max_image_width = Some(8192);

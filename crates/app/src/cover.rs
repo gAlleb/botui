@@ -232,6 +232,10 @@ impl Picture {
         let mut decoder = ImageReader::new(Cursor::new(bytes))
             .with_guessed_format()
             .ok()?;
+        if decoder.format().is_none() {
+            return botui_fixed::svg::render(decoder.into_inner().get_ref(), width, height)
+                .map(Self::new);
+        }
         let mut limits = Limits::default();
         limits.max_image_width = Some(4096);
         limits.max_image_height = Some(4096);

@@ -79,15 +79,14 @@ The canvas regression compares grouped rendering with individual shaping cluster
 ### Functional limits
 
 - **BookOrbit.** Bookmark responses were checked against a personal server for specific EPUB and FB2 editions. A local HTTP fixture exercises status changes, resets and progress conflicts. A full web → iPhone → TUI check requires a physical device and the same edition file.
-- **EPUB layout.** Tests cover local CSS, Grid, Flexbox, table spans, fractions, roots, scripts, matrices and marked TeX. The terminal supplies one font size and the reader supplies the palette. Pixel-faithful fixed-layout pages and arbitrary SVG diagrams are outside this coverage. FB2 has its own text and raster-image reader.
+- **EPUB layout.** Tests cover local CSS, Grid, Flexbox, table spans, fractions, roots, scripts, matrices and marked TeX. The terminal supplies one font size and the reader supplies the palette. Static SVG inside XHTML and linked through `img`/`object` is displayed as illustrations. Arbitrary fixed HTML layout, JavaScript, SVG animation and `foreignObject` are not supported. FB2 has its own text and raster-image reader.
 - **OPDS 1 and 2.** Tests cover direct file acquisition. DRM and separate lending workflows are unsupported.
 - **PDF and DjVu.** Image-only pages are readable. Search requires an existing text layer. The server syncs the page number, and the device also saves the scroll offset.
 
 ## Next reader improvements
 
-1. **SVG illustrations in EPUBs.** Display drawings stored as inline SVG or linked SVG files. Test a labelled diagram, a formula supplied as a picture and a fixed-layout spread with text over an image. The reader already typesets equations written in MathML or marked TeX.
-2. **Search in scans.** Offer on-demand OCR for PDF and DjVu pages without text. Cache results per edition and page so a second search works offline.
-3. **Quoting a passage.** Let a reader select exact text with the mouse or keyboard, then copy it or attach a note to the selection. Keep both endpoints across a resize. [Bookokrat selection command](https://github.com/bugzmanov/bookokrat/blob/9c02ee3b3a0f86791b3917cb1a93436d92a8603e/src/keybindings/action.rs#L354)
+1. **Search in scans.** Offer on-demand OCR for PDF and DjVu pages without text. Cache results per edition and page so a second search works offline.
+2. **Quoting a passage.** Let a reader select exact text with the mouse or keyboard, then copy it or attach a note to the selection. Keep both endpoints across a resize. [Bookokrat selection command](https://github.com/bugzmanov/bookokrat/blob/9c02ee3b3a0f86791b3917cb1a93436d92a8603e/src/keybindings/action.rs#L354)
 
 ### Follow-up checks
 
@@ -102,3 +101,10 @@ The canvas regression compares grouped rendering with individual shaping cluster
 - `scripts/smoke-local-startup.py`: first usable shelf frame, six complete generated/embedded covers, selection without replacement uploads, a warm return and a new process reusing the disk cache. Run performance comparisons sequentially with no compilation running; separate caption latency from image latency.
 
 - `scripts/smoke-native-scroll.py`: wide Kitty viewport above the old four-megapixel cutoff; scroll across page boundaries and back without repeated uploads. A private PTY captures completed synchronized frames, without opening a desktop terminal. Optional binary arguments allow sequential before/after comparisons.
+
+### EPUB SVG
+
+- `scripts/smoke-svg.py`: SVG in prose and image-only albums, actual label/path pixels sent to the terminal, scrolling without duplicate image uploads.
+- Format tests: three reading layouts, source addresses around SVG, archive-local resources and size limits.
+- `cargo run -p botui --example inspect-svg -- BOOK.epub OUTPUT_DIRECTORY`: export SVGs through the reader’s decoder for visual checks without desktop windows.
+- Real editions: [Flatland, Standard Ebooks](https://github.com/standardebooks/edwin-a-abbott_flatland), with 13 SVGs, and *On the Nature of Mind*, with an SVG wrapper around an archive JPEG. Compare ordinary reading against the prior binary on the same books, without concurrent compilation.
