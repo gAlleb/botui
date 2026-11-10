@@ -2,7 +2,7 @@
 //! does not reinterpret a row offset in the old font or viewport geometry.
 use super::pages::Pages;
 use crate::cover::{Crop, Picture};
-use ratatui::{Frame, layout::Rect};
+use ratatui::{Frame, layout::Rect, style::Stylize, widgets::Paragraph};
 use ratatui_image::picker::Picker;
 #[derive(Clone, Copy)]
 pub(super) struct Viewport<'a> {
@@ -93,6 +93,15 @@ impl Strip<'_> {
     }
     pub fn draw(&self, f: &mut Frame, r: Rect, n: u32, offset: u16) {
         for (n, skip, rows, y, take) in self.parts(n, offset) {
+            // A single quiet row separates pages, including when the viewport starts
+            // exactly at the seam. Page pixels and scroll fractions are unchanged.
+            let seam = y.saturating_add(take);
+            if n < self.count && seam < self.height {
+                f.render_widget(
+                    Paragraph::new("·".repeat(r.width as usize)).dim(),
+                    Rect::new(r.x, r.y + seam, r.width, 1),
+                );
+            }
             if take == 0 {
                 continue;
             }
@@ -106,7 +115,7 @@ impl Strip<'_> {
     }
 }
 impl Picture {
-    pub(super) fn strip_rows(&self, width: u16, picker: &Picker, crop: Crop) -> u32 {
+    pub(crate) fn strip_rows(&self, width: u16, picker: &Picker, crop: Crop) -> u32 {
         let (w, h) = self.dimensions();
         let cell = picker.font_size();
         ((u64::from(h)

@@ -14,7 +14,7 @@ def walk(node, depth):
             if dest and dest.type == Poppler.DestType.NAMED:
                 dest = doc.find_dest(dest.named_dest)
             if dest and dest.page_num > 0:
-                print(dest.page_num, "  " * depth + " ".join((action.any.title or "").split()), sep="\t")
+                print(dest.page_num, depth, " ".join((action.any.title or "").split()), sep="\t")
         child = node.get_child() if depth < 32 else None
         if child:
             walk(child, depth + 1)

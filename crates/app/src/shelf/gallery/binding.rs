@@ -65,7 +65,7 @@ impl Jackets {
             }
             if !self.pending.iter().any(|(pending, _)| pending == &key) {
                 let binding = key.clone();
-                let job = self.worker.start(move |_| binding.render(1).ok());
+                let job = self.worker.start(move |_| binding.thumbnail());
                 self.pending.push((key, job));
             }
         }
@@ -171,6 +171,58 @@ impl Binding {
         })
     }
 
+    fn thumbnail(&self) -> Option<DynamicImage> {
+        let dir = crate::cache::cache_dir().ok().map(|p| p.join("jackets-v1"));
+        self.thumbnail_at(dir)
+    }
+
+    fn thumbnail_at(&self, dir: Option<std::path::PathBuf>) -> Option<DynamicImage> {
+        let path = dir
+            .as_ref()
+            .map(|d| d.join(format!("{}.png", self.cache_key())));
+        if let Some(path) = &path
+            && let Ok(bytes) = std::fs::read(path)
+            && bytes.len() < 1 << 20
+            && let Ok(image) = image::load_from_memory_with_format(&bytes, image::ImageFormat::Png)
+            && image.width() == 240
+            && image.height() == 360
+        {
+            return Some(image);
+        }
+        let image = self.render(1).ok()?;
+        // Cache failure must never stop reading. Atomic publication also permits
+        // concurrent readers; generated jackets are disposable, not downloaded books.
+        if let (Some(dir), Some(path)) = (dir, path) {
+            let _ = (|| -> std::io::Result<()> {
+                use image::ImageEncoder;
+                std::fs::create_dir_all(&dir)?;
+                let mut file = tempfile::NamedTempFile::new_in(&dir)?;
+                image::codecs::png::PngEncoder::new_with_quality(
+                    file.as_file_mut(),
+                    image::codecs::png::CompressionType::Fast,
+                    image::codecs::png::FilterType::Sub,
+                )
+                .write_image(image.as_bytes(), 240, 360, image::ExtendedColorType::Rgba8)
+                .map_err(std::io::Error::other)?;
+                file.persist(path).map_err(|e| e.error)?;
+                trim_cache(&dir);
+                Ok(())
+            })();
+        }
+        Some(image)
+    }
+
+    fn cache_key(&self) -> String {
+        let mut hash = Sha256::new();
+        hash.update(include_bytes!("binding.svg"));
+        for value in [&self.title, &self.author, &self.collection] {
+            hash.update((value.len() as u64).to_le_bytes());
+            hash.update(value.as_bytes());
+        }
+        hash.update([self.ink as u8]);
+        format!("{:x}", hash.finalize())
+    }
+
     fn render(&self, scale: u32) -> botui_bookorbit::Result<DynamicImage> {
         let fonts = fonts();
         if fonts.is_empty() {
@@ -178,6 +230,7 @@ impl Binding {
         }
         let opts = usvg::Options {
             fontdb: Arc::clone(fonts),
+            font_resolver: font_resolver(),
             ..Default::default()
         };
         let (r, g, b) = self.cloth();
@@ -241,11 +294,81 @@ impl Binding {
     }
 }
 
+fn trim_cache(dir: &std::path::Path) {
+    // Bound persistent storage without scanning on a cache hit or in the UI loop.
+    let Ok(files) = std::fs::read_dir(dir) else {
+        return;
+    };
+    let mut entries: Vec<_> = files
+        .flatten()
+        .filter_map(|f| {
+            let name = f.file_name();
+            let name = name.to_str()?;
+            let key = name.strip_suffix(".png")?;
+            if key.len() != 64 || !key.bytes().all(|b| b.is_ascii_hexdigit()) {
+                return None;
+            }
+            Some((f.metadata().ok()?.modified().ok()?, f.path()))
+        })
+        .collect();
+    if entries.len() > 512 {
+        entries.sort_unstable();
+        for (_, path) in entries.iter().take(entries.len() - 512) {
+            let _ = std::fs::remove_file(path);
+        }
+    }
+}
+
+fn font_resolver() -> usvg::FontResolver<'static> {
+    let fallback = usvg::FontResolver::default_fallback_selector();
+    let scanned = std::sync::atomic::AtomicBool::new(false);
+    usvg::FontResolver {
+        select_font: usvg::FontResolver::default_font_selector(),
+        select_fallback: Box::new(move |ch, excluded, db| {
+            if let Some(id) = fallback(ch, excluded, db) {
+                return Some(id);
+            }
+            if let Ok(output) = std::process::Command::new("fc-match")
+                .args(["-f", "%{file}\n", &format!("serif:charset={:x}", ch as u32)])
+                .output()
+                && output.status.success()
+                && let Some(path) = String::from_utf8_lossy(&output.stdout).lines().next()
+            {
+                let _ = Arc::make_mut(db).load_font_file(path);
+                if let Some(id) = fallback(ch, excluded, db) {
+                    return Some(id);
+                }
+            }
+            // Portable fallback when fontconfig is absent or cannot resolve a glyph.
+            if !scanned.swap(true, std::sync::atomic::Ordering::Relaxed) {
+                Arc::make_mut(db).load_system_fonts();
+            }
+            fallback(ch, excluded, db)
+        }),
+    }
+}
+
 fn fonts() -> &'static Arc<usvg::fontdb::Database> {
     static FONTS: OnceLock<Arc<usvg::fontdb::Database>> = OnceLock::new();
     FONTS.get_or_init(|| {
         let mut db = usvg::fontdb::Database::new();
-        db.load_system_fonts();
+        // Load the preferred face from the system index, not every fallback font.
+        // Other scripts are resolved lazily only when a title actually needs them.
+        if let Ok(output) = std::process::Command::new("fc-match")
+            .args(["-f", "%{file}\n", "DejaVu Serif"])
+            .output()
+            && output.status.success()
+        {
+            let mut seen = std::collections::HashSet::new();
+            for path in String::from_utf8_lossy(&output.stdout).lines().take(1) {
+                if seen.insert(path) {
+                    let _ = db.load_font_file(path);
+                }
+            }
+        }
+        if db.is_empty() {
+            db.load_system_fonts();
+        }
         let preferred = ["DejaVu Serif", "Liberation Serif", "Noto Serif"]
             .into_iter()
             .find(|wanted| {
@@ -266,6 +389,33 @@ fn fonts() -> &'static Arc<usvg::fontdb::Database> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn persistent_jacket_is_reused_and_damaged_cache_is_repaired() {
+        if fonts().is_empty() {
+            return;
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let binding = Binding::new("Прах и пепел", &["Автор".into()], None, None);
+        let root = Some(dir.path().to_path_buf());
+        let image = binding.thumbnail_at(root.clone()).unwrap();
+        let path = dir.path().join(format!("{}.png", binding.cache_key()));
+        let modified = std::fs::metadata(&path).unwrap().modified().unwrap();
+        assert_eq!(
+            binding.thumbnail_at(root.clone()).unwrap().as_bytes(),
+            image.as_bytes()
+        );
+        assert_eq!(
+            std::fs::metadata(&path).unwrap().modified().unwrap(),
+            modified
+        );
+        std::fs::write(&path, b"broken png").unwrap();
+        assert_eq!(
+            binding.thumbnail_at(root).unwrap().as_bytes(),
+            image.as_bytes()
+        );
+        assert!(image::open(path).is_ok());
+    }
 
     #[test]
     fn changing_shelves_replaces_waiting_jackets_in_the_same_frame() {

@@ -39,7 +39,7 @@ def check(binary, directory, listing=False):
         (library / "Amber").mkdir()
         visible = b"Amber/"
     config = directory / "botui"
-    config.mkdir()
+    config.mkdir(exist_ok=True)
     (config / "config.toml").write_text(
         f'local_grid = {str(not listing).lower()}\ninterface_theme = "catppuccin-mocha"\n'
     )
@@ -99,20 +99,21 @@ def check(binary, directory, listing=False):
         os.close(terminal)
 
 
-def covers(binary, directory, embedded=False):
+def covers(binary, directory, embedded=False, reopen=False):
     """A cover folder is usable before generated jackets finish rendering."""
     library = directory / "Library"
     books = library / "Books"
-    books.mkdir(parents=True)
+    books.mkdir(parents=True, exist_ok=True)
     for i in range(6):
         write_book(books / f"Book {i}.fb2", embedded)
     config = directory / "botui"
-    config.mkdir()
+    config.mkdir(exist_ok=True)
     (config / "config.toml").write_text('local_grid = true\ninterface_theme = "catppuccin-mocha"\n')
     env = dict(os.environ, XDG_CONFIG_HOME=str(directory), XDG_CACHE_HOME=str(directory),
                XDG_STATE_HOME=str(directory), TERM="xterm-kitty")
     for key in ("TMUX", "STY", "NO_COLOR", "TERM_PROGRAM", "KITTY_WINDOW_ID"):
         env.pop(key, None)
+    cached_before = {p.name:p.stat().st_mtime_ns for p in (directory/"botui/jackets-v1").glob("*.png")}
     child, terminal = pty.fork()
     if child == 0:
         fcntl.ioctl(0, termios.TIOCSWINSZ, struct.pack("HHHH", 45, 180, 1800, 900))
@@ -154,6 +155,10 @@ def covers(binary, directory, embedded=False):
         # Generated artwork must still arrive without requiring another key.
         elapsed = frame(b"jackets", timeout=15)
         print(f"All six {'embedded covers' if embedded else 'generated jackets'} ready in {elapsed:.1f} ms", flush=True)
+        for key in (b"\x1b[B", b"\x1b[A"):
+            os.write(terminal, key)
+            frame(b"")
+        assert len(uploaded) == 6, "Selection replaced already uploaded cover images"
         os.write(terminal, b"\x7f")
         frame(b"Books/")
         os.write(terminal, b"\r")
@@ -164,6 +169,15 @@ def covers(binary, directory, embedded=False):
         os.kill(child, signal.SIGTERM)
         os.waitpid(child, 0)
         os.close(terminal)
+
+    if not embedded:
+        cached_after = {p.name:p.stat().st_mtime_ns for p in (directory/"botui/jackets-v1").glob("*.png")}
+        assert len(cached_after) == 6, "Generated jackets were not cached"
+        if reopen:
+            assert cached_before == cached_after, "Restart regenerated existing jackets"
+            print("Restart reused all six cached jackets without rewriting them", flush=True)
+        else:
+            covers(binary, directory, embedded, reopen=True)
 
 
 if __name__ == "__main__":

@@ -44,6 +44,7 @@ pub(super) fn parse(bytes: &[u8], fallback: &str) -> Result<Document> {
         .unwrap_or_else(|| clean(fallback));
     let mut locations = botui_core::Locations::default();
     let mut blocks = Vec::new();
+    let mut inline = std::collections::BTreeMap::new();
     let mut contents = Vec::new();
     let mut raw = vec![];
     let mut tables = std::collections::BTreeMap::new();
@@ -175,6 +176,10 @@ pub(super) fn parse(bytes: &[u8], fallback: &str) -> Result<Document> {
                     locations.0.insert(blocks.len(), runs);
                 }
                 current_block = Some((blocks.len(), node.id()));
+                let spans = faces(node, blocks.len());
+                if spans.iter().any(|s| s.face != Default::default()) {
+                    inline.insert(blocks.len(), spans);
+                }
                 blocks.push(Block {
                     text: content,
                     heading,
@@ -269,6 +274,7 @@ pub(super) fn parse(bytes: &[u8], fallback: &str) -> Result<Document> {
         })
         .collect();
     Ok(Document {
+        inline,
         styled: Default::default(),
         image_pages: vec![],
         tables,
@@ -278,4 +284,63 @@ pub(super) fn parse(bytes: &[u8], fallback: &str) -> Result<Document> {
         blocks,
         locations,
     })
+}
+
+// Match clean() byte for byte so emphasis never changes progress/link addresses.
+fn faces(node: Node<'_, '_>, block: usize) -> Vec<botui_core::publisher::TextSpan> {
+    if !node
+        .descendants()
+        .any(|n| matches!(n.tag_name().name(), "emphasis" | "strong" | "strikethrough"))
+    {
+        return Vec::new();
+    }
+    use botui_core::{
+        Anchor,
+        publisher::{Face, TextSpan},
+    };
+    let mut out = String::new();
+    let mut spans: Vec<TextSpan> = Vec::new();
+    for text in node.descendants().filter(|n| n.is_text()) {
+        let mut face = Face::default();
+        for parent in text.ancestors().take_while(|n| n.id() != node.id()) {
+            match parent.tag_name().name() {
+                "emphasis" => face.italic = true,
+                "strong" => face.bold = true,
+                "strikethrough" => face.strike = true,
+                _ => {}
+            }
+        }
+        let start = out.len();
+        for ch in text.text().unwrap_or_default().chars() {
+            if ch.is_whitespace() {
+                if !out.is_empty() && !out.ends_with(' ') {
+                    out.push(' ');
+                }
+            } else if !ch.is_control() {
+                out.push(ch);
+            }
+        }
+        if out.len() > start {
+            if let Some(last) = spans.last_mut().filter(|s| s.face == face) {
+                last.bytes.end = out.len();
+                last.source_end = out.len();
+            } else {
+                spans.push(TextSpan {
+                    bytes: start..out.len(),
+                    source: Some(Anchor { block, byte: start }),
+                    source_end: out.len(),
+                    face,
+                });
+            }
+        }
+    }
+    if out.ends_with(' ') {
+        out.pop();
+        if let Some(last) = spans.last_mut() {
+            last.bytes.end = out.len();
+            last.source_end = out.len();
+        }
+        spans.retain(|s| !s.bytes.is_empty());
+    }
+    spans
 }

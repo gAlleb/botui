@@ -186,6 +186,7 @@ impl BookLayout {
                 paragraph_indent,
                 resume.filter(|a| (start..=end).contains(&a.block)),
             );
+            printed::faces(&mut lines[before..], doc, start, end);
             start = end + 1;
             if lines.len() > before {
                 lines.push(PageLine {

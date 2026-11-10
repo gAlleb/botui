@@ -131,6 +131,7 @@ pub(super) fn entries(ctx: Context, p: &Settings) -> Vec<Entry> {
                     ),
                     ("V", "Cycle original, inverted and match background"),
                     ("Home / End", "First / last page"),
+                    ("Tab; ← / →", "Focus contents; fold / expand a section"),
                     ("/", "Find in the text layer"),
                     (
                         "F3 / F4 / F5",

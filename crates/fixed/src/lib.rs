@@ -138,7 +138,14 @@ pub fn page(
 
 /// Page indices in outlines are one-based, like the rasterizer. On installations
 /// without the optional PDF outline backend the reader can still navigate by page.
-pub fn outline(path: &Path, kind: FileKind, cancel: &AtomicBool) -> io::Result<Vec<(u32, String)>> {
+#[derive(Clone, Debug)]
+pub struct OutlineEntry {
+    pub page: u32,
+    pub title: String,
+    pub depth: usize,
+}
+
+pub fn outline(path: &Path, kind: FileKind, cancel: &AtomicBool) -> io::Result<Vec<OutlineEntry>> {
     let path = path.canonicalize()?;
     match kind {
         FileKind::Pdf => {
@@ -148,8 +155,13 @@ pub fn outline(path: &Path, kind: FileKind, cancel: &AtomicBool) -> io::Result<V
             Ok(String::from_utf8_lossy(&bytes)
                 .lines()
                 .filter_map(|line| {
-                    let (n, title) = line.split_once('\t')?;
-                    Some((n.parse().ok()?, title.to_owned()))
+                    let (n, rest) = line.split_once('\t')?;
+                    let (depth, title) = rest.split_once('\t')?;
+                    Some(OutlineEntry {
+                        page: n.parse().ok()?,
+                        title: title.to_owned(),
+                        depth: depth.parse::<usize>().ok()?.min(32),
+                    })
                 })
                 .collect())
         }
@@ -164,7 +176,14 @@ pub fn outline(path: &Path, kind: FileKind, cancel: &AtomicBool) -> io::Result<V
                 .into_iter()
                 .peekable();
             let mut entries = Vec::new();
+            let mut depth = 0usize;
             while let Some(c) = chars.next() {
+                if c == '(' {
+                    depth += 1;
+                }
+                if c == ')' {
+                    depth = depth.saturating_sub(1);
+                }
                 if c != '"' {
                     continue;
                 }
@@ -193,7 +212,11 @@ pub fn outline(path: &Path, kind: FileKind, cancel: &AtomicBool) -> io::Result<V
                     .and_then(|s| s.parse::<u32>().ok())
                     .filter(|n| *n > 0)
                 {
-                    entries.push((n, label.replace(char::is_control, " ")));
+                    entries.push(OutlineEntry {
+                        page: n,
+                        title: label.replace(char::is_control, " "),
+                        depth: depth.saturating_sub(2).min(32),
+                    });
                 }
             }
             Ok(entries)

@@ -221,6 +221,7 @@ impl Navigation {
                             "▾"
                         };
                         let label = format!(" {:indent$}{marker} {}", "", self.items[i].title);
+                        let style = crate::appearance::outline_style(style, self.depths[i]);
                         ratatui::widgets::ListItem::new(label).style(if self.group(i) {
                             style.bold()
                         } else {

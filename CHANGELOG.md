@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Generated jackets reuse a bounded disk cache between launches. Font discovery uses the system font index when available, without blocking shelf navigation or flashing temporary artwork.
+- PDF and DjVu contents retain nested sections and support folding with the mouse or arrow keys. Outline levels use shades from the active theme in text and scan readers; reopening a book keeps the current section selected without hiding a short outline above it.
+- Continuous PDF/DjVu scrolling marks page boundaries across the reading pane with a muted dotted line. Kitty reuses bounded page uploads even in wide windows; neighboring pages prepare their graphics on render workers instead of blocking at page boundaries.
+- FB2 preserves italic, bold and struck-through passages across wrapping and resume, using the lightweight text path and the original progress/link addresses.
+
 - Release binaries use size optimization while EPUB reflow and image resizing retain speed optimization.
 - Author and series cards keep their positions as more results arrive. F6 focuses the current BookOrbit section, including after navigation by number.
 - Shelf cards center the cover itself and leave a small gap above its title. Downloaded covers and generated jackets use the same spacing across BookOrbit, OPDS and local grids.

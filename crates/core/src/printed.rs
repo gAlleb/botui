@@ -111,3 +111,68 @@ pub(super) fn end(blocks: &[Block], printed: &[bool], start: usize) -> usize {
     }
     end
 }
+
+/// Apply inline faces after wrapping, keeping every segment's original source address.
+/// The usual unstyled novel does no additional work here.
+pub(super) fn faces(lines: &mut [PageLine], doc: &super::Document, start: usize, end: usize) {
+    if doc.inline.is_empty() || doc.inline.range(start..=end).next().is_none() {
+        return;
+    }
+    use super::publisher::{Face, TextSpan};
+    let (_, offsets) = join(&doc.blocks[start..=end]);
+    for line in lines {
+        let from = offsets[line.start.block - start] + line.start.byte;
+        let to = from + line.text.len();
+        let first = offsets
+            .partition_point(|offset| *offset <= from)
+            .saturating_sub(1);
+        for (i, &offset) in offsets
+            .iter()
+            .enumerate()
+            .skip(first)
+            .take_while(|(_, offset)| **offset < to)
+        {
+            let block = start + i;
+            let limit = (offset + doc.blocks[block].text.len())
+                .min(offsets.get(i + 1).copied().unwrap_or(usize::MAX));
+            let a = from.max(offset);
+            let b = to.min(limit);
+            if a >= b {
+                continue;
+            }
+            let mut cuts = vec![a, b];
+            if let Some(spans) = doc.inline.get(&block) {
+                let first = spans.partition_point(|s| s.bytes.end <= a - offset);
+                for s in spans[first..]
+                    .iter()
+                    .take_while(|s| s.bytes.start < b - offset)
+                {
+                    cuts.extend(
+                        [offset + s.bytes.start, offset + s.bytes.end]
+                            .into_iter()
+                            .filter(|p| *p > a && *p < b),
+                    );
+                }
+            }
+            cuts.sort_unstable();
+            cuts.dedup();
+            for pair in cuts.windows(2) {
+                let byte = pair[0] - offset;
+                let face = doc
+                    .inline
+                    .get(&block)
+                    .and_then(|spans| {
+                        let index = spans.partition_point(|s| s.bytes.end <= byte);
+                        spans.get(index).filter(|s| s.bytes.contains(&byte))
+                    })
+                    .map_or(Face::default(), |s| s.face);
+                line.spans.push(TextSpan {
+                    bytes: pair[0] - from..pair[1] - from,
+                    source: Some(Anchor { block, byte }),
+                    source_end: pair[1] - offset,
+                    face,
+                });
+            }
+        }
+    }
+}

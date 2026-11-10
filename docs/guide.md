@@ -149,11 +149,15 @@ The terminal supplies the typeface and cell size. The reader theme supplies the 
 
 Embedded raster illustrations use the available page height. **I** opens an illustration separately. **F2 → Reader → Illustrations** switches to the separate viewer only.
 
+FB2 also preserves italic, bold and struck-through text in ordinary paragraphs. These faces do not change the text used for search or saved positions.
+
 ### PDF and DjVu
 
 For **PDF and DjVu**, press **Enter** or click the edition to start reading. **1 / 2 / 3** select single page, spread or continuous scroll. At **100%**, a scrolling sheet fits the reading pane. Press **−** once for **90%**, again for **80%**, or **+** to enlarge it. **0** restores fit.
 
 An EPUB made entirely of page scans opens in the same viewer. Use **P** to jump to a scan or **3** to scroll. BOTUI saves your place on this device.
+
+The contents pane keeps the document’s nested sections. Press **Tab** to focus it, **← / →** to fold or expand a section, and **Enter** to go there. Clicking a triangle folds the section; clicking its title opens it. Depth uses theme colors as well as indentation. Continuous scrolling separates sheets with one muted dotted line across the reading pane; margins printed inside the PDF remain part of the page.
 
 **W** opens the same controls for the mouse; the chosen zoom is saved when you close the book. **Z** hides the contents and footer. **P** or **Ctrl+G** opens a small page-number dialog over the document.
 

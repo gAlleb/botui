@@ -20,6 +20,8 @@ use unicode_width::UnicodeWidthStr;
 
 #[derive(Clone, Debug, Default)]
 pub struct Document {
+    /// Lightweight inline faces in otherwise plain text (e.g. FB2), in source bytes.
+    pub inline: std::collections::BTreeMap<usize, Vec<publisher::TextSpan>>,
     /// Ordered archive members when the entire reading order consists of raster plates.
     pub image_pages: Vec<String>,
     pub styled: std::collections::BTreeMap<usize, publisher::Chapter>,
@@ -556,6 +558,7 @@ mod tests {
 
     fn document(paragraphs: &[&str]) -> Document {
         Document {
+            inline: Default::default(),
             image_pages: vec![],
             styled: Default::default(),
             tables: Default::default(),

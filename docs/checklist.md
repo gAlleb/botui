@@ -93,3 +93,12 @@ The canvas regression compares grouped rendering with individual shaping cluster
 
 - Repeat the cover-spacing check in Alacritty at two font sizes. In Authors and Series, click the same card before and after the next batch arrives and confirm that both clicks open the same entry.
 - Read the same EPUB edition in BOTUI, the BookOrbit web reader and on an iPhone, then return to BOTUI. Compare the first visible phrase at each handoff and open the same bookmark on all three devices.
+
+### Outline, typography and generated jackets
+
+- `scripts/smoke-typography.py`: actual italic/bold terminal attributes and three-level EPUB/FB2 folding.
+- `scripts/smoke-outline.py`: actual PDF/DjVu outlines, nested folding, navigation and reopening with the current section selected. Requires the optional Poppler GI outline backend and DjVu tools.
+- `scripts/smoke-scroll.py`: two physical sheets visible together, a dotted boundary and the same saved scroll position on reopen.
+- `scripts/smoke-local-startup.py`: first usable shelf frame, six complete generated/embedded covers, selection without replacement uploads, a warm return and a new process reusing the disk cache. Run performance comparisons sequentially with no compilation running; separate caption latency from image latency.
+
+- `scripts/smoke-native-scroll.py`: wide Kitty viewport above the old four-megapixel cutoff; scroll across page boundaries and back without repeated uploads. A private PTY captures completed synchronized frames, without opening a desktop terminal. Optional binary arguments allow sequential before/after comparisons.

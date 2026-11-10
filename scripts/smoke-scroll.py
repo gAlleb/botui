@@ -49,6 +49,7 @@ def scan_scroll(d,file):
             if '::::::::' in a and '########' in a:
                 both=True;break
         assert both,('No sheet transition',file.suffix,samples)
+        assert '········' in a, 'No dotted separator between physical sheets'
         # Jump away and back to the exact same slice spanning the two sheets.
         t.keys('p');t.see('Go to page');t.keys('3','Enter');t.see('3 / 3')
         t.keys(',');t.wait('Jump restores scroll offset',lambda a:'::::::::' in a and '########' in a)

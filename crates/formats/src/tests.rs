@@ -713,3 +713,69 @@ fn visible_chapters_match_complete_pagination_across_resizes_and_page_turns() {
         assert_eq!(reader.at_end(), full.at_end());
     }
 }
+
+#[test]
+fn fb2_faces_survive_wrapping_and_resume_without_changing_source_offsets() {
+    use botui_core::{LayoutMode, Pager, ReflowOptions};
+    let doc = super::fb2::parse("<FictionBook><body><section><p>  Начало <emphasis>курсив <strong>жирный &amp; курсив</strong></emphasis> обычный. </p></section></body></FictionBook>".as_bytes(), "").unwrap();
+    let mut plain = doc.clone();
+    plain.inline.clear();
+    for width in [9, 20, 80] {
+        let pager = Pager::new(&doc, width, 100, LayoutMode::Single);
+        let baseline = Pager::new(&plain, width, 100, LayoutMode::Single);
+        assert_eq!(
+            pager
+                .lines(0)
+                .iter()
+                .map(|l| (&l.text, l.anchor()))
+                .collect::<Vec<_>>(),
+            baseline
+                .lines(0)
+                .iter()
+                .map(|l| (&l.text, l.anchor()))
+                .collect::<Vec<_>>()
+        );
+        let mut styled_letters = String::new();
+        for line in pager.lines(0) {
+            for span in &line.spans {
+                let at = span.source.unwrap();
+                assert_eq!(
+                    &line.text[span.bytes.clone()],
+                    &doc.blocks[at.block].text[at.byte..span.source_end]
+                );
+                assert_eq!(doc.cfi(at), plain.cfi(at));
+                if let Some(cfi) = doc.cfi(at) {
+                    assert_eq!(doc.resolve_cfi(&cfi), Some(at));
+                }
+                if span.face.italic {
+                    styled_letters.push_str(&line.text[span.bytes.clone()]);
+                }
+                if span.face.bold {
+                    assert!(span.face.italic);
+                }
+            }
+        }
+        assert_eq!(
+            styled_letters.split_whitespace().collect::<String>(),
+            "курсивжирный&курсив"
+        );
+    }
+    let at = botui_core::Anchor {
+        block: 0,
+        byte: doc.blocks[0].text.find("жирный").unwrap(),
+    };
+    let reopened = Pager::with_start(
+        &doc,
+        20,
+        30,
+        LayoutMode::Single,
+        ReflowOptions {
+            repair_printed: true,
+            inline_images: true,
+            paragraph_indent: 2,
+        },
+        Some(at),
+    );
+    assert!(reopened.lines(0)[0].text.starts_with("жирный"));
+    assert!(reopened.lines(0)[0].spans[0].face.bold);
+}

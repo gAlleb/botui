@@ -75,10 +75,21 @@ pub(super) fn read_pages(
         .is_none()
         .then(|| worker.start(move |cancel| botui_fixed::outline(&outline_path, kind, cancel)));
     let plates = album.map(|doc| {
+        let mut depths = Vec::new();
+        for e in &doc.contents {
+            depths.push(e.parent.map_or(0, |p| depths[p] + 1));
+        }
         sidebar.set_outline(
             doc.contents
                 .into_iter()
-                .filter_map(|entry| Some((entry.anchor()?.block as u32 + 1, entry.title)))
+                .enumerate()
+                .filter_map(|(i, entry)| {
+                    Some(botui_fixed::OutlineEntry {
+                        page: entry.anchor()?.block as u32 + 1,
+                        title: entry.title,
+                        depth: depths[i],
+                    })
+                })
                 .collect(),
         );
         std::sync::Arc::<[String]>::from(doc.image_pages)
@@ -260,7 +271,13 @@ pub(super) fn read_pages(
             } else {
                 cols
             };
-            pages.update(n, count, visible, side);
+            pages.update(
+                n,
+                count,
+                visible,
+                side,
+                scrolling.then_some((&picker, view.width, crop)),
+            );
         }
         let strip = view.strip(&pages);
         let (shown, shown_offset) = if pages.get(n, side).is_some() {

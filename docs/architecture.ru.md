@@ -50,3 +50,5 @@
 Сверено с [режимами Bookokrat](https://bugzmanov.github.io/bookokrat/index.html), [нативным API книг BookOrbit](https://github.com/bookorbit/bookorbit/blob/6ad1445dab35757164ed3bf31e83caeb6ba24ad2/server/src/modules/book/book.controller.ts), [транзакцией сброса](https://github.com/bookorbit/bookorbit/blob/6ad1445dab35757164ed3bf31e83caeb6ba24ad2/server/src/modules/reading-state/reading-state.repository.ts) и [спецификацией OPDS 2](https://specs.opds.io/opds-2.0.html). Границы совместимости и проверок — в [чеклисте](checklist.ru.md).
 
 В локальной библиотеке дерево читает только непосредственные подпапки раскрытой ветки. Прямой переход по пути раскрывает его родителей. Поиск по всему корню — отдельная фоновая операция; перетаскивание границы отвечает только за геометрию обеих панелей.
+
+Графические заглушки сохраняются в `$XDG_CACHE_HOME/botui/jackets-v1` (или `~/.cache/botui/jackets-v1`), не более 512 изображений. Ключ учитывает рисунок и метаданные; повреждённый файл создаётся заново. При наличии fontconfig используется его индекс шрифтов, иначе — обычный поиск системных шрифтов. Обе операции выполняет существующий фоновый поток.

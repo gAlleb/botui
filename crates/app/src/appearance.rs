@@ -91,3 +91,48 @@ pub fn card_title(selected: bool) -> Style {
         title
     }
 }
+
+/// Depth ink stays inside the active palette; terminal mode keeps live ANSI colors.
+pub fn outline_style(base: Style, depth: usize) -> Style {
+    let (fg, bg, accent) =
+        if let (Some(fg @ Color::Rgb(..)), Some(bg @ Color::Rgb(..))) = (base.fg, base.bg) {
+            (fg, bg, fg)
+        } else {
+            let palette = crate::settings::interface_palette();
+            if palette.0 == "terminal" {
+                (Color::Reset, Color::Reset, Color::Reset)
+            } else {
+                palette.colors()
+            }
+        };
+    let mix = |a: Color, b: Color, weight: u16| match (a, b) {
+        (Color::Rgb(r, g, b), Color::Rgb(x, y, z)) => {
+            let blend = |a: u8, b: u8| {
+                ((u16::from(a) * weight + u16::from(b) * (100 - weight)) / 100) as u8
+            };
+            Color::Rgb(blend(r, x), blend(g, y), blend(b, z))
+        }
+        _ => a,
+    };
+    let ink = match (fg, depth % 3) {
+        (Color::Rgb(..), 0) => accent,
+        (Color::Rgb(..), 1) => {
+            if accent == fg {
+                mix(fg, bg, 85)
+            } else {
+                mix(fg, accent, 65)
+            }
+        }
+        (Color::Rgb(..), _) => {
+            if accent == fg {
+                mix(fg, bg, 70)
+            } else {
+                fg
+            }
+        }
+        (_, 0) => Color::Green,
+        (_, 1) => Color::Magenta,
+        _ => Color::Reset,
+    };
+    base.fg(ink)
+}

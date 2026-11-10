@@ -147,6 +147,7 @@ struct StripKey {
 }
 #[derive(Copy, Clone, PartialEq, Eq)]
 struct CellStrip {
+    scan: bool,
     width: u16,
     rows: u32,
     x: u8,
@@ -271,6 +272,7 @@ impl Picture {
         let (visible, skip) = visible_figure(area, first, height, size)?;
         let crop = Crop::default();
         let key = CellStrip {
+            scan: false,
             width: area.width,
             rows: height.into(),
             x: crop.x,
@@ -309,30 +311,77 @@ impl Picture {
         key: CellStrip,
         skip: u16,
     ) -> bool {
-        let mut cache = self.sliced.borrow_mut();
-        if cache.as_ref().is_none_or(|(k, _)| *k != key) {
-            let (w, h) = self.dimensions();
-            let cw = Crop {
-                percent: key.zoom,
-                ..Crop::default()
-            }
-            .span(w);
-            let x = (w - cw) * u32::from(key.x) / 255;
-            *cache = SlicedProtocol::new_with_resize(
-                picker,
-                self.source.crop_imm(x, 0, cw, h),
-                Size::new(key.width, key.rows as u16),
-                Resize::Scale(Some(image::imageops::FilterType::Triangle)),
-            )
-            .ok()
-            .map(|p| (key, p));
-        }
+        self.prepare_sliced(picker, key);
+        let cache = self.sliced.borrow();
         if let Some((_, protocol)) = &*cache {
             f.render_widget(SlicedImage::new(protocol, (0, -(skip as i16)).into()), area);
             return true;
         }
         false
     }
+    fn prepare_sliced(&self, picker: &Picker, key: CellStrip) {
+        let mut cache = self.sliced.borrow_mut();
+        if cache.as_ref().is_some_and(|(k, _)| *k == key) {
+            return;
+        }
+        let (w, h) = self.dimensions();
+        let cw = Crop {
+            percent: key.zoom,
+            ..Crop::default()
+        }
+        .span(w);
+        let x = (w - cw) * u32::from(key.x) / 255;
+        let source = self.source.crop_imm(x, 0, cw, h);
+        let size = Size::new(key.width, key.rows as u16);
+        let protocol = if key.scan && picker.protocol_type() == ProtocolType::Kitty {
+            // Kitty scales the bounded source raster into a virtual placement. Do not
+            // allocate a screen-sized bitmap or re-encode every moving viewport slice.
+            // Like ratatui-image's picker, use a randomly seeded 32-bit image ID.
+            use ratatui_image::{picker::Capability, protocol::kitty::Kitty};
+            use std::hash::BuildHasher;
+            let id = std::collections::hash_map::RandomState::new().hash_one((w, h)) as u32;
+            Kitty::new(
+                source,
+                size,
+                id.max(1),
+                picker.tmux_detected(),
+                picker
+                    .capabilities()
+                    .contains(&Capability::KittyCompression),
+                picker
+                    .capabilities()
+                    .contains(&Capability::KittySharedMemory),
+            )
+            .map(SlicedProtocol::Kitty)
+        } else {
+            SlicedProtocol::new_with_resize(
+                picker,
+                source,
+                size,
+                Resize::Scale(Some(image::imageops::FilterType::Triangle)),
+            )
+        };
+        *cache = protocol.ok().map(|p| (key, p));
+    }
+
+    /// Prepare a neighbouring scan on its render worker, before it enters the strip.
+    pub(super) fn prepare_scan_strip(&self, picker: &Picker, width: u16, crop: Crop) {
+        let rows = self.strip_rows(width, picker, crop);
+        if picker.protocol_type() == ProtocolType::Kitty && rows <= 280 && width <= 280 {
+            self.refresh_resolution(picker);
+            self.prepare_sliced(
+                picker,
+                CellStrip {
+                    scan: true,
+                    width,
+                    rows,
+                    x: crop.x,
+                    zoom: crop.percent,
+                },
+            );
+        }
+    }
+
     pub fn draw_strip(
         &self,
         f: &mut Frame,
@@ -348,6 +397,7 @@ impl Picture {
         self.refresh_resolution(picker);
         if picker.protocol_type() == ProtocolType::Halfblocks || monochrome() {
             let key = CellStrip {
+                scan: true,
                 width: area.width,
                 rows,
                 x: crop.x,
@@ -396,19 +446,10 @@ impl Picture {
             }
             return;
         }
-        // Kitty can display another row of the same upload. Bound the virtual
-        // sheet (including row diacritics) before asking the terminal to scale it.
-        let font = picker.font_size();
-        if picker.protocol_type() == ProtocolType::Kitty
-            && rows <= 280
-            && area.width <= 280
-            && u64::from(area.width)
-                * u64::from(font.width)
-                * u64::from(rows)
-                * u64::from(font.height)
-                <= 4_000_000
-        {
+        // Reuse the bounded source upload while Kitty moves the virtual placement.
+        if picker.protocol_type() == ProtocolType::Kitty && rows <= 280 && area.width <= 280 {
             let key = CellStrip {
+                scan: true,
                 width: area.width,
                 rows,
                 x: crop.x,
