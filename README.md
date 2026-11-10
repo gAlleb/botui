@@ -10,11 +10,14 @@ BOTUI is a terminal book reader for Linux. Open an EPUB, FB2, PDF or DjVu from d
 
 ## Highlights
 
-- **Reading layout.** Justified EPUB paragraphs keep natural spaces between words even in a narrow column. Adjust the first-line indent and the gap between paragraphs in EPUB and FB2 while keeping your place.
-- **Textbooks.** The EPUB reader applies the book’s CSS to tables with merged cells, columns and code listings. MathML equations, TeX marked as math and static SVG diagrams appear alongside the text.
-- **Illustrated books.** When an EPUB or FB2 picture fits on a fresh page or column, BOTUI keeps it whole. In scroll mode it keeps its size as it moves offscreen. FB2 also preserves bold, italics and strikethrough.
-- **PDF and DjVu.** Fit the page to the reading pane, zoom in on a detail or jump to a section in the document’s outline. In continuous scroll, a dotted line marks each page break. The paper can match your reading background.
-- **Finding a passage.** Search highlights the current match in EPUB and FB2. Follow a footnote and jump back, bookmark your place or export a passage note to Markdown with an excerpt from the book.
+- EPUB, FB2, PDF and DjVu from local folders, OPDS catalogs and BookOrbit
+- Cover grid, collections and library search as you type
+- Offline reading with BookOrbit progress sync across devices
+- Single pages, two-page spreads and continuous scrolling, with an optional contents sidebar
+- In-book search, bookmarks, jump history, reading stats and notes with Markdown export
+- EPUB tables with merged cells, MathML and TeX formulas, SVG diagrams and inline illustrations
+- PDF and DjVu zoom, fit to width and page colors that match the reader theme
+- Keyboard and mouse controls, themes, adjustable margins and zen mode
 
 ## Libraries
 
