@@ -27,6 +27,7 @@ The table records how each reading or navigation scenario was checked. See the [
 | Restore an exact BookOrbit file position, handle a conflict with another device and list a server bookmark without a location. | smoke-progress |
 | Open an edition for the first time and reuse an older offline copy. Read an EPUB from chapter 5 online to chapter 7 offline, then resume in BookOrbit. Check that the file transfers once, the two download shelves stay separate, progress syncs on reconnect and 99% can reach 100% at the same location. | smoke-offline |
 | Follow a link and return. Open a footnote and an illustration in EPUB and FB2. | smoke-resources |
+| Turn forward and back across an illustration in a single page and a spread. Check that it appears once, the caption remains in order, and scrolling across either edge keeps its scale. | Core pagination, EPUB layout and image rendering tests |
 | Choose independent themes, opacity and border style. Use help and connection settings, then restart to check persistence. | smoke-preferences |
 | Fold the tree with mouse and keyboard, open book details without adding to reading history, put a book on hold, then cancel and confirm a reset. | smoke-details |
 | Scroll text by one line. Show parts of two adjacent scanned pages and restore the saved scroll offset. | smoke-scroll |

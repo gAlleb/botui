@@ -21,6 +21,7 @@ pub(super) struct BookLayout {
     images: BTreeMap<usize, Vec<usize>>,
     reflow: publisher::Reflow,
     uses_height: bool,
+    has_figures: bool,
 }
 impl BookLayout {
     pub(super) fn new(doc: &Document, options: ReflowOptions, resume: Option<Anchor>) -> Self {
@@ -74,6 +75,7 @@ impl BookLayout {
             resume,
             printed,
             uses_height: !doc.styled.is_empty() || !images.is_empty(),
+            has_figures: !images.is_empty() || (options.inline_images && !positioned.is_empty()),
             images,
             reflow: publisher::Reflow::new(doc),
         }
@@ -127,16 +129,18 @@ impl BookLayout {
                     }
                 };
                 for &id in ids {
-                    for _ in 0..(layout.height * 2 / 3)
+                    let height = (layout.height * 2 / 3)
                         .max(1)
-                        .min(usize::from(width) / 2 + 1)
-                    {
+                        .min(usize::from(width) / 2 + 1) as u16;
+                    for row in 0..height {
                         lines.push(PageLine {
                             start: anchor,
                             figures: vec![Figure {
                                 reference: id,
                                 x: 0,
                                 width,
+                                row,
+                                height,
                             }],
                             ..Default::default()
                         });
@@ -211,19 +215,56 @@ impl BookLayout {
     }
 }
 
+impl Layout {
+    /// Find a column break without cutting an illustration that fits on a fresh page.
+    fn page_end(self, rows: &[PageLine], first: usize) -> usize {
+        let limit = (first + self.height).min(rows.len());
+        let mut end = limit;
+        while !self.scrolling && end > first {
+            let mut before = end;
+            for figure in &rows[end - 1].figures {
+                if figure.row + 1 < figure.height && usize::from(figure.height) <= self.height {
+                    let top = (end - 1).saturating_sub(figure.row.into());
+                    if top <= first {
+                        // Overlapping floats or an exact text anchor inside an image.
+                        // No earlier whole-image break is possible on this page.
+                        return limit;
+                    }
+                    before = before.min(top);
+                }
+            }
+            if before == end {
+                break;
+            }
+            end = before;
+        }
+        end
+    }
+}
+
 /// The exact rows currently visible in the reading pane, including both pages of a spread.
 pub struct Viewport<'a> {
     layout: Layout,
     rows: &'a [PageLine],
-    first: usize,
+    bounds: [usize; 3],
 }
 impl<'a> Viewport<'a> {
-    pub(super) fn new(layout: Layout, rows: &'a [PageLine], first: usize) -> Self {
+    fn new(layout: Layout, rows: &'a [PageLine], first: usize, following: &[usize]) -> Self {
+        let mut bounds = [first; 3];
+        for column in 0..layout.columns {
+            bounds[column + 1] = following
+                .get(column)
+                .copied()
+                .unwrap_or_else(|| layout.page_end(rows, bounds[column]));
+        }
         Self {
             layout,
             rows,
-            first,
+            bounds,
         }
+    }
+    pub(super) fn end(&self) -> usize {
+        self.bounds[self.layout.columns]
     }
     pub fn columns(&self) -> usize {
         self.layout.columns
@@ -238,9 +279,7 @@ impl<'a> Viewport<'a> {
         if column >= self.layout.columns {
             return &[];
         }
-        let start = (self.first + column * self.layout.height).min(self.rows.len());
-        let end = (start + self.layout.height).min(self.rows.len());
-        &self.rows[start..end]
+        &self.rows[self.bounds[column]..self.bounds[column + 1]]
     }
 }
 
@@ -258,10 +297,41 @@ impl Drop for Pending {
 }
 
 impl Pager {
+    pub(super) fn index_pages(&mut self) {
+        self.page_starts.clear();
+        if self.layout.scrolling || !self.book.has_figures || self.layout.height == 0 {
+            return;
+        }
+        // A search, bookmark, or synced position can start a page at an exact word.
+        // Index both sides of that break so turning back retraces the same columns.
+        let mut start = 0;
+        while start < self.lines.len() {
+            self.page_starts.push(start);
+            let end = self.layout.page_end(&self.lines, start);
+            start = if start < self.first {
+                end.min(self.first)
+            } else {
+                end
+            };
+        }
+    }
+
+    pub(super) fn complete_view(&self) -> Viewport<'_> {
+        let next = self
+            .page_starts
+            .partition_point(|&start| start <= self.first);
+        Viewport::new(
+            self.layout,
+            &self.lines,
+            self.first,
+            &self.page_starts[next..],
+        )
+    }
+
     pub fn viewport_rows(&self) -> Viewport<'_> {
         match &self.pending {
-            Some(pending) => Viewport::new(pending.layout, &pending.visible, 0),
-            None => Viewport::new(self.layout, &self.lines, self.first),
+            Some(pending) => Viewport::new(pending.layout, &pending.visible, 0, &[]),
+            None => self.complete_view(),
         }
     }
 

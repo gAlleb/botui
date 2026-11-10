@@ -80,6 +80,9 @@ pub struct Figure {
     pub reference: usize,
     pub x: u16,
     pub width: u16,
+    /// This row's offset in the complete illustration box.
+    pub row: u16,
+    pub height: u16,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -150,6 +153,7 @@ struct Layout {
     width: u16,
     height: usize,
     gutter: u16,
+    scrolling: bool,
 }
 
 impl Layout {
@@ -165,6 +169,7 @@ impl Layout {
             width,
             height: height.into(),
             gutter,
+            scrolling: mode == LayoutMode::Scroll,
         }
     }
 }
@@ -183,6 +188,7 @@ pub struct Pager {
     layout: Layout,
     lines: Vec<PageLine>,
     source_lines: Vec<(Anchor, usize)>,
+    page_starts: Vec<usize>,
     first: usize,
     focus: Anchor,
 }
@@ -263,11 +269,14 @@ impl Pager {
             layout,
             source_lines: Self::source_index(doc, &lines),
             lines,
+            page_starts: Vec::new(),
             first: 0,
             focus: Anchor::default(),
         };
         if let Some(at) = resume {
             pager.seek(at);
+        } else {
+            pager.index_pages();
         }
         pager
     }
@@ -376,6 +385,7 @@ impl Pager {
         self.finish_resize();
         self.focus = anchor;
         self.first = Self::line_at(anchor, &self.lines, &self.source_lines);
+        self.index_pages();
     }
 
     fn line_at(anchor: Anchor, lines: &[PageLine], sources: &[(Anchor, usize)]) -> usize {
@@ -392,20 +402,29 @@ impl Pager {
     }
 
     pub fn lines(&self, column: usize) -> &[PageLine] {
-        Viewport::new(self.layout, &self.lines, self.first).lines(column)
+        self.complete_view().lines(column)
     }
 
     pub fn page_count(&self) -> usize {
-        self.lines.len().div_ceil(self.layout.height.max(1)).max(1)
+        if self.page_starts.is_empty() {
+            self.lines.len().div_ceil(self.layout.height.max(1)).max(1)
+        } else {
+            self.page_starts.len()
+        }
     }
 
     pub fn page_number(&self) -> usize {
-        1 + self.first / self.layout.height.max(1)
+        if self.page_starts.is_empty() {
+            1 + self.first / self.layout.height.max(1)
+        } else {
+            self.page_starts
+                .partition_point(|&start| start <= self.first)
+        }
     }
 
     pub fn next(&mut self) {
         self.finish_resize();
-        let first = self.first + self.layout.columns * self.layout.height;
+        let first = self.complete_view().end();
         if first != self.first && first < self.lines.len() {
             self.move_to(first);
         }
@@ -413,9 +432,12 @@ impl Pager {
 
     pub fn previous(&mut self) {
         self.finish_resize();
-        let first = self
-            .first
-            .saturating_sub(self.layout.columns * self.layout.height);
+        let first = if self.page_starts.is_empty() {
+            self.first
+                .saturating_sub(self.layout.columns * self.layout.height)
+        } else {
+            self.page_starts[(self.page_number() - 1).saturating_sub(self.layout.columns)]
+        };
         if first != self.first {
             self.move_to(first);
         }
@@ -427,13 +449,16 @@ impl Pager {
         let first = self.first.saturating_add_signed(lines).min(max);
         if !self.lines.is_empty() && first != self.first {
             self.move_to(first);
+            if !self.page_starts.is_empty() {
+                self.index_pages();
+            }
         }
     }
     pub fn viewport(&self) -> usize {
         self.layout.height.max(1)
     }
     pub fn at_end(&self) -> bool {
-        self.first + self.layout.height * self.layout.columns >= self.lines.len()
+        self.complete_view().end() >= self.lines.len()
     }
     fn move_to(&mut self, first: usize) {
         self.first = first;
@@ -608,6 +633,50 @@ mod tests {
         assert_eq!((pager.page_number(), pager.page_count()), (5, 5));
         pager.previous();
         assert_eq!(pager.lines(0)[0].text, "В");
+    }
+
+    #[test]
+    fn page_turns_keep_a_figure_together_and_scrolling_exposes_its_source_rows() {
+        let mut doc = document(&["One", "Two", "Caption", "Four", "Five"]);
+        doc.references.push(Reference {
+            source: 2,
+            bytes: None,
+            backlink: false,
+            label: "Picture".into(),
+            target: Target::Image("picture.png".into()),
+        });
+        let strip = |rows: &[PageLine]| {
+            rows.iter()
+                .flat_map(|line| &line.figures)
+                .map(|f| (f.row, f.height))
+                .collect::<Vec<_>>()
+        };
+        let full = [(0, 4), (1, 4), (2, 4), (3, 4)];
+        let mut pager = Pager::new(&doc, 80, 6, LayoutMode::Spread);
+        assert_eq!(pager.lines(0).len(), 4);
+        assert!(strip(pager.lines(0)).is_empty());
+        assert_eq!(strip(pager.lines(1)), full);
+        assert_eq!(pager.lines(1)[4].text, "Caption");
+        assert_eq!(pager.page_count(), 3);
+        pager.next();
+        assert_eq!(pager.page_number(), 3);
+        assert_eq!(pager.lines(0)[0].text, "Four");
+        assert!(pager.at_end());
+        pager.previous();
+        assert_eq!(pager.page_number(), 1);
+        assert_eq!(strip(pager.lines(1)), full);
+
+        pager.relayout(&doc, 80, 6, LayoutMode::Single);
+        pager.next();
+        assert_eq!(strip(pager.lines(0)), full);
+        pager.previous();
+        assert_eq!(pager.lines(0)[0].text, "One");
+        pager.relayout(&doc, 80, 6, LayoutMode::Scroll);
+        assert_eq!(strip(pager.lines(0)), &full[..2]);
+        pager.scroll(5);
+        assert_eq!(strip(pager.lines(0)), &full[1..]);
+        pager.scroll(-1);
+        assert_eq!(strip(pager.lines(0)), full);
     }
 
     #[test]

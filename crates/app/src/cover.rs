@@ -250,6 +250,89 @@ impl Picture {
             self.sliced.take();
         }
     }
+    /// Fit the whole illustration once. Scrolling changes only which rows are painted.
+    pub fn draw_inline(
+        &self,
+        frame: &mut Frame,
+        area: Rect,
+        picker: &Picker,
+        first: u16,
+        height: u16,
+    ) -> Option<Rect> {
+        if area.is_empty() || height == 0 {
+            return None;
+        }
+        if monochrome() {
+            return draw_mono(frame, &self.source, area, first, height);
+        }
+        self.refresh_resolution(picker);
+        let font = picker.font_size();
+        let size = Resize::Scale(None).size_for(&self.source, font, Size::new(area.width, height));
+        let (visible, skip) = visible_figure(area, first, height, size)?;
+        let crop = Crop::default();
+        let key = CellStrip {
+            width: area.width,
+            rows: height.into(),
+            x: crop.x,
+            zoom: crop.percent,
+        };
+        // Bound native uploads and Kitty placeholder coordinates. Larger images and
+        // iTerm2 use the same source-region fallback as the continuous PDF reader.
+        if size.width <= 280
+            && size.height <= 280
+            && u64::from(size.width)
+                * u64::from(font.width)
+                * u64::from(size.height)
+                * u64::from(font.height)
+                <= 4_000_000
+            && picker.protocol_type() != ProtocolType::Iterm2
+            && self.draw_sliced(frame, visible, picker, key, skip)
+        {
+            return Some(visible);
+        }
+        self.draw_strip(
+            frame,
+            visible,
+            picker,
+            crop,
+            skip.into(),
+            size.height.into(),
+        );
+        Some(visible)
+    }
+
+    fn draw_sliced(
+        &self,
+        f: &mut Frame,
+        area: Rect,
+        picker: &Picker,
+        key: CellStrip,
+        skip: u16,
+    ) -> bool {
+        let mut cache = self.sliced.borrow_mut();
+        if cache.as_ref().is_none_or(|(k, _)| *k != key) {
+            let (w, h) = self.dimensions();
+            let cw = Crop {
+                percent: key.zoom,
+                ..Crop::default()
+            }
+            .span(w);
+            let x = (w - cw) * u32::from(key.x) / 255;
+            *cache = SlicedProtocol::new_with_resize(
+                picker,
+                self.source.crop_imm(x, 0, cw, h),
+                Size::new(key.width, key.rows as u16),
+                Resize::Scale(Some(image::imageops::FilterType::Triangle)),
+            )
+            .ok()
+            .map(|p| (key, p));
+        }
+        if let Some((_, protocol)) = &*cache {
+            f.render_widget(SlicedImage::new(protocol, (0, -(skip as i16)).into()), area);
+            return true;
+        }
+        false
+    }
     pub fn draw_strip(
         &self,
         f: &mut Frame,
@@ -331,23 +414,7 @@ impl Picture {
                 x: crop.x,
                 zoom: crop.percent,
             };
-            let mut cache = self.sliced.borrow_mut();
-            if cache.as_ref().is_none_or(|(k, _)| *k != key) {
-                let (w, h) = self.dimensions();
-                let cw = crop.span(w);
-                let x = (w - cw) * u32::from(crop.x) / 255;
-                let image = self.source.crop_imm(x, 0, cw, h);
-                *cache = SlicedProtocol::new_with_resize(
-                    picker,
-                    image,
-                    Size::new(area.width, rows as u16),
-                    Resize::Scale(Some(image::imageops::FilterType::Triangle)),
-                )
-                .ok()
-                .map(|p| (key, p));
-            }
-            if let Some((_, proto)) = &*cache {
-                f.render_widget(SlicedImage::new(proto, (0, -(skip as i16)).into()), area);
+            if self.draw_sliced(f, area, picker, key, skip as u16) {
                 return;
             }
         }
@@ -442,23 +509,7 @@ impl Picture {
             )
         };
         if monochrome {
-            let raster = source()
-                .thumbnail(u32::from(area.width), u32::from(area.height) * 2)
-                .into_luma_alpha8();
-            let h = (raster.height() as u16).div_ceil(2);
-            let r = crate::centered(area, raster.width() as u16, h);
-            const SHADE: &[u8] = b" .:-=+*#%@";
-            for y in 0..r.height {
-                for x in 0..r.width {
-                    let pixel = raster.get_pixel(x.into(), u32::from(y) * 2);
-                    if pixel[1] < 128 {
-                        continue;
-                    }
-                    let lum = pixel[0];
-                    frame.buffer_mut()[(r.x + x, r.y + y)]
-                        .set_char(SHADE[usize::from(lum) * (SHADE.len() - 1) / 255] as char);
-                }
-            }
+            draw_mono(frame, &source(), area, 0, area.height);
             return;
         }
         let size = area.as_size();
@@ -497,8 +548,7 @@ impl Picture {
             let Ok(protocol) = result else {
                 return;
             };
-            // One inline picture may occupy both columns at different heights.
-            // Retain both small renditions instead of resizing twice per frame.
+            // Keep small pictures ready for two different display sizes.
             // Large scans retain only one rendition to bound raster memory.
             let limit = if self.source.width() <= 720 && self.source.height() <= 540 {
                 2
@@ -518,6 +568,48 @@ impl Picture {
             crate::centered(area, size.width, size.height),
         );
     }
+}
+
+/// Intersect the centered, fitted image with the visible rows of its layout box.
+fn visible_figure(area: Rect, first: u16, height: u16, size: Size) -> Option<(Rect, u16)> {
+    let top = height.saturating_sub(size.height) / 2;
+    let start = first.max(top);
+    let end = first
+        .saturating_add(area.height)
+        .min(top.saturating_add(size.height));
+    if end <= start || size.width == 0 {
+        return None;
+    }
+    let x = area.x + area.width.saturating_sub(size.width) / 2;
+    Some((
+        Rect::new(x, area.y + (start - first), size.width, end - start),
+        start - top,
+    ))
+}
+
+fn draw_mono(
+    frame: &mut Frame,
+    source: &DynamicImage,
+    area: Rect,
+    first: u16,
+    height: u16,
+) -> Option<Rect> {
+    let raster = source
+        .thumbnail(u32::from(area.width), u32::from(height) * 2)
+        .into_luma_alpha8();
+    let size = Size::new(raster.width() as u16, raster.height().div_ceil(2) as u16);
+    let (r, skip) = visible_figure(area, first, height, size)?;
+    const SHADE: &[u8] = b" .:-=+*#%@";
+    for y in 0..r.height {
+        for x in 0..r.width {
+            let pixel = raster.get_pixel(x.into(), u32::from(skip + y) * 2);
+            if pixel[1] >= 128 {
+                frame.buffer_mut()[(r.x + x, r.y + y)]
+                    .set_char(SHADE[usize::from(pixel[0]) * (SHADE.len() - 1) / 255] as char);
+            }
+        }
+    }
+    Some(r)
 }
 
 fn card_raster(source: &DynamicImage, slot: Size, cell: Size) -> (DynamicImage, Size) {
@@ -583,6 +675,45 @@ fn rounded_cover(source: &DynamicImage) -> DynamicImage {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn inline_scroll_paints_the_same_pixels_as_the_corresponding_rows_of_the_whole_figure() {
+        use ratatui::{Terminal, backend::TestBackend};
+        let picker = Picker::halfblocks();
+        for (width, height) in [(64, 120), (160, 64)] {
+            let picture = Picture::new(DynamicImage::ImageRgb8(image::RgbImage::from_fn(
+                width,
+                height,
+                |x, y| image::Rgb([x as u8, y as u8, (x + y) as u8]),
+            )));
+            for mono in [false, true] {
+                let render = |first, visible| {
+                    let mut terminal = Terminal::new(TestBackend::new(24, visible)).unwrap();
+                    terminal
+                        .draw(|f| {
+                            let area = f.area();
+                            if mono {
+                                draw_mono(f, &picture.source, area, first, 12);
+                            } else {
+                                picture.draw_inline(f, area, &picker, first, 12);
+                            }
+                        })
+                        .unwrap();
+                    terminal.backend().buffer().clone()
+                };
+                let full = render(0, 12);
+                assert!(full.content.iter().any(|cell| cell.symbol() != " "));
+                for (offset, visible) in [(0, 3), (3, 6), (8, 4), (11, 1)] {
+                    let slice = render(offset, visible);
+                    for y in 0..visible {
+                        for x in 0..24 {
+                            assert_eq!(slice[(x, y)], full[(x, offset + y)]);
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     #[test]
     fn halfblock_card_margins_keep_the_terminal_background() {

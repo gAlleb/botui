@@ -51,6 +51,8 @@ pub(super) fn geometry(
         text,
         if spread {
             LayoutMode::Spread
+        } else if mode == LayoutMode::Scroll {
+            LayoutMode::Scroll
         } else {
             LayoutMode::Single
         },

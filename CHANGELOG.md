@@ -12,9 +12,10 @@
 - Changing width or opening the contents sidebar in a multi-chapter EPUB lays out the visible spread first. BOTUI finishes the book-wide page count in the background and keeps the same reading position.
 - Toggling zen progress leaves the text in place and no longer repaginates the book. EPUB resizing reuses parsed chapters and a bounded cache of recent layouts; chapter layout runs in parallel, with a faster allocator in static musl builds.
 - Local folders and list views open without waiting for image protocol discovery. Switching to cover view still detects terminal graphics when needed.
-- Generated jackets are prepared in the background instead of blocking entry to a cover shelf. Completed terminal frames use synchronized updates to avoid exposing partially drawn navigation and covers; small illustrations retain both visible spread sizes.
+- Generated jackets are prepared in the background while the shelf opens. Synchronized terminal updates present navigation and covers in one frame.
 - Styled EPUB chapters use embedded CSS layout in the regular reader. Merged cells, equations in MathML or marked TeX, and preformatted listings share the book’s navigation, search, bookmarks and BookOrbit positions.
-- Inline EPUB and FB2 illustrations grow with the reading pane. Changing appearance in a second local reader preserves the position saved by the window used for reading.
+- Inline EPUB and FB2 illustrations grow with the reading pane. In single-page and two-page layouts, a picture that fits on a fresh page moves there whole. Continuous scroll reveals successive parts of the same picture at a constant scale.
+- Changing appearance in a second local reader preserves the position saved by the window used for reading.
 - Justified EPUB prose keeps words intact even when a word crosses a change of emphasis or falls on a half-cell boundary.
 
 - Author and series lists align book counts in a separate column, including live search results.

@@ -155,13 +155,16 @@ fn paint_lines<const GROUPED: bool>(
             let right = (((pos.x + area.size.width) / CELL).ceil() as u16).min(width);
             if x < right {
                 let y = (pos.y / ROW).round().max(0.) as usize;
-                let count = ((area.size.height / ROW).ceil() as usize).clamp(1, 2048);
-                for y in y..y.saturating_add(count) {
+                let height = ((area.size.height / ROW).ceil() as u16).clamp(1, 2048);
+                for row in 0..height {
+                    let y = y.saturating_add(usize::from(row));
                     rows.entry(y).or_default();
                     figures.entry(y).or_default().push(crate::Figure {
                         reference,
                         x,
                         width: right - x,
+                        row,
+                        height,
                     });
                 }
             }

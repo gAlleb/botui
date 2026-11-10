@@ -536,6 +536,49 @@ fn illustrations_fit_the_viewport_and_hidden_figures_take_no_space() {
 }
 
 #[test]
+fn publisher_figures_move_whole_across_page_breaks() {
+    use botui_core::{LayoutMode, Pager};
+    let doc = styled_fixture(
+        r#"<p>Opening</p><p>Before the picture.</p><img src="fig.png"/>
+        <p>First caption.</p><img src="fig.png"/><p>Last caption.</p>"#,
+        "img{display:block;height:64px;width:80px}",
+    );
+    for (mode, width, height) in [
+        (LayoutMode::Single, 32, 6),
+        (LayoutMode::Spread, 90, 7),
+        (LayoutMode::Spread, 90, 9),
+    ] {
+        let mut pager = Pager::new(&doc, width, height, mode);
+        let mut figures = Vec::new();
+        let mut text = String::new();
+        loop {
+            for col in 0..pager.columns() {
+                let rows = pager.lines(col);
+                text.extend(rows.iter().map(|row| row.text.as_str()));
+                for id in 0..2 {
+                    let mut parts = rows
+                        .iter()
+                        .flat_map(|line| &line.figures)
+                        .filter(|f| f.reference == id)
+                        .peekable();
+                    if let Some(f) = parts.peek() {
+                        let expected = 0..f.height;
+                        assert!(parts.map(|part| part.row).eq(expected));
+                        figures.push(id);
+                    }
+                }
+            }
+            if pager.at_end() {
+                break;
+            }
+            pager.next();
+        }
+        assert_eq!(figures, [0, 1]);
+        assert!(text.contains("First caption.") && text.contains("Last caption."));
+    }
+}
+
+#[test]
 fn resizing_and_cached_layouts_match_a_fresh_epub_layout() {
     use botui_core::{Anchor, LayoutMode, Pager, ReflowOptions};
     let doc = styled_fixture(

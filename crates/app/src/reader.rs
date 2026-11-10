@@ -106,6 +106,13 @@ const COMMANDS: [Action; 30] = [
     Action::Close,
 ];
 
+struct VisibleFigure {
+    id: usize,
+    area: Rect,
+    first_row: u16,
+    height: u16,
+}
+
 struct Reader {
     zen: bool,
     zen_progress: bool,
@@ -274,7 +281,7 @@ impl Reader {
         if let Some(p) = &mut self.illustrations {
             p.collect();
         }
-        let mut figures = Vec::new();
+        let mut figures: Vec<VisibleFigure> = Vec::new();
         for c in 0..view.columns() {
             let x = text
                 .x
@@ -297,20 +304,21 @@ impl Reader {
                     if image.is_empty() {
                         continue;
                     }
-                    if let Some((_, area)) =
-                        figures
-                            .iter_mut()
-                            .rev()
-                            .find(|(id, area): &&mut (usize, Rect)| {
-                                *id == figure.reference
-                                    && area.x == image.x
-                                    && area.width == image.width
-                                    && area.bottom() == image.y
-                            })
-                    {
-                        area.height += 1;
+                    if let Some(part) = figures.iter_mut().rev().find(|part| {
+                        part.id == figure.reference
+                            && part.area.x == image.x
+                            && part.area.width == image.width
+                            && part.area.bottom() == image.y
+                            && part.first_row + part.area.height == figure.row
+                    }) {
+                        part.area.height += 1;
                     } else {
-                        figures.push((figure.reference, image));
+                        figures.push(VisibleFigure {
+                            id: figure.reference,
+                            area: image,
+                            first_row: figure.row,
+                            height: figure.height,
+                        });
                     }
                 }
                 let mut para = Paragraph::new(self.search.line(line)).style(if line.table_header {
@@ -330,8 +338,13 @@ impl Reader {
                 .illustrations
                 .get_or_insert_with(|| crate::shelf::covers::Covers::with_capacity(8));
             pictures.fit_visible(figures.len());
-            for (id, area) in figures {
-                self.links.image(area, id);
+            for VisibleFigure {
+                id,
+                area,
+                first_row,
+                height,
+            } in figures
+            {
                 let entry = &self.doc.references[id];
                 if let botui_core::Target::Image(member) = &entry.target {
                     let member = member.clone();
@@ -342,8 +355,17 @@ impl Reader {
                         crate::cover::Picture::inline,
                     );
                     if let Some(picture) = pictures.image(id as u64) {
-                        picture.draw(frame, area, &crate::cover::graphics());
+                        if let Some(hit) = picture.draw_inline(
+                            frame,
+                            area,
+                            &crate::cover::graphics(),
+                            first_row,
+                            height,
+                        ) {
+                            self.links.image(hit, id);
+                        }
                     } else {
+                        self.links.image(area, id);
                         frame.render_widget(
                             Paragraph::new(format!("Illustration · {}", entry.label))
                                 .centered()
