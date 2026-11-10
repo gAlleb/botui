@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.1.7 — 2026-11-10
+
+- Fixed a regression in 0.1.6 that stretched spaces between words in justified EPUB prose, especially in narrow columns and two-page spreads. Words now keep their natural spacing across page widths. Headings, right-aligned passages and code retain their layout.
+- Set the space between EPUB and FB2 paragraphs in **F2 → Reader → Paragraph spacing**. Choose **From book** or 0, 1 or 2 blank lines. The change applies to the open book, keeps your place and carries over to the next session.
+- Settings now show the hint for the selected row. The sidebar width controls identify the divider you can drag in the reader or on the bookshelf.
+
 ## 0.1.6 — 2026-11-10
 
 - EPUB displays static inline and linked SVG illustrations, including labels, shapes, transforms and embedded archive images, in the ordinary reader and image-only albums. Visible illustrations rasterize on existing background workers and reuse the image cache; source text addresses remain unchanged.

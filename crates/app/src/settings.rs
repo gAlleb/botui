@@ -35,6 +35,7 @@ pub struct Settings {
     pub page_width: Option<u16>,
     pub scan_zoom: Option<u16>,
     pub paragraph_indent: u8,
+    pub paragraph_spacing: Option<u8>,
     pub sidebar_width: Option<u16>,
     pub contents_width: Option<u16>,
     pub reading_layout: Option<String>,

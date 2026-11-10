@@ -190,6 +190,7 @@ impl Reader {
                 repair_printed: !settings.preserve_printed_lines,
                 inline_images: !settings.hide_inline_images,
                 paragraph_indent: settings.paragraph_indent,
+                paragraph_spacing: settings.paragraph_spacing,
             },
             remote.or_else(|| saved.as_ref().map(|s| s.anchor)),
         );
@@ -1404,6 +1405,7 @@ pub fn read_server(
                 if old.preserve_printed_lines != new.preserve_printed_lines
                     || old.hide_inline_images != new.hide_inline_images
                     || old.paragraph_indent != new.paragraph_indent
+                    || old.paragraph_spacing != new.paragraph_spacing
                 {
                     let size = term.size()?;
                     let screen = Rect::new(0, 0, size.width, size.height);
@@ -1425,6 +1427,7 @@ pub fn read_server(
                             repair_printed: !new.preserve_printed_lines,
                             inline_images: !new.hide_inline_images,
                             paragraph_indent: new.paragraph_indent,
+                            paragraph_spacing: new.paragraph_spacing,
                         },
                     );
                     reader.search.reflow(&reader.pager, &reader.doc);

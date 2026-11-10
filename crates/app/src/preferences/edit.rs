@@ -85,7 +85,7 @@ pub(super) fn setting(
                 }
             }
         }
-        (1, 9) => {
+        (1, 10) => {
             Settings::update(|s| s.zen_progress = !s.zen_progress)?;
         }
         (1, 1) => {
@@ -142,7 +142,17 @@ pub(super) fn setting(
                 Settings::update(|s| s.reading_layout = Some(modes[i].into()))?;
             }
         }
-        (1, 8) | (2, 4) => {
+        (1, 8) => {
+            if let Some(choice) = choose(
+                term,
+                "Paragraph spacing",
+                &super::PARAGRAPH_SPACING,
+                super::spacing_index(p),
+            )? {
+                Settings::update(|s| s.paragraph_spacing = choice.checked_sub(1).map(|n| n as u8))?;
+            }
+        }
+        (1, 9) | (2, 4) => {
             let reader = tab == 1;
             let val = if reader {
                 p.contents_width

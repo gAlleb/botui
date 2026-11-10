@@ -20,6 +20,8 @@ use unicode_width::UnicodeWidthStr;
 
 #[derive(Clone, Debug, Default)]
 pub struct Document {
+    /// FB2 verse and explicit breaks before a block keep their own spacing.
+    pub fixed_breaks: std::collections::BTreeSet<usize>,
     /// Lightweight inline faces in otherwise plain text (e.g. FB2), in source bytes.
     pub inline: std::collections::BTreeMap<usize, Vec<publisher::TextSpan>>,
     /// Ordered archive members when the entire reading order consists of raster plates.
@@ -181,6 +183,8 @@ pub struct ReflowOptions {
     pub repair_printed: bool,
     pub inline_images: bool,
     pub paragraph_indent: u8,
+    /// Blank terminal rows between prose paragraphs. None follows the book.
+    pub paragraph_spacing: Option<u8>,
 }
 
 pub struct Pager {
@@ -226,6 +230,7 @@ impl Pager {
                 repair_printed,
                 inline_images,
                 paragraph_indent: 0,
+                paragraph_spacing: None,
             },
         )
     }
@@ -558,6 +563,7 @@ mod tests {
 
     fn document(paragraphs: &[&str]) -> Document {
         Document {
+            fixed_breaks: Default::default(),
             inline: Default::default(),
             image_pages: vec![],
             styled: Default::default(),
@@ -589,6 +595,7 @@ mod tests {
                 repair_printed: false,
                 inline_images: true,
                 paragraph_indent: 4,
+                paragraph_spacing: None,
             },
         );
         let lines = pager.lines(0);
@@ -710,6 +717,7 @@ mod tests {
                 repair_printed: true,
                 inline_images: false,
                 paragraph_indent: 3,
+                paragraph_spacing: None,
             },
             Some(at),
         );

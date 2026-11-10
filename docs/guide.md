@@ -145,7 +145,9 @@ When you visit a note or glossary entry at the end of the book, **Esc** or **Bac
 
 Open a technical EPUB as you would a novel. The reader applies styles packaged with the edition, including merged table cells, side-by-side columns, lists and preformatted code. Equations in presentation MathML and TeX explicitly marked as math appear in the passage. A fraction has its numerator above its denominator. Change the page width with **W** to give a wide table more room.
 
-The terminal supplies the typeface and cell size. The reader theme supplies the ink and paper colors. Search, footnotes, bookmarks and BookOrbit resume use the source text even when a table wraps differently.
+The terminal supplies the typeface and cell size. Justified paragraphs keep natural spaces between words. Headings and right-aligned passages keep their alignment. The reader theme supplies the ink and paper colors.
+
+Search, footnotes, bookmarks and BookOrbit resume use the source text even when a table wraps differently.
 
 Embedded raster illustrations use the available page height. **I** opens an illustration separately. **F2 → Reader → Illustrations** switches to the separate viewer only.
 
@@ -179,9 +181,13 @@ In **G Bookmarks**, press **Delete** on the selection or click **[×]** beside a
 
 Run `botui --config-path` to print the exact path. The default is `~/.config/botui/config.toml`. The same TOML file holds the library root, interface, reader bindings and BookOrbit account. The default UI language is English. See the [commented configuration](../config.example.toml).
 
-On first launch the interface uses **Catppuccin Mocha**; existing theme choices are preserved. **F2 → Reader → First-line indent** accepts 0–8 cells for the first line of prose (0 turns it off).
+On first launch the interface uses **Catppuccin Mocha**.
 
-Drag the right edge of the navigation or contents panel to resize it, or set the width in Settings. **F2 → Library → Download limit** sets the maximum size per edition for BookOrbit and OPDS: **4096 MiB** by default, **0** for unlimited. Downloads stream to disk.
+In **F2 → Reader**, **First-line indent** moves the first line of a paragraph to the right by 0–8 cells. **Paragraph spacing** sets the vertical gap between paragraphs in EPUB and FB2. **From book** follows the EPUB layout and uses one blank line for plain FB2 prose. Choose **0 blank lines**, **1 blank line** or **2 blank lines** to set your own gap. The choice also applies to the book you have open.
+
+In an open book, drag the vertical border between the contents on the left and the page to change the width of the contents sidebar. You can also enter a width in **F2 → Reader → Contents width**. On the bookshelf, drag the border between navigation and the book list or use **F2 → Library → Sidebar width**.
+
+**F2 → Library → Download limit** sets the maximum size per BookOrbit or OPDS edition. The default is **4096 MiB**. Set **0** for unlimited downloads. Downloads stream to disk.
 
 [Keyboard help](images/help.png).
 
@@ -203,6 +209,7 @@ opaque_background = false
 page_width = 78
 column_gap = 4
 paragraph_indent = 0
+# paragraph_spacing = 1    # omit to follow the book
 max_download_mib = 4096
 scan_zoom = 100
 

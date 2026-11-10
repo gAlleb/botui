@@ -226,7 +226,7 @@ dependencies = [
 
 [[package]]
 name = "botui"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "botui-bookorbit",
  "botui-core",
@@ -254,7 +254,7 @@ dependencies = [
 
 [[package]]
 name = "botui-bookorbit"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "botui-transfer",
  "reqwest",
@@ -264,7 +264,7 @@ dependencies = [
 
 [[package]]
 name = "botui-core"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "blitz-dom",
  "blitz-html",
@@ -278,7 +278,7 @@ dependencies = [
 
 [[package]]
 name = "botui-fixed"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "botui-formats",
  "image",
@@ -288,7 +288,7 @@ dependencies = [
 
 [[package]]
 name = "botui-formats"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "base64 0.23.1",
  "botui-core",
@@ -309,7 +309,7 @@ dependencies = [
 
 [[package]]
 name = "botui-opds"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "botui-transfer",
  "reqwest",
@@ -319,7 +319,7 @@ dependencies = [
 
 [[package]]
 name = "botui-store"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "botui-core",
  "serde",
@@ -330,7 +330,7 @@ dependencies = [
 
 [[package]]
 name = "botui-transfer"
-version = "0.1.6"
+version = "0.1.7"
 
 [[package]]
 name = "bumpalo"

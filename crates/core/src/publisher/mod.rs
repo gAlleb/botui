@@ -147,9 +147,9 @@ impl Worker {
             doc.resolve(0.0);
             return canvas::lines(doc, layout.width, &chapter.sources, blocks, &chapter.images);
         }
-        let doc = chapter.document(viewport, options, blocks, resume);
+        let mut doc = chapter.document(viewport, options, blocks, resume);
         let lines = canvas::lines(
-            &doc,
+            &mut doc,
             layout.width,
             &chapter.sources,
             blocks,
@@ -303,10 +303,18 @@ impl Chapter {
         } else {
             "[data-botui-image] {display:none!important}"
         };
-        let settings = format!(
+        let mut settings = format!(
             ":root {{ --botui-indent: {}px; }} {figures}",
             u16::from(options.paragraph_indent) * CELL as u16
         );
+        if let Some(rows) = options.paragraph_spacing {
+            // Publisher margins in tables, lists, poetry and captions are part of their layout.
+            let gap = u16::from(rows) * ROW as u16;
+            settings.push_str(&format!(
+                "p:not(:is(table, li, figure, pre, [role='doc-poem'], [*|type~='z3998:poem'], [*|type~='z3998:verse']) p) \
+                 {{ margin-block: 0 {gap}px !important; }}"
+            ));
+        }
         let options = DocumentConfig {
             viewport: Some(viewport),
             base_url: Some(self.url.clone()),

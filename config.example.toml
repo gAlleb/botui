@@ -1,8 +1,9 @@
 # Local library. Uncomment to use a specific folder.
 # library_root = "/path/to/books"
 local_grid = false
-# Drag the right edge of either panel to set these widths. Omit for Auto.
+# Width of the navigation sidebar on the bookshelf, in cells. Omit for Auto.
 # sidebar_width = 28
+# Width of the contents sidebar in an open book, in cells. Omit for Auto.
 # contents_width = 24
 # Per downloaded edition, in MiB (BookOrbit and OPDS). 0 removes the limit.
 max_download_mib = 4096
@@ -22,6 +23,8 @@ scan_zoom = 100
 column_gap = 4
 # First line of a prose paragraph in EPUB/FB2, in cells (0–8; 0 disables).
 paragraph_indent = 0
+# Blank lines between EPUB/FB2 paragraphs (0, 1 or 2). Omit to follow the book.
+# paragraph_spacing = 1
 # Default layout for books without a saved mode: auto, single, spread, scroll.
 reading_layout = "auto"
 opaque_background = false

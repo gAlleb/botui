@@ -1,6 +1,7 @@
 use super::{Anchor, Block, CELL, Face, PageLine, ROW, SourceText, TextSpan};
-use blitz_dom::{BaseDocument, Node};
+use blitz_dom::{BaseDocument, Node, node::TextBrush};
 use blitz_traits::node_id::NodeId;
+use parley::{Alignment, AlignmentOptions, PositionedLayoutItem};
 use std::collections::{BTreeMap, HashMap};
 use style::{
     computed_values::visibility::T as Visibility,
@@ -107,13 +108,127 @@ struct Ink<'a> {
 }
 
 pub(super) fn lines(
-    doc: &BaseDocument,
+    doc: &mut BaseDocument,
     width: u16,
     sources: &[Vec<SourceText>],
     blocks: &[Block],
     images: &[Option<usize>],
 ) -> Vec<PageLine> {
-    paint_lines::<true>(doc, width, sources, blocks, images)
+    use style::values::computed::text::TextAlignLast;
+    // Parley has already broken the lines. On a cell grid, stretching those
+    // lines to fill the column leaves whole blank cells between words.
+    let justified: Vec<_> = doc
+        .tree()
+        .iter()
+        .filter_map(|(id, node)| {
+            let layout = &node.element_data()?.inline_layout_data.as_ref()?.layout;
+            let align = layout.alignment()?;
+            let last = node.primary_styles()?.clone_text_align_last();
+            if last != TextAlignLast::Justify && (align != Alignment::Justify || layout.len() <= 1)
+            {
+                return None;
+            }
+            let last = match last {
+                TextAlignLast::Auto => None,
+                TextAlignLast::Start => Some(Alignment::Start),
+                TextAlignLast::End => Some(Alignment::End),
+                TextAlignLast::Left => Some(Alignment::Left),
+                TextAlignLast::Right => Some(Alignment::Right),
+                TextAlignLast::Center => Some(Alignment::Center),
+                TextAlignLast::Justify => Some(Alignment::Justify),
+            };
+            Some((id, align, last))
+        })
+        .collect();
+    let natural = |align| {
+        if align == Alignment::Justify {
+            Alignment::Start
+        } else {
+            align
+        }
+    };
+    let mut original_boxes = Vec::new();
+    let mut boxes = Vec::new();
+    for &(id, align, last) in &justified {
+        let layout = inline_layout(doc, id);
+        boxes.clear();
+        if layout.inline_boxes().len() > 0 {
+            boxes.extend(inline_box_positions(layout));
+        }
+        layout.align(
+            natural(align),
+            AlignmentOptions {
+                last_line_alignment: last.map(natural),
+                ..Default::default()
+            },
+        );
+        if boxes.is_empty() {
+            continue;
+        }
+        for ((id, x), (new_id, new_x)) in boxes.iter_mut().zip(inline_box_positions(layout)) {
+            debug_assert_eq!(*id, new_id);
+            *x = new_x - *x;
+        }
+        for &(child, shift) in &boxes {
+            if shift == 0. {
+                continue;
+            }
+            // Blitz rounds both absolute box edges to pixels. Adding a
+            // fractional shift to the rounded origin can widen a 5-cell image to 6.
+            let Some(rect) = doc.get_client_bounding_rect(child) else {
+                continue;
+            };
+            let new_left = (rect.x + f64::from(shift)).round();
+            let new_right = (rect.x + f64::from(shift) + rect.width).round();
+            let area = doc.get_node_mut(child).unwrap().final_layout_mut();
+            original_boxes.push((child, area.location.x, area.size.width));
+            area.location.x += (new_left - rect.x.round()) as f32;
+            area.size.width = (new_right - new_left) as f32;
+        }
+    }
+    let rows = paint_lines::<true>(doc, width, sources, blocks, images);
+    // Blitz reuses the document on resize. Keep its cached geometry intact.
+    for (child, x, width) in original_boxes {
+        let area = doc.get_node_mut(child).unwrap().final_layout_mut();
+        area.location.x = x;
+        area.size.width = width;
+    }
+    for (id, align, last_line_alignment) in justified {
+        inline_layout(doc, id).align(
+            align,
+            AlignmentOptions {
+                last_line_alignment,
+                ..Default::default()
+            },
+        );
+    }
+    rows
+}
+
+fn inline_layout(doc: &mut BaseDocument, id: NodeId) -> &mut parley::Layout<TextBrush> {
+    &mut doc
+        .get_node_mut(id)
+        .unwrap()
+        .element_data_mut()
+        .unwrap()
+        .inline_layout_data
+        .as_mut()
+        .unwrap()
+        .layout
+}
+
+fn inline_box_positions(
+    layout: &parley::Layout<TextBrush>,
+) -> impl Iterator<Item = (NodeId, f32)> + '_ {
+    layout
+        .lines()
+        .flat_map(|line| line.items())
+        .filter_map(|item| match item {
+            PositionedLayoutItem::InlineBox(b) if b.kind == parley::InlineBoxKind::InFlow => {
+                Some((NodeId::from_u64(b.id), b.x))
+            }
+            _ => None,
+        })
 }
 
 fn paint_lines<const GROUPED: bool>(
@@ -263,7 +378,7 @@ fn draw_text<'a, const GROUPED: bool>(
             .round()
             .max(0.) as usize;
         // One style with simple one-glyph characters can use the shaper's
-        // positioned glyphs directly, including expanded justification spaces.
+        // positioned glyphs directly.
         // Complex scripts, mixed styles and transformed/source-split text keep
         // the cluster path below. The CSS engine still owns every advance.
         let mut items = line.items();
@@ -345,8 +460,7 @@ fn draw_text<'a, const GROUPED: bool>(
         }
         for run in line.runs() {
             let clusters = run.visual_clusters();
-            // Justification yields fractional spaces. Keep the fraction while
-            // adding whole-cell advances, including across powers of two.
+            // Preserve fractional coordinates when summing glyph advances.
             let mut x = f64::from(left)
                 + f64::from(
                     clusters
@@ -623,6 +737,7 @@ mod tests {
                             repair_printed: true,
                             inline_images: true,
                             paragraph_indent: 0,
+                            paragraph_spacing: None,
                         },
                         &blocks,
                         None,

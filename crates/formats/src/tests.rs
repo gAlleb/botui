@@ -346,6 +346,70 @@ fn styled_fixture(body: &str, css: &str) -> botui_core::Document {
 }
 
 #[test]
+fn paragraph_spacing_in_epub_and_fb2_preserves_structured_content_and_anchors() {
+    use botui_core::{LayoutMode, Pager, ReflowOptions};
+    let epub = styled_fixture(
+        "<h1>Chapter</h1><p>First paragraph.</p><p>Second paragraph.</p>\
+         <table><tr><td><p>Cell A</p><p>Cell B</p></td></tr></table>\
+         <figure><figcaption><p>Caption A</p><p>Caption B</p></figcaption></figure>\
+         <div role='doc-poem'><p>Verse A</p><p>Verse B</p></div>",
+        "p {margin:0 !important} h1 {margin:0 0 16px} td p {margin:0 0 16px !important}",
+    );
+    let fb2 = super::fb2::parse(
+        b"<FictionBook><body><section><title><p>Chapter</p></title>\
+          <p>First paragraph.</p><p>Second paragraph.</p><empty-line/><p>After break.</p>\
+          <poem><stanza><v>Verse A</v><v>Verse B</v></stanza></poem></section></body></FictionBook>",
+        "Test book",
+    )
+    .unwrap();
+    let epub_gaps = [
+        ("Cell A", "Cell B", 1),
+        ("Caption A", "Caption B", 0),
+        ("Verse A", "Verse B", 0),
+    ];
+    let fb2_gaps = [
+        ("Second paragraph.", "After break.", 1),
+        ("Verse A", "Verse B", 1),
+    ];
+    for (doc, book_gap, structured_gaps) in [(&epub, 0, &epub_gaps[..]), (&fb2, 1, &fb2_gaps[..])] {
+        let options = ReflowOptions {
+            repair_printed: true,
+            inline_images: true,
+            paragraph_indent: 3,
+            paragraph_spacing: None,
+        };
+        let mut pager = Pager::with_options(doc, 60, 48, LayoutMode::Single, options);
+        for spacing in [None, Some(0), Some(1), Some(2), None] {
+            pager.reconfigure(
+                doc,
+                60,
+                48,
+                LayoutMode::Single,
+                4,
+                ReflowOptions {
+                    paragraph_spacing: spacing,
+                    ..options
+                },
+            );
+            let lines = pager.lines(0);
+            let row = |s: &str| lines.iter().position(|line| line.text.trim() == s).unwrap();
+            let gap = |left, right| row(right) - row(left) - 1;
+            assert_eq!(
+                gap("First paragraph.", "Second paragraph."),
+                usize::from(spacing.unwrap_or(book_gap))
+            );
+            assert_eq!(gap("Chapter", "First paragraph."), 1);
+            let at = lines[row("Second paragraph.")].anchor();
+            assert_eq!(&doc.blocks[at.block].text[at.byte..], "Second paragraph.");
+            assert_eq!(doc.resolve_cfi(&doc.cfi(at).unwrap()), Some(at));
+            for &(left, right, expected) in structured_gaps {
+                assert_eq!(gap(left, right), expected, "{left} to {right}, {spacing:?}");
+            }
+        }
+    }
+}
+
+#[test]
 fn prose_preserves_words_indentation_footnotes_and_spread_page_turns() {
     use botui_core::{LayoutMode, Pager, ReflowOptions, Target};
     let mut body = String::from("<h1>Диалоги</h1>");
@@ -353,11 +417,15 @@ fn prose_preserves_words_indentation_footnotes_and_spread_page_turns() {
         body.push_str(&format!("<p>— Реплика {n}. Кто видел <em>Кита 🐋 и Маяк</em> рядом с <a href='#n'>башней</a>?</p>"));
     }
     body.push_str("<p id='n'>Сноска к диалогу.</p>");
-    let doc = styled_fixture(&body, "h1 {font-size:2.5em} p {text-indent:1em}");
+    let doc = styled_fixture(
+        &body,
+        "h1 {font-size:2.5em} p {text-indent:1em; text-align:justify}",
+    );
     let options = ReflowOptions {
         repair_printed: true,
         inline_images: true,
         paragraph_indent: 3,
+        paragraph_spacing: None,
     };
     let mut pager = Pager::with_options(&doc, 100, 8, LayoutMode::Spread, options);
     let text = |p: &Pager| {
@@ -473,13 +541,20 @@ fn justified_prose_wraps_contiguously_and_separates_dialogue_paragraphs() {
 }
 
 #[test]
-fn justification_keeps_every_word_intact_at_terminal_widths() {
+fn justified_prose_keeps_natural_word_spacing_at_terminal_widths() {
     use botui_core::{LayoutMode, Pager};
     let paragraph = "Миновав плац, я направился к дорожке, что вела в южный угол дворцового сада. Рядом стояла беседка. На деревянном столе лежала раскрытая книга.";
     let marked = paragraph.replace("южный", "ю<em>жн</em>ый");
-    let doc = styled_fixture(&format!("<p>{marked}</p>"), "p { text-align:justify }");
+    let doc = styled_fixture(&format!("<p>{marked}</p>"), "body { text-align:justify }");
     for width in 26..60 {
         let pager = Pager::new(&doc, width, 40, LayoutMode::Single);
+        for row in pager.lines(0) {
+            assert!(
+                !row.text.trim().contains("  "),
+                "artificial word spacing at width {width}: {:?}",
+                row.text
+            );
+        }
         let words: Vec<_> = pager
             .lines(0)
             .iter()
@@ -490,6 +565,47 @@ fn justification_keeps_every_word_intact_at_terminal_widths() {
             paragraph.split_whitespace().collect::<Vec<_>>(),
             "column width {width}"
         );
+    }
+}
+
+#[test]
+fn justified_layout_matches_start_alignment_around_inline_boxes_and_on_resize() {
+    use botui_core::{LayoutMode, Pager};
+    let body = r#"<h1>Centered</h1><p>One two <em>three</em> four
+        <img src="fig.png" width="40" height="32"/> five six seven eight nine.</p>
+        <p>After the figure <math><mfrac><mi>x</mi><mi>y</mi></mfrac></math> the paragraph continues.</p>
+        <p dir="rtl">אחד שני שלושה ארבע חמישה שישה שבעה שמונה תשעה עשרה.</p>
+        <p class="last">Last line keeps its alignment across multiple lines.</p>
+        <p class="right">Right aligned</p><pre>  code    listing</pre>
+        <table><tr><td rowspan="2">Group</td><td>one</td></tr><tr><td>two</td></tr></table>"#;
+    let make = |align| {
+        styled_fixture(
+            body,
+            &format!(
+                "body {{ --prose: {align}; text-align: var(--prose) }}
+         p:first-of-type {{ text-align-last: {align} }}
+         .last {{ text-align-last: center }} .right {{ text-align: right }}"
+            ),
+        )
+    };
+    let native = make("start");
+    let book = make("justify");
+    let mut expected = Pager::new(&native, 28, 80, LayoutMode::Single);
+    let mut actual = Pager::new(&book, 28, 80, LayoutMode::Single);
+    for width in [28, 35, 42, 28] {
+        actual.relayout(&book, width, 80, LayoutMode::Single);
+        expected.relayout(&native, width, 80, LayoutMode::Single);
+        let rows = actual.lines(0);
+        assert!(rows.iter().any(|r| !r.figures.is_empty()));
+        assert!(rows.iter().any(|r| r.text.contains("code    listing")));
+        assert_eq!(rows.len(), expected.lines(0).len(), "width {width}");
+        for (i, (row, reference)) in rows.iter().zip(expected.lines(0)).enumerate() {
+            assert_eq!(
+                format!("{row:?}"),
+                format!("{reference:?}"),
+                "width {width}, row {i}"
+            );
+        }
     }
 }
 
@@ -524,6 +640,7 @@ fn illustrations_fit_the_viewport_and_hidden_figures_take_no_space() {
             repair_printed: true,
             inline_images: false,
             paragraph_indent: 0,
+            paragraph_spacing: None,
         },
     );
     assert_eq!(height(&hidden), 0);
@@ -594,6 +711,7 @@ fn resizing_and_cached_layouts_match_a_fresh_epub_layout() {
         repair_printed: true,
         inline_images: true,
         paragraph_indent: 2,
+        paragraph_spacing: None,
     };
     let at = Anchor { block: 0, byte: 8 };
     let mut warm = Pager::with_start(&doc, 80, 20, LayoutMode::Single, options, Some(at));
@@ -773,6 +891,7 @@ fn fb2_faces_survive_wrapping_and_resume_without_changing_source_offsets() {
             repair_printed: true,
             inline_images: true,
             paragraph_indent: 2,
+            paragraph_spacing: None,
         },
         Some(at),
     );

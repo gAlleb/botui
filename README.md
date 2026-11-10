@@ -4,17 +4,23 @@
 
 **English** · [Русский](README.ru.md)
 
-BOTUI is a terminal book reader for Linux. Open a book from disk, browse an OPDS catalog or connect a BookOrbit account.
+BOTUI is a terminal book reader for Linux. Open an EPUB, FB2, PDF or DjVu from disk, an OPDS catalog or your BookOrbit library. Read one page at a time, open a two-page spread or scroll continuously.
 
-[Screenshots](#screenshots) · [Installation](#installation) · [First run](#first-run) · [User guide](docs/guide.md)
+[Highlights](#highlights) · [Screenshots](#screenshots) · [Installation](#installation) · [First run](#first-run) · [User guide](docs/guide.md) · [Release notes](CHANGELOG.md)
 
-## Libraries and reading
+## Highlights
 
-- **Local folders.** Browse covers or a list, find books as you type and return to your last reading position.
-- **BookOrbit (https://github.com/bookorbit/bookorbit).** Browse authors, series and collections. Opening an edition saves it on your device. Read offline and sync your position when you reconnect.
-- **OPDS.** Browse OPDS 1 and 2 catalogs, download an edition and find it later on the OPDS downloads shelf.
-- **The reader.** Read EPUB and FB2 as text, or view the original pages of a PDF or DjVu. Choose a single page, a spread or continuous scrolling. Follow footnotes, bookmark a passage or export notes to Markdown.
-- **Technical EPUBs.** Read tables with merged cells, equations, SVG diagrams and code listings in the same view as the surrounding text. Bookmarks and BookOrbit progress follow the passage when the window changes size.
+- **Reading layout.** Justified EPUB paragraphs keep natural spaces between words even in a narrow column. Adjust the first-line indent and the gap between paragraphs in EPUB and FB2 while keeping your place.
+- **Textbooks.** The EPUB reader applies the book’s CSS to tables with merged cells, columns and code listings. MathML equations, TeX marked as math and static SVG diagrams appear alongside the text.
+- **Illustrated books.** When an EPUB or FB2 picture fits on a fresh page or column, BOTUI keeps it whole. In scroll mode it keeps its size as it moves offscreen. FB2 also preserves bold, italics and strikethrough.
+- **PDF and DjVu.** Fit the page to the reading pane, zoom in on a detail or jump to a section in the document’s outline. In continuous scroll, a dotted line marks each page break. The paper can match your reading background.
+- **Finding a passage.** Search highlights the current match in EPUB and FB2. Follow a footnote and jump back, bookmark your place or export a passage note to Markdown with an excerpt from the book.
+
+## Libraries
+
+- **Local folders.** Browse by cover or title, find books as you type and organize them into collections. BOTUI remembers your place and caches the jackets it generates for books without covers.
+- **BookOrbit.** Browse authors, series and collections. Opening an edition saves a copy on your device. Continue offline and sync your reading position when you reconnect. [BookOrbit project](https://github.com/bookorbit/bookorbit)
+- **OPDS.** Browse OPDS 1 and 2 catalogs. Downloaded editions stay on the OPDS downloads shelf and keep their reading positions on this device.
 
 ## Screenshots
 
@@ -60,32 +66,34 @@ Click any image to open it at full size.
 
 ## Installation
 
-Run these commands from the repository root. Each method below puts the Linux executable at `./dist/botui`.
+### Prebuilt Linux binaries
+
+Download the executable for your architecture (`botui-x86_64` or `botui-aarch64`). Each release includes `SHA256SUMS`. [Linux releases](https://github.com/gAlleb/botui/releases)
+
+Branch builds contain the same files in `botui-linux.tar.gz`. [GitHub Actions](https://github.com/gAlleb/botui/actions/workflows/build.yml)
 
 ### With mise
 
+To build from source, run the commands from the repository root. Install a C compiler, a linker and Python 3. The EPUB layout engine uses `python3` during compilation. mise supplies Rust and CMake.
+
 ```sh
 mise trust
-mise install rust
+mise install rust cmake
 mise run install
 ```
 
-The install task builds the release for your machine. To build static binaries for **both x86_64 and aarch64**, run `mise install` and `mise run dist`. The two binaries and `SHA256SUMS` appear in `./dist/`.
+The install task puts the native build in `./dist/botui`. To build static binaries for **both x86_64 and aarch64**, run `mise install` and `mise run dist`. The two binaries and `SHA256SUMS` appear in `./dist/`.
 
 Cargo caches the native build and each static target separately under `target/` by default. The first build of each target compiles its dependencies. Repeating the same task reuses that work.
 
 ### With Cargo
 
-The repository pins Rust in `rust-toolchain.toml`. With rustup, a C compiler and a linker installed, run:
+Install rustup, a C compiler, a linker, CMake and Python 3. From the repository root, Cargo uses the Rust version in `rust-toolchain.toml`.
 
 ```sh
 cargo build --release --locked -p botui --target-dir target &&
   install -Dm755 target/release/botui ./dist/botui
 ```
-
-### Prebuilt Linux binaries
-
-Download `botui-x86_64` or `botui-aarch64` for your machine, together with `SHA256SUMS`, from [Releases](https://github.com/gAlleb/botui/releases) or [branch builds](https://github.com/gAlleb/botui/actions/workflows/build.yml).
 
 ### Format support
 
@@ -95,7 +103,9 @@ Download `botui-x86_64` or `botui-aarch64` for your machine, together with `SHA2
 | PDF | Poppler utilities (`pdfinfo`, `pdftoppm`, `pdftotext`) or Python 3 with Poppler GI and Cairo |
 | DjVu | DjVuLibre (`djvused`, `ddjvu`, `djvutxt`) |
 
-Kitty displays pages and covers as raster images. Other terminals can use colored half-blocks. Searching a PDF or DjVu requires a text layer.
+The PDF contents tree uses Python 3 with PyGObject and the Poppler GI bindings. Searching a PDF or DjVu requires a text layer.
+
+Kitty displays pages and covers as images, including inside tmux with graphics passthrough. Terminals without an image protocol can use colored half-blocks.
 
 ## First run
 
@@ -115,12 +125,16 @@ On the start screen, press **Enter** for your local library, **B** for BookOrbit
 | Show or hide page and percentage in zen mode | **%** |
 | Adjust text width and column gap, or zoom a scan | **W** |
 | Search inside the book | **/** |
+| Next match / previous match | **F3** / **F4** |
+| Set or remove a bookmark / open bookmarks | **B** / **G** |
 | Go to a PDF or DjVu page | **P** |
 | Return to the shelf | **Q** |
 
 ## Settings and help
 
 Press **F2** for settings or **?** for shortcuts on the current screen. The interface starts in **Catppuccin Mocha**. Choose **Terminal** to follow your terminal palette.
+
+In **F2 → Reader → Paragraph spacing**, follow the book’s layout or choose 0, 1 or 2 blank lines between paragraphs in EPUB and FB2.
 
 Run `botui --config-path` to locate the TOML file. The [configuration example](config.example.toml) covers library paths, appearance, key bindings and BookOrbit sign-in with a password or password command.
 
@@ -137,7 +151,7 @@ See the [user guide](docs/guide.md) for offline sync, bookmarks, notes, footnote
 
 Smoke tests need tmux, Python 3.11+, the PDF and DjVu helpers above, and `c44` and `djvm` for test fixtures.
 
-[Architecture](docs/architecture.md) · [Verification checklist](docs/checklist.md) · [Coverage limits](docs/checklist.md#coverage-limits) · [Changelog](CHANGELOG.md)
+[Architecture](docs/architecture.md) · [Verification checklist](docs/checklist.md) · [Coverage limits](docs/checklist.md#coverage-limits)
 
 ## License
 

@@ -44,6 +44,7 @@ pub(super) fn parse(bytes: &[u8], fallback: &str) -> Result<Document> {
         .unwrap_or_else(|| clean(fallback));
     let mut locations = botui_core::Locations::default();
     let mut blocks = Vec::new();
+    let mut fixed_breaks = std::collections::BTreeSet::new();
     let mut inline = std::collections::BTreeMap::new();
     let mut contents = Vec::new();
     let mut raw = vec![];
@@ -65,6 +66,9 @@ pub(super) fn parse(bytes: &[u8], fallback: &str) -> Result<Document> {
         // The preorder traversal emits a paragraph before visiting its inline children.
         let mut current_block = None;
         for node in body.descendants().filter(|n| n.is_element()) {
+            if node.has_tag_name("empty-line") {
+                fixed_breaks.insert(blocks.len());
+            }
             if let Some(id) = node.attribute("id") {
                 let block = current_block
                     .filter(|&(_, owner)| node.ancestors().any(|n| n.id() == owner))
@@ -172,6 +176,9 @@ pub(super) fn parse(bytes: &[u8], fallback: &str) -> Result<Document> {
             };
             let content = text(node);
             if !content.is_empty() {
+                if matches!(node.tag_name().name(), "v" | "text-author") {
+                    fixed_breaks.extend([blocks.len(), blocks.len() + 1]);
+                }
                 if let Some(runs) = paths.paragraph(node, &content) {
                     locations.0.insert(blocks.len(), runs);
                 }
@@ -274,6 +281,7 @@ pub(super) fn parse(bytes: &[u8], fallback: &str) -> Result<Document> {
         })
         .collect();
     Ok(Document {
+        fixed_breaks,
         inline,
         styled: Default::default(),
         image_pages: vec![],

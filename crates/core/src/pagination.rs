@@ -24,7 +24,8 @@ pub(super) struct BookLayout {
     has_figures: bool,
 }
 impl BookLayout {
-    pub(super) fn new(doc: &Document, options: ReflowOptions, resume: Option<Anchor>) -> Self {
+    pub(super) fn new(doc: &Document, mut options: ReflowOptions, resume: Option<Anchor>) -> Self {
+        options.paragraph_spacing = options.paragraph_spacing.map(|n| n.min(2));
         let mut printed = if options.repair_printed {
             printed::printed_lines(&doc.blocks)
         } else {
@@ -172,6 +173,7 @@ impl BookLayout {
             let end = (start + 1..=end)
                 .find(|i| {
                     images.contains_key(i)
+                        || doc.fixed_breaks.contains(i)
                         || doc.tables.contains_key(i)
                         || doc.styled.contains_key(i)
                 })
@@ -189,17 +191,20 @@ impl BookLayout {
             printed::faces(&mut lines[before..], doc, start, end);
             start = end + 1;
             if lines.len() > before {
-                lines.push(PageLine {
-                    spans: Vec::new(),
-                    indent: 0,
-                    figures: Vec::new(),
-                    table_header: false,
-                    text: String::new(),
-                    heading: false,
+                let gap = self.options.paragraph_spacing.filter(|_| {
+                    !block.heading
+                        && doc.blocks.get(start).is_some_and(|next| !next.heading)
+                        && !doc.fixed_breaks.contains(&start)
+                        && !images.contains_key(&start)
+                        && !doc.tables.contains_key(&start)
+                        && !doc.styled.contains_key(&start)
+                });
+                lines.resize_with(lines.len() + usize::from(gap.unwrap_or(1)), || PageLine {
                     start: Anchor {
                         block: end,
                         byte: block.text.len(),
                     },
+                    ..Default::default()
                 });
             }
         }

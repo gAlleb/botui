@@ -61,12 +61,37 @@ def check(tmp):
         t.click('Background',t.see('Background'));t.see('Opaque')
         t.click('Borders & covers',t.see('Borders & covers'));t.click('Square',t.see('Square'))
         t.wait('Square borders applied',lambda f:'Solid terminal color' in f and cfg()['borders']=='square')
-        t.keys('Tab');t.click('Column gap',t.see('Column gap'));t.keys('C-u');t.type('10');t.keys('Enter');t.see('10 cells')
+        t.keys('Tab', 'Home')
+        for index, hint in enumerate((
+            'Preview light and dark book paper',
+            'Zen shows just the page',
+            'Preferred width of each text column',
+            'Space between facing text pages',
+            'Reflow repairs words split',
+            'Display embedded illustrations',
+            'Choose one page, a spread',
+            'Indent the first line',
+            '0, 1 or 2 blank lines between paragraphs',
+            'divider between the contents sidebar',
+            'Show the page and reading percentage',
+        )):
+            if index:
+                t.keys('Down')
+            t.see(hint)
+        t.click('Column gap',t.see('Column gap'));t.keys('C-u');t.type('10');t.keys('Enter');t.see('10 cells')
         t.click('First-line indent',t.see('First-line indent'));t.keys('C-u');t.type('3');t.keys('Enter');t.see('3 cells')
         assert cfg()['paragraph_indent']==3
+        t.click('Paragraph spacing', t.see('Paragraph spacing'))
+        t.click('0 blank lines', t.see('0 blank lines'))
+        t.wait('Paragraphs are adjacent', lambda f: 'First-line indent' in f and cfg().get('paragraph_spacing') == 0)
+        t.click('Paragraph spacing', t.see('Paragraph spacing'))
+        t.click('From book', t.see('From book'))
+        t.wait('Book spacing restored', lambda f: 'First-line indent' in f and 'paragraph_spacing' not in cfg())
         t.click('Zen progress',t.see('Zen progress'))
         t.wait('Zen progress enabled',lambda _:cfg()['zen_progress'])
-        t.keys('Tab');t.click('Reading statistics',t.see('Reading statistics'));t.see('Editions opened');t.keys('Escape')
+        t.keys('Tab', 'End')
+        t.see('divider between the navigation sidebar')
+        t.click('Reading statistics',t.see('Reading statistics'));t.see('Editions opened');t.keys('Escape')
         t.click('Download limit',t.see('4096 MiB'));t.keys('C-u');t.type('2048');t.keys('Enter');t.see('2048 MiB');assert cfg()['max_download_mib']==2048
         t.keys('Tab')
         t.click('Server', t.see('Password command'))
