@@ -69,8 +69,7 @@ def exercise(directory, server):
         at_width(term, 75)
         term.see("[V List]")
         assert not any(path.endswith("/serve") for _, path, _ in server.requests)
-        term.keys("q")
-        term.see("Choose a library")
+        shelf.source_home(term)
         term.keys("q")
     finally:
         term.run("kill-server", required=False)

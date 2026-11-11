@@ -162,7 +162,7 @@ pub(super) fn read_pages(
     let mut search = search::Search::default();
     let mut history = history::History::default();
     let mut viewer = crate::cover_viewer::Viewer::default();
-    let mut last_sheet: Option<(u32, u16, u16, bool)> = None;
+    let mut last_sheet: Option<(u32, u16, bool)> = None;
     let mut message = String::new();
     let mut menu = false;
     let mut focus: usize = 0;
@@ -280,14 +280,13 @@ pub(super) fn read_pages(
             );
         }
         let strip = view.strip(&pages);
-        let (shown, shown_offset) = if pages.get(n, side).is_some() {
-            last_sheet = Some((n, offset, side, scrolling));
+        let (shown, shown_offset) = if pages.get(n).is_some() {
+            last_sheet = Some((n, offset, scrolling));
             (n, offset)
         } else if pages.error(n, side).is_none()
-            && let Some((p, o, s, flow)) = last_sheet
-            && s == side
+            && let Some((p, o, flow)) = last_sheet
             && flow == scrolling
-            && pages.get(p, s).is_some()
+            && pages.get(p).is_some()
         {
             (p, o)
         } else {
@@ -297,8 +296,7 @@ pub(super) fn read_pages(
             strip.end(n, offset)
         } else {
             total.is_some_and(|t| {
-                n.saturating_add(u32::from(cols)) > t
-                    && (n..=t).all(|p| pages.get(p, side).is_some())
+                n.saturating_add(u32::from(cols)) > t && (n..=t).all(|p| pages.get(p).is_some())
             })
         };
         if finish_on_arrival == Some(n) && end_visible {
@@ -423,7 +421,7 @@ pub(super) fn read_pages(
                     };
                     let slot =
                         Rect::new(area.x + (w + 2).saturating_mul(i), area.y, w, area.height);
-                    if let Some(page) = pages.get(page_number, side) {
+                    if let Some(page) = pages.get(page_number) {
                         page.draw_region(f, crop.fit(slot, true), &picker, crop);
                     } else if let Some(error) = pages.error(page_number, side) {
                         pages::draw_error(f, slot, page_number, error);
@@ -435,7 +433,7 @@ pub(super) fn read_pages(
             {
                 paper.clear_cells(f, area);
             }
-            if pages.get(shown, side).is_none()
+            if pages.get(shown).is_none()
                 && pages.error(shown, side).is_none()
                 && opened.elapsed() >= Duration::from_millis(150)
             {

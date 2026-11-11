@@ -14,13 +14,37 @@ struct Lane {
     worker: Worker,
     job: Option<(Key, Ticket<io::Result<Picture>>)>,
 }
+#[derive(Default)]
+struct CachedPage {
+    // Keep one raster per page, including while a sharper version is rendering.
+    // Downscaling reuses it; a failed refinement must not erase readable pixels.
+    rendered: Option<(u16, Picture)>,
+    failure: Option<(u16, String)>,
+}
+impl CachedPage {
+    fn satisfies(&self, side: u16) -> bool {
+        self.rendered.as_ref().is_some_and(|(s, _)| *s >= side)
+            || self.failure.as_ref().is_some_and(|(s, _)| *s == side)
+    }
+    fn finish(&mut self, side: u16, result: Result<Picture, String>) {
+        match result {
+            Ok(picture) => {
+                if self.rendered.as_ref().is_none_or(|(s, _)| side >= *s) {
+                    self.rendered = Some((side, picture));
+                }
+                self.failure = None;
+            }
+            Err(error) => self.failure = Some((side, error)),
+        }
+    }
+}
 pub(super) struct Pages {
     appearance: ScanAppearance,
     colors: Option<Paper>,
     lanes: [Lane; 2],
     last: u32,
     backward: bool,
-    cache: LruCache<Key, Result<Picture, String>>,
+    cache: LruCache<u32, CachedPage>,
 }
 impl Pages {
     pub fn new(appearance: ScanAppearance, renderer: impl Fn() -> botui_fixed::PageReader) -> Self {
@@ -51,15 +75,16 @@ impl Pages {
     pub fn busy(&self) -> bool {
         self.lanes.iter().any(|l| l.job.is_some())
     }
-    pub fn get(&self, page: u32, side: u16) -> Option<&Picture> {
-        self.cache.peek(&(page, side))?.as_ref().ok()
+    pub fn get(&self, page: u32) -> Option<&Picture> {
+        self.cache.peek(&page)?.rendered.as_ref().map(|(_, p)| p)
     }
     pub fn error(&self, page: u32, side: u16) -> Option<&str> {
         self.cache
-            .peek(&(page, side))?
+            .peek(&page)?
+            .failure
             .as_ref()
-            .err()
-            .map(String::as_str)
+            .filter(|(s, _)| *s == side)
+            .map(|(_, e)| e.as_str())
     }
     pub fn poll(&mut self) {
         for lane in &mut self.lanes {
@@ -70,7 +95,9 @@ impl Pages {
                 Err(TryRecvError::Disconnected) => Some(Err("Page rendering interrupted".into())),
             };
             if let Some(result) = result {
-                self.cache.put(*k, result);
+                self.cache
+                    .get_or_insert_mut(k.0, CachedPage::default)
+                    .finish(k.1, result);
                 lane.job = None;
             }
         }
@@ -104,32 +131,32 @@ impl Pages {
                 .flatten(),
             );
         }
+        for &i in wanted.iter().rev() {
+            self.cache.promote(&i);
+        }
         self.cache
             .resize(NonZeroUsize::new(wanted.len() + 1).unwrap());
-        for &i in wanted.iter().rev() {
-            self.cache.promote(&(i, side));
-        }
         let missing: Vec<_> = wanted
             .iter()
             .copied()
-            .filter(|n| !self.cache.contains(&(*n, side)))
+            .filter(|n| self.cache.peek(n).is_none_or(|p| !p.satisfies(side)))
             .take(self.lanes.len())
             .collect();
         for lane in &mut self.lanes {
             if lane
                 .job
                 .as_ref()
-                .is_some_and(|((p, s), _)| *s != side || !missing.contains(p))
+                .is_some_and(|((p, s), _)| *s < side || !missing.contains(p))
             {
                 lane.job = None;
             }
         }
         for i in missing {
-            if self
-                .lanes
-                .iter()
-                .any(|l| l.job.as_ref().is_some_and(|(k, _)| *k == (i, side)))
-            {
+            if self.lanes.iter().any(|l| {
+                l.job
+                    .as_ref()
+                    .is_some_and(|((p, s), _)| *p == i && *s >= side)
+            }) {
                 continue;
             }
             let lane = self.lanes.iter_mut().find(|l| l.job.is_none()).unwrap();
@@ -198,6 +225,93 @@ mod tests {
     use super::*;
     use image::{ImageBuffer, Luma};
 
+    fn pages() -> Pages {
+        Pages::new(Default::default(), || {
+            botui_fixed::PageReader::new(
+                std::path::Path::new("unused.pdf"),
+                botui_formats::FileKind::Pdf,
+            )
+        })
+    }
+    fn finish(pages: &mut Pages) {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);
+        while pages.busy() {
+            pages.poll();
+            assert!(
+                std::time::Instant::now() < deadline,
+                "Worker did not finish"
+            );
+            std::thread::yield_now();
+        }
+    }
+
+    #[test]
+    fn zoom_reuses_preview_then_larger_raster_without_duplicate_cache_entries() {
+        let mut pages = pages();
+        pages
+            .cache
+            .get_or_insert_mut(1, CachedPage::default)
+            .finish(800, Ok(Picture::new(DynamicImage::new_rgb8(400, 800))));
+        let (release, wait) = std::sync::mpsc::channel();
+        pages.lanes[0].job = Some((
+            (1, 1600),
+            pages.lanes[0].worker.start(move |_| {
+                wait.recv().unwrap();
+                Ok(Picture::new(DynamicImage::new_rgb8(800, 1600)))
+            }),
+        ));
+        // A zoom change while refining can use both the old page and the pending
+        // sharper render. Neither should be discarded for an exact-size key.
+        pages.update(1, 1, 1, 1200, None);
+        assert_eq!(pages.get(1).unwrap().dimensions(), (400, 800));
+        assert_eq!(pages.lanes[0].job.as_ref().unwrap().0, (1, 1600));
+        release.send(()).unwrap();
+        finish(&mut pages);
+        for side in [800, 1200, 1600] {
+            pages.update(1, 1, 1, side, None);
+            assert!(
+                !pages.busy(),
+                "Cached resolution started another PDF render"
+            );
+            assert_eq!(pages.get(1).unwrap().dimensions(), (800, 1600));
+            assert_eq!(pages.cache.len(), 1);
+        }
+        pages.configure(
+            ScanAppearance {
+                inverted: true,
+                ..Default::default()
+            },
+            None,
+        );
+        assert!(
+            pages.get(1).is_none(),
+            "Old colors survived an appearance change"
+        );
+    }
+
+    #[test]
+    fn failed_refinement_keeps_readable_page_and_does_not_retry_every_frame() {
+        let mut pages = pages();
+        pages
+            .cache
+            .get_or_insert_mut(1, CachedPage::default)
+            .finish(800, Ok(Picture::new(DynamicImage::new_rgb8(400, 800))));
+        pages.lanes[0].job = Some((
+            (1, 1600),
+            pages.lanes[0]
+                .worker
+                .start(|_| Err(io::Error::other("Rasterizer failed"))),
+        ));
+        finish(&mut pages);
+        pages.update(1, 1, 1, 1600, None);
+        assert_eq!(pages.get(1).unwrap().dimensions(), (400, 800));
+        assert_eq!(pages.error(1, 1600), Some("Rasterizer failed"));
+        assert!(!pages.busy());
+        pages.update(1, 1, 1, 800, None);
+        assert!(!pages.busy());
+        assert!(pages.error(1, 800).is_none());
+    }
+
     #[test]
     fn strip_crosses_mixed_page_sizes_one_row_at_a_time_and_marks_the_whole_pane() {
         use crate::scan::flow::Viewport;
@@ -210,10 +324,10 @@ mod tests {
             )
         });
         for (n, height) in [(1, 180), (2, 120), (3, 240)] {
-            pages.cache.put(
-                (n, 240),
-                Ok(Picture::new(DynamicImage::new_rgb8(120, height))),
-            );
+            pages
+                .cache
+                .get_or_insert_mut(n, CachedPage::default)
+                .finish(240, Ok(Picture::new(DynamicImage::new_rgb8(120, height))));
         }
         let picker = Picker::halfblocks();
         let view = Viewport {

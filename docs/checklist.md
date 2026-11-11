@@ -31,6 +31,7 @@ The table records how each reading or navigation scenario was checked. See the [
 | Choose independent themes, opacity and border style. Use help and connection settings, then restart to check persistence. | smoke-preferences |
 | Fold the tree with mouse and keyboard, open book details without adding to reading history, put a book on hold, then cancel and confirm a reset. | smoke-details |
 | Scroll text by one line. Show parts of two adjacent scanned pages and restore the saved scroll offset. | smoke-scroll |
+| Hold the PDF renderer during each zoom step. Keep the previous raster visible in single, spread and scroll modes; reuse higher resolution when reducing and repeating zoom. Preserve a readable page if refinement fails. | smoke-scan-zoom (also fails on the previous binary) and page-cache tests |
 | Jump to page 137, find text on pages 137 and 139, and see the boundary with page 138 at full width. | Release build in Kitty with a 140-page test PDF. [Page boundary screenshot](images/pdf-scroll.png) |
 | Press Q twice to return to the source chooser after saving. Reopen the book without signing in again. | smoke-progress |
 | Change the palette in a running terminal without pywal and compare the rendered background colors. | Isolated Kitty and Alacritty sessions |

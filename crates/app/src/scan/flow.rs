@@ -31,7 +31,7 @@ impl<'a> std::ops::Deref for Strip<'a> {
 impl Strip<'_> {
     fn rows(&self, n: u32) -> u32 {
         self.pages
-            .get(n, self.side)
+            .get(n)
             .map_or(u32::from(self.height.max(1)), |p| {
                 p.strip_rows(self.width, self.picker, self.crop)
             })
@@ -86,9 +86,7 @@ impl Strip<'_> {
     }
     pub fn end(&self, n: u32, f: u16) -> bool {
         self.parts(n, f).any(|(p, skip, rows, _, take)| {
-            p == self.count
-                && self.pages.get(p, self.side).is_some()
-                && skip + u32::from(take) >= rows
+            p == self.count && self.pages.get(p).is_some() && skip + u32::from(take) >= rows
         })
     }
     pub fn draw(&self, f: &mut Frame, r: Rect, n: u32, offset: u16) {
@@ -106,7 +104,7 @@ impl Strip<'_> {
                 continue;
             }
             let area = Rect::new(r.x + (r.width - self.width) / 2, r.y + y, self.width, take);
-            if let Some(p) = self.pages.get(n, self.side) {
+            if let Some(p) = self.pages.get(n) {
                 p.draw_strip(f, area, self.picker, self.crop, skip, rows);
             } else if let Some(error) = self.pages.error(n, self.side) {
                 super::pages::draw_error(f, area, n, error);

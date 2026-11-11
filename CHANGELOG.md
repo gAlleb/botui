@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- PDF and DjVu zoom keeps the current page visible while a sharper image renders in the background. Reducing or repeating a zoom level reuses the larger cached image, including in spreads and continuous scrolling. A failed refinement preserves the readable page.
+
 - **Q** now goes back one step in BookOrbit and the local library. Closing a book returns through its card to the original shelf, dashboard or search; local folders go up to the library root before leaving. Returning keeps the selected item and scroll position, including after refreshing reading progress. Back waits for an outstanding progress save instead of cancelling it.
 
 ## 0.1.7 — 2026-11-10
