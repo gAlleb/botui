@@ -404,9 +404,9 @@ impl Shelf {
             );
         }
         let (back, local) = if matches!(self.current().section, Section::Home) {
-            ("[ Quit ]", false)
+            ("[ Q Quit ]", false)
         } else {
-            ("[ Back ]", true)
+            ("[ Q Back ]", true)
         };
         self.draw_buttons(frame, inner, back, local);
     }
@@ -498,7 +498,7 @@ impl Shelf {
                 );
                 x = self.delete_collection_button.right().saturating_add(1);
             }
-            let label = "[Q Home]";
+            let label = "[Home]";
             if !matches!(self.current().section, Section::Home)
                 && inner.right().saturating_sub(x) >= label.len() as u16
             {

@@ -27,7 +27,9 @@ If a book or catalog has no cover image, BOTUI makes a [cloth jacket](images/gen
 
 **F2** opens Settings: Appearance, Reader, Library, BookOrbit, Keys, About and Legal. **?** or **F1** opens the shortcut guide for the current screen. Use **[ / ]** to switch groups or type **/** to find a key or command. The footer shortcuts are clickable.
 
-**Q** closes the book, **Q** on the shelf returns to the source chooser, and **Q** there exits. **Esc** goes up one catalog level. When launched with a single file path, closing that file ends the command.
+**Q** goes back one step. In BookOrbit: reader → book card → the shelf, dashboard or search you opened it from. In the local library: reader → folder → parent folders → library root → source chooser. Selection and scroll position are kept when you return. On the source chooser, **Q** exits BOTUI. When launched with a single file path, closing that file ends the command.
+
+**Esc** also goes back on library screens; in a reader it opens the reading menu. In a search field, **Q** is typed into the query and **Esc** closes the search. Click **Home** on a BookOrbit shelf to go straight to the source chooser.
 
 ### Local library
 

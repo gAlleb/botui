@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **Q** now goes back one step in BookOrbit and the local library. Closing a book returns through its card to the original shelf, dashboard or search; local folders go up to the library root before leaving. Returning keeps the selected item and scroll position, including after refreshing reading progress. Back waits for an outstanding progress save instead of cancelling it.
+
 ## 0.1.7 — 2026-11-10
 
 - Fixed a regression in 0.1.6 that stretched spaces between words in justified EPUB prose, especially in narrow columns and two-page spreads. Words now keep their natural spacing across page widths. Headings, right-aligned passages and code retain their layout.

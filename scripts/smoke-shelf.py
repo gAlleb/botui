@@ -446,9 +446,22 @@ def formats(term):
         if any(label in line for label in ("EPUB", "FB2", "PDF"))) >= 3)
 
 
+def source_home(term):
+    for _ in range(20):
+        frame = term.run("capture-pane", "-p", "-t", "shelf").stdout
+        if "Choose a library" in frame:
+            return
+        if "[Home]" in frame:
+            term.click("[Home]", frame)
+            term.see("Choose a library")
+            return
+        term.keys("q")
+        term.wait("Back changes the current screen", lambda f: f != frame)
+    raise AssertionError("Did not return to the source chooser")
+
+
 def quit_shelf(term):
-    if "Choose a library" not in term.run("capture-pane","-p","-t","shelf").stdout:
-        term.keys("q");term.see("Choose a library")
+    source_home(term)
     term.keys("q")
     deadline = time.monotonic() + 8
     while term.run("has-session", "-t", "shelf", required=False).returncode == 0:
@@ -481,7 +494,7 @@ def check_collections(tmp, binary, fixture):
         term.type("xxx");term.see("No matches.")
         term.keys("BSpace","BSpace","BSpace");term.see("Архивный том 101")
         term.keys("Enter");term.see("Editions")
-        term.keys("Escape");term.wait("Back restores the query", lambda f:"arhv 101" in f and "Архивный том 101" in f)
+        term.keys("q");term.wait("Q restores the query", lambda f:"arhv 101" in f and "Архивный том 101" in f)
         term.keys("Escape");term.wait("Return to list", lambda f: "Search all books" not in f and "[V Grid]" in f)
         term.keys("2");term.see("37%");assert OTHER_BOOK in term.see("Currently reading")
         term.keys("3");term.see(f"Архивный том {TOTAL}")
@@ -490,7 +503,7 @@ def check_collections(tmp, binary, fixture):
         term.see("▀")
         term.keys("Right","Enter")
         term.wait("Сетка: соседняя книга", lambda s: OTHER_BOOK in s and BOOK not in s)
-        term.keys("Escape")
+        term.keys("q")
         term.see("[V List]")
         term.run("resize-window", "-t", "shelf", "-x", "155", "-y", "32")
         term.see(COLLECTION)
@@ -619,11 +632,20 @@ def check_without_collections(tmp, binary, fixture):
         assert "▀" not in dash and "Streak Builder" in dash
         term.keys("Down", "Enter")
         term.wait("Second dashboard list row opens the recent book", lambda f: BOOK in f and "Harbor Press" in f)
-        term.keys("Escape")
+        term.click("FB2", formats(term)); term.see(FB2_MARK)
+        term.keys("Right", "q"); formats(term)
+        term.keys("q")
         dash = term.wait("Back to dashboard list", dashboard_list)
+        term.keys("Enter")
+        term.wait("Refreshed dashboard keeps the selected book", lambda f: BOOK in f and "Harbor Press" in f)
+        term.keys("q")
+        dash = term.wait("Q returns to the dashboard again", dashboard_list)
         term.click(OTHER_BOOK, dash)
         term.wait("Click opens the reading book", lambda f: OTHER_BOOK in f and "Harbor Press" in f)
-        term.keys("Escape", "1")
+        term.keys("q"); term.wait("Q from card keeps the dashboard", dashboard_list)
+        term.keys("q"); term.see("Choose a library")
+        term.keys("b"); term.wait("Dashboard reopens without signing in", dashboard_list)
+        term.keys("1")
         term.see("[V Grid]")
         term.keys("0")
         dash = term.wait("Dashboard shares catalog view", dashboard_list)

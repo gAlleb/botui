@@ -82,6 +82,7 @@ impl Picker {
 
     pub(super) fn show_collection(&mut self, name: String) -> io::Result<()> {
         let mut all = read(&file()?)?;
+        self.remember_directory();
         self.index.clear();
         self.entries = all
             .remove(&name)

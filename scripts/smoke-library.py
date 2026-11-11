@@ -100,6 +100,7 @@ def check(tmp):
         t.see("%")
         t.keys("3")
         t.see(filename)
+        t.keys("q");t.wait("Recent shelf returns to the folder", lambda f: str(lib) in f and "Fiction/" in f)
         t.keys("q");t.see("Choose a library");t.keys("q")
         for _ in range(100):
             if t.run("has-session",required=False).returncode:

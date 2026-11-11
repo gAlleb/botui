@@ -129,6 +129,18 @@ pub(super) fn load(session: &Session) -> botui_bookorbit::Result<Loaded> {
 }
 
 impl Dashboard {
+    pub(super) fn restored_shelf(
+        &self,
+        previous: &Self,
+        index: usize,
+    ) -> Option<(Range<usize>, usize)> {
+        let old = previous.strips.iter().find(|s| s.books.contains(&index))?;
+        let current = self.strips.iter().find(|s| s.title == old.title)?;
+        let next = current.books.start
+            + (index - old.books.start).min(current.books.len().saturating_sub(1));
+        Some((current.books.clone(), next))
+    }
+
     pub fn vertical(&self, index: usize, down: bool) -> usize {
         let Some((position, strip)) = self
             .strips

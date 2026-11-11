@@ -3,11 +3,14 @@ mod gallery;
 mod index;
 mod info;
 mod navigation;
+#[cfg(test)]
+mod navigation_tests;
 mod search;
 use botui_formats::FileKind;
 use info::show_info;
 
 use std::{
+    collections::HashMap,
     fs, io,
     path::{Path, PathBuf},
 };
@@ -37,6 +40,11 @@ struct Entry {
     kind: Option<FileKind>,
 }
 
+struct DirectoryPosition {
+    selected: PathBuf,
+    list: ListState,
+}
+
 pub struct Picker {
     search: Option<search::Search>,
     source: Option<crate::cache::Source>,
@@ -62,6 +70,7 @@ pub struct Picker {
     up_button: Rect,
     entries: Vec<Entry>,
     list: ListState,
+    directory_positions: HashMap<PathBuf, DirectoryPosition>,
     rows: Rect,
     exit: Rect,
     pub error: Option<String>,
@@ -105,6 +114,7 @@ impl Picker {
             up_button: Rect::default(),
             entries: Vec::new(),
             list: ListState::default(),
+            directory_positions: HashMap::new(),
             rows: Rect::default(),
             exit: Rect::default(),
             error: None,
@@ -144,7 +154,14 @@ impl Picker {
             }
         }
         entries.sort_by_cached_key(|e| (e.kind.is_some(), e.name.to_lowercase()));
+        self.remember_directory();
         self.list = ListState::default().with_selected((!entries.is_empty()).then_some(0));
+        if let Some(position) = self.directory_positions.get(dir)
+            && let Some(index) = entries.iter().position(|e| e.path == position.selected)
+        {
+            self.list = position.list;
+            self.list.select(Some(index));
+        }
         self.view = LocalView::Directory;
         self.entries = entries;
         self.dir = dir.to_owned();
@@ -152,6 +169,44 @@ impl Picker {
         self.warm_directory();
         self.error = None;
         Ok(())
+    }
+
+    fn remember_directory(&mut self) {
+        if self.view == LocalView::Directory
+            && let Some(entry) = self.list.selected().and_then(|i| self.entries.get(i))
+        {
+            self.directory_positions.insert(
+                self.dir.clone(),
+                DirectoryPosition {
+                    selected: entry.path.clone(),
+                    list: self.list,
+                },
+            );
+        }
+    }
+
+    fn up(&mut self) -> io::Result<()> {
+        let previous = self.dir.clone();
+        if let Some(parent) = previous.parent() {
+            self.load(parent)?;
+            if let Some(index) = self.entries.iter().position(|e| e.path == previous) {
+                self.list.select(Some(index));
+            }
+        }
+        Ok(())
+    }
+
+    /// Return true only when leaving the library for the source chooser.
+    fn back(&mut self) -> io::Result<bool> {
+        if self.view != LocalView::Directory {
+            self.load(&self.dir.clone())?;
+            return Ok(false);
+        }
+        if self.source.is_some() || self.dir == self.root || !self.dir.starts_with(&self.root) {
+            return Ok(true);
+        }
+        self.up()?;
+        Ok(false)
     }
 
     fn draw(&mut self, frame: &mut Frame) {
@@ -403,6 +458,7 @@ impl Picker {
         if matches!(&view, LocalView::Directory) {
             return self.load(&self.dir.clone());
         }
+        self.remember_directory();
         if view == LocalView::Reading {
             self.index.clear();
             let history = botui_store::HistoryEntry::for_root(&self.root)?;
@@ -753,7 +809,17 @@ impl Picker {
                 }
                 continue;
             }
-            if (matches!(key, Some(KeyCode::Esc | KeyCode::Backspace))
+            if matches!(key, Some(KeyCode::Esc | KeyCode::Char('q' | 'Q')))
+                || click.is_some_and(|p| self.exit.contains(p))
+            {
+                match self.back() {
+                    Ok(true) => return Ok(None),
+                    Ok(false) => (),
+                    Err(e) => self.error = Some(e.to_string()),
+                }
+                continue;
+            }
+            if (key == Some(KeyCode::Backspace)
                 || (key == Some(KeyCode::Left) && self.grid.is_none()))
                 && self.view != LocalView::Directory
             {
@@ -766,22 +832,13 @@ impl Picker {
                     || key == Some(KeyCode::Backspace)
                     || (key == Some(KeyCode::Left) && self.grid.is_none()))
             {
-                let previous = self.dir.clone();
-                if let Some(parent) = previous.parent() {
-                    match self.load(parent) {
-                        Ok(()) => {
-                            if let Some(i) = self.entries.iter().position(|e| e.path == previous) {
-                                self.list.select(Some(i));
-                            }
-                        }
-                        Err(e) => self.error = Some(e.to_string()),
-                    }
+                if let Err(e) = self.up() {
+                    self.error = Some(e.to_string());
                 }
                 continue;
             }
             let open = match e {
                 Event::Key(key) if key.kind != KeyEventKind::Release => match key.code {
-                    KeyCode::Esc | KeyCode::Char('q') => return Ok(None),
                     KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                         return Ok(None);
                     }
@@ -822,12 +879,6 @@ impl Picker {
                     }
                     _ => None,
                 },
-                Event::Mouse(mouse)
-                    if mouse.kind == MouseEventKind::Down(MouseButton::Left)
-                        && self.exit.contains(Position::new(mouse.column, mouse.row)) =>
-                {
-                    return Ok(None);
-                }
                 Event::Mouse(mouse)
                     if self.rows.contains(Position::new(mouse.column, mouse.row)) =>
                 {

@@ -145,6 +145,7 @@ with tempfile.TemporaryDirectory() as name, shelf.Fixture(False) as server:
         term.wait("Offline resumes chapter five", lambda f: f.strip().startswith("Chapter 5"))
         jump(term, 7)
         term.keys("q"); term.see("BookOrbit offline downloads")
+        term.keys("q"); term.wait("Back from offline Reading to downloads", lambda f: "BookOrbit offline downloads" in f and "Currently reading  ·" not in f)
         term.keys("q"); term.see("Choose a library")
         shelf.quit_shelf(term)
         pending = json.loads(meta.read_text())["pending"]
@@ -216,7 +217,7 @@ with tempfile.TemporaryDirectory() as name, shelf.Fixture(False) as server:
         term.wait("Choosing BookOrbit opens chapter eight", lambda f: f.strip().startswith("Chapter 8"))
         assert len(server.saved) == before + 1 and json.loads(meta.read_text())["pending"] is None
         term.keys("q"); shelf.formats(term)
-        term.keys("q"); term.see("Choose a library")
+        shelf.source_home(term)
 
         # A different revision of the same length must replace the cached edition.
         updated = chapter_book("shore")
@@ -254,7 +255,7 @@ with tempfile.TemporaryDirectory() as name, shelf.Fixture(False) as server:
         index, = (downloads / ".editions").glob("*/301.json")
         assert (downloads / json.loads(index.read_text())["name"]).read_bytes() == updated
         assert [code for _, p, code in server.requests if p.endswith("/301/serve")] == [200, 304, 200]
-        term.keys("q"); term.see("Choose a library"); term.keys("d")
+        shelf.source_home(term); term.keys("d")
         term.see(shelf.BOOK); term.keys("DC"); term.see("Remove from this device?")
         copies = set(downloads.glob("*.epub"))
         assert len(copies) >= 1

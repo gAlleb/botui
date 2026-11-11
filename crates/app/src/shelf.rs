@@ -270,6 +270,33 @@ impl Pane {
             .and_then(|i| self.rows.get(i))
             .map(|r| r.action.clone())
     }
+    fn restore_position(&mut self, previous: Self) {
+        let old_index = previous.selection.selected().unwrap_or(0);
+        let (range, preferred_index) = match (&self.section, &previous.section) {
+            (Section::Dashboard(current), Section::Dashboard(old)) => {
+                current.restored_shelf(old, old_index)
+            }
+            _ => None,
+        }
+        .unwrap_or((0..self.rows.len(), old_index));
+        let action = previous.action();
+        let index = self
+            .rows
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| range.contains(i))
+            .filter(|(_, row)| match (&action, &row.action) {
+                (Some(Command::Files(a)), Command::Files(b)) => a.id == b.id,
+                (Some(Command::Books(a, _)), Command::Books(b, _)) => a == b,
+                _ => false,
+            })
+            .min_by_key(|(i, _)| i.abs_diff(preferred_index))
+            .map(|(i, _)| i)
+            .or_else(|| (!self.rows.is_empty()).then(|| preferred_index.min(self.rows.len() - 1)));
+        self.selection = previous.selection;
+        self.selection.select(index);
+        self.live_search = previous.live_search;
+    }
 }
 
 enum Loaded {
@@ -319,6 +346,7 @@ enum Loaded {
 
 #[derive(Clone, Copy)]
 enum AfterSave {
+    Back,
     Home,
     Quit,
 }
@@ -328,6 +356,7 @@ struct Pending {
     tab: Option<Tab>,
     open_selection: bool,
     return_depth: Option<usize>,
+    restore_view: bool,
     title: &'static str,
     closing: bool,
     saving: bool,
@@ -444,6 +473,7 @@ impl Shelf {
             tab: None,
             open_selection: false,
             return_depth: None,
+            restore_view: false,
             title,
             closing: false,
             saving: false,
@@ -473,6 +503,7 @@ impl Shelf {
             tab: None,
             open_selection: false,
             return_depth: None,
+            restore_view: false,
             title,
             closing: false,
             saving: false,
@@ -911,6 +942,12 @@ impl Shelf {
         None
     }
     fn back(&mut self) -> Option<Selection> {
+        if self.pending.as_ref().is_some_and(|p| p.saving) {
+            if self.after_save.is_none() {
+                self.after_save = Some(AfterSave::Back);
+            }
+            return None;
+        }
         self.notice = None;
         if self.pending.take().is_some() {
             return None;
@@ -930,30 +967,26 @@ impl Shelf {
         {
             self.card = detail::Card::open(book.id, self.session.clone());
         }
-        if self.current().collection_changed
-            && let Section::Books {
-                scope: scope @ Scope::Collection(_),
-                ..
-            } = &self.current().section
+        if let Section::Books { scope, page, .. } = &self.current().section
+            && (self.current().collection_changed
+                || *scope == Scope::Reading && self.dirty_shelves[1])
         {
-            let scope = scope.clone();
-            self.books(scope, 0);
+            if let Some(session) = self.session.clone() {
+                let (scope, page) = (scope.clone(), *page);
+                self.fetch("Updating shelf…", move |cancel| {
+                    let books = native::refresh_books(&session, &scope, page, cancel)?;
+                    Ok(Loaded::Books(scope, books))
+                });
+            }
         } else if self.current().collection_changed
             && matches!(self.current().section, Section::Collections)
         {
             self.open_tab(Tab::Collections);
         } else if self.dirty_shelves[0] && matches!(self.current().section, Section::Dashboard(_)) {
             self.open_tab(Tab::Dashboard);
-        } else if self.dirty_shelves[1]
-            && matches!(
-                self.current().section,
-                Section::Books {
-                    scope: Scope::Reading,
-                    ..
-                }
-            )
-        {
-            self.open_tab(Tab::Reading);
+        }
+        if let Some(pending) = &mut self.pending {
+            pending.restore_view = true;
         }
         None
     }
@@ -986,6 +1019,7 @@ impl Shelf {
             tab: None,
             open_selection: false,
             return_depth: None,
+            restore_view: false,
             title: "Signing out…",
             closing: true,
             saving: false,
@@ -1447,7 +1481,13 @@ impl Shelf {
                     loaded,
                     Loaded::Moved { saved: true, .. } | Loaded::Status(..)
                 );
+                let previous = pending
+                    .restore_view
+                    .then(|| self.stack.pop().expect("refreshing an existing shelf"));
                 let selection = self.complete(loaded);
+                if let Some(previous) = previous {
+                    self.current_mut().restore_position(previous);
+                }
                 if pending.open_selection
                     && after_save.is_none()
                     && selection.is_none()
@@ -1493,6 +1533,7 @@ impl Shelf {
         if selection.is_none() {
             match after_save {
                 Some(AfterSave::Quit) => return self.end_session(true),
+                Some(AfterSave::Back) if self.login.is_none() => return self.back(),
                 Some(AfterSave::Home) if self.login.is_none() => return self.source_home(),
                 _ => (),
             }
@@ -1568,6 +1609,9 @@ impl Shelf {
         if self.pending.as_ref().is_some_and(|p| p.closing) {
             return None;
         }
+        if self.login.is_none() && click.is_some_and(|p| self.home_button.contains(p)) {
+            return self.source_home();
+        }
         if self.login.is_none()
             && self.info.is_none()
             && self.view_available()
@@ -1584,8 +1628,10 @@ impl Shelf {
             return None;
         }
         if self.pending.is_some() {
-            if matches!(key, Some(KeyCode::Char('q' | 'Q'))) {
-                return self.source_home();
+            if matches!(key, Some(KeyCode::Esc | KeyCode::Char('q' | 'Q')))
+                || click.is_some_and(|p| self.back_button.contains(p))
+            {
+                return self.back();
             }
             if self.pending.as_ref().is_some_and(|p| p.saving) {
                 if self.after_save.is_none() && matches!(self.current().section, Section::Files(_))
@@ -1611,9 +1657,6 @@ impl Shelf {
             }
             if click.is_some_and(|p| self.file_button.contains(p)) {
                 return self.apply(Command::Local);
-            }
-            if key == Some(KeyCode::Esc) || click.is_some_and(|p| self.back_button.contains(p)) {
-                return self.back();
             }
             if self.pending.as_ref().is_some_and(|job| job.tab.is_some())
                 && !self.catalog_navigation(&event, key, click)
@@ -1643,9 +1686,6 @@ impl Shelf {
             }
             return None;
         }
-        if click.is_some_and(|p| self.home_button.contains(p)) {
-            return self.source_home();
-        }
         if matches!(key, Some(KeyCode::Char('u' | 'U'))) {
             return self.apply(Command::Borders);
         }
@@ -1662,7 +1702,7 @@ impl Shelf {
         if self.info.is_some() {
             if matches!(
                 key,
-                Some(KeyCode::Esc | KeyCode::Enter | KeyCode::Backspace)
+                Some(KeyCode::Esc | KeyCode::Enter | KeyCode::Backspace | KeyCode::Char('q' | 'Q'))
             ) || click.is_some_and(|p| self.back_button.contains(p))
             {
                 return self.apply(Command::Info);
@@ -1763,8 +1803,9 @@ impl Shelf {
         let viewport = self.viewport() as isize;
         let action = match event {
             Event::Key(k) if k.kind != KeyEventKind::Release => match k.code {
-                KeyCode::Esc | KeyCode::Backspace | KeyCode::Left => Some(Command::Back),
-                KeyCode::Char('q' | 'Q') => return self.source_home(),
+                KeyCode::Esc | KeyCode::Backspace | KeyCode::Left | KeyCode::Char('q' | 'Q') => {
+                    Some(Command::Back)
+                }
                 KeyCode::Char('o') => Some(Command::Local),
                 KeyCode::Enter | KeyCode::Right => self.current().action(),
                 KeyCode::Char('r') if self.current().tail_error => {

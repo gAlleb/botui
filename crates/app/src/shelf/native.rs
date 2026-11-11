@@ -55,6 +55,31 @@ pub(super) fn fetch_books(
     })
 }
 
+pub(super) fn refresh_books(
+    session: &Session,
+    scope: &Scope,
+    last_page: u32,
+    cancel: &std::sync::atomic::AtomicBool,
+) -> botui_bookorbit::Result<BooksPage> {
+    let mut page = fetch_books(session, scope, 0)?;
+    let mut items = std::mem::take(&mut page.items);
+    while page.page < last_page
+        && (u64::from(page.page) + 1) * u64::from(page.size.max(1)) < page.total
+    {
+        if cancel.load(std::sync::atomic::Ordering::Acquire) {
+            return Err("Shelf refresh cancelled".into());
+        }
+        let next = fetch_books(session, scope, page.page + 1)?;
+        if next.page <= page.page || next.items.is_empty() {
+            break;
+        }
+        page = next;
+        items.append(&mut page.items);
+    }
+    page.items = items;
+    Ok(page)
+}
+
 pub(super) fn next_group_page(page: &super::DirectoryPage) -> Option<u32> {
     (!page.items.is_empty()
         && (u64::from(page.page) + 1) * u64::from(page.size.max(1)) < page.total)

@@ -45,7 +45,10 @@ pub(super) fn entries(ctx: Context, p: &Settings) -> Vec<Entry> {
                     ("V / U / F", "Grid or list / borders / background"),
                     ("Enter / click", "Open the selected item"),
                     ("F6", "Focus navigation; ←/→ fold or expand groups"),
-                    ("Q / Esc", "Return to source chooser / back one level"),
+                    (
+                        "Q / Esc",
+                        "Back to the previous screen; Q on the start screen quits",
+                    ),
                     ("PgUp/PgDn", "Move through the shelf"),
                     (
                         "C",
@@ -66,6 +69,10 @@ pub(super) fn entries(ctx: Context, p: &Settings) -> Vec<Entry> {
             Context::Local => (
                 "Local library",
                 &[
+                    (
+                        "Q / Esc",
+                        "Back to the folder, then its parents; leave at the library root",
+                    ),
                     ("F6", "Focus the folder tree or return to the books"),
                     (
                         "← / →",

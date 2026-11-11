@@ -12,6 +12,38 @@ spec.loader.exec_module(splitters)
 shelf = splitters.shelf
 
 
+def check_back(home, grid):
+    library = home / "Library"
+    part = library / "Vol-39" / "Part"
+    part.mkdir(parents=True)
+    for i in range(39):
+        (library / f"Vol-{i:02}").mkdir()
+    book = "Lighthouse.fb2"
+    shutil.copyfile(ROOT / "examples/first-light.fb2", part / book)
+    config = home / "config/botui/config.toml"
+    config.parent.mkdir(parents=True)
+    config.write_text(f"local_grid = {str(grid).lower()}\nzen = true\n")
+    term = shelf.Terminal(home, ROOT / "target/debug/botui", args=["--local", str(library)])
+    try:
+        term.see("Vol-00/")
+        term.keys("End"); term.see("Vol-39/")
+        term.keys("Enter"); term.see("Part/")
+        term.keys("Enter"); term.wait("Book in nested folder", lambda f: book in f or "До первого парома" in f)
+        term.keys("Enter"); term.see("Почта на пристани")
+        term.keys("q"); term.wait("Reader returns to its folder", lambda f: "Local library" in f and (book in f or "До первого парома" in f))
+        term.keys("q"); term.see("Part/")
+        term.keys("q"); term.see("Vol-39/")
+        # The selected folder is still visible; Enter must reopen it without scrolling.
+        term.keys("Enter"); term.see("Part/")
+        term.keys("3"); term.wait("Recent shelf", lambda f: "Recently added" in f and (book in f or "До первого парома" in f))
+        term.keys("q"); term.see("Part/")
+        term.click("[ Q Back ]", term.see("[ Q Back ]")); term.see("Vol-39/")
+        term.keys("q"); term.see("Choose a library")
+        shelf.quit_shelf(term)
+    finally:
+        term.run("kill-server", required=False)
+
+
 def check(home):
     library = home / "Library"
     amber = library / "Fiction" / "Amber"
@@ -100,6 +132,9 @@ def check(home):
 
 
 if __name__ == "__main__":
+    for grid in [False, True]:
+        with tempfile.TemporaryDirectory(prefix="botui-local-back-") as tmp:
+            check_back(Path(tmp), grid)
     with tempfile.TemporaryDirectory(prefix="botui-local-tree-") as tmp:
         check(Path(tmp))
-    print("Passed local folder expansion, mouse and keyboard opening, pinned shelves, resize and saved root.")
+    print("Passed Q/Back through nested folders and shelves, saved selection, folder expansion, mouse/keyboard opening, resize and saved root.")

@@ -62,7 +62,7 @@ def exercise(tmp, f):
         t.keys("l");t.see("No reading sessions recorded");t.keys("Escape");t.see("Editions")
         t.keys("2");t.wait("Reset title absent",lambda a:"Currently reading" in a and s.OTHER_BOOK not in a)
         assert len([v for v in f.requests if v[1].endswith('/reset-reading-state')])==1
-        t.keys("q");t.see("Choose a library");t.keys("q")
+        s.quit_shelf(t)
     finally:t.run("kill-server",required=False)
 if __name__=="__main__":
     with tempfile.TemporaryDirectory(prefix="botui-card-") as d,s.Fixture(False) as f:

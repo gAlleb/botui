@@ -36,8 +36,9 @@ def run(name,f):
         # Closing the reader and immediately leaving the shelf must finish its pending save.
         f.progress[302]['text']['cfi']=f.marks[302][-1]['cfi']
         t.click('FB2',s.formats(t));t.see('Обратный рейс');t.keys('o');t.see('Sections:');t.keys('Home','Enter')
-        t.see(s.FB2_MARK);t.keys('q','q');t.see("Choose a library")
+        t.see(s.FB2_MARK);t.keys('q','q');s.all_books(t)
         assert f.saved==[302,302],f.saved
+        s.source_home(t)
         before=sum(1 for method,path,status in f.requests if method=="POST" and path.endswith("/auth/login") and status==200)
         t.keys('b');t.see('Continue reading')
         assert sum(1 for method,path,status in f.requests if method=="POST" and path.endswith("/auth/login") and status==200)==before
