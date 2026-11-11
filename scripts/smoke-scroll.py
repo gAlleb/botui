@@ -25,12 +25,38 @@ def text_scroll(d):
     try:
         t.see('Passage 001');t.keys('3');state=t.see('Scroll ·');first=re.findall(r'Passage \d+',state)
         t.keys('Down');second=t.wait('Line scroll keeps neighboring passages',lambda a:first[0] not in a and first[2] in a);assert len(set(first)&set(re.findall(r'Passage \d+',second)))>2
+        t.keys('Up');t.wait('Up restores first row',lambda a: re.findall(r'Passage \d+',a)==first)
+        wheel(t,65);t.wait('Wheel defaults to exactly one line',lambda a:a==second)
         t.keys('PageDown');last=t.wait('Page scroll advances',lambda a:first[2] not in a and 'Passage' in a)
         at=re.findall(r'Passage \d+',last)[0];t.keys('2','3');t.see(at);stop(t)
         assert saved(d)['scrolling']
         t=start(d,file);t.see(at)
         for _ in range(18):t.keys('PageDown')
         t.see('Passage 099');stop(t);assert saved(d)['finished']
+    finally:t.run('kill-server',required=False)
+
+def wheel(t,button):
+    data=f'\033[<{button};70;12M'
+    t.run('send-keys','-t','shelf','-H',*[f'{b:02x}' for b in data.encode()])
+
+def configured_wheel(d):
+    d.mkdir();file=d/'scroll.fb2'
+    file.write_text('<FictionBook><body><section>'+''.join(f'<p>Wheel passage {i:03}.</p>' for i in range(100))+'</section></body></FictionBook>')
+    (d/'config/botui').mkdir(parents=True)
+    (d/'config/botui/config.toml').write_text('scroll_lines = 3\n')
+    t=start(d,file)
+    try:
+        t.see('Wheel passage');t.keys('3');first=t.see('Scroll')
+        t.keys('Down','Down','Down');third=t.wait('Three keyboard lines',lambda f:'Wheel passage 002' in f and f!=first)
+        t.keys('Up','Up','Up');t.wait('Return to starting slice',lambda f:f==first)
+        wheel(t,65);t.wait('Configured wheel equals three single lines',lambda f:f==third)
+        t.keys('F2');t.see('Appearance');t.click('Reader',t.see('Appearance'))
+        frame=t.see('Mouse wheel step');t.click('Mouse wheel step',frame)
+        t.see('1–12');t.keys('C-u','1','Enter');t.see('Mouse wheel step');t.keys('Escape');t.see('Scroll')
+        before=t.run('capture-pane','-p','-t','shelf').stdout
+        t.keys('Down');after=t.wait('One arrow after settings',lambda f:f!=before and 'Scroll' in f)
+        t.keys('Up');t.wait('Arrow reverse',lambda f:f==before)
+        wheel(t,65);t.wait('Setting takes effect in the open book',lambda f:f==after)
     finally:t.run('kill-server',required=False)
 def scan_scroll(d,file):
     d.mkdir();t=start(d,file)
@@ -50,6 +76,10 @@ def scan_scroll(d,file):
                 both=True;break
         assert both,('No sheet transition',file.suffix,samples)
         assert '········' in a, 'No dotted separator between physical sheets'
+        t.keys('Down');one=t.wait('One scan line',lambda f:f!=a and '········' in f)
+        t.keys('Up');t.wait('Scan line restored',lambda f:f==a)
+        wheel(t,65);t.wait('PDF/DjVu wheel equals one scan line',lambda f:f==one)
+        t.keys('Up');t.wait('Transition restored',lambda f:f==a)
         # Jump away and back to the exact same slice spanning the two sheets.
         t.keys('p');t.see('Go to page');t.keys('3','Enter');t.see('3 / 3')
         t.keys(',');t.wait('Jump restores scroll offset',lambda a:'::::::::' in a and '########' in a)
@@ -140,7 +170,7 @@ sys.stdout.buffer.write(b'P6\\n20 30\\n255\\n'+bytes([value])*1800)
 
 if __name__=='__main__':
     with tempfile.TemporaryDirectory(prefix='botui-flow-') as tmp:
-        d=Path(tmp);slow_jump(d/'jump');damaged_sheet_and_search(d/'mixed');text_scroll(d/'text');pdf=d/'pages.pdf';pdf.write_bytes(s.pdf(True));scan_scroll(d/'pdf',pdf)
+        d=Path(tmp);slow_jump(d/'jump');damaged_sheet_and_search(d/'mixed');text_scroll(d/'text');configured_wheel(d/'wheel');pdf=d/'pages.pdf';pdf.write_bytes(s.pdf(True));scan_scroll(d/'pdf',pdf)
         if shutil.which('c44') and shutil.which('djvm'):
             sheets=[]
             for i,color in enumerate((76,204,128)):

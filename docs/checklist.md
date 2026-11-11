@@ -24,6 +24,7 @@ The table records how each reading or navigation scenario was checked. See the [
 | Search an OPDS catalog, authenticate with HTTP Basic, follow feeds and choose an edition. | smoke-sources |
 | Display actual PDF and DjVu page images, open a spread, search the text layer and jump to a page. | smoke-sources |
 | Create local notes and bookmarks, export Markdown and track time with the book open. | smoke-reader and smoke-sources |
+| Select exact text in EPUB/FB2 by mouse and keyboard, including reverse drag and dragging beyond the viewport. Copy, color, comment, search, edit, delete and export; reopen after resizing. Check dictionary arguments and named marks. | smoke-annotations, core source-range and CSS mapping tests |
 | Restore an exact BookOrbit file position, handle a conflict with another device and list a server bookmark without a location. | smoke-progress |
 | Open an edition for the first time and reuse an older offline copy. Read an EPUB from chapter 5 online to chapter 7 offline, then resume in BookOrbit. Check that the file transfers once, the two download shelves stay separate, progress syncs on reconnect and 99% can reach 100% at the same location. | smoke-offline |
 | Follow a link and return. Open a footnote and an illustration in EPUB and FB2. | smoke-resources |
@@ -87,7 +88,7 @@ The canvas regression compares grouped rendering with individual shaping cluster
 ## Next reader improvements
 
 1. **Search in scans.** Offer on-demand OCR for PDF and DjVu pages without text. Cache results per edition and page so a second search works offline.
-2. **Quoting a passage.** Let a reader select exact text with the mouse or keyboard, then copy it or attach a note to the selection. Keep both endpoints across a resize. [Bookokrat selection command](https://github.com/bugzmanov/bookokrat/blob/9c02ee3b3a0f86791b3917cb1a93436d92a8603e/src/keybindings/action.rs#L354)
+2. **Text work in PDF.** Extend EPUB/FB2 selection to PDF text-layer coordinates, keeping highlights aligned through zoom and rotation. Image-only scans need OCR first. BookOrbit annotation sync and SyncTeX are separate follow-ups.
 
 ### Follow-up checks
 

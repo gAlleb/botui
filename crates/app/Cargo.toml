@@ -9,6 +9,7 @@ publish.workspace = true
 botui-transfer = { path = "../transfer" }
 toml_edit = { version = "0.23", features = ["serde"] }
 sha2 = "0.10"
+base64 = "0.22"
 botui-core = { path = "../core" }
 botui-formats = { path = "../formats" }
 botui-store = { path = "../store" }

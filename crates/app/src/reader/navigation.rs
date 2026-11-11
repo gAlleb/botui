@@ -70,13 +70,6 @@ impl Navigation {
             query: String::new(),
         }
     }
-    pub fn add_notes(&mut self, notes: &[botui_store::Note]) {
-        self.items = notes
-            .iter()
-            .map(|n| ContentsEntry::passage(n.anchor(), n.body.clone()))
-            .collect();
-        self.state.select((!self.items.is_empty()).then_some(0));
-    }
     pub fn draw(&mut self, f: &mut Frame, style: Style) {
         let area = centered(f.area(), 72, 22);
         self.draw_at(f, style, area, true);

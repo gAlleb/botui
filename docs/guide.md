@@ -120,8 +120,8 @@ Positions and notes are local.
 | EPUB and FB2 action | Controls |
 | --- | --- |
 | Turn pages | Left / Right, Page Up / Page Down, mouse wheel |
-| Single page / facing spread / continuous scroll | **1 / 2 / 3**. In scroll mode ↑/↓ move one line, the wheel moves several, and PgUp/PgDn move a screen |
-| Open menu | **M**, Esc or click the page |
+| Single page / facing spread / continuous scroll | **1 / 2 / 3**. In scroll mode ↑/↓ and the wheel move one line by default; PgUp/PgDn move a screen |
+| Open menu | **M** or Esc. Esc clears an active text selection first |
 | Adjust page width and column gap with a live preview | **W**, then click **− / +** on either row |
 | Adjust without opening the panel | **[** wider page, **]** narrower page. **{** smaller gap, **}** larger gap |
 | Zen mode / contents sidebar | **Z**. In the normal view, **Tab** changes focus |
@@ -129,7 +129,7 @@ Positions and notes are local.
 | Contents / search / links and illustrations | **O / slash / I** |
 | Theme / opaque background / border style | **T / F / U** |
 | Toggle bookmark / open bookmarks | **B / G** |
-| Write a passage note / list notes / export Markdown | **N / A / E** |
+| Highlight / comment / list annotations / export Markdown | **H / N / A / E** |
 | Jump back / forward | **, / .** |
 | Book statistics / close | **S / Q** |
 
@@ -154,6 +154,32 @@ Search, footnotes, bookmarks and BookOrbit resume use the source text even when 
 Embedded raster illustrations use the available page height. **I** opens an illustration separately. **F2 → Reader → Illustrations** switches to the separate viewer only.
 
 FB2 also preserves italic, bold and struck-through text in ordinary paragraphs. These faces do not change the text used for search or saved positions.
+
+### Select, copy and annotate EPUB or FB2
+
+Click a word to place the text cursor. Drag to select a passage, double-click for a word or triple-click for a paragraph. Drag above or below the reading area to extend the selection while scrolling. The bottom row offers the same actions with the mouse.
+
+| Action | Controls |
+| --- | --- |
+| Copy the exact quote | **Y**, or **Ctrl+C** while selected |
+| Highlight in one of five colors | **H**, choose a color, **Enter** to save |
+| Add or edit a comment | **N**; **Enter** inserts a line, **Ctrl+S** saves |
+| Open the comment at the cursor / show its body below the text | **Enter / F8** |
+| Find, edit or delete an annotation | **A**, then **/**, **N** or **Del** |
+| Export all annotations / just the filtered list | **E** in the reader / **E** in the annotation list |
+| Enable the text cursor / begin a selection / select a paragraph | **F7 / v / V** |
+| Move the cursor in normal or visual mode | **h j k l**, **w / b / e** for next word, previous word or word end |
+| Save named mark `a` / return to it | **m a / ' a** in normal mode |
+
+**Esc** clears the selection, then leaves text mode. **M** opens the reading menu. In normal mode lowercase **m** starts a named mark.
+
+Quotes use the original text, without the terminal’s line wrapping. Highlights and comments survive width changes and reopening the book. They are stored locally; BookOrbit annotation sync is not implemented. Existing passage notes remain in **A**. Markdown exports contain the quote, comment, color and source section.
+
+To remove a comment, erase all its text and save with **Ctrl+S**; this also removes its highlight. **Esc** cancels editing and keeps the saved note. A highlight created with **H** can have no comment. Use **Del** in **A** to remove either kind of annotation directly.
+
+**K** runs a dictionary or another command for the selection. Configure an argument array in `config.toml`, for example `lookup_command = ["sdcv", "-n", "{text}"]`. BOTUI substitutes the text as one argument, without a shell, and displays the result. **Esc** cancels the lookup.
+
+In continuous scrolling, the mouse wheel moves **one line per tick**. Set **F2 → Reader → Mouse wheel step** or `scroll_lines = 3` to choose a different step (1–12). This also applies to PDF and DjVu. Arrow keys still move one line and Page Up / Down move one screen.
 
 ### PDF and DjVu
 

@@ -228,6 +228,7 @@ dependencies = [
 name = "botui"
 version = "0.1.7"
 dependencies = [
+ "base64 0.22.1",
  "botui-bookorbit",
  "botui-core",
  "botui-fixed",
@@ -302,6 +303,7 @@ dependencies = [
  "roxmltree 0.21.2",
  "scraper",
  "serde_json",
+ "unicode-width",
  "xml",
  "xmlparser",
  "zip",

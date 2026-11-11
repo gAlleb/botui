@@ -124,6 +124,7 @@ pub(super) fn read_pages(
     }
     let opened = std::time::Instant::now();
     let start = n;
+    let mut scroll_lines = i32::from(prefs.scroll_lines.unwrap_or(1).clamp(1, 12));
     let mut spread = saved
         .as_ref()
         .map_or(prefs.reading_layout.as_deref() == Some("spread"), |s| {
@@ -741,8 +742,8 @@ pub(super) fn read_pages(
                     30 => 1,
                     31 => -i32::from(strip.height.max(1)),
                     32 => i32::from(strip.height.max(1)),
-                    33 => -3,
-                    _ => 3,
+                    33 => -scroll_lines,
+                    _ => scroll_lines,
                 };
                 strip.shift(&mut n, &mut offset, d);
                 if d > 0 && strip.end(n, offset) {
@@ -828,6 +829,7 @@ pub(super) fn read_pages(
                     crate::preferences::Context::Scan,
                 )?;
                 let updated = crate::settings::Settings::load()?;
+                scroll_lines = i32::from(updated.scroll_lines.unwrap_or(1).clamp(1, 12));
                 zen = updated.zen;
                 zen_progress = updated.zen_progress;
                 splitter.preferred = updated.contents_width;

@@ -6,6 +6,8 @@ Readers can resume a BookOrbit edition, browse a local library without an accoun
 
 ## Modules and responsibilities
 
+Text selection maps visible graphemes back to source block and UTF-8 offsets in `core::selection`. `reader::study` draws cursor and highlight overlays without running CSS layout again. `reader::annotations` handles editing, search, commands and export. The store updates notes by ID under a file lock and atomically replaces the record; older point notes remain readable. Named marks use the same source anchors. Ordinary reading without annotations does not build the cell map.
+
 | Module | Responsibilities |
 |---|---|
 | Application and input (`crates/app`) | File selection, focus, commands, menus, colors and restoring the terminal on exit. The Rust UI uses Ratatui and Crossterm. As in omtalk, mouse and keyboard input invoke the same actions, and the wheel scrolls the region under the pointer. |

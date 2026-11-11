@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Saving a completely cleared comment deletes the annotation. Action buttons keep consistent brackets and spacing, wrap whole in narrow windows and support mouse clicks, including **Esc Clear**.
+- EPUB and FB2 support mouse and keyboard text selection, exact clipboard quotes, five highlight colors and multiline comments. Annotations keep their source ranges through resizing, survive a restart and can be searched, edited, deleted and exported to Markdown. Existing passage notes remain accessible.
+- Click the text to place a cursor, drag to select, double-click a word or triple-click a paragraph. **F7** enables normal mode; **v / V** select text or a paragraph, **w / b / e** move by words and **m a / ' a** save and return to named mark `a`. **M / Esc** retain the reading menu; text clicks no longer open it. **K** runs a configured dictionary command for the selection.
+- Continuous scrolling now moves one line per mouse-wheel tick in EPUB, FB2, PDF and DjVu. Change **F2 → Reader → Mouse wheel step** or `scroll_lines` to choose 1–12 lines. Arrow keys remain single-line and Page Up / Down remain screen-sized.
+
 - PDF and DjVu zoom keeps the current page visible while a sharper image renders in the background. Reducing or repeating a zoom level reuses the larger cached image, including in spreads and continuous scrolling. A failed refinement preserves the readable page.
 
 - **Q** now goes back one step in BookOrbit and the local library. Closing a book returns through its card to the original shelf, dashboard or search; local folders go up to the library root before leaving. Returning keeps the selected item and scroll position, including after refreshing reading progress. Back waits for an outstanding progress save instead of cancelling it.

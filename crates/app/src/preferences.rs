@@ -189,6 +189,11 @@ fn rows(tab: usize, s: &Settings) -> Vec<SettingRow> {
                 if s.zen_progress { "On" } else { "Off" },
                 "Show the page and reading percentage at the bottom of zen mode. Toggle with %.",
             ),
+            pair(
+                "Mouse wheel step",
+                &format!("{} line(s)", s.scroll_lines.unwrap_or(1).clamp(1, 12)),
+                "Lines per wheel tick in continuous scroll, for text and PDF/DjVu. Arrow keys always move one line.",
+            ),
         ],
         2 => vec![
             pair(

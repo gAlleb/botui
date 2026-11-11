@@ -32,6 +32,10 @@ opaque_background = false
 borders = "rounded"
 preserve_printed_lines = false
 hide_inline_images = false
+# Lines per mouse-wheel tick in continuous scroll (EPUB/FB2/PDF/DjVu, 1–12).
+scroll_lines = 1
+# Dictionary or another command for selected text. Arguments are passed without a shell.
+# lookup_command = ["sdcv", "-n", "{text}"]
 
 [bookorbit]
 # Remember which navigation groups are folded on a wide screen.

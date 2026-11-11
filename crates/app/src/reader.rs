@@ -1,4 +1,7 @@
+mod annotations;
 pub(crate) mod bookmarks;
+mod clipboard;
+mod controls;
 mod layout;
 mod links;
 mod mark_list;
@@ -6,6 +9,7 @@ mod navigation;
 pub(crate) mod notes;
 mod resources;
 mod search;
+mod study;
 pub(crate) mod theme_picker;
 use navigation::{Edit, Kind};
 
@@ -29,6 +33,7 @@ use crate::{AppTerminal, centered, theme::Theme};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum Action {
+    Study(study::Command),
     Menu,
     Zen,
     ZenProgress,
@@ -73,7 +78,7 @@ enum Action {
     Resize,
 }
 
-const COMMANDS: [Action; 30] = [
+const COMMANDS: [Action; 32] = [
     Action::Resume,
     Action::Previous,
     Action::Next,
@@ -93,6 +98,8 @@ const COMMANDS: [Action; 30] = [
     Action::ZenProgress,
     Action::Background,
     Action::Borders,
+    Action::Study(study::Command::Normal),
+    Action::Study(study::Command::Highlight),
     Action::Note,
     Action::Navigate(Kind::Notes),
     Action::Export,
@@ -114,6 +121,9 @@ struct VisibleFigure {
 }
 
 struct Reader {
+    study: study::Study,
+    text_rect: Rect,
+    scroll_lines: i8,
     zen: bool,
     zen_progress: bool,
     opaque: bool,
@@ -148,6 +158,64 @@ struct Reader {
 }
 
 impl Reader {
+    fn study_input(&mut self, event: &Event) -> Option<Action> {
+        if self.menu.is_some()
+            || self.nav.is_some()
+            || self.palette.is_some()
+            || self.layout_panel.is_some()
+            || self.sidebar_focus
+        {
+            return None;
+        }
+        if let Event::Mouse(m) = event {
+            if self.sidebar_rect.contains(Position::new(m.column, m.row)) && !self.study.dragging()
+            {
+                return None;
+            }
+            if !self.study.mapping()
+                && matches!(m.kind, MouseEventKind::Down(MouseButton::Left))
+                && self.text_rect.contains(Position::new(m.column, m.row))
+            {
+                self.study.begin_frame();
+                let view = self.pager.viewport_rows();
+                for c in 0..view.columns() {
+                    let x = self.text_rect.x + c as u16 * (view.width() + view.gutter());
+                    for (y, line) in view
+                        .lines(c)
+                        .iter()
+                        .take(usize::from(self.text_rect.height))
+                        .enumerate()
+                    {
+                        self.study.map_line(
+                            &self.doc,
+                            line,
+                            Rect::new(
+                                x + line.indent,
+                                self.text_rect.y + y as u16,
+                                view.width().saturating_sub(line.indent),
+                                1,
+                            ),
+                        );
+                    }
+                }
+            }
+        }
+        let link = if let Event::Mouse(m) = event {
+            self.links.hit(Position::new(m.column, m.row))
+        } else {
+            None
+        };
+        let action = self.study.input(event, &self.doc, &mut self.pager, link);
+        if matches!(event, Event::Key(_))
+            && action == Some(Action::Resize)
+            && let Some(at) = self.study.cursor
+            && !self.study.visible(at)
+        {
+            self.pager.seek(at);
+            self.dirty = true;
+        }
+        action
+    }
     fn new(
         doc: Document,
         area: Rect,
@@ -203,6 +271,9 @@ impl Reader {
         let links = links::Links::new(&doc);
         let sidebar = navigation::Navigation::new(Kind::Contents, &doc, pager.anchor());
         Self {
+            study: study::Study::default(),
+            text_rect: Rect::default(),
+            scroll_lines: settings.scroll_lines.unwrap_or(1).clamp(1, 12) as i8,
             zen: settings.zen,
             zen_progress: settings.zen_progress,
             opaque: settings.opaque_background,
@@ -264,6 +335,8 @@ impl Reader {
         }
         let (text, actual, gap) =
             layout::geometry(page, self.mode, self.page_width, self.gap, self.zen);
+        self.text_rect = text;
+        self.study.begin_frame();
         self.pager
             .resize_for_display(&self.doc, text.width, text.height, actual, gap);
         self.search.update(&self.pager, &self.doc);
@@ -332,6 +405,9 @@ impl Reader {
                 }
                 frame.render_widget(para, rect);
                 self.links.mark_line(frame, &self.doc, line, rect);
+                if self.study.mapping() {
+                    self.study.map_line(&self.doc, line, rect);
+                }
             }
         }
         if !figures.is_empty() {
@@ -384,6 +460,8 @@ impl Reader {
         if let Some(pictures) = &mut self.illustrations {
             pictures.finish_frame();
         }
+        self.study.extend_drag();
+        self.study.paint(frame);
         if !self.zen {
             if !self.sidebar_rect.is_empty() {
                 if !self.sidebar_focus {
@@ -457,6 +535,7 @@ impl Reader {
             frame.render_widget(Clear, footer);
             self.links.controls(frame, footer, style);
         }
+        self.study.controls(frame, style);
         if let Some(panel) = &mut self.layout_panel {
             panel.draw(
                 frame,
@@ -573,8 +652,10 @@ impl Reader {
                     .into(),
                     "F",
                 ),
-                Action::Note => ("Edit passage note".into(), "N"),
-                Action::Navigate(Kind::Notes) => ("Reading notes".into(), "A"),
+                Action::Study(study::Command::Normal) => ("Text cursor / normal mode".into(), "F7"),
+                Action::Study(study::Command::Highlight) => ("Highlight selected text".into(), "H"),
+                Action::Note => ("Comment on selected text".into(), "N"),
+                Action::Navigate(Kind::Notes) => ("Highlights & notes".into(), "A"),
                 Action::Export => ("Export notes to Markdown".into(), "E"),
                 Action::Statistics => ("Reading statistics".into(), "S"),
                 Action::Settings => ("Settings".into(), "F2"),
@@ -781,9 +862,7 @@ impl Reader {
                     })
             }
             Event::Mouse(m) => match m.kind {
-                MouseEventKind::Down(MouseButton::Left) if self.menu.is_none() => {
-                    Some(Action::Menu)
-                }
+                MouseEventKind::Down(MouseButton::Left) if self.menu.is_none() => None,
                 MouseEventKind::Down(MouseButton::Left) => {
                     if self.menu_rows.contains(Position::new(m.column, m.row)) {
                         let row =
@@ -796,12 +875,12 @@ impl Reader {
                 MouseEventKind::ScrollUp
                     if self.mode == LayoutMode::Scroll && self.menu.is_none() =>
                 {
-                    Some(Action::Lines(-3))
+                    Some(Action::Lines(-self.scroll_lines))
                 }
                 MouseEventKind::ScrollDown
                     if self.mode == LayoutMode::Scroll && self.menu.is_none() =>
                 {
-                    Some(Action::Lines(3))
+                    Some(Action::Lines(self.scroll_lines))
                 }
                 MouseEventKind::ScrollUp => Some(if self.menu.is_some() {
                     Action::Up
@@ -1030,6 +1109,7 @@ impl Reader {
             | Action::Help
             | Action::Statistics
             | Action::Note
+            | Action::Study(_)
             | Action::Export
             | Action::Resize
             | Action::Close => {}
@@ -1191,6 +1271,12 @@ pub fn read_server(
         path,
         resume_anchor,
     );
+    if let Some(store) = &state {
+        match store.notes() {
+            Ok(notes) => reader.study.notes = notes,
+            Err(e) => notices.push(format!("Could not load annotations: {e}")),
+        }
+    }
     match bindings() {
         Ok(map) => reader.bindings = map,
         Err(e) => notices.push(format!("Could not read key bindings: {e}")),
@@ -1201,6 +1287,7 @@ pub fn read_server(
     let started_finished = reader.finished;
     let mut observed = (start, reader.finished);
     let mut last_save = Instant::now();
+    let mut last_drag_scroll = Instant::now();
     let mut save_after_draw = None;
     let result: io::Result<()> = (|| {
         loop {
@@ -1252,6 +1339,7 @@ pub fn read_server(
                 }
                 let images =
                     viewer.busy() || reader.illustrations.as_ref().is_some_and(|p| p.busy());
+                let drag_direction = reader.study.drag_direction(reader.text_rect);
                 let timeout = reader
                     .dirty
                     .then_some(remaining)
@@ -1264,8 +1352,19 @@ pub fn read_server(
                             .then_some(Duration::from_millis(55)),
                     )
                     .chain(images.then_some(Duration::from_millis(70)))
+                    .chain((drag_direction != 0).then_some(
+                        Duration::from_millis(80).saturating_sub(last_drag_scroll.elapsed()),
+                    ))
                     .min();
                 let Some(e) = crate::settings::read_event_for(timeout)? else {
+                    if drag_direction != 0
+                        && last_drag_scroll.elapsed() >= Duration::from_millis(80)
+                    {
+                        reader.pager.scroll(isize::from(drag_direction));
+                        reader.dirty = true;
+                        last_drag_scroll = Instant::now();
+                        break Action::Resize;
+                    }
                     if reader.pager.is_paginating() || images || (can_sync && live.is_some()) {
                         break Action::Resize;
                     }
@@ -1281,6 +1380,7 @@ pub fn read_server(
                     && reader.nav.is_none()
                     && reader.palette.is_none()
                     && reader.layout_panel.is_none()
+                    && !reader.study.dragging()
                     && let Some(result) = reader.splitter.input(&e)
                 {
                     if let Err(error) = result {
@@ -1293,6 +1393,9 @@ pub fn read_server(
                 {
                     nav.paste(value);
                     break Action::Resize;
+                }
+                if let Some(action) = reader.study_input(&e) {
+                    break action;
                 }
                 if let Some(action) = reader.input(e) {
                     break action;
@@ -1315,48 +1418,22 @@ pub fn read_server(
             }
             if matches!(
                 action,
-                Action::Note | Action::Export | Action::Navigate(Kind::Notes)
+                Action::Note | Action::Export | Action::Navigate(Kind::Notes) | Action::Study(_)
             ) {
                 reader.menu = None;
                 let action_result = (|| -> io::Result<()> {
-                    let store = state
-                        .as_ref()
-                        .ok_or_else(|| io::Error::other("Local storage is unavailable"))?;
-                    let notes = store.notes()?;
-                    match action {
-                        Action::Note => {
-                            let at = reader.pager.anchor();
-                            let initial = notes
-                                .iter()
-                                .find(|n| n.anchor() == at)
-                                .map_or("", |n| &n.body);
-                            if let Some(body) = crate::prompt::edit(
-                                term,
-                                "Passage note · clear to remove",
-                                "[ Save ↵ ]",
-                                initial,
-                                |f| reader.draw(f, None),
-                            )? {
-                                store.edit_note(at, body)?;
-                            }
-                        }
-                        Action::Export => {
-                            let path = notes::export(&reader.doc.title, Some(&reader.doc), &notes)?;
-                            notices.push(format!("Saved {}", path.display()));
-                            reader.apply(Action::Menu);
-                        }
-                        _ => {
-                            reader.apply(action);
-                            if let Some(nav) = reader.nav.as_mut() {
-                                nav.add_notes(&notes);
-                            }
-                        }
-                    }
+                    let command = match action {
+                        Action::Note => study::Command::Comment,
+                        Action::Export => study::Command::Export,
+                        Action::Study(command) => command,
+                        _ => study::Command::List,
+                    };
+                    annotations::run(term, &mut reader, state.as_ref(), command)?;
                     Ok(())
                 })();
                 if let Err(e) = action_result {
                     notices.push(e.to_string());
-                    reader.menu = Some(TableState::default().with_selected(Some(0)));
+                    reader.study.message = Some(e.to_string());
                 }
                 continue;
             }
@@ -1379,6 +1456,7 @@ pub fn read_server(
                 )?;
                 let new = crate::settings::Settings::load()?;
                 reader.zen = new.zen;
+                reader.scroll_lines = new.scroll_lines.unwrap_or(1).clamp(1, 12) as i8;
                 reader.zen_progress = new.zen_progress;
                 reader.splitter.preferred = new.contents_width;
                 if new.reading_layout != old.reading_layout {

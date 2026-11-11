@@ -21,5 +21,6 @@ math-core = "0.9"
 imagesize = "0.13"
 
 [dev-dependencies]
+unicode-width = "0.2"
 mimalloc = "0.1.52"
 serde_json = "1"

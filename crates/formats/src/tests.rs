@@ -12,6 +12,46 @@ fn archive(items: &[(&str, &str)]) -> Cursor<Vec<u8>> {
 }
 
 #[test]
+fn selected_epub_cells_keep_source_ranges_through_css_and_column_changes() {
+    use botui_core::{LayoutMode, Pager};
+    use unicode_width::UnicodeWidthStr;
+    let doc = read_book(archive(&[
+        ("META-INF/container.xml", "<container><rootfile full-path='book.opf'/></container>"),
+        ("book.opf", "<package><manifest><item id='c' href='c.xhtml' media-type='application/xhtml+xml'/></manifest><spine><itemref idref='c'/></spine></package>"),
+        ("c.xhtml", "<html><head><style>p { text-align:justify; text-indent:2em; margin:1em 0 } em { font-style:italic }</style></head><body><p>Точный <em>курсив &amp; цитата</em> после него обычные слова, пробелы и переносы. Далее 中文 и 🦉.</p><p>Второй абзац с цитатой.</p></body></html>"),
+    ]), "selection").unwrap();
+    for width in [32, 50, 90] {
+        let pager = Pager::new(&doc, width, 80, LayoutMode::Single);
+        let mut quoted = String::new();
+        for line in pager.lines(0) {
+            for cell in line.text_cells(&doc) {
+                let source = doc.text_range(cell.source);
+                let displayed: String = line
+                    .text
+                    .chars()
+                    .scan(0, |col, c| {
+                        let at = *col;
+                        *col += c.to_string().width();
+                        Some((at, c))
+                    })
+                    .filter(|(at, _)| cell.columns.contains(at))
+                    .map(|(_, c)| c)
+                    .collect();
+                assert_eq!(source, displayed, "width {width}: {}", line.text);
+                quoted.push_str(&source);
+            }
+        }
+        for word in ["Точный", "курсив", "цитата", "Второй", "中文", "🦉"]
+        {
+            assert!(
+                quoted.contains(word),
+                "{word} missing at width {width}: {quoted}"
+            );
+        }
+    }
+}
+
+#[test]
 fn imports_spine_in_order_without_front_matter_or_note_bodies() {
     let container = r#"<container xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="Book/package.opf"/></rootfiles></container>"#;
     let opf = r#"<package xmlns="http://www.idpf.org/2007/opf" xmlns:dc="http://purl.org/dc/elements/1.1/">

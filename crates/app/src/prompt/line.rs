@@ -8,6 +8,22 @@ pub(crate) struct LineInput {
 }
 
 impl LineInput {
+    pub fn split(&mut self) -> Self {
+        Self {
+            value: self.value.split_off(self.cursor),
+            cursor: 0,
+        }
+    }
+    pub fn into_text(self) -> String {
+        self.value
+    }
+    pub fn at_start(&self) -> bool {
+        self.cursor == 0
+    }
+    pub fn append(&mut self, tail: &str) {
+        self.cursor = self.value.len();
+        self.value.push_str(tail);
+    }
     pub fn new(value: &str) -> Self {
         Self {
             value: value.into(),
@@ -91,5 +107,21 @@ impl LineInput {
             Event::Paste(s) => self.insert(s.chars()),
             _ => (),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn split_keeps_new_line_cursor_before_the_existing_tail() {
+        let mut line = LineInput::new("Привет мир");
+        for _ in 0..3 {
+            line.edit(&Event::Key(KeyCode::Left.into()));
+        }
+        let mut tail = line.split();
+        tail.edit(&Event::Paste("новый ".into()));
+        assert_eq!(line.into_text(), "Привет ");
+        assert_eq!(tail.into_text(), "новый мир");
     }
 }

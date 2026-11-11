@@ -40,8 +40,11 @@ pub struct Settings {
     pub contents_width: Option<u16>,
     pub reading_layout: Option<String>,
     pub column_gap: Option<u16>,
+    pub scroll_lines: Option<u8>,
     pub bookorbit: Connection,
     pub keys: BTreeMap<char, String>,
+    /// Executable and arguments; {text} is replaced without invoking a shell.
+    pub lookup_command: Vec<String>,
 }
 thread_local! {
     static SHELL_THEME: std::cell::Cell<usize> = const {std::cell::Cell::new(0)};

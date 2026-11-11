@@ -13,8 +13,10 @@ pub use pagination::Viewport;
 pub use reference::{Reference, Target};
 use std::sync::Arc;
 mod search;
+mod selection;
 pub use location::{Locations, Run};
 pub use search::{SearchIndex, SearchMatch};
+pub use selection::{TextCell, TextRange};
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 

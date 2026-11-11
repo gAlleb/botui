@@ -100,6 +100,10 @@ pub(super) fn entries(ctx: Context, p: &Settings) -> Vec<Entry> {
                     ("C", "Open the embedded cover in your image viewer"),
                     ("← / →", "Previous / next page (or scroll)"),
                     ("1 / 2 / 3", "Single page / spread / continuous scroll"),
+                    (
+                        "Mouse wheel",
+                        "One line per tick in scroll; adjust F2 → Reader → Mouse wheel step",
+                    ),
                     ("%", "Show or hide page and progress in zen mode"),
                     ("W", "Set page width and column gap"),
                     ("[ / ]", "Widen / narrow each page"),
@@ -110,7 +114,41 @@ pub(super) fn entries(ctx: Context, p: &Settings) -> Vec<Entry> {
                     ("T / F / U", "Reader theme / background / borders"),
                     ("B / G", "Toggle bookmark / open bookmarks"),
                     ("Delete", "Remove the selected bookmark from its list"),
-                    ("N / A / E", "Edit note / show notes / export Markdown"),
+                    ("E", "Export highlights, quotes and comments to Markdown"),
+                    (
+                        "Mouse",
+                        "Click: cursor. Drag: select. Double / triple click: word / paragraph.",
+                    ),
+                    (
+                        "F7 / v / V",
+                        "Normal mode / visual selection / select paragraph",
+                    ),
+                    ("h j k l", "In normal or visual mode: move the text cursor"),
+                    (
+                        "w / b / e",
+                        "In normal or visual mode: next word / previous word / word end",
+                    ),
+                    (
+                        "Y / Ctrl+C",
+                        "Copy selected text (Ctrl+C copies when selected)",
+                    ),
+                    (
+                        "H / N / A",
+                        "Highlight / comment / searchable annotation list",
+                    ),
+                    (
+                        "Enter / F8",
+                        "Open comment at cursor / show its body beside the controls",
+                    ),
+                    ("K", "Run lookup_command for the selected text"),
+                    (
+                        "m a / ' a",
+                        "In normal mode: save named mark a / jump to mark a",
+                    ),
+                    (
+                        "Esc",
+                        "Clear selection, then leave text mode; M opens the reading menu",
+                    ),
                     ("I / S", "Links and illustrations / reading statistics"),
                     (
                         "F6 / click",
@@ -128,6 +166,10 @@ pub(super) fn entries(ctx: Context, p: &Settings) -> Vec<Entry> {
                     ("C", "Open the first page in your image viewer"),
                     ("M / Enter", "Reading menu (Esc closes the menu or book)"),
                     ("1 / 2 / 3", "Single page / spread / continuous scroll"),
+                    (
+                        "Mouse wheel",
+                        "One line per tick in scroll; adjust F2 → Reader → Mouse wheel step",
+                    ),
                     ("%", "Show or hide page and progress in zen mode"),
                     ("W / 0", "Page width controls / reset to fit"),
                     ("+ / −", "Widen / narrow the page, including below 100%"),

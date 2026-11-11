@@ -91,8 +91,15 @@ pub(super) fn setting(
         (1, 1) => {
             Settings::update(|s| s.zen = !s.zen)?;
         }
-        (1, 2) | (1, 3) | (1, 7) => {
-            let (val, lo, hi, title) = if i == 2 {
+        (1, 2) | (1, 3) | (1, 7) | (1, 11) => {
+            let (val, lo, hi, title) = if i == 11 {
+                (
+                    u16::from(p.scroll_lines.unwrap_or(1).clamp(1, 12)),
+                    1,
+                    12,
+                    "Mouse wheel step · 1–12 lines",
+                )
+            } else if i == 2 {
                 (
                     p.page_width.unwrap_or(78),
                     32,
@@ -116,7 +123,9 @@ pub(super) fn setting(
                     )));
                 };
                 Settings::update(|s| {
-                    if i == 2 {
+                    if i == 11 {
+                        s.scroll_lines = Some(n as u8)
+                    } else if i == 2 {
                         s.page_width = Some(n)
                     } else if i == 7 {
                         s.paragraph_indent = n as u8;

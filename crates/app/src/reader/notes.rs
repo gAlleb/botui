@@ -21,13 +21,29 @@ pub fn export(title: &str, doc: Option<&Document>, notes: &[Note]) -> io::Result
         if doc.is_none() {
             writeln!(file, "## Page {}\n", a.block.saturating_add(1))?;
         }
-        if let Some(block) = doc.and_then(|d| d.blocks.get(a.block)) {
+        if !note.quote.is_empty() {
+            for line in note.quote.lines() {
+                writeln!(file, "> {line}")?;
+            }
+            writeln!(file)?;
+        } else if let Some(block) = doc.and_then(|d| d.blocks.get(a.block)) {
             let quote = block
                 .text
                 .get(a.byte..)
                 .filter(|s| !s.is_empty())
                 .unwrap_or(&block.text);
             writeln!(file, "> {}\n", quote.chars().take(240).collect::<String>())?;
+        }
+        if let Some(c) = note.color {
+            writeln!(file, "Highlight: {}\n", c.label())?;
+        }
+        if let Some(d) = doc
+            && let Some(chapter) = d
+                .contents
+                .iter()
+                .rfind(|c| c.anchor().is_some_and(|at| at <= a))
+        {
+            writeln!(file, "Section: {}\n", chapter.title)?;
         }
         writeln!(file, "{}\n", note.body)?;
     }
