@@ -281,6 +281,11 @@ impl Study {
         }
         self.keys.reset();
     }
+    pub fn finish_annotation(&mut self) {
+        self.previous_selection = self.selection.take().or(self.previous_selection);
+        self.visual = None;
+        self.keys.reset();
+    }
     fn vim(
         &mut self,
         edit: crate::vim::Edit,
@@ -312,9 +317,9 @@ impl Study {
             }
             V::Reselect => {
                 self.selection = self.previous_selection;
-                self.visual = self.selection;
+                self.visual = self.selection.and_then(|r| doc.character_at(r.start));
                 if let Some(r) = self.selection {
-                    self.cursor = Some(r.end);
+                    self.cursor = Some(doc.move_text(r.end, false, false));
                 }
             }
             V::Search(forward) => {
@@ -576,6 +581,40 @@ fn highlight(color: HighlightColor) -> Style {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn saving_annotation_leaves_normal_and_gv_restores_exact_range() {
+        use crate::vim::{Edit, Motion};
+        let doc = Document {
+            blocks: vec![botui_core::Block {
+                text: "Alpha bravo charlie".into(),
+                heading: false,
+            }],
+            ..Default::default()
+        };
+        let mut pager = Pager::new(&doc, 30, 10, botui_core::LayoutMode::Single);
+        let mut study = Study::default();
+        study.toggle_normal(Anchor { block: 0, byte: 0 });
+        study.vim(Edit::Visual, &doc, &mut pager);
+        study.vim(Edit::Move(Motion::EndWord, 1), &doc, &mut pager);
+        let selection = study.selection;
+        assert_eq!(doc.text_range(selection.unwrap()), "Alpha");
+        study.finish_annotation();
+        assert!(study.normal);
+        study.vim(Edit::Move(Motion::Right, 1), &doc, &mut pager);
+        assert!(
+            study.selection.is_none(),
+            "saved selection must not reappear on movement"
+        );
+        study.vim(Edit::Reselect, &doc, &mut pager);
+        assert_eq!(study.selection, selection);
+        assert_eq!(
+            study.cursor.unwrap().byte,
+            4,
+            "gv must land inside the selection"
+        );
+        study.vim(Edit::Move(Motion::Left, 1), &doc, &mut pager);
+        assert_eq!(doc.text_range(study.selection.unwrap()), "Alph");
+    }
     fn quote(command: &str, at: Anchor) -> String {
         let doc = Document {
             blocks: vec![

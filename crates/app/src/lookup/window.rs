@@ -30,6 +30,9 @@ pub fn test(term: &mut AppTerminal, p: Profile) -> io::Result<()> {
     } else {
         p.target_language.clone()
     };
+    // A connection test must contact the provider, even after a successful lookup.
+    let test_key = key(&p, "hello", "auto", &target);
+    CACHE.with(|c| c.borrow_mut().retain(|(k, _)| k != &test_key));
     let _ = run(term, "hello", vec![p], 0, "auto".into(), target, |_| {})?;
     Ok(())
 }
@@ -224,7 +227,8 @@ fn run(
                     "Choose connection",
                     &profiles.iter().map(|p| p.name.clone()).collect::<Vec<_>>(),
                     index,
-                )? {
+                )? && i != index
+                {
                     index = i;
                     target = if profiles[i].target_language.is_empty() {
                         default_target.clone()

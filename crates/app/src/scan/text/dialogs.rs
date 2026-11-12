@@ -265,6 +265,11 @@ impl Text {
                     continue;
                 }
             }
+            if filtering && matches!(e, Event::Paste(_)) {
+                query.edit(&e);
+                selected = 0;
+                continue;
+            }
             let Event::Key(k) = e else {
                 continue;
             };
@@ -287,6 +292,10 @@ impl Text {
                 KeyCode::Down | KeyCode::Char('j') => {
                     selected = (selected + 1).min(notes.len().saturating_sub(1))
                 }
+                KeyCode::Home => selected = 0,
+                KeyCode::End => selected = notes.len().saturating_sub(1),
+                KeyCode::PageUp => selected = selected.saturating_sub(rows.height as usize),
+                KeyCode::PageDown => selected = selected.saturating_add(rows.height as usize),
                 KeyCode::Char('/') => filtering = true,
                 KeyCode::Enter => {
                     if let Some(n) = note {
@@ -296,7 +305,7 @@ impl Text {
                         })));
                     }
                 }
-                KeyCode::Char('n' | 'h') => {
+                KeyCode::Char('n' | 'N' | 'h' | 'H') => {
                     if let Some(n) = note {
                         if n.pdf_regions.is_empty() {
                             if let Some(body) = crate::prompt::edit(
@@ -309,7 +318,13 @@ impl Text {
                                 self.notes = store.edit_note(n.anchor(), body)?;
                             }
                         } else {
-                            self.edit(term, store, saved, Some(n), k.code == KeyCode::Char('h'))?;
+                            self.edit(
+                                term,
+                                store,
+                                saved,
+                                Some(n),
+                                matches!(k.code, KeyCode::Char('h' | 'H')),
+                            )?;
                         }
                     }
                 }
@@ -325,16 +340,16 @@ impl Text {
                         self.notes = store.delete_note(&n.id)?;
                     }
                 }
-                KeyCode::Char('y') => {
+                KeyCode::Char('y' | 'Y') => {
                     if let Some(n) = note {
                         self.message = crate::reader::clipboard::copy(&n.quote)?.into();
                     }
                 }
-                KeyCode::Char('e') => {
+                KeyCode::Char('e' | 'E') => {
                     let output = crate::reader::notes::export(
                         &path.file_stem().unwrap_or_default().to_string_lossy(),
                         None,
-                        &self.notes,
+                        &notes,
                     )?;
                     self.message = format!("Saved {}", output.display());
                 }

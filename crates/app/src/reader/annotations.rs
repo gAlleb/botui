@@ -129,7 +129,7 @@ fn edit(
         )?;
         "Annotation saved on this device"
     };
-    reader.study.selection = None;
+    reader.study.finish_annotation();
     reader.study.cursor = Some(range.start);
     reader.study.message = Some(message.into());
     Ok(())

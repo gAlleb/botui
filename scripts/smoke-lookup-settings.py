@@ -80,6 +80,9 @@ url = "https://example.org/opds"
         assert p['provider'] == 'http' and p['description'] == 'My own optional description'
         assert p['headers']['Authorization'] == 'Bearer {key}'
         assert requests == [({'word': 'hello', 'language': 'en'}, 'Bearer fixture-only-secret')], requests
+        click('My HTTP dictionary'); t.keys('End'); click('Test connection with')
+        t.see('Custom definition: hello'); assert len(requests) == 2, 'Connection test reused cached success'
+        t.keys('Escape'); t.keys('Escape'); t.see('+ Add dictionary')
         click('My HTTP dictionary'); t.keys('Home'); click('Description'); replace('')
         frame = t.see('Description'); assert 'My own optional description' not in frame
         # A small window scrolls the fields; bottom actions remain reachable.

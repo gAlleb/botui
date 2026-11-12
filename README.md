@@ -269,6 +269,27 @@ On startup, older configs gain missing dictionary/translation defaults, the Spac
 
 Both lists start empty. Choose an HTTP API, an OpenAI-compatible API or a local command, then enter your own name, optional description and connection settings. HTTP requests and response paths are configurable; examples are commented out below.
 
+### How dictionary connections work
+
+`[lookup]` contains shared settings and default connection names. Each `[[lookup.profiles]]` block defines one connection. `dictionary` and `translation` refer to its exact `name`; an empty name uses the first connection of that purpose. Remove `profiles = []` before adding profile blocks.
+
+Short and long examples use the same configuration format. Legacy providers such as `free-dictionary` have a built-in endpoint and response parser. They remain compatible; F2 creates **HTTP API**, **OpenAI-compatible API**, or **Local command** connections. A generic HTTP profile describes the service's request and response schema explicitly. Empty optional fields written by the UI may be omitted in hand-written TOML.
+
+| HTTP field | Meaning |
+| --- | --- |
+| `name`, `provider`, `endpoint` | Unique name, `"http"`, and full service URL |
+| `purpose` | `"dictionary"` (default) or `"translation"` |
+| `method`, `response_format` | Default to `"GET"` and `"json"`; only required for other values |
+| `response_path` | Path to JSON strings, e.g. `/translatedText` or `/*/shortdef/*`; `*` iterates arrays. Empty works only for a string at the JSON root |
+| `response_separator` | `"\n"` puts definitions on separate lines; the default concatenates strings without a separator |
+| `query`, `headers`, `body` | Only the parameters, headers and JSON body required by the service |
+| `api_key` / `key_command` | Choose one; the command takes precedence. HTTP sends the key only where `{key}` appears in the template |
+| `description` | Optional label for your own reference |
+
+`{text}` is the selected text, `{source}` / `{target}` are language codes, and `{key}` is the key. URL and query values are encoded automatically; JSON body placeholders belong inside strings. Language selection affects a request only when its adapter or template uses that parameter; selecting Russian does not translate an English-only dictionary.
+
+The full example below and `config.example.toml` contain **identical** profiles for Free Dictionary (HTTP), Merriam-Webster Collegiate, a custom translator, an OpenAI-compatible server and local `sdcv`. These are templates, not enabled services. Merriam-Webster needs a key for the Collegiate product; this example displays short definitions (`shortdef`), without audio or full entry formatting. [Merriam-Webster schema](https://dictionaryapi.com/products/json#sec-2.shortdef). Save the profile, select it as default and use **Test connection with ‘hello’** in F2. Testing sends a real request; leaving without saving discards profile edits.
+
 <details>
 <summary>Complete config.toml example</summary>
 
@@ -357,6 +378,12 @@ profiles = []
 
 # No built-in connections. Add your own in F2 > Dictionaries or below.
 # Remove profiles = [] before enabling any [[lookup.profiles]] blocks.
+# Minimal HTTP profile: name, provider, endpoint, response_path for nested JSON.
+# purpose defaults to "dictionary"; method defaults to GET; response_format to json.
+# description, query, headers, body, api_key and key_command are optional.
+# response_separator defaults to "" (concatenation); use "\n" for definitions.
+# command profiles need name, provider = "command" and command instead of HTTP fields.
+# OpenAI profiles need name, provider = "openai" and model; endpoint has a local default.
 # name is unique; description is optional and editable. purpose selects the group.
 # HTTP templates: {text}, {source}, {target}, {key}. URL/query values are encoded;
 # JSON string values are escaped safely. Headers are passed as configured.
@@ -375,6 +402,22 @@ profiles = []
 # response_format = "json"
 # response_path = "/*/meanings/*/definitions/*/definition"
 # response_separator = "\n"
+
+# Merriam-Webster Collegiate: short definitions, not full entries or audio.
+# Get a key for the Collegiate product: https://dictionaryapi.com/register/index
+# Official schema: https://dictionaryapi.com/products/json#sec-2.shortdef
+# [[lookup.profiles]]
+# name = "Merriam-Webster Collegiate"
+# purpose = "dictionary"
+# provider = "http"
+# endpoint = "https://www.dictionaryapi.com/api/v3/references/collegiate/json/{text}"
+# query = { key = "{key}" }
+# api_key = "YOUR-COLLEGIATE-API-KEY"
+# response_path = "/*/shortdef/*"
+# response_separator = "\n"
+# Alternative to api_key: key_command = ["pass", "show", "dictionaries/collegiate"]
+# If the API returns spelling suggestions instead of entries, this path has no text.
+# It reports "No text at the configured response path"; try another spelling.
 
 # Example only: a custom JSON translation API. Match your service's schema.
 # [[lookup.profiles]]

@@ -29,7 +29,7 @@ with tempfile.TemporaryDirectory(prefix="botui-about-") as tmp:
             x, y = (width-w)//2, (height-h)//2
             bounds = [(x,y), (x+w-1,y), (x,y+h-1), (x+w-1,y+h-1)]
             t.wait("resized settings panel", lambda f: "Interface theme" in f and corners(f) == bounds)
-            for label in ["Reading theme", "Local folder", "Password command", "Keyboard shortcuts",
+            for label in ["Reading theme", "Local folder", "Password command", "Word definitions", "Keyboard shortcuts",
                           "Terminal book reader", "BOTUI · GNU GPL", "Interface theme"]:
                 t.keys("Tab")
                 assert corners(t.see(label)) == bounds, (width, height, label)

@@ -23,9 +23,10 @@ pub fn command(
     };
     let mut child = Command::new(program)
         .args(args[1..].iter().map(|s| {
-            s.replace("{text}", text)
-                .replace("{source}", source)
-                .replace("{target}", target)
+            super::http::expand(
+                s,
+                &[("{text}", text), ("{source}", source), ("{target}", target)],
+            )
         }))
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -281,12 +282,12 @@ mod tests {
     fn command_does_not_interpret_shell_text() {
         let s = command(
             &["printf".into(), "%s".into(), "{text}".into()],
-            "$(false) '字'",
+            "$(false) '字' {source} {target}",
             "auto",
             "ru",
             &AtomicBool::new(false),
         )
         .unwrap();
-        assert_eq!(s, "$(false) '字'");
+        assert_eq!(s, "$(false) '字' {source} {target}");
     }
 }

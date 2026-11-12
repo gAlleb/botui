@@ -100,7 +100,17 @@ with tempfile.TemporaryDirectory(prefix='botui-pdf-text-') as tmp:
     t=start(d,file)
     try:
         t.wait('Restored PDF',lambda f:'▀' in f or '▄' in f)
-        t.keys('Space','a','a');t.see('Persisted PDF quote');t.keys('Space','a','y');copied(d,notes(d)[0]['quote'])
+        t.keys('Space','a','a');t.see('Persisted PDF quote')
+        # A filtered export must not leak annotations hidden by the search.
+        exports=d/'.local/share/botui/exports'
+        existing=set(exports.glob('*.md'))
+        t.keys('/');t.type('no-such-annotation');t.keys('Enter','E')
+        t.see('This book has no notes to export')
+        assert set(exports.glob('*.md'))==existing, 'Filtered export included hidden notes'
+        t.keys('Escape','Space','a','a');t.see('Persisted PDF quote');t.keys('/')
+        paste='\033[200~Persisted PDF quote\033[201~'
+        t.run('send-keys','-t','shelf','-H',*[f'{b:02x}' for b in paste.encode()])
+        t.see('Find: Persisted PDF quote');t.keys('Enter','End','Home','Y');copied(d,notes(d)[0]['quote'])
         t.keys('Delete');t.see('Delete annotation?');t.keys('Down','Enter');t.see('No annotations');assert notes(d)==[]
         t.keys('Escape','Space','q')
     finally:t.run('kill-server',required=False)

@@ -145,6 +145,62 @@ impl Config {
 mod tests {
     use super::*;
     #[test]
+    fn documented_profiles_parse_and_merriam_webster_decodes_definitions() {
+        let example = include_str!("../../../config.example.toml");
+        let mut profiles = Vec::new();
+        for block in example.split("# [[lookup.profiles]]").skip(1) {
+            let fields = block
+                .lines()
+                .map_while(|line| {
+                    if line.is_empty() {
+                        return Some("");
+                    }
+                    let line = line.strip_prefix("# ")?;
+                    let key = line.split_once(" = ")?.0;
+                    key.chars()
+                        .all(|c| c.is_ascii_lowercase() || c == '_')
+                        .then_some(line)
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
+            let profile: Profile = toml_edit::de::from_str(&fields).unwrap();
+            if profile.provider == Provider::Http {
+                http::validate(&profile).unwrap();
+            }
+            profiles.push(profile);
+        }
+        assert_eq!(profiles.len(), 5);
+        let mw = profiles
+            .iter()
+            .find(|p| p.name == "Merriam-Webster Collegiate")
+            .unwrap();
+        let request = http::request(
+            &reqwest::blocking::Client::new(),
+            mw,
+            "test word",
+            "auto",
+            "ru",
+            "fixture-key",
+        )
+        .unwrap()
+        .build()
+        .unwrap();
+        assert!(request.url().path().ends_with("/test%20word"));
+        assert_eq!(
+            request.url().query_pairs().collect::<Vec<_>>(),
+            [("key".into(), "fixture-key".into())]
+        );
+        assert_eq!(
+            http::decode(
+                mw,
+                br#"[{"shortdef":["first sense","second sense"]},{"shortdef":["another entry"]}]"#
+            )
+            .unwrap(),
+            "first sense\nsecond sense\nanother entry"
+        );
+        assert!(http::decode(mw, br#"["spelling suggestion"]"#).is_err());
+    }
+    #[test]
     fn sample_toml_and_profiles_round_trip() {
         let s: crate::settings::Settings =
             toml_edit::de::from_str(include_str!("../../../config.example.toml")).unwrap();

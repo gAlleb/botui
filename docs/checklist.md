@@ -90,8 +90,8 @@ The canvas regression compares grouped rendering with individual shaping cluster
 
 ## Next reader improvements
 
-1. **Search in scans.** Offer on-demand OCR for PDF and DjVu pages without text. Cache results per edition and page so a second search works offline.
-2. **Text work in PDF.** Extend EPUB/FB2 selection to PDF text-layer coordinates, keeping highlights aligned through zoom and rotation. Image-only scans need OCR first. BookOrbit annotation sync and SyncTeX are separate follow-ups.
+1. **BookOrbit annotation sync.** Verify range addresses, colors and offline changes; local EPUB/FB2/PDF text selection and annotations are already implemented.
+2. **SyncTeX.** A separate future feature for LaTeX sources. OCR is outside the current scope: PDF selection requires an existing text layer.
 
 ### Follow-up checks
 

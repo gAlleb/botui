@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Finish EPUB/FB2 Visual selection after saving an annotation; restore `gv` with the cursor on the final selected character. PDF annotation lists accept pasted searches, uppercase action keys and Home/End/PageUp/PageDown, and export the filtered list consistently with EPUB/FB2.
+- Connection tests always contact the provider instead of reusing cached results. Local dictionary commands preserve literal placeholder text inside a selection. Choosing the same connection preserves the language selected in the lookup window.
+- Explain minimal and optional dictionary fields, legacy adapters and generic HTTP profiles in both READMEs. Keep all configuration examples identical and add a tested Merriam-Webster Collegiate short-definition template.
+
 - Restore direct `q` / `Q` back navigation in ordinary EPUB/FB2 and PDF/DjVu reading. Closing a book returns to its source; Space submenus still go back one level without closing the book. Q also closes page-width dialogs.
 
 - Restore direct PDF/DjVu zoom with `+`, `=` and `-`. Keep `1 / 2 / 3` for single-page, spread and scroll in ordinary reading; digits remain command counts in Vim.
