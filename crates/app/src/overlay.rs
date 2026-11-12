@@ -87,17 +87,50 @@ pub(crate) fn paint(f: &mut Frame, panel: Rect, draw: impl FnOnce(&mut Frame)) {
     if crate::cover::sixel_active() {
         // Sixel repaints pixels across unchanged terminal cells. Redraw the
         // complete dialog after that transfer, not only its changed selection.
-        let area = panel.intersection(f.area());
-        for y in area.y..area.bottom() {
-            for x in area.x..area.right() {
-                f.buffer_mut()[(x, y)]
-                    .set_diff_option(ratatui::buffer::CellDiffOption::AlwaysUpdate);
-            }
-        }
+        repaint_sixel_text(f.buffer_mut(), panel);
     }
     for (pos, mut prefix, width) in transmissions {
         let cell = &mut f.buffer_mut()[pos];
         prefix.push_str(cell.symbol());
         cell.set_symbol(&prefix).set_diff_option(width);
+    }
+}
+
+fn repaint_sixel_text(buffer: &mut ratatui::buffer::Buffer, panel: Rect) {
+    use ratatui::buffer::CellDiffOption;
+    let area = panel.intersection(buffer.area);
+    for y in area.y..area.bottom() {
+        for x in area.x..area.right() {
+            let cell = &mut buffer[(x, y)];
+            // An overlay may itself contain a PDF selection image. Its escape
+            // payload is not text: keep the forced width and covered-cell skips.
+            if matches!(
+                cell.diff_option,
+                CellDiffOption::None | CellDiffOption::AlwaysUpdate
+            ) {
+                cell.set_diff_option(CellDiffOption::AlwaysUpdate);
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ratatui::buffer::{Buffer, CellDiffOption};
+    #[test]
+    fn sixel_selection_keeps_image_width_and_skips_under_text_overlays() {
+        let area = Rect::new(0, 0, 6, 2);
+        let mut buffer = Buffer::empty(area);
+        let width = CellDiffOption::ForcedWidth(std::num::NonZeroU16::new(1).unwrap());
+        buffer[(0, 0)]
+            .set_symbol("\x1bPq#0!100~\x1b\\")
+            .set_diff_option(width);
+        buffer[(1, 0)].set_diff_option(CellDiffOption::Skip);
+        buffer[(0, 1)].set_symbol("a");
+        repaint_sixel_text(&mut buffer, area);
+        assert_eq!(buffer[(0, 0)].diff_option, width);
+        assert_eq!(buffer[(1, 0)].diff_option, CellDiffOption::Skip);
+        assert_eq!(buffer[(0, 1)].diff_option, CellDiffOption::AlwaysUpdate);
     }
 }

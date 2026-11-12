@@ -209,6 +209,16 @@ impl Cache {
             }
         }
     }
+
+    /// Selection patches leave the underlying page visible until encoding finishes.
+    pub fn draw_patch(&mut self, f: &mut Frame, picture: &Picture, area: Rect, picker: &Picker) {
+        let window = [0., 0., 1., 1.];
+        self.prepare(picture, area.as_size(), picker, window);
+        let key = self.key(picture, area.as_size(), picker, window);
+        if let Some(Ok(protocol)) = self.ready.get(&key) {
+            f.render_widget(Image::new(protocol), area);
+        }
+    }
 }
 
 #[cfg(test)]

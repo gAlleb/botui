@@ -98,6 +98,7 @@ pub(super) struct Text {
     cache: BTreeMap<u32, Result<PageText, String>>,
     views: Vec<View>,
     patches: Vec<Patch>,
+    sixel: Option<super::sixel::Cache>,
     pub notes: Vec<Note>,
     pub message: String,
     buttons: Vec<(Rect, Action)>,
@@ -128,6 +129,7 @@ impl Text {
             cache: BTreeMap::new(),
             views: vec![],
             patches: vec![],
+            sixel: None,
             notes: store.and_then(|s| s.notes().ok()).unwrap_or_default(),
             message: String::new(),
             buttons: vec![],
@@ -137,9 +139,12 @@ impl Text {
         self.normal
     }
     pub fn busy(&self) -> bool {
-        self.job.is_some()
+        self.job.is_some() || self.sixel.as_ref().is_some_and(super::sixel::Cache::busy)
     }
     pub fn poll(&mut self, path: &Path) {
+        if let Some(cache) = &mut self.sixel {
+            cache.poll();
+        }
         if let Some((page, job)) = &self.job {
             match job.receiver.try_recv() {
                 Ok(text) => {
@@ -843,7 +848,14 @@ impl Text {
                     key,
                 }
             };
-            crate::overlay::paint(f, rect, |f| patch.picture.draw(f, rect, picker));
+            if picker.protocol_type() == ratatui_image::picker::ProtocolType::Sixel {
+                let cache = self.sixel.get_or_insert_with(super::sixel::Cache::new);
+                crate::overlay::paint(f, rect, |f| {
+                    cache.draw_patch(f, &patch.picture, rect, picker)
+                });
+            } else {
+                crate::overlay::paint(f, rect, |f| patch.picture.draw(f, rect, picker));
+            }
             next.push(patch);
         }
         self.patches = next;
