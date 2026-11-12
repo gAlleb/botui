@@ -10,6 +10,10 @@ use std::{
 const MAX_COVER: u64 = 8 << 20;
 pub fn cover(path: &Path) -> Result<Option<Vec<u8>>> {
     match FileKind::from_path(path) {
+        Some(FileKind::Cbz | FileKind::Cbr) => {
+            let doc = super::comic::open(path)?;
+            super::comic::image(path, &doc.image_pages[0]).map(Some)
+        }
         Some(FileKind::Epub) => {
             let mut zip = zip::ZipArchive::new(BufReader::new(File::open(path)?))?;
             let mut budget = 4 << 20;

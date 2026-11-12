@@ -268,6 +268,8 @@ fn format(mime: &str, href: &Url) -> String {
     match mime {
         "application/epub+zip" => "epub",
         "application/pdf" => "pdf",
+        "application/vnd.comicbook+zip" | "application/x-cbz" => "cbz",
+        "application/vnd.comicbook-rar" | "application/x-cbr" => "cbr",
         "image/vnd.djvu" | "image/x-djvu" => "djvu",
         "application/fb2+xml" | "application/x-fictionbook+xml" => "fb2",
         _ => href

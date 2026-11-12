@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Add built-in CBZ/CBR reading with natural page order, covers, contents, zoom, spreads, scrolling and saved page annotations. RAR decoding is embedded with optional writer, encryption, recovery and Rayon features disabled; no external unpacker is used.
+- Add an explicit PDF / image theme setting shared by F2 and the Space picker. Persist Original, Inverted or a named palette in scan_theme, independently of EPUB/FB2 theme and old per-book color flags.
+- Add Graphite, Midnight, Pine and Plum dark interface themes, plus Parchment, Sage, Dusk and Slate reading palettes in light/dark variants.
+
 - Open saved EPUB/FB2 and PDF annotations by clicking their text. Attach comments to existing highlights without creating duplicates. Show book/section position and PDF page totals in annotation lists; make color choices explicit clickable buttons with a selection marker. Clearing a comment preserves its colored highlight.
 
 - Replace the full-dialog text action chooser with a 15×8-cell context menu beside the right-clicked word/selection. Keep the book visible; support mouse selection, arrows/Enter, Escape and outside-click dismissal.

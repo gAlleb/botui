@@ -25,7 +25,7 @@ impl PageReader {
             session: None,
         }
     }
-    pub fn epub(path: &Path, members: std::sync::Arc<[String]>) -> Self {
+    pub fn images(path: &Path, members: std::sync::Arc<[String]>) -> Self {
         Self {
             plates: Some(members),
             ..Self::new(path, FileKind::Epub)
@@ -36,7 +36,7 @@ impl PageReader {
             let member = n
                 .checked_sub(1)
                 .and_then(|index| plates.get(index as usize))
-                .ok_or_else(|| io::Error::other("Page outside EPUB reading order"))?;
+                .ok_or_else(|| io::Error::other("Page outside image reading order"))?;
             let bytes = botui_formats::illustration(&self.path, member)
                 .map_err(|e| io::Error::other(e.to_string()))?;
             let mut decoder =

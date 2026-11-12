@@ -13,6 +13,7 @@ use std::time::{Duration, Instant};
 pub enum Context {
     Text,
     Pdf,
+    Images,
     Shelf,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -95,7 +96,7 @@ fn entries(context: Context, path: &str) -> Vec<Entry> {
             key('q', "Back", Char('q')),
         ];
     }
-    match path {
+    let mut items = match path {
         "lookup" => vec![
             Entry {
                 key: 'd',
@@ -164,7 +165,7 @@ fn entries(context: Context, path: &str) -> Vec<Entry> {
             key(
                 'o',
                 "Contents",
-                if context == Context::Pdf {
+                if matches!(context, Context::Pdf | Context::Images) {
                     Tab
                 } else {
                     Char('O')
@@ -181,7 +182,7 @@ fn entries(context: Context, path: &str) -> Vec<Entry> {
             key(
                 't',
                 "Theme / page colors",
-                if context == Context::Pdf {
+                if matches!(context, Context::Pdf | Context::Images) {
                     Char('V')
                 } else {
                     Char('T')
@@ -191,7 +192,18 @@ fn entries(context: Context, path: &str) -> Vec<Entry> {
             key('?', "Help", F(1)),
             key('q', "Back to library", Char('Q')),
         ],
+    };
+    if context == Context::Images {
+        if path == "notes" {
+            items.retain(|e| !matches!(e.key, 'n' | 'h' | 'y'));
+            if let Some(e) = items.iter_mut().find(|e| e.key == 'a') {
+                e.label = "All page notes";
+            }
+        } else if path.is_empty() {
+            items.retain(|e| !matches!(e.key, 'c' | 'f' | 'd'));
+        }
     }
+    items
 }
 #[derive(Default)]
 pub struct Leader {

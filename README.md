@@ -4,13 +4,13 @@
 
 **English** · [Русский](README.ru.md)
 
-BOTUI is a terminal book reader for Linux. Open an EPUB, FB2, PDF or DjVu from disk, an OPDS catalog or your BookOrbit library. Read one page at a time, open a two-page spread or scroll continuously.
+BOTUI is a terminal book reader for Linux. Open an EPUB, FB2, PDF, DjVu, CBZ or CBR from disk, an OPDS catalog or your BookOrbit library. Read one page at a time, open a two-page spread or scroll continuously.
 
 [Highlights](#highlights) · [Screenshots](#screenshots) · [Installation](#installation) · [First run](#first-run) · [User guide](docs/guide.md) · [Release notes](CHANGELOG.md)
 
 ## Highlights
 
-- EPUB, FB2, PDF and DjVu from local folders, OPDS catalogs and BookOrbit
+- EPUB, FB2, PDF, DjVu, CBZ and CBR from local folders, OPDS catalogs and BookOrbit
 - Cover grid, collections and library search as you type
 - Offline reading with BookOrbit progress sync across devices
 - Single pages, two-page spreads and continuous scrolling, with an optional contents sidebar
@@ -105,7 +105,7 @@ cargo build --release --locked -p botui --target-dir target &&
 
 | Format | Tools needed for reading |
 | --- | --- |
-| EPUB, FB2 | Built in |
+| EPUB, FB2, CBZ, CBR | Built in; no external unpacker for comics |
 | PDF | Poppler utilities (`pdfinfo`, `pdftoppm`, `pdftotext`) or Python 3 with Poppler GI and Cairo |
 | DjVu | DjVuLibre (`djvused`, `ddjvu`, `djvutxt`) |
 
@@ -311,6 +311,9 @@ max_download_mib = 4096
 
 # Reader defaults. Use "terminal" to follow your terminal's colors.
 theme = "terminal"
+# PDF/DjVu, comics and image-only EPUB: original, inverted, terminal, or a reading
+# palette ID such as sepia-light or ember-dark. F2 and Space t save the same choice.
+scan_theme = "original"
 interface_theme = "catppuccin-mocha"
 # Optional override. By default, solid Terminal paper follows the active terminal background.
 # opaque_color = "#1f2125"
@@ -500,12 +503,25 @@ Smoke tests need tmux, Python 3.11+, the PDF and DjVu helpers above, and `c44` a
 
 [Architecture](docs/architecture.md) · [Verification checklist](docs/checklist.md) · [Coverage limits](docs/checklist.md#coverage-limits)
 
-## License
+## Page appearance
 
-BOTUI and its generated book jackets use [GPL-3.0-or-later](LICENSE). Covers supplied by books and catalogs retain their original rights.
-
-PDF/DjVu: `Space t` opens a compact **Page theme** picker over the visible page. Choose **Original**, **Inverted**, Terminal or a reading palette. ↑/↓ preview the choice immediately; ←/→ choose light/dark; Enter or a mouse click applies it. Esc (or a click outside) cancels and restores the previous appearance without saving. Applying a reading palette updates `theme`; original/inverted modes retain that palette for later use. F2 is not required. Neutral paper and ink follow the reading colors; saturated illustrations retain their colors. `Space l f` controls opacity as in EPUB/FB2. F2 and library screens keep `interface_theme`.
+PDF/DjVu: `Space t` opens a compact **Page theme** picker over the visible page. Choose **Original**, **Inverted**, Terminal or a reading palette. ↑/↓ preview the choice immediately; ←/→ choose light/dark; Enter or a mouse click applies it. Esc (or a click outside) cancels and restores the previous appearance without saving. **F2 → Reader → PDF / image theme** and `Space t` save the same `scan_theme` setting: `original`, `inverted`, `terminal` or a palette ID such as `sage-dark`. It applies on reopen and to other PDF/DjVu files, comics and image-only EPUBs. Old per-book color flags do not override the config. The ordinary reading `theme` stays independent; cancelling preview saves nothing. Neutral paper and ink follow the reading colors; saturated illustrations retain their colors. `Space l f` controls opacity as in EPUB/FB2. F2 and library screens keep `interface_theme`.
 
 ### Right-click text actions
 
 Right-click a word, or right-click inside an existing selection, to open a small menu beside the pointer: **Copy, Highlight, Search, Translate, Define, Add note**. The book remains visible behind the menu. A click inside the selection preserves the entire passage; a click on another word targets that word. Search opens in-book search with the selected text (PDF starts its text-layer search). Escape or a click outside dismisses the menu; use the mouse or ↑/↓ and Enter to choose. The same actions work in EPUB, FB2 and PDF with an embedded text layer; scans without text cannot provide word actions. Translation and definitions use the connections selected in F2 → Dictionaries.
+
+
+### CBZ and CBR comics
+
+CBZ (ZIP) and CBR (RAR) use built-in decoders; no external unpacker is required. JPEG, PNG and WebP pages support natural filename order (1, 2, 10), a first-page cover, contents, zoom, rotation, spreads, scrolling, bookmarks and page notes. Reading position survives closing the book. Comics do not expose text search, dictionaries or word selection; no OCR is performed. Password-protected and multi-volume CBRs are not supported yet; individual pages are limited to 16 MiB. Compressed RAR4/RAR5 and solid variants are covered by test fixtures.
+
+### Additional palettes
+
+**F2 → Appearance → Interface theme** includes the new dark **Graphite**, **Midnight**, **Pine** and **Plum** palettes (`graphite`, `midnight`, `pine`, `plum`). Reading gains **Parchment**, **Sage**, **Dusk** and **Slate**, each with light and dark variants: for example `parchment-light`, `sage-dark`, `dusk-light` and `slate-dark`. These are available in both the ordinary reading theme picker and **PDF / image theme**.
+
+## License
+
+BOTUI and its generated book jackets use [GPL-3.0-or-later](LICENSE). Covers supplied by books and catalogs retain their original rights.
+
+RAR decoder: [rars](https://github.com/bitplane/rars), [Apache-2.0](docs/licenses/rars-Apache-2.0.txt).

@@ -17,9 +17,9 @@ def check(tmp):
         assert len(set(aligned))==1,aligned
         assert 'series' in guide and 'Sections' in guide
         # Click the wide index and navigate back by section without losing the Keys tab.
-        t.click('PDF & DjVu', guide)
+        t.click('PDF, DjVu & comics', guide)
         pdf = t.see('Navigate pages; arrows pan')
-        assert '▸ PDF & DjVu' in pdf
+        assert '▸ PDF, DjVu & comics' in pdf
         t.keys('[')
         t.see('Navigate; scroll mode')
         t.keys(']')
@@ -28,7 +28,7 @@ def check(tmp):
         t.keys('End')
         tail=t.see('column gap')
         assert 'Page layout' in tail
-        assert '▸ PDF & DjVu' not in tail
+        assert '▸ PDF, DjVu & comics' not in tail
         t.keys('Home');t.see('Open settings')
         # Wheel over the body must advance physical rows, including wrapped descriptions.
         wheel=bytes.fromhex('1b')+b'[<65;20;7M'
@@ -50,7 +50,7 @@ def check(tmp):
         t.run('resize-window','-t','shelf','-x','115','-y','40')
         # Wait for the wide layout itself; tmux can reflow the old 42-column
         # frame before BOTUI receives SIGWINCH and recalculates its hit boxes.
-        t.wait('Wide shortcut index restored', lambda f: '▸ General' in f or 'Sections' in f and 'PDF & DjVu' in f)
+        t.wait('Wide shortcut index restored', lambda f: '▸ General' in f or 'Sections' in f and 'PDF, DjVu & comics' in f)
         t.keys('Escape')
         home=t.wait('Wide source chooser',lambda f:'Inside this library' in f and '[F2 Settings]' in f)
         t.click('[F2 Settings]',home);t.see('Catppuccin Mocha');t.keys('Enter')

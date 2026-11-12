@@ -1,5 +1,6 @@
 //! Read a local book as text, independent of its catalog and of the terminal.
 
+mod comic;
 mod cover;
 mod metadata;
 pub use metadata::{BookMetadata, book_metadata};
@@ -36,6 +37,8 @@ pub enum FileKind {
     Fb2,
     Pdf,
     Djvu,
+    Cbz,
+    Cbr,
 }
 
 impl FileKind {
@@ -50,6 +53,8 @@ impl FileKind {
             ("pdf", Self::Pdf),
             ("djvu", Self::Djvu),
             ("djv", Self::Djvu),
+            ("cbz", Self::Cbz),
+            ("cbr", Self::Cbr),
         ]
         .into_iter()
         .find_map(|(suffix, kind)| ext.eq_ignore_ascii_case(suffix).then_some(kind))
@@ -60,10 +65,12 @@ impl FileKind {
             Self::Fb2 => "FB2",
             Self::Pdf => "PDF",
             Self::Djvu => "DjVu",
+            Self::Cbz => "CBZ",
+            Self::Cbr => "CBR",
         }
     }
     pub fn readable(self) -> bool {
-        matches!(self, Self::Epub | Self::Fb2)
+        matches!(self, Self::Epub | Self::Fb2 | Self::Cbz | Self::Cbr)
     }
 }
 
@@ -75,8 +82,9 @@ pub fn open_document(path: &Path) -> Result<Document> {
     match FileKind::from_path(path) {
         Some(FileKind::Epub) => open_epub(path),
         Some(FileKind::Fb2) => fb2::open(path),
+        Some(FileKind::Cbz | FileKind::Cbr) => comic::open(path),
         Some(kind) => Err(invalid(format!("No built-in viewer for {}", kind.label())).into()),
-        None => Err(invalid("Choose an EPUB or FB2 file").into()),
+        None => Err(invalid("Choose an EPUB, FB2, CBZ or CBR file").into()),
     }
 }
 

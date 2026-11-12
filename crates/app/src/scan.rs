@@ -66,8 +66,7 @@ pub(super) fn read_pages(
         .is_none()
         .then(|| worker.start(move |cancel| botui_fixed::page_count(&p, kind, cancel)));
     let prefs = crate::settings::Settings::load()?;
-    let mut reading_theme =
-        crate::theme::Theme::from_id(prefs.theme.as_deref().unwrap_or("terminal"));
+    let mut reading_theme = prefs.page_theme();
     let mut zen = prefs.zen;
     let mut zen_progress = prefs.zen_progress;
     let mut sidebar = contents::Contents::default();
@@ -155,8 +154,9 @@ pub(super) fn read_pages(
         theme: "terminal".into(),
         ..Saved::default()
     });
+    prefs.apply_page_theme(&mut checkpoint.scan_appearance);
     let mut pages = pages::Pages::new(checkpoint.scan_appearance, || match &plates {
-        Some(members) => botui_fixed::PageReader::epub(path, members.clone()),
+        Some(members) => botui_fixed::PageReader::images(path, members.clone()),
         None => botui_fixed::PageReader::new(path, kind),
     });
     let mut last_save = opened;
@@ -175,6 +175,16 @@ pub(super) fn read_pages(
     let mut leader = crate::leader::Leader::new();
     let mut palette: Option<crate::reader::theme_picker::Picker> = None;
     let selectable = kind == FileKind::Pdf && plates.is_none();
+    let image_only = plates.is_some();
+    let leader_context = if image_only {
+        crate::leader::Context::Images
+    } else {
+        crate::leader::Context::Pdf
+    };
+    let menu_items: Vec<_> = menu::ITEMS
+        .iter()
+        .filter(|(_, _, action)| !image_only || !matches!(action, 16 | 17 | 37 | 38))
+        .collect();
 
     loop {
         let preview_theme = palette
@@ -518,7 +528,7 @@ pub(super) fn read_pages(
                     let offset = focus
                         .saturating_add(1)
                         .saturating_sub(usize::from(inner.height));
-                    for (i, (label, shortcut, action)) in menu::ITEMS
+                    for (i, (label, shortcut, action)) in menu_items
                         .iter()
                         .skip(offset)
                         .enumerate()
@@ -531,8 +541,20 @@ pub(super) fn read_pages(
                             Default::default()
                         };
                         let key_width = r.width.min(10);
+                        let label = if *action == 43 {
+                            let current = if appearance.terminal_paper {
+                                reading_theme.name()
+                            } else if appearance.inverted {
+                                "Inverted".into()
+                            } else {
+                                "Original".into()
+                            };
+                            format!("Page theme · {current}")
+                        } else {
+                            (*label).to_owned()
+                        };
                         f.render_widget(
-                            Paragraph::new(*label).style(style),
+                            Paragraph::new(label).style(style),
                             Rect::new(r.x, r.y, r.width - key_width, 1),
                         );
                         f.render_widget(
@@ -554,7 +576,7 @@ pub(super) fn read_pages(
                 );
             }
             crate::settings::paint_book(f, preview_theme);
-            leader.draw(f, crate::leader::Context::Pdf);
+            leader.draw(f, leader_context);
             if let Some(p) = &mut palette {
                 p.draw_named(f, " Page theme ");
             }
@@ -609,7 +631,8 @@ pub(super) fn read_pages(
                 match edit {
                     Edit::Cancel => palette = None,
                     Edit::Accept(theme) => {
-                        match crate::settings::Settings::update(|s| s.theme = Some(theme.id())) {
+                        match crate::settings::Settings::update(|s| s.scan_theme = Some(theme.id()))
+                        {
                             Ok(_) => {
                                 reading_theme = theme;
                                 checkpoint.scan_appearance.inverted = false;
@@ -622,16 +645,21 @@ pub(super) fn read_pages(
                         }
                     }
                     Edit::Original | Edit::Inverted => {
-                        checkpoint.scan_appearance.inverted = edit == Edit::Inverted;
-                        checkpoint.scan_appearance.terminal_paper = false;
-                        message = if edit == Edit::Original {
-                            "Original colors"
+                        let id = if edit == Edit::Original {
+                            "original"
                         } else {
-                            "Inverted colors"
+                            "inverted"
+                        };
+                        match crate::settings::Settings::update(|s| s.scan_theme = Some(id.into()))
+                        {
+                            Ok(updated) => {
+                                updated.apply_page_theme(&mut checkpoint.scan_appearance);
+                                message = format!("{} colors", updated.page_theme_label());
+                                dirty = true;
+                                palette = None;
+                            }
+                            Err(e) => message = e.to_string(),
                         }
-                        .into();
-                        dirty = true;
-                        palette = None;
                     }
                     edit => p.edit(edit),
                 }
@@ -689,7 +717,7 @@ pub(super) fn read_pages(
         if menu && matches!(&e, Event::Key(k) if k.code == KeyCode::Char(' ')) {
             menu = false;
         }
-        if !menu && let Some(command) = leader.input(&e, crate::leader::Context::Pdf) {
+        if !menu && let Some(command) = leader.input(&e, leader_context) {
             let Some(c) = command else {
                 continue;
             };
@@ -781,13 +809,13 @@ pub(super) fn read_pages(
                     continue;
                 }
                 KeyCode::Down | KeyCode::Tab | KeyCode::Char('j') if menu => {
-                    focus = (focus + 1).min(menu::ITEMS.len() - 1);
+                    focus = (focus + 1).min(menu_items.len() - 1);
                     continue;
                 }
                 KeyCode::Esc | KeyCode::Char('q' | 'Q') if menu => 0,
                 KeyCode::Char(_) if menu => continue,
                 KeyCode::Char('c' | 'C') => 44,
-                KeyCode::Enter if menu => menu::ITEMS[focus].2,
+                KeyCode::Enter if menu => menu_items[focus].2,
                 KeyCode::Char('u' | 'U') => 25,
                 KeyCode::Char('b' | 'B') => 18,
                 KeyCode::Char('g') if k.modifiers.contains(KeyModifiers::CONTROL) => 24,
@@ -849,7 +877,7 @@ pub(super) fn read_pages(
                     continue;
                 }
                 MouseEventKind::ScrollDown if menu => {
-                    focus = (focus + 1).min(menu::ITEMS.len() - 1);
+                    focus = (focus + 1).min(menu_items.len() - 1);
                     continue;
                 }
                 MouseEventKind::ScrollUp if scrolling => 33,
@@ -888,6 +916,10 @@ pub(super) fn read_pages(
         message.clear();
         let old = (n, spread, scrolling, offset);
         match action {
+            16 | 17 | 37 | 38 if image_only => {
+                message = "Image-only book has no text layer".into();
+                continue;
+            }
             44 => {
                 viewer.document(path, kind);
                 continue;
@@ -1038,8 +1070,8 @@ pub(super) fn read_pages(
                     crate::preferences::Context::Scan,
                 )?;
                 let updated = crate::settings::Settings::load()?;
-                reading_theme =
-                    crate::theme::Theme::from_id(updated.theme.as_deref().unwrap_or("terminal"));
+                reading_theme = updated.page_theme();
+                updated.apply_page_theme(&mut checkpoint.scan_appearance);
                 scroll_lines = i32::from(updated.scroll_lines.unwrap_or(1).clamp(1, 12));
                 zen = updated.zen;
                 zen_progress = updated.zen_progress;

@@ -145,7 +145,7 @@ pub(super) fn entries(ctx: Context, p: &Settings) -> Vec<Entry> {
                 ],
             ),
             Context::Scan => (
-                "PDF & DjVu · reading without cursor",
+                "PDF, DjVu & comics · reading without cursor",
                 &[
                     ("Q", "Close book and return to its source"),
                     (

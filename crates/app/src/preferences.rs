@@ -200,6 +200,11 @@ fn rows(tab: usize, s: &Settings) -> Vec<SettingRow> {
                 &format!("{} ms", s.leader_delay_ms.unwrap_or(150)),
                 "Delay before command hints appear. Space combinations always execute immediately. Set 0 for instant hints.",
             ),
+            pair(
+                "PDF / image theme",
+                &s.page_theme_label(),
+                "Original, Inverted or a named palette for PDF, DjVu and comics. Space t previews and saves the same setting.",
+            ),
         ],
         2 => vec![
             pair(

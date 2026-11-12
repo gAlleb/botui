@@ -31,6 +31,31 @@ pub(super) fn setting(
     p: &Settings,
 ) -> io::Result<()> {
     match (tab, i) {
+        (1, 13) => {
+            use crate::reader::theme_picker::{Edit, Picker};
+            let mut appearance = botui_store::ScanAppearance::default();
+            p.apply_page_theme(&mut appearance);
+            let mut picker = Picker::for_scan(p.page_theme(), appearance);
+            loop {
+                term.draw(|f| picker.draw_named(f, " PDF / image theme "))?;
+                if let Some(e) = picker.input(crate::settings::read_event()?) {
+                    let id = match e {
+                        Edit::Cancel => break,
+                        Edit::Original => Some("original".into()),
+                        Edit::Inverted => Some("inverted".into()),
+                        Edit::Accept(t) => Some(t.id()),
+                        _ => {
+                            picker.edit(e);
+                            None
+                        }
+                    };
+                    if let Some(id) = id {
+                        Settings::update(|s| s.scan_theme = Some(id))?;
+                        break;
+                    }
+                }
+            }
+        }
         (1, 12) => {
             if let Some(value) = edit(
                 term,

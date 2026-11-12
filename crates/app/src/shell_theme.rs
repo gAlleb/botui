@@ -74,6 +74,10 @@ pub const ALL: &[Palette] = &[
         0x2d353b,
         0xa7c080,
     ),
+    Palette("graphite", "Graphite", 0xd8dee6, 0x16191d, 0xb7c7dc),
+    Palette("midnight", "Midnight", 0xced8e8, 0x131b2b, 0x7aa7e8),
+    Palette("pine", "Pine", 0xd8e4d9, 0x172522, 0x8fc7a5),
+    Palette("plum", "Plum", 0xe3d7e6, 0x251d2b, 0xd4a6dc),
 ];
 pub fn index(id: Option<&str>) -> usize {
     let id = id.unwrap_or("catppuccin-mocha");

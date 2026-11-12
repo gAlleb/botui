@@ -299,6 +299,9 @@ max_download_mib = 4096
 
 # Reader defaults. Use "terminal" to follow your terminal's colors.
 theme = "terminal"
+# PDF/DjVu, comics and image-only EPUB: original, inverted, terminal, or a reading
+# palette ID such as sepia-light or ember-dark. F2 and Space t save the same choice.
+scan_theme = "original"
 interface_theme = "catppuccin-mocha"
 # Optional override. By default, solid Terminal paper follows the active terminal background.
 # opaque_color = "#1f2125"
@@ -487,8 +490,17 @@ The interface can use the terminal palette or BookOrbit reader themes. **Space l
 
 The XDG config, state and data environment variables override those defaults. Local reading records use a content hash, so moving a file preserves its position.
 
-PDF/DjVu: `Space t` opens a compact **Page theme** picker over the visible page. Choose **Original**, **Inverted**, Terminal or a reading palette. ↑/↓ preview the choice immediately; ←/→ choose light/dark; Enter or a mouse click applies it. Esc (or a click outside) cancels and restores the previous appearance without saving. Applying a reading palette updates `theme`; original/inverted modes retain that palette for later use. F2 is not required. Neutral paper and ink follow the reading colors; saturated illustrations retain their colors. `Space l f` controls opacity as in EPUB/FB2. F2 and library screens keep `interface_theme`.
+PDF/DjVu: `Space t` opens a compact **Page theme** picker over the visible page. Choose **Original**, **Inverted**, Terminal or a reading palette. ↑/↓ preview the choice immediately; ←/→ choose light/dark; Enter or a mouse click applies it. Esc (or a click outside) cancels and restores the previous appearance without saving. **F2 → Reader → PDF / image theme** and `Space t` save the same `scan_theme` setting: `original`, `inverted`, `terminal` or a palette ID such as `sage-dark`. It applies on reopen and to other PDF/DjVu files, comics and image-only EPUBs. Old per-book color flags do not override the config. The ordinary reading `theme` stays independent; cancelling preview saves nothing. Neutral paper and ink follow the reading colors; saturated illustrations retain their colors. `Space l f` controls opacity as in EPUB/FB2. F2 and library screens keep `interface_theme`.
 
 ### Right-click text actions
 
 Right-click a word, or right-click inside an existing selection, to open a small menu beside the pointer: **Copy, Highlight, Search, Translate, Define, Add note**. The book remains visible behind the menu. A click inside the selection preserves the entire passage; a click on another word targets that word. Search opens in-book search with the selected text (PDF starts its text-layer search). Escape or a click outside dismisses the menu; use the mouse or ↑/↓ and Enter to choose. The same actions work in EPUB, FB2 and PDF with an embedded text layer; scans without text cannot provide word actions. Translation and definitions use the connections selected in F2 → Dictionaries.
+
+
+### CBZ and CBR comics
+
+CBZ (ZIP) and CBR (RAR) use built-in decoders; no external unpacker is required. JPEG, PNG and WebP pages support natural filename order (1, 2, 10), a first-page cover, contents, zoom, rotation, spreads, scrolling, bookmarks and page notes. Reading position survives closing the book. Comics do not expose text search, dictionaries or word selection; no OCR is performed. Password-protected and multi-volume CBRs are not supported yet; individual pages are limited to 16 MiB. Compressed RAR4/RAR5 and solid variants are covered by test fixtures.
+
+### Additional palettes
+
+**F2 → Appearance → Interface theme** includes the new dark **Graphite**, **Midnight**, **Pine** and **Plum** palettes (`graphite`, `midnight`, `pine`, `plum`). Reading gains **Parchment**, **Sage**, **Dusk** and **Slate**, each with light and dark variants: for example `parchment-light`, `sage-dark`, `dusk-light` and `slate-dark`. These are available in both the ordinary reading theme picker and **PDF / image theme**.

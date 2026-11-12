@@ -18,7 +18,7 @@ pub fn draw(f: &mut Frame, area: Rect, offset: &mut usize) -> usize {
         ),
         Line::default(),
         Line::from(
-            "Read EPUB, FB2, PDF and DjVu on a single page, in a two-page spread or with continuous scrolling.",
+            "Read EPUB, FB2, PDF, DjVu, CBZ and CBR on a single page, in a two-page spread or with continuous scrolling.",
         ),
         Line::default(),
         Line::from(
@@ -36,6 +36,7 @@ pub fn legal(f: &mut Frame, area: Rect, offset: &mut usize) -> usize {
         vec![
             Line::from("BOTUI · GNU GPL version 3 or later").bold(),
             Line::from("Read the full license with botui --license."),
+            Line::from("Built-in RAR decoding: rars (Apache-2.0). No external unpacker required."),
         ],
     )
 }

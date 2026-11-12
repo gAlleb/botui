@@ -13,6 +13,7 @@ pub(super) fn web(value: &str) -> bool {
 pub fn illustration(path: &Path, member: &str) -> Result<Vec<u8>> {
     const LIMIT: u64 = 16 << 20;
     match FileKind::from_path(path) {
+        Some(FileKind::Cbz | FileKind::Cbr) => super::comic::image(path, member),
         Some(FileKind::Epub) => {
             let mut zip = zip::ZipArchive::new(BufReader::new(File::open(path)?))?;
             let mut budget = LIMIT;

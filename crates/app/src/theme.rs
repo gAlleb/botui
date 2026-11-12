@@ -34,6 +34,10 @@ const PALETTES: &[Palette] = &[
     palette("aurora", "Aurora", Colors(0x2e3440, 0xeceff4, 0x5e81ac), Colors(0xd8dee9, 0x2e3440, 0x88c0d0)),
     palette("ocean", "Ocean", Colors(0x0a4d4d, 0xe0f7fa, 0x00838f), Colors(0xb2dfdb, 0x263238, 0x4dd0e1)),
     palette("mist", "Mist", Colors(0x4a148c, 0xf3e5f5, 0x7b1fa2), Colors(0xc7b6dd, 0x3a3150, 0xb39ddb)),
+    palette("parchment", "Parchment", Colors(0x493e2f, 0xf4ecd8, 0x80521c), Colors(0xe7dac1, 0x29241d, 0xd9b878)),
+    palette("sage", "Sage", Colors(0x293e33, 0xe5ede2, 0x2a6854), Colors(0xd6e2d2, 0x1e2b24, 0x8fc7a5)),
+    palette("dusk", "Dusk", Colors(0x453449, 0xf0e7ef, 0x805184), Colors(0xe3d3e4, 0x2a2130, 0xd4a6dc)),
+    palette("slate", "Slate", Colors(0x2e3945, 0xe7edf2, 0x315f8c), Colors(0xd3dce6, 0x1c2530, 0x91b7dd)),
     palette("amoled", "AMOLED", Colors(0x000000, 0xffffff, 0x0066cc), Colors(0xffffff, 0x000000, 0x77bbee)),
 ];
 
@@ -138,7 +142,7 @@ mod tests {
                 choices.insert(theme.id());
             }
         }
-        assert_eq!(choices.len(), 27);
+        assert_eq!(choices.len(), 1 + 2 * PALETTES.len());
         assert_eq!(
             Theme::from_id("sepia-dark").style().bg,
             Some(Color::Rgb(52, 46, 37))

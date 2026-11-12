@@ -1,6 +1,7 @@
 //! One editable TOML document. UI changes patch individual values to retain user comments.
 mod legacy;
 mod lookup_migration;
+mod scan_theme;
 use crate::connection::Connection;
 use ratatui::{Frame, style::Color};
 use serde::{Deserialize, Serialize};
@@ -30,6 +31,7 @@ pub struct Settings {
     pub hide_inline_images: bool,
     pub opaque_background: bool,
     pub theme: Option<String>,
+    pub scan_theme: Option<String>,
     pub interface_theme: Option<String>,
     pub opaque_color: Option<String>,
     pub borders: crate::appearance::BordersStyle,
@@ -157,7 +159,7 @@ fn read(path: &Path) -> io::Result<String> {
     Ok(s)
 }
 fn decode(text: &str) -> io::Result<Settings> {
-    toml_edit::de::from_str(text).map_err(|e| {
+    let settings: Settings = toml_edit::de::from_str(text).map_err(|e| {
         // TOML errors normally include the entire source line, which can contain a password.
         let line = e.span().map(|r| {
             text.as_bytes()[..r.start.min(text.len())]
@@ -173,7 +175,17 @@ fn decode(text: &str) -> io::Result<Settings> {
                 line.map_or(String::new(), |n| format!(" at line {n}"))
             ),
         )
-    })
+    })?;
+    if let Some(id) = settings.scan_theme.as_deref()
+        && !matches!(id, "original" | "inverted")
+        && crate::theme::Theme::from_id(id).id() != id
+    {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "Invalid scan_theme: use original, inverted, terminal or a reading palette ID such as sepia-dark",
+        ));
+    }
+    Ok(settings)
 }
 fn document(text: &str) -> io::Result<DocumentMut> {
     text.parse::<DocumentMut>().map_err(|e| {
@@ -261,7 +273,7 @@ fn apply(
 fn extend_config(doc: &mut DocumentMut) -> io::Result<bool> {
     let example = document(EXAMPLE)?;
     let mut changed = false;
-    for name in ["leader_delay_ms", "scroll_lines", "lookup"] {
+    for name in ["leader_delay_ms", "scroll_lines", "lookup", "scan_theme"] {
         if !doc.contains_key(name) {
             doc.insert(name, example[name].clone());
             changed = true;
@@ -431,6 +443,7 @@ fn paint_with(frame: &mut Frame, index: usize) {
 #[cfg(test)]
 mod dialog_tests {
     use super::*;
+    static PAINT_SETTINGS: std::sync::Mutex<()> = std::sync::Mutex::new(());
     use ratatui::{
         Terminal,
         backend::TestBackend,
@@ -438,6 +451,7 @@ mod dialog_tests {
     };
     #[test]
     fn scan_paper_uses_reading_theme_independently_of_interface() {
+        let _guard = PAINT_SETTINGS.lock().unwrap();
         let old_shell = SHELL_THEME.get();
         let old_opaque = OPAQUE.swap(true, Ordering::Relaxed);
         let theme = crate::theme::Theme::from_id("sepia-dark");
@@ -499,6 +513,7 @@ mod dialog_tests {
 
     #[test]
     fn reader_popups_keep_paper_and_restore_shell_context() {
+        let _guard = PAINT_SETTINGS.lock().unwrap();
         let mut term = Terminal::new(TestBackend::new(12, 4)).unwrap();
         let theme = crate::theme::Theme::at(3, true);
         let old = SHELL_THEME.replace(crate::shell_theme::index(Some("catppuccin-mocha")));

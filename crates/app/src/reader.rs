@@ -1258,15 +1258,21 @@ pub fn read_server(
     mut live: Option<&mut crate::live_progress::Live>,
 ) -> io::Result<(Option<botui_bookorbit::progress::Move>, f64)> {
     if !doc.image_pages.is_empty() {
-        // The raster page index is local to this EPUB. Its server location uses a text CFI.
+        // Image-only EPUB uses a CFI remotely; comics use physical page numbers.
+        let kind =
+            botui_formats::FileKind::from_path(path).unwrap_or(botui_formats::FileKind::Epub);
+        let comic = matches!(
+            kind,
+            botui_formats::FileKind::Cbz | botui_formats::FileKind::Cbr
+        );
         let (change, percent) = crate::scan::read_pages(
             term,
             path,
-            botui_formats::FileKind::Epub,
+            kind,
             notices,
-            None,
+            if comic { base } else { None },
             Some(doc),
-            None,
+            if comic { live } else { None },
         )?;
         return Ok((change, percent.unwrap_or_default()));
     }
