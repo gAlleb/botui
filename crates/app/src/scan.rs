@@ -9,6 +9,7 @@ mod menu;
 mod pages;
 mod paper;
 mod search;
+mod sixel;
 mod text;
 use crate::{
     AppTerminal, centered,
@@ -67,7 +68,8 @@ pub(super) fn read_pages(
         .is_none()
         .then(|| worker.start(move |cancel| botui_fixed::page_count(&p, kind, cancel)));
     let prefs = crate::settings::Settings::load()?;
-    let mut reading_theme = prefs.page_theme();
+    let comic = matches!(kind, FileKind::Cbz | FileKind::Cbr);
+    let mut reading_theme = prefs.fixed_theme(comic);
     let mut zen = prefs.zen;
     let mut zen_progress = prefs.zen_progress;
     let mut sidebar = contents::Contents::default();
@@ -157,7 +159,7 @@ pub(super) fn read_pages(
         theme: "terminal".into(),
         ..Saved::default()
     });
-    prefs.apply_page_theme(&mut checkpoint.scan_appearance);
+    prefs.apply_fixed_theme(&mut checkpoint.scan_appearance, comic);
     let mut pages = pages::Pages::new(checkpoint.scan_appearance, || match &plates {
         Some(members) => botui_fixed::PageReader::images(path, members.clone()),
         None => botui_fixed::PageReader::new(path, kind),
@@ -176,6 +178,7 @@ pub(super) fn read_pages(
     let mut dirty = false;
     let mut text = text::Text::new(store.as_ref());
     let mut leader = crate::leader::Leader::new();
+    let mut sixel: Option<sixel::Cache> = None;
     let mut palette: Option<crate::reader::theme_picker::Picker> = None;
     let selectable = kind == FileKind::Pdf && plates.is_none();
     let image_only = plates.is_some();
@@ -192,7 +195,7 @@ pub(super) fn read_pages(
     loop {
         let preview_theme = palette
             .as_ref()
-            .filter(|p| p.scan_mode().1)
+            .filter(|p| comic || p.scan_mode().1)
             .map_or(reading_theme, |p| p.preview());
         let _reading_dialogs = crate::settings::reader_dialogs(preview_theme);
         if selectable {
@@ -268,13 +271,18 @@ pub(super) fn read_pages(
         };
         let mut picker = graphics();
         let size = picker.font_size();
+        if picker.protocol_type() == ratatui_image::picker::ProtocolType::Sixel {
+            sixel.get_or_insert_with(sixel::Cache::new).poll();
+        }
         let side = (available / cols)
             .saturating_mul(size.width)
             .max(screen.height.saturating_mul(size.height))
             .clamp(240, 1600);
         let side = (u32::from(side) * u32::from(crop.percent.max(100)) / 100).min(1920) as u16;
         let mut appearance = checkpoint.scan_appearance;
-        if let Some(p) = &palette {
+        if let Some(p) = &palette
+            && !comic
+        {
             (appearance.inverted, appearance.terminal_paper) = p.scan_mode();
         }
         let paper = appearance
@@ -305,6 +313,7 @@ pub(super) fn read_pages(
                 gap,
                 crop,
                 text::rotate(region.bounds, appearance.quarter_turns),
+                picker.protocol_type() == ratatui_image::picker::ProtocolType::Sixel,
             );
         }
         let view = flow::Viewport {
@@ -466,7 +475,7 @@ pub(super) fn read_pages(
                 );
             }
             if scrolling {
-                strip.draw(f, area, shown, shown_offset);
+                strip.draw(f, area, shown, shown_offset, sixel.as_mut());
                 if selectable {
                     for (number, skip, rows, y, take) in strip.parts(shown, shown_offset) {
                         if let Some(picture) = pages.get(number) {
@@ -500,6 +509,7 @@ pub(super) fn read_pages(
                     &dimensions,
                     gap,
                     crop,
+                    picker.protocol_type() == ratatui_image::picker::ProtocolType::Sixel,
                 )
                 .into_iter()
                 .enumerate()
@@ -509,7 +519,11 @@ pub(super) fn read_pages(
                     };
                     let page_number = shown.saturating_add(i as u32);
                     if let Some(page) = pages.get(page_number) {
-                        page.draw_window(f, placement.screen, &picker, placement.window);
+                        if let Some(cache) = &mut sixel {
+                            cache.draw(page, f, placement.screen, &picker, placement.window);
+                        } else {
+                            page.draw_window(f, placement.screen, &picker, placement.window);
+                        }
                         if selectable {
                             text.page(
                                 page_number,
@@ -578,14 +592,21 @@ pub(super) fn read_pages(
                         };
                         let key_width = r.width.min(10);
                         let label = if *action == 43 {
-                            let current = if appearance.terminal_paper {
+                            let current = if comic || appearance.terminal_paper {
                                 reading_theme.name()
                             } else if appearance.inverted {
                                 "Inverted".into()
                             } else {
                                 "Original".into()
                             };
-                            format!("Page theme · {current}")
+                            format!(
+                                "{} · {current}",
+                                if comic {
+                                    "Comic background"
+                                } else {
+                                    "Page theme"
+                                }
+                            )
                         } else {
                             (*label).to_owned()
                         };
@@ -614,9 +635,57 @@ pub(super) fn read_pages(
             crate::settings::paint_book(f, preview_theme);
             leader.draw(f, leader_context);
             if let Some(p) = &mut palette {
-                p.draw_named(f, " Page theme ");
+                p.draw_named(
+                    f,
+                    if comic {
+                        " Comic background "
+                    } else {
+                        " Page theme "
+                    },
+                );
             }
         })?;
+        // Prepare the adjacent spread while the current one is being read.
+        if !scrolling && let Some(cache) = &mut sixel {
+            let area = Rect {
+                height: view.height,
+                ..body
+            };
+            for first in [
+                n.saturating_add(u32::from(cols)),
+                n.saturating_sub(u32::from(cols)),
+            ] {
+                if first == 0 || first > total.unwrap_or(0) {
+                    continue;
+                }
+                let count = u32::from(cols).min(total.unwrap_or(0) - first + 1);
+                let dimensions: Option<Vec<_>> = (first..first + count)
+                    .map(|p| pages.get(p).map(|p| p.dimensions()))
+                    .collect();
+                if let Some(dimensions) = dimensions {
+                    for (i, placement) in layout::pages(
+                        area,
+                        ratatui::layout::Size::new(size.width, size.height),
+                        &dimensions,
+                        gap,
+                        crop,
+                        true,
+                    )
+                    .into_iter()
+                    .enumerate()
+                    {
+                        if let Some(placement) = placement {
+                            cache.prepare(
+                                pages.get(first + i as u32).unwrap(),
+                                placement.screen.as_size(),
+                                &picker,
+                                placement.window,
+                            );
+                        }
+                    }
+                }
+            }
+        }
         if selectable && text.take_note_click() {
             let background = rendered.buffer.clone();
             if let Err(e) = text.run(text::Action::Comment, term, store.as_ref(), &background) {
@@ -635,7 +704,8 @@ pub(super) fn read_pages(
             }
             continue;
         }
-        let busy = viewer.busy()
+        let busy = sixel.as_ref().is_some_and(sixel::Cache::busy)
+            || viewer.busy()
             || text.busy()
             || search.busy()
             || outline_job.is_some()
@@ -667,15 +737,28 @@ pub(super) fn read_pages(
                 match edit {
                     Edit::Cancel => palette = None,
                     Edit::Accept(theme) => {
-                        match crate::settings::Settings::update(|s| s.scan_theme = Some(theme.id()))
-                        {
+                        match crate::settings::Settings::update(|s| {
+                            if comic {
+                                s.comic_background = Some(theme.id());
+                            } else {
+                                s.scan_theme = Some(theme.id());
+                            }
+                        }) {
                             Ok(_) => {
                                 reading_theme = theme;
                                 checkpoint.scan_appearance.inverted = false;
-                                checkpoint.scan_appearance.terminal_paper = true;
+                                checkpoint.scan_appearance.terminal_paper = !comic;
                                 dirty = true;
                                 palette = None;
-                                message = format!("Reading theme · {}", theme.name());
+                                message = format!(
+                                    "{} · {}",
+                                    if comic {
+                                        "Comic background"
+                                    } else {
+                                        "Reading theme"
+                                    },
+                                    theme.name()
+                                );
                             }
                             Err(e) => message = e.to_string(),
                         }
@@ -689,7 +772,7 @@ pub(super) fn read_pages(
                         match crate::settings::Settings::update(|s| s.scan_theme = Some(id.into()))
                         {
                             Ok(updated) => {
-                                updated.apply_page_theme(&mut checkpoint.scan_appearance);
+                                updated.apply_fixed_theme(&mut checkpoint.scan_appearance, comic);
                                 message = format!("{} colors", updated.page_theme_label());
                                 dirty = true;
                                 palette = None;
@@ -1020,10 +1103,11 @@ pub(super) fn read_pages(
             41..=43 => {
                 let appearance = &mut checkpoint.scan_appearance;
                 if action == 43 {
-                    palette = Some(crate::reader::theme_picker::Picker::for_scan(
-                        reading_theme,
-                        *appearance,
-                    ));
+                    palette = Some(if comic {
+                        crate::reader::theme_picker::Picker::new(reading_theme)
+                    } else {
+                        crate::reader::theme_picker::Picker::for_scan(reading_theme, *appearance)
+                    });
                     menu = false;
                     message.clear();
                     continue;
@@ -1118,8 +1202,8 @@ pub(super) fn read_pages(
                     crate::preferences::Context::Scan,
                 )?;
                 let updated = crate::settings::Settings::load()?;
-                reading_theme = updated.page_theme();
-                updated.apply_page_theme(&mut checkpoint.scan_appearance);
+                reading_theme = updated.fixed_theme(comic);
+                updated.apply_fixed_theme(&mut checkpoint.scan_appearance, comic);
                 scroll_lines = i32::from(updated.scroll_lines.unwrap_or(1).clamp(1, 12));
                 zen = updated.zen;
                 zen_progress = updated.zen_progress;

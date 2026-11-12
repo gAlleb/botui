@@ -34,6 +34,14 @@ pub(crate) fn graphics() -> Picker {
     })
 }
 
+pub(crate) fn sixel_active() -> bool {
+    GRAPHICS.with_borrow(|cache| {
+        cache
+            .as_ref()
+            .is_some_and(|(picker, _)| picker.protocol_type() == ProtocolType::Sixel)
+    })
+}
+
 pub(crate) fn resized() {
     GRAPHICS.with_borrow_mut(|cache| {
         if let Some((picker, previous)) = cache
@@ -135,7 +143,7 @@ impl Crop {
                 .unwrap_or(25)
         };
     }
-    fn span(self, n: u32) -> u32 {
+    pub(crate) fn span(self, n: u32) -> u32 {
         (u64::from(n) * 100 / u64::from(self.percent.max(100))).max(1) as u32
     }
 }

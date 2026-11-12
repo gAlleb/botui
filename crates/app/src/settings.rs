@@ -32,6 +32,7 @@ pub struct Settings {
     pub opaque_background: bool,
     pub theme: Option<String>,
     pub scan_theme: Option<String>,
+    pub comic_background: Option<String>,
     pub interface_theme: Option<String>,
     pub opaque_color: Option<String>,
     pub borders: crate::appearance::BordersStyle,
@@ -186,6 +187,14 @@ fn decode(text: &str) -> io::Result<Settings> {
             "Invalid scan_theme: use original, inverted, terminal or a reading palette ID such as sepia-dark",
         ));
     }
+    if let Some(id) = settings.comic_background.as_deref()
+        && crate::theme::Theme::from_id(id).id() != id
+    {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "Invalid comic_background: use terminal or a reading palette ID such as sepia-dark",
+        ));
+    }
     Ok(settings)
 }
 fn document(text: &str) -> io::Result<DocumentMut> {
@@ -279,6 +288,7 @@ fn extend_config(doc: &mut DocumentMut) -> io::Result<bool> {
         "scroll_lines",
         "lookup",
         "scan_theme",
+        "comic_background",
         "scan_gap",
     ] {
         if !doc.contains_key(name) {

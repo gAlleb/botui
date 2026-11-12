@@ -203,7 +203,12 @@ fn rows(tab: usize, s: &Settings) -> Vec<SettingRow> {
             pair(
                 "PDF / image theme",
                 &s.page_theme_label(),
-                "Original, Inverted or a named palette for PDF, DjVu and comics. Space t previews and saves the same setting.",
+                "Original, Inverted or a named palette for PDF, DjVu and image-only EPUB. Space t previews and saves the same setting.",
+            ),
+            pair(
+                "Comic background",
+                &s.comic_theme().name(),
+                "Background around CBZ/CBR pages. Artwork always keeps its original colors. Space t previews and saves this choice.",
             ),
         ],
         2 => vec![

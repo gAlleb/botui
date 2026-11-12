@@ -160,7 +160,11 @@ Kitty показывает обложки и страницы картинкам
 
 **F2 → Appearance → Interface theme** задаёт оформление полок, настроек и остальных экранов интерфейса. **Space t** меняет тему чтения поверх открытой страницы: ↑/↓ показывают палитру, ←/→ выбирают светлый/тёмный вариант, Enter или щелчок применяет, Escape отменяет. Начальная тема интерфейса — Catppuccin Mocha; **Terminal** использует цвета вашего терминала.
 
-Для фиксированных страниц в списке также есть **Original** и **Inverted**. Темы чтения перекрашивают нейтральные бумагу и текст, сохраняя насыщенные цвета иллюстраций. Выбор записывается в `scan_theme`, доступный также через **F2 → Reader → PDF / image theme**. Для текстового чтения сохраняется отдельный `theme`. **Space l f** переключает непрозрачный/прозрачный фон страницы; прозрачность всего окна задаётся в терминале.
+Для PDF, DjVu и EPUB из изображений в списке также есть **Original** и **Inverted**. Темы чтения перекрашивают нейтральные бумагу и текст, сохраняя насыщенные цвета иллюстраций. Выбор записывается в `scan_theme`, доступный также через **F2 → Reader → PDF / image theme**. Для текстового чтения сохраняется отдельный `theme`.
+
+**Картинки CBZ/CBR всегда сохраняют исходные цвета.** В комиксах **Space t** показывает предпросмотр только окружающего фона; **F2 → Reader → Comic background** меняет ту же настройку `comic_background`. Инверсия и перекрашивание PDF на комиксы не влияют.
+
+**Space l f** переключает непрозрачный/прозрачный фон страницы; прозрачность всего окна задаётся в терминале.
 
 ### Текст, хайлайты и заметки
 
@@ -360,9 +364,12 @@ max_download_mib = 4096
 
 # Reader defaults. Use "terminal" to follow your terminal's colors.
 theme = "terminal"
-# PDF/DjVu, comics and image-only EPUB: original, inverted, terminal, or a reading
+# PDF/DjVu and image-only EPUB: original, inverted, terminal, or a reading
 # palette ID such as sepia-light or ember-dark. F2 and Space t save the same choice.
 scan_theme = "original"
+# CBZ/CBR background only; artwork always retains its original colors.
+# Use terminal or a reading palette ID. F2 and Space t save the same choice.
+comic_background = "terminal"
 interface_theme = "catppuccin-mocha"
 # Optional override. By default, solid Terminal paper follows the active terminal background.
 # opaque_color = "#1f2125"

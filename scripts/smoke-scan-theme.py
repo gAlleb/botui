@@ -26,7 +26,7 @@ with tempfile.TemporaryDirectory(prefix='botui-scan-theme-') as tmp:
         t.see('Reading theme');assert tomllib.loads(config.read_text())['scan_theme']=='sepia-light'
         assert tomllib.loads(config.read_text())['theme']=='sepia-dark', 'PDF changed EPUB theme'
         t.keys('F2');t.see('Appearance');assert '48;2;30;30;46' in ansi()
-        t.keys('Right');t.see('Reading theme');t.keys('End');t.see('PDF / image theme')
+        t.keys('Right');t.see('Reading theme');t.keys('End','Up');t.see('PDF / image theme')
         t.keys('Enter');t.see('PDF / image theme');t.keys('Home','Down','Enter')
         t.wait('F2 choice saved',lambda _:tomllib.loads(config.read_text())['scan_theme']=='inverted')
         t.keys('Escape');t.wait('Reader restored',lambda f:'Appearance' not in f)

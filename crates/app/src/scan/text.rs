@@ -1054,6 +1054,7 @@ mod tests {
             &[picture.dimensions()],
             0,
             crop,
+            false,
         )[0]
         .unwrap();
         terminal

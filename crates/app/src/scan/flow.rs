@@ -89,7 +89,14 @@ impl Strip<'_> {
             p == self.count && self.pages.get(p).is_some() && skip + u32::from(take) >= rows
         })
     }
-    pub fn draw(&self, f: &mut Frame, r: Rect, n: u32, offset: u16) {
+    pub fn draw(
+        &self,
+        f: &mut Frame,
+        r: Rect,
+        n: u32,
+        offset: u16,
+        mut sixel: Option<&mut super::sixel::Cache>,
+    ) {
         for (n, skip, rows, y, take) in self.parts(n, offset) {
             // A single quiet row separates pages, including when the viewport starts
             // exactly at the seam. Page pixels and scroll fractions are unchanged.
@@ -105,7 +112,30 @@ impl Strip<'_> {
             }
             let area = Rect::new(r.x + (r.width - self.width) / 2, r.y + y, self.width, take);
             if let Some(p) = self.pages.get(n) {
-                p.draw_strip(f, area, self.picker, self.crop, skip, rows);
+                if let Some(cache) = &mut sixel {
+                    let (w, h) = p.dimensions();
+                    let cw = self.crop.span(w);
+                    let x = (w - cw) * u32::from(self.crop.x) / 255;
+                    let top = (u64::from(h) * u64::from(skip) / u64::from(rows))
+                        .min(u64::from(h - 1)) as u32;
+                    let end = (u64::from(h) * u64::from(skip + u32::from(take)))
+                        .div_ceil(u64::from(rows))
+                        .min(u64::from(h)) as u32;
+                    cache.draw(
+                        p,
+                        f,
+                        area,
+                        self.picker,
+                        [
+                            x as f32 / w as f32,
+                            top as f32 / h as f32,
+                            (x + cw) as f32 / w as f32,
+                            end as f32 / h as f32,
+                        ],
+                    );
+                } else {
+                    p.draw_strip(f, area, self.picker, self.crop, skip, rows);
+                }
             } else if let Some(error) = self.pages.error(n, self.side) {
                 super::pages::draw_error(f, area, n, error);
             }

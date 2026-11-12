@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Detect ZIP/RAR comic archives by their contents, including files with swapped `.cbz` / `.cbr` extensions; use the same decoder for covers and every page.
+- Keep comic artwork in its original colors. Space t and F2 → Reader → Comic background change only the surrounding background, saved independently of PDF colors in `comic_background`.
+- Fix disappearing dialogs over Foot/Sixel images, avoid resending artwork when only its background changes, and encode/cache page images off the input thread. Align facing pages in Sixel without changing Kitty, Alacritty or Ghostty rendering.
+- Verify Alacritty covers and mouse hit areas at two font sizes; check the same author/series card before and after delayed pagination.
+
 ## 0.1.9 — 2026-11-12
 
 - Give Markdown its own reading presentation: distinct heading levels, numbered and nested lists, theme-aware code/quote/table panels, horizontal rules and labeled GitHub-style alerts. Highlight Markdown examples and source view; retain source addresses for selections and annotations.

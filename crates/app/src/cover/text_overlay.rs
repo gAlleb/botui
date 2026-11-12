@@ -1,6 +1,25 @@
 //! Small raster patches keep PDF highlights out of the page renderer and its cache.
 use super::*;
 impl Picture {
+    pub(crate) fn window_encoder(
+        &self,
+        size: Size,
+        picker: Picker,
+        window: [f32; 4],
+    ) -> impl FnOnce() -> Result<Protocol, String> + Send + 'static {
+        let source = self.source.clone();
+        move || {
+            let patch = Picture::new(source).text_patch(window, size, &picker, &[]);
+            picker
+                .new_protocol(
+                    patch.source,
+                    size,
+                    Resize::Scale(Some(image::imageops::FilterType::Triangle)),
+                )
+                .map_err(|e| e.to_string())
+        }
+    }
+
     pub(crate) fn text_patch(
         &self,
         window: [f32; 4],

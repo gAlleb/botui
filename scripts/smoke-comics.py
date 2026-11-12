@@ -33,7 +33,7 @@ def run(ext, fixture=None, archive=None):
         else:
             book.write_bytes(fixture.read_bytes() if fixture else rar(items))
         config=root/'config/botui/config.toml';config.parent.mkdir(parents=True)
-        config.write_text('zen = false\nreading_layout = "single"\nscan_theme = "original"\n')
+        config.write_text('zen = false\nreading_layout = "single"\nscan_theme = "inverted"\n')
         helpers=root/'bin';helpers.mkdir()
         for name in ['bsdtar','unrar','7z','7zz','unar']:
             helper=helpers/name;helper.write_text('#!/bin/sh\necho external-unpacker-called >> "$HOME/external-unpacker"\nexit 99\n');helper.chmod(0o755)
@@ -51,14 +51,21 @@ def run(ext, fixture=None, archive=None):
             t.keys('a');frame=t.see('Page note');assert 'Highlight]' not in frame
             t.keys('p');t.see('Note');t.type('Comic page note');t.keys('Enter')
             t.keys('Space','b','a');t.see('Bookmark')
-            t.keys('Space','t');t.see('Page theme');t.keys('Home','Down','Enter');t.see('Inverted colors')
+            t.keys('Space','t');frame=t.see('Comic background')
+            assert 'Inverted' not in frame and 'Original' not in frame
+            t.keys('Home','Down','Down','Down','Left')
+            t.wait('Comic preview preserves artwork',lambda _: '20;40;220' in ansi() and '48;2;241;232;208' in ansi())
+            assert tomllib.loads(config.read_text())['comic_background']=='terminal'
+            t.keys('Escape');t.wait('Cancelled background',lambda f:'Comic background' not in f)
+            t.keys('Space','t','Home','Down','Down','Down','Left','Enter')
+            t.wait('Saved comic background',lambda _:tomllib.loads(config.read_text())['comic_background']=='sepia-light')
             assert tomllib.loads(config.read_text())['scan_theme']=='inverted'
-            t.keys('Space','t','Home','Enter');t.see('Original colors')
+            t.wait('Original pixels with saved background',lambda _: '20;40;220' in ansi())
             t.keys('q')
         finally:t.run('kill-server',required=False)
         t=start()
         try:
-            t.see('3 / 3');t.keys('Space','a','a');t.see('Comic page note');t.keys('Escape')
+            t.see('3 / 3');t.wait('Reopened original artwork',lambda _: '20;40;220' in ansi());t.keys('Space','a','a');t.see('Comic page note');t.keys('Escape')
             t.keys('Space','o');frame=t.see('Contents')
             assert frame.index('1.png') < frame.index('2 [b].png') < frame.index('10.png'),frame
             t.keys('q')

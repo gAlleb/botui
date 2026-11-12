@@ -84,6 +84,17 @@ pub(crate) fn paint(f: &mut Frame, panel: Rect, draw: impl FnOnce(&mut Frame)) {
         }
     }
     draw(f);
+    if crate::cover::sixel_active() {
+        // Sixel repaints pixels across unchanged terminal cells. Redraw the
+        // complete dialog after that transfer, not only its changed selection.
+        let area = panel.intersection(f.area());
+        for y in area.y..area.bottom() {
+            for x in area.x..area.right() {
+                f.buffer_mut()[(x, y)]
+                    .set_diff_option(ratatui::buffer::CellDiffOption::AlwaysUpdate);
+            }
+        }
+    }
     for (pos, mut prefix, width) in transmissions {
         let cell = &mut f.buffer_mut()[pos];
         prefix.push_str(cell.symbol());

@@ -169,7 +169,7 @@ pub(super) fn entries(ctx: Context, p: &Settings) -> Vec<Entry> {
                         "Mouse drag / Ctrl+C",
                         "Select / copy PDF text (text layer required; no OCR)",
                     ),
-                    ("Space t", "Original colors / inverted / match background"),
+                    ("Space t", "PDF colors; comics: background only"),
                     ("Space", "Commands below; v/V select only in Vim mode"),
                 ],
             ),

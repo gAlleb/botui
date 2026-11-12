@@ -363,7 +363,7 @@ mod tests {
         }
         strip.shift(&mut n, &mut fraction, 10);
         let mut term = Terminal::new(TestBackend::new(34, 8)).unwrap();
-        term.draw(|f| strip.draw(f, Rect::new(0, 0, 34, 8), n, fraction))
+        term.draw(|f| strip.draw(f, Rect::new(0, 0, 34, 8), n, fraction, None))
             .unwrap();
         for x in 0..34 {
             assert_eq!(term.backend().buffer()[(x, 5)].symbol(), "·");

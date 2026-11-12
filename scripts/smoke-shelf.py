@@ -411,7 +411,7 @@ class Terminal:
 
 def login(term, url, wrong_password=False):
     home = term.see("Connect to BookOrbit")
-    assert "Your TUI book reader." in home and "EPUB  ·  FB2" in home
+    assert "Your TUI book reader." in home and re.search(r"EPUB\s+·\s+FB2", home), home
     term.keys("Home")
     term.see("Browse a folder on this device")
     term.keys("Down")
@@ -589,8 +589,12 @@ def check_directory_positions(term, fixture, tab, frame):
         first = term.wait("First page of " + tab, lambda f: page(f, "Group 0024"))
         assert "Group 0025" not in first
         before = group_positions(first)
-        term.keys("Down")
+        # A click on the first batch must open the same group as a click after
+        # pagination. Release the delayed response after delivering the click.
+        term.click("Group 0021", first)
         fixture.directory_tail_ready.set()
+        term.see("Group 0021  ·  1")
+        term.keys("Escape", "Down")
         after = group_positions(term.wait("More entries in " + tab, lambda f: page(f, "Group 0025")))
         assert before == {name: after.get(name) for name in before}, (tab, before, after)
         # Use the coordinates captured before page two arrived.

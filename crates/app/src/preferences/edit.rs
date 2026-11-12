@@ -108,16 +108,36 @@ pub(super) fn setting(
                 Settings::update(|s| s.opaque_color = (!v.is_empty()).then_some(v))?;
             }
         }
-        (1, 0) => {
+        (1, 0) | (1, 14) => {
             use crate::reader::theme_picker::{Edit, Picker};
-            let mut picker = Picker::new(Theme::from_id(p.theme.as_deref().unwrap_or("terminal")));
+            let comic = i == 14;
+            let mut picker = Picker::new(if comic {
+                p.comic_theme()
+            } else {
+                Theme::from_id(p.theme.as_deref().unwrap_or("terminal"))
+            });
             loop {
-                term.draw(|f| picker.draw_named(f, " Reading theme "))?;
+                term.draw(|f| {
+                    picker.draw_named(
+                        f,
+                        if comic {
+                            " Comic background "
+                        } else {
+                            " Reading theme "
+                        },
+                    )
+                })?;
                 if let Some(e) = picker.input(crate::settings::read_event()?) {
                     match e {
                         Edit::Cancel => break,
                         Edit::Accept(t) => {
-                            Settings::update(|s| s.theme = Some(t.id()))?;
+                            Settings::update(|s| {
+                                if comic {
+                                    s.comic_background = Some(t.id());
+                                } else {
+                                    s.theme = Some(t.id());
+                                }
+                            })?;
                             break;
                         }
                         _ => picker.edit(e),

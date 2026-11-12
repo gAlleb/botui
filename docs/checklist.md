@@ -93,10 +93,12 @@ The canvas regression compares grouped rendering with individual shaping cluster
 1. **BookOrbit annotation sync.** Verify range addresses, colors and offline changes; local EPUB/FB2/PDF text selection and annotations are already implemented.
 2. **SyncTeX.** A separate future feature for LaTeX sources. OCR is outside the current scope: PDF selection requires an existing text layer.
 
-### Follow-up checks
+### Terminal and device checks
 
-- Repeat the cover-spacing check in Alacritty at two font sizes. In Authors and Series, click the same card before and after the next batch arrives and confirm that both clicks open the same entry.
-- Read the same EPUB edition in BOTUI, the BookOrbit web reader and on an iPhone, then return to BOTUI. Compare the first visible phrase at each handoff and open the same bookmark on all three devices.
+- Foot/Sixel: native comic and PDF checks cover live theme previews, zoom dialogs, popup dismissal and facing-page alignment. `scripts/smoke-sixel.py` verifies full popup redraw after a raster update, no comic-image transfer on background changes, and pixel restoration when the popup closes. Image encoding runs on two workers with a bounded cache; large Sixel transfers still take time.
+
+- Alacritty: checked supplied covers and generated jackets at 12 and 16 pt (10×19 and 13×26 pixel cells), including actual mouse clicks in Authors and Series before and after a delayed directory batch. Captions stay separate from artwork; the same coordinates open the same entry. `scripts/smoke-shelf.py` also checks both clicks in grid and list views.
+- The user has completed the BOTUI → BookOrbit web reader → iPhone → BOTUI cycle approximately three times: BOTUI restores the same line start; the web reader opens nearby. Chapter pagination is a possible explanation, not a confirmed cause. Do not treat this cycle as untested.
 
 ### Outline, typography and generated jackets
 
