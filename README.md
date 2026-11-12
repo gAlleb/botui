@@ -49,6 +49,16 @@ Click any image to open it at full size.
       <strong>Highlights and notes</strong><br><sub>Color selection and editable comments</sub>
     </td>
   </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <a href="docs/images/dictionary-lookup.png"><img src="docs/images/dictionary-lookup.png" alt="Dictionary definition over an EPUB spread"></a><br>
+      <strong>Word definitions</strong><br><sub>Look up a selected word while reading</sub>
+    </td>
+    <td width="50%" valign="top">
+      <a href="docs/images/text-context-menu.png"><img src="docs/images/text-context-menu.png" alt="Selected text and context menu beside an EPUB illustration"></a><br>
+      <strong>Text context menu</strong><br><sub>Copy, highlight, search, translate or add a note</sub>
+    </td>
+  </tr>
 </table>
 
 <table>

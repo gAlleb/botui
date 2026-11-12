@@ -49,6 +49,16 @@ BOTUI — терминальная читалка для Linux. Читайте �
       <strong>Хайлайты и заметки</strong><br><sub>Выбор цвета и редактирование комментариев</sub>
     </td>
   </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <a href="docs/images/dictionary-lookup.png"><img src="docs/images/dictionary-lookup.png" alt="Определение выбранного слова поверх разворота EPUB"></a><br>
+      <strong>Значения слов</strong><br><sub>Словарь для выбранного слова прямо во время чтения</sub>
+    </td>
+    <td width="50%" valign="top">
+      <a href="docs/images/text-context-menu.png"><img src="docs/images/text-context-menu.png" alt="Выделенный текст и контекстное меню рядом с иллюстрацией EPUB"></a><br>
+      <strong>Контекстное меню текста</strong><br><sub>Копирование, выделение, поиск, перевод и заметки</sub>
+    </td>
+  </tr>
 </table>
 
 <table>
