@@ -20,6 +20,7 @@ struct CachedPage {
     // Downscaling reuses it; a failed refinement must not erase readable pixels.
     rendered: Option<(u16, Picture)>,
     failure: Option<(u16, String)>,
+    dimensions: Option<(u32, u32)>,
 }
 impl CachedPage {
     fn satisfies(&self, side: u16) -> bool {
@@ -30,6 +31,7 @@ impl CachedPage {
         match result {
             Ok(picture) => {
                 if self.rendered.as_ref().is_none_or(|(s, _)| side >= *s) {
+                    self.dimensions = Some(picture.dimensions());
                     self.rendered = Some((side, picture));
                 }
                 self.failure = None;
@@ -65,18 +67,31 @@ impl Pages {
         if self.appearance == appearance && self.colors == colors {
             return;
         }
+        let rotated = self.appearance.quarter_turns != appearance.quarter_turns;
         self.appearance = appearance;
         self.colors = colors;
         for lane in &mut self.lanes {
             lane.job = None;
         }
-        self.cache.clear();
+        if rotated {
+            self.cache.clear();
+        } else {
+            // Recolouring does not change page geometry. In particular, a spread
+            // must not fit one ready page against a guessed-size neighbour.
+            for (_, page) in self.cache.iter_mut() {
+                page.rendered = None;
+                page.failure = None;
+            }
+        }
     }
     pub fn busy(&self) -> bool {
         self.lanes.iter().any(|l| l.job.is_some())
     }
     pub fn get(&self, page: u32) -> Option<&Picture> {
         self.cache.peek(&page)?.rendered.as_ref().map(|(_, p)| p)
+    }
+    pub fn dimensions(&self, page: u32) -> Option<(u32, u32)> {
+        self.cache.peek(&page)?.dimensions
     }
     pub fn error(&self, page: u32, side: u16) -> Option<&str> {
         self.cache
@@ -287,6 +302,57 @@ mod tests {
             pages.get(1).is_none(),
             "Old colors survived an appearance change"
         );
+    }
+
+    #[test]
+    fn recolouring_keeps_spread_geometry_while_either_page_is_pending() {
+        use ratatui::layout::{Rect, Size};
+        let mut pages = pages();
+        for (n, width) in [(1, 300), (2, 310)] {
+            pages
+                .cache
+                .get_or_insert_mut(n, CachedPage::default)
+                .finish(800, Ok(Picture::new(DynamicImage::new_rgb8(width, 440))));
+        }
+        let placement = |pages: &Pages| {
+            let dims = [1, 2].map(|n| pages.dimensions(n).unwrap_or((600, 800)));
+            super::super::layout::pages(
+                Rect::new(0, 0, 190, 58),
+                Size::new(10, 19),
+                &dims,
+                0,
+                Crop::default(),
+                false,
+            )
+            .into_iter()
+            .map(|p| p.unwrap().screen)
+            .collect::<Vec<_>>()
+        };
+        let before = placement(&pages);
+        pages.configure(
+            ScanAppearance {
+                inverted: true,
+                ..Default::default()
+            },
+            None,
+        );
+        assert!(pages.get(1).is_none());
+        assert_eq!(placement(&pages), before);
+        pages
+            .cache
+            .get_mut(&1)
+            .unwrap()
+            .finish(800, Ok(Picture::new(DynamicImage::new_rgb8(300, 440))));
+        assert!(pages.get(2).is_none());
+        assert_eq!(placement(&pages), before);
+        pages.configure(
+            ScanAppearance {
+                quarter_turns: 1,
+                ..Default::default()
+            },
+            None,
+        );
+        assert_eq!(pages.dimensions(1), None);
     }
 
     #[test]

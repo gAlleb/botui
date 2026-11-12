@@ -298,11 +298,7 @@ pub(super) fn read_pages(
             && let Some(region) = reveal.take()
         {
             let dimensions: Vec<_> = (0..cols)
-                .map(|i| {
-                    pages
-                        .get(n + u32::from(i))
-                        .map_or((600, 800), |p| p.dimensions())
-                })
+                .map(|i| pages.dimensions(n + u32::from(i)).unwrap_or((600, 800)))
                 .collect();
             let mut area = body;
             area.height = area.height.saturating_sub(u16::from(!zen || show_progress));
@@ -411,6 +407,9 @@ pub(super) fn read_pages(
         let mut go_button = Rect::default();
         let mut footer_buttons = crate::preferences::Buttons::default();
         text.begin_frame();
+        if let Some(cache) = &mut sixel {
+            cache.begin_frame();
+        }
         let rendered = term.draw_frame(|f| {
             let screen = f.area();
             sidebar.draw(f, sidebar_area, shown, total.unwrap_or(0));
@@ -497,11 +496,7 @@ pub(super) fn read_pages(
                 }
             } else {
                 let dimensions: Vec<_> = (0..cols)
-                    .map(|i| {
-                        pages
-                            .get(shown + u32::from(i))
-                            .map_or((600, 800), |p| p.dimensions())
-                    })
+                    .map(|i| pages.dimensions(shown + u32::from(i)).unwrap_or((600, 800)))
                     .collect();
                 for (i, placement) in layout::pages(
                     area,
@@ -534,8 +529,18 @@ pub(super) fn read_pages(
                         }
                     } else if let Some(error) = pages.error(page_number, side) {
                         pages::draw_error(f, placement.screen, page_number, error);
+                    } else if page_number <= total.unwrap_or(0)
+                        && let Some(cache) = &mut sixel
+                    {
+                        cache.pending();
                     }
                 }
+            }
+            if let Some(cache) = &mut sixel
+                && !cache.finish_frame(f, area)
+            {
+                // The retained canvas still has the previous zoom/pan geometry.
+                text.begin_frame();
             }
             if let Some(paper) = paper
                 && paper.cell_background
@@ -547,6 +552,7 @@ pub(super) fn read_pages(
             }
             if pages.get(shown).is_none()
                 && pages.error(shown, side).is_none()
+                && !sixel.as_ref().is_some_and(sixel::Cache::has_frame)
                 && opened.elapsed() >= Duration::from_millis(150)
             {
                 f.render_widget(

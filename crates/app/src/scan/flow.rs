@@ -138,6 +138,8 @@ impl Strip<'_> {
                 }
             } else if let Some(error) = self.pages.error(n, self.side) {
                 super::pages::draw_error(f, area, n, error);
+            } else if let Some(cache) = &mut sixel {
+                cache.pending();
             }
         }
     }

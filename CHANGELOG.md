@@ -5,6 +5,7 @@
 - Detect ZIP/RAR comic archives by their contents, including files with swapped `.cbz` / `.cbr` extensions; use the same decoder for covers and every page.
 - Keep comic artwork in its original colors. Space t and F2 → Reader → Comic background change only the surrounding background, saved independently of PDF colors in `comic_background`.
 - Fix disappearing dialogs over Foot/Sixel images, avoid resending artwork when only its background changes, and encode/cache page images off the input thread. Align facing pages in Sixel without changing Kitty, Alacritty or Ghostty rendering. Prevent enlarged pages from scrolling the terminal and shifting their lower edges at the bottom of the viewport.
+- Keep the complete Foot/Sixel spread visible at its previous position while a new zoom or pan is being encoded, instead of replacing it with a loading label. Preserve known PDF page dimensions during theme changes so asynchronous recoloring does not shift the spread in Kitty.
 - Verify Alacritty covers and mouse hit areas at two font sizes; check the same author/series card before and after delayed pagination.
 
 ## 0.1.9 — 2026-11-12

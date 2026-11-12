@@ -24,7 +24,7 @@ def check(binary, comic):
         if child == 0:
             fcntl.ioctl(0, termios.TIOCSWINSZ, struct.pack('HHHH', 40, 120, 1200, 800))
             os.execve(str(binary), [str(binary), str(book)], env)
-        def collect(timeout=12):
+        def collect(timeout=12, image=False):
             data=bytearray(); start=last=time.monotonic(); tail=b''
             while time.monotonic()-start < timeout:
                 if select.select([terminal],[],[],.01)[0]:
@@ -35,22 +35,28 @@ def check(binary, comic):
                     if b'\x1b[c' in query: os.write(terminal,b'\x1b[?62;4c')
                     if b'\x1b[5n' in query: os.write(terminal,b'\x1b[6;20;10t\x1b[0n')
                     tail=query[-5:]
-                elif data.endswith(b'\x1b[?2026l') and time.monotonic()-last > .25:
+                elif data.endswith(b'\x1b[?2026l') and time.monotonic()-last > .25 and (not image or SIXEL.search(data)):
                     return bytes(data)
             raise AssertionError('Sixel frame did not finish')
-        def send(keys): os.write(terminal,keys);return collect()
+        def send(keys, image=False): os.write(terminal,keys);return collect(image=image)
         try:
-            initial = collect()
+            initial = collect(image=True)
             assert SIXEL.search(initial), 'Sixel was not selected'
             # Full-height rasters must not scroll Foot after their final band.
-            for frame in [initial, send(b'='), send(b'\x1b[B')]:
+            zoom = send(b'=', image=True)
+            pan = send(b'\x1b[B')
+            assert b'Rendering page' not in zoom + pan, 'Zoom erased the readable spread with a loading label'
+            assert SIXEL.search(zoom), 'Zoom never produced a new page image'
+            for frame in [initial, zoom, pan]:
                 rasters = RASTERS.findall(frame)
-                assert rasters and all(not raster.endswith((b'-', b'$')) for raster in rasters), 'Trailing sixel cursor commands scroll the spread'
+                assert all(not raster.endswith((b'-', b'$')) for raster in rasters), 'Trailing sixel cursor commands scroll the spread'
+            smaller = send(b'-', image=True)
+            assert b'Rendering page' not in smaller, 'Zooming out erased the readable spread'
             send(b' r0')
             title=b'Comic background' if comic else b'Page theme'
             assert title in send(b' t')
             for keys in (b'\x1b[B',b'\x1b[B'):
-                preview=send(keys)
+                preview=send(keys, image=not comic)
                 assert title in preview and b'Cancel' in preview, 'Incomplete popup repaint'
                 if comic: assert not SIXEL.search(preview), 'Background resent unchanged comic pixels'
                 else:

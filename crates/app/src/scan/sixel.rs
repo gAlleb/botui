@@ -6,6 +6,7 @@ use crate::{
 use lru::LruCache;
 use ratatui::{
     Frame,
+    buffer::Buffer,
     layout::{Rect, Size},
 };
 use ratatui_image::{Image, picker::Picker, protocol::Protocol};
@@ -26,6 +27,9 @@ struct Lane {
 pub(super) struct Cache {
     ready: LruCache<Key, Result<Protocol, String>>,
     lanes: [Lane; 2],
+    requested: Vec<(Key, Rect)>,
+    displayed: Option<(Vec<(Key, Rect)>, Buffer)>,
+    complete: bool,
 }
 impl Cache {
     pub fn new() -> Self {
@@ -35,6 +39,9 @@ impl Cache {
                 worker: Worker::new(),
                 job: None,
             }),
+            requested: Vec::new(),
+            displayed: None,
+            complete: false,
         }
     }
     pub fn poll(&mut self) {
@@ -56,6 +63,48 @@ impl Cache {
     }
     pub fn busy(&self) -> bool {
         self.lanes.iter().any(|l| l.job.is_some())
+    }
+    pub fn begin_frame(&mut self) {
+        self.requested.clear();
+        self.complete = true;
+    }
+    pub fn pending(&mut self) {
+        self.complete = false;
+    }
+    /// Keep the last complete canvas at its old coordinates until every visible
+    /// slice is encoded. Never put an old protocol into a new-sized rectangle.
+    /// Capture before selections and dialogs, so overlays remain independent.
+    pub fn finish_frame(&mut self, f: &mut Frame, area: Rect) -> bool {
+        if self.displayed.as_ref().is_some_and(|(_, b)| b.area != area) {
+            self.displayed = None;
+        }
+        if self.complete && self.requested.is_empty() {
+            self.displayed = None;
+            return true;
+        }
+        if self.complete {
+            if self
+                .displayed
+                .as_ref()
+                .is_none_or(|(keys, _)| *keys != self.requested)
+            {
+                let mut canvas = Buffer::empty(area);
+                for pos in area.positions() {
+                    canvas[pos] = f.buffer_mut()[pos].clone();
+                }
+                self.displayed = Some((self.requested.clone(), canvas));
+            }
+            return true;
+        }
+        if let Some((_, canvas)) = &self.displayed {
+            for pos in area.positions() {
+                f.buffer_mut()[pos] = canvas[pos].clone();
+            }
+        }
+        false
+    }
+    pub fn has_frame(&self) -> bool {
+        self.displayed.is_some()
     }
     fn key(picture: &Picture, size: Size, picker: &Picker, window: [f32; 4]) -> Key {
         let font = picker.font_size();
@@ -93,16 +142,82 @@ impl Cache {
         window: [f32; 4],
     ) {
         self.prepare(picture, area.as_size(), picker, window);
-        match self
-            .ready
-            .get(&Self::key(picture, area.as_size(), picker, window))
-        {
+        let key = Self::key(picture, area.as_size(), picker, window);
+        self.requested.push((key, area));
+        match self.ready.get(&key) {
             Some(Ok(protocol)) => f.render_widget(Image::new(protocol), area),
             Some(Err(error)) => super::pages::draw_error(f, area, 0, error),
-            None => f.render_widget(
-                ratatui::widgets::Paragraph::new("Rendering page…").centered(),
-                crate::centered(area, area.width.min(24), 1),
-            ),
+            None => {
+                self.complete = false;
+                f.render_widget(
+                    ratatui::widgets::Paragraph::new("Rendering page…").centered(),
+                    crate::centered(area, area.width.min(24), 1),
+                );
+            }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ratatui::{Terminal, backend::TestBackend};
+    use ratatui_image::picker::ProtocolType;
+
+    #[test]
+    fn pending_zoom_keeps_both_pages_at_the_old_coordinates_until_complete() {
+        let mut picker = Picker::halfblocks();
+        picker.set_protocol_type(ProtocolType::Sixel);
+        let pictures = [40, 180].map(|grey| {
+            Picture::new(image::RgbImage::from_pixel(8, 16, image::Rgb([grey; 3])).into())
+        });
+        let window = [0., 0., 1., 1.];
+        let old = [Rect::new(2, 1, 4, 6), Rect::new(6, 1, 4, 6)];
+        let zoom = [Rect::new(0, 0, 6, 8), Rect::new(6, 0, 6, 8)];
+        let mut cache = Cache::new();
+        let prepare = |cache: &mut Cache, n: usize, area: Rect| {
+            let key = Cache::key(&pictures[n], area.as_size(), &picker, window);
+            cache.ready.put(
+                key,
+                pictures[n].window_encoder(area.as_size(), picker.clone(), window)(),
+            );
+        };
+        let mut term = Terminal::new(TestBackend::new(12, 8)).unwrap();
+        let draw = |cache: &mut Cache, term: &mut Terminal<TestBackend>, areas: [Rect; 2]| {
+            let mut current = false;
+            term.draw(|f| {
+                cache.begin_frame();
+                for i in 0..2 {
+                    cache.draw(&pictures[i], f, areas[i], &picker, window);
+                }
+                current = cache.finish_frame(f, f.area());
+            })
+            .unwrap();
+            current
+        };
+        for (i, area) in old.into_iter().enumerate() {
+            prepare(&mut cache, i, area);
+        }
+        assert!(draw(&mut cache, &mut term, old));
+        let previous = term.backend().buffer().clone();
+        // One encoded half must not move or erase the other half of a spread.
+        prepare(&mut cache, 0, zoom[0]);
+        assert!(!draw(&mut cache, &mut term, zoom));
+        assert_eq!(*term.backend().buffer(), previous);
+        prepare(&mut cache, 1, zoom[1]);
+        assert!(draw(&mut cache, &mut term, zoom));
+        assert_ne!(*term.backend().buffer(), previous);
+        let enlarged = term.backend().buffer().clone();
+        cache.ready.clear();
+        assert!(!draw(&mut cache, &mut term, old));
+        assert_eq!(*term.backend().buffer(), enlarged);
+        // The previous canvas must never overwrite a resized reading pane.
+        term.draw(|f| {
+            cache.begin_frame();
+            cache.pending();
+            assert!(!cache.finish_frame(f, Rect::new(1, 0, 11, 8)));
+            assert!(!cache.has_frame());
+        })
+        .unwrap();
     }
 }
