@@ -14,34 +14,17 @@ pub enum Mapper {
         pages: BTreeMap<u32, botui_fixed::text::PageText>,
     },
 }
-fn color(c: Option<HighlightColor>) -> &'static str {
-    match c.unwrap_or(HighlightColor::Yellow) {
-        HighlightColor::Yellow => "#FACC15",
-        HighlightColor::Green => "#4ADE80",
-        HighlightColor::Blue => "#38BDF8",
-        HighlightColor::Pink => "#F472B6",
-        HighlightColor::Purple => "#C084FC",
-    }
-}
-fn local_color(c: &str) -> HighlightColor {
-    let rgb = u32::from_str_radix(c.trim_start_matches('#'), 16).ok();
-    HighlightColor::ALL
-        .into_iter()
-        .min_by_key(|v| {
-            let r = u32::from_str_radix(&color(Some(*v))[1..], 16).unwrap();
-            [0, 8, 16]
-                .into_iter()
-                .map(|s| {
-                    (((rgb.unwrap_or(0xFACC15) >> s) & 255) as i32 - ((r >> s) & 255) as i32).pow(2)
-                })
-                .sum::<i32>()
-        })
-        .unwrap()
+fn color(c: Option<HighlightColor>) -> String {
+    c.unwrap_or(HighlightColor::Yellow).hex()
 }
 fn same_text(a: &str, b: &str) -> bool {
     a.split_whitespace().eq(b.split_whitespace())
 }
 impl Mapper {
+    pub fn local_color(remote: &Annotation) -> HighlightColor {
+        HighlightColor::from_hex(&remote.color).unwrap_or(HighlightColor::Yellow)
+    }
+
     fn page(&mut self, n: u32) -> Option<&botui_fixed::text::PageText> {
         let Self::Pdf { path, pages } = self else {
             return None;
@@ -57,7 +40,7 @@ impl Mapper {
             cfi: None,
             pdf: None,
             text: note.quote.clone(),
-            color: color(note.color).into(),
+            color: color(note.color),
             style: "highlight".into(),
             note: (!note.body.trim().is_empty()).then(|| note.body.clone()),
         };
@@ -184,7 +167,7 @@ impl Mapper {
             at,
             remote.text.clone(),
             remote.note.clone().unwrap_or_default(),
-            Some(local_color(&remote.color)),
+            Some(Self::local_color(remote)),
             regions,
         ))
     }
@@ -193,7 +176,7 @@ impl Mapper {
         if note.color == base.color {
             remote.color.clone()
         } else {
-            color(note.color).into()
+            color(note.color)
         }
     }
 }

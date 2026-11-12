@@ -93,7 +93,7 @@ with tempfile.TemporaryDirectory() as name:
             t.see("Annotation saved")
             assert notes(tmp)[0]["quote"] == "bravo", notes(tmp)
             assert notes(tmp)[0]["color"] == "green"
-            assert "48;2;164;206;133" in t.run("capture-pane", "-p", "-e", "-t", "shelf").stdout
+            assert "48;2;74;222;128" in t.run("capture-pane", "-p", "-e", "-t", "shelf").stdout
             saved_id = notes(tmp)[0]["id"]
             if kind == "md":
                 saved_range = (notes(tmp)[0]["block"], notes(tmp)[0]["byte"], notes(tmp)[0]["end"])
@@ -116,6 +116,11 @@ with tempfile.TemporaryDirectory() as name:
                 footer = t.wait("editor resized", lambda f: any(" Comment " in line and len(line.rstrip()) == right for line in f.splitlines()) and "[Tab Color]" in f)
                 for label in ["[Ctrl+S Save]", "[Esc Cancel]", "[Enter New line]"]:
                     assert label in footer, footer
+                for key, name in [('7', 'Orange'), ('8', 'Red'), ('9', 'Olive'), ('0', 'Cyan'), ('g', 'Gray')]:
+                    click(t, point(footer, key + ' ' + name))
+                    footer = t.see(name + ' ✓')
+                colored = t.run('capture-pane', '-p', '-e', '-t', 'shelf').stdout
+                assert '48;2;251;146;60' in colored and '48;2;34;211;238' in colored
                 click(t, point(footer, "3 Blue"))
                 footer = t.see("Blue ✓")
                 click(t, point(footer, "2 Green"))
@@ -176,8 +181,8 @@ with tempfile.TemporaryDirectory() as name:
             assert len(notes(tmp)) == 1 and notes(tmp)[0]["color"] == "green"
             t.keys("n")
             frame = t.see("Ctrl+S Save")
-            click(t, point(frame, "6 None"))
-            frame = t.see("None ✓")
+            click(t, point(frame, "6 No fill"))
+            frame = t.see("No fill ✓")
             click(t, point(frame, "[Ctrl+S Save]"))
             t.see("Highlights & notes · 0")
             assert notes(tmp) == []

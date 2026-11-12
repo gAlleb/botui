@@ -597,17 +597,7 @@ impl Study {
     }
 }
 fn highlight(color: HighlightColor) -> Style {
-    let bg = match color {
-        HighlightColor::Yellow => Color::Rgb(246, 213, 117),
-        HighlightColor::Green => Color::Rgb(164, 206, 133),
-        HighlightColor::Blue => Color::Rgb(135, 190, 227),
-        HighlightColor::Pink => Color::Rgb(238, 162, 180),
-        HighlightColor::Purple => Color::Rgb(198, 167, 230),
-    };
-    Style::default()
-        .fg(Color::Rgb(30, 30, 40))
-        .bg(bg)
-        .remove_modifier(Modifier::REVERSED | Modifier::DIM)
+    crate::annotation_editor::color_style(color).remove_modifier(Modifier::REVERSED | Modifier::DIM)
 }
 
 #[cfg(test)]

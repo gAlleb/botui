@@ -319,3 +319,46 @@ fn pdf_geometry_round_trips_points_and_normalized_boxes() {
     assert_eq!(note.range(), Some(range));
     assert_eq!(note.pdf_regions[0].bounds, [0.1, 0.2, 0.6, 0.25]);
 }
+
+#[test]
+fn all_palette_and_custom_colors_round_trip_without_nearest_color_loss() {
+    let (_dir, store, mut mapper, server) = fixture();
+    add(&store, None, "colors");
+    sync(&store, &mut mapper, &server);
+    for color in HighlightColor::ALL
+        .into_iter()
+        .chain([HighlightColor::Rgb([255, 51, 0])])
+    {
+        server.items.borrow_mut()[0].color = color.hex();
+        sync(&store, &mut mapper, &server);
+        let note = store.notes().unwrap().remove(0);
+        assert_eq!(note.color, Some(color));
+        store
+            .annotate(
+                Some(&note.id),
+                note.range().unwrap(),
+                note.quote,
+                note.color,
+                format!("{} comment", color.hex()),
+            )
+            .unwrap();
+        sync(&store, &mut mapper, &server);
+        assert_eq!(server.items.borrow()[0].color, color.hex());
+    }
+    // Simulate an old saved nearest-color projection with an unchanged server row.
+    store
+        .update_annotations("test", |notes, state| {
+            notes[0].color = Some(HighlightColor::Pink);
+            let id = notes[0].id.clone();
+            state["links"][&id]["local"] = serde_json::to_value(&notes[0])?;
+            Ok(())
+        })
+        .unwrap();
+    sync(&store, &mut mapper, &server);
+    assert_eq!(
+        store.notes().unwrap()[0].color,
+        Some(HighlightColor::Rgb([255, 51, 0]))
+    );
+    assert_eq!(server.items.borrow()[0].color, "#FF3300");
+    assert_eq!(server.creates.get(), 1);
+}

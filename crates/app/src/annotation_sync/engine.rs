@@ -162,7 +162,11 @@ pub fn sync(
             (local, Some(current)) => {
                 let remote_changed = !same_remote(&current, &link.remote);
                 let local_changed = local != Some(&link.local);
-                if remote_changed {
+                // Upgrade old nearest-color projections without uploading or overwriting edits.
+                let color_upgrade = !local_changed
+                    && link.local.color.is_some()
+                    && link.local.color != Some(Mapper::local_color(&current));
+                if remote_changed || color_upgrade {
                     let Some(mut imported) = mapper.import(&current, id.clone(), file) else {
                         report.unlocated += 1;
                         continue;
@@ -183,7 +187,7 @@ pub fn sync(
                             report.conflicts += 1;
                         }
                         // Preserve local no-fill comments if only their remote body changed.
-                        if current.color == link.remote.color {
+                        if current.color == link.remote.color && link.local.color.is_none() {
                             imported.color = link.local.color;
                         }
                         notes.push(imported.clone());

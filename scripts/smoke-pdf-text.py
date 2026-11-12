@@ -109,7 +109,7 @@ with tempfile.TemporaryDirectory(prefix='botui-pdf-text-') as tmp:
             row,line=next((i,line) for i,line in enumerate(frame.splitlines(),1) if label in line)
             x=line.index(label)+1
             mouse(x,row);mouse(x,row,end='m')
-        click_label('6 None');t.see('None ✓');click_label('[Ctrl+S Save]')
+        click_label('6 No fill');t.see('No fill ✓');click_label('[Ctrl+S Save]')
         t.see('Annotation deleted');assert notes(d)==[]
         t.keys('Space','a','h','Enter');t.see('Annotation saved');t.keys('Space','c')
         # Page rotation/zoom must not change stored coordinates or trigger a new extraction.

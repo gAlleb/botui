@@ -37,14 +37,25 @@ pub enum HighlightColor {
     Blue,
     Pink,
     Purple,
+    Orange,
+    Red,
+    Olive,
+    Cyan,
+    Gray,
+    Rgb([u8; 3]),
 }
 impl HighlightColor {
-    pub const ALL: [Self; 5] = [
+    pub const ALL: [Self; 10] = [
         Self::Yellow,
         Self::Green,
         Self::Blue,
         Self::Pink,
         Self::Purple,
+        Self::Orange,
+        Self::Red,
+        Self::Olive,
+        Self::Cyan,
+        Self::Gray,
     ];
     pub fn label(self) -> &'static str {
         match self {
@@ -53,9 +64,49 @@ impl HighlightColor {
             Self::Blue => "Blue",
             Self::Pink => "Pink",
             Self::Purple => "Purple",
+            Self::Orange => "Orange",
+            Self::Red => "Red",
+            Self::Olive => "Olive",
+            Self::Cyan => "Cyan",
+            Self::Gray => "Gray",
+            Self::Rgb(_) => "Custom",
         }
     }
+    pub fn rgb(self) -> [u8; 3] {
+        match self {
+            Self::Yellow => [0xFA, 0xCC, 0x15],
+            Self::Green => [0x4A, 0xDE, 0x80],
+            Self::Blue => [0x38, 0xBD, 0xF8],
+            Self::Pink => [0xF4, 0x72, 0xB6],
+            Self::Purple => [0xC0, 0x84, 0xFC],
+            Self::Orange => [0xFB, 0x92, 0x3C],
+            Self::Red => [0xF8, 0x71, 0x71],
+            Self::Olive => [0x84, 0xCC, 0x16],
+            Self::Cyan => [0x22, 0xD3, 0xEE],
+            Self::Gray => [0x9C, 0xA3, 0xAF],
+            Self::Rgb(rgb) => rgb,
+        }
+    }
+    pub fn hex(self) -> String {
+        let [r, g, b] = self.rgb();
+        format!("#{r:02X}{g:02X}{b:02X}")
+    }
+    pub fn from_hex(value: &str) -> Option<Self> {
+        let hex = value.strip_prefix('#')?;
+        if hex.len() != 6 || !hex.bytes().all(|b| b.is_ascii_hexdigit()) {
+            return None;
+        }
+        let n = u32::from_str_radix(hex, 16).ok()?;
+        let rgb = [(n >> 16) as u8, (n >> 8) as u8, n as u8];
+        Some(
+            Self::ALL
+                .into_iter()
+                .find(|c| c.rgb() == rgb)
+                .unwrap_or(Self::Rgb(rgb)),
+        )
+    }
 }
+
 impl Note {
     pub fn imported(
         id: String,
@@ -415,5 +466,28 @@ mod tests {
             Some(HighlightColor::Blue)
         );
         assert_eq!(store.delete_note(&id).unwrap()[0].body, "edited old note");
+    }
+}
+
+#[cfg(test)]
+mod color_tests {
+    use super::*;
+    #[test]
+    fn existing_names_and_exact_rgb_colors_survive_storage() {
+        assert_eq!(
+            serde_json::from_str::<HighlightColor>("\"yellow\"").unwrap(),
+            HighlightColor::Yellow
+        );
+        for c in HighlightColor::ALL
+            .into_iter()
+            .chain([HighlightColor::Rgb([1, 2, 3])])
+        {
+            assert_eq!(HighlightColor::from_hex(&c.hex().to_lowercase()), Some(c));
+            let json = serde_json::to_string(&c).unwrap();
+            assert_eq!(serde_json::from_str::<HighlightColor>(&json).unwrap(), c);
+        }
+        for invalid in ["#1", "#1234567", "#zzzzzz", "#😀12", "123456"] {
+            assert_eq!(HighlightColor::from_hex(invalid), None);
+        }
     }
 }

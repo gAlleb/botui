@@ -813,9 +813,20 @@ impl Text {
                 continue;
             };
             let mut marks = Vec::new();
-            for note in self.notes.iter().filter(|n| n.color.is_some()) {
+            for note in &self.notes {
                 for region in note.pdf_regions.iter().filter(|r| r.page == view.page) {
-                    marks.push((rotate(region.bounds, view.turns), color(note.color)));
+                    let mut bounds = region.bounds;
+                    if note.color.is_none() {
+                        if note.body.trim().is_empty() {
+                            continue;
+                        }
+                        // A comment without fill still has a visible, clickable passage.
+                        bounds[1] = bounds[3] - (bounds[3] - bounds[1]) * 0.12;
+                    }
+                    marks.push((
+                        rotate(bounds, view.turns),
+                        note.color.map_or([100, 130, 170], |c| c.rgb()),
+                    ));
                 }
             }
             if self.enabled {
@@ -911,15 +922,6 @@ impl Text {
                 self.buttons.push((r, a));
             }
         });
-    }
-}
-fn color(c: Option<HighlightColor>) -> [u8; 3] {
-    match c {
-        Some(HighlightColor::Green) => [130, 220, 140],
-        Some(HighlightColor::Blue) => [130, 180, 245],
-        Some(HighlightColor::Pink) => [245, 150, 180],
-        Some(HighlightColor::Purple) => [195, 150, 240],
-        _ => [245, 210, 100],
     }
 }
 

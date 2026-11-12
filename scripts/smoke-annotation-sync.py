@@ -72,6 +72,16 @@ with tempfile.TemporaryDirectory(prefix='botui-annotation-sync-') as temp,s.Fixt
         t.see('SELECT');t.keys('Space','a','h');t.see('Highlight');t.keys('2','Enter');t.see('Annotation saved')
         wait('local highlight uploaded',lambda:len(server.annotations)==1)
         assert server.annotations[0]['text']=='показаны' and server.annotations[0]['color']=='#4ADE80',server.annotations
+        # Every BookOrbit preset and a custom RGB survives the local editor and storage.
+        for name,hex_color in [('orange','#FB923C'),('red','#F87171'),('olive','#84CC16'),('cyan','#22D3EE'),('gray','#9CA3AF')]:
+            server.annotations[0]['color']=hex_color
+            sync_now(t);wait('import '+name,lambda:notes(tmp)[0]['color']==name)
+        server.annotations[0]['color']='#123456'
+        sync_now(t);wait('import exact RGB',lambda:notes(tmp)[0]['color']=={'rgb':[18,52,86]})
+        t.keys('Space','a','n');t.see('#123456 ✓')
+        t.type('Exact RGB comment');t.keys('C-s')
+        wait('custom color comment uploaded',lambda:server.annotations[0]['note']=='Exact RGB comment')
+        assert server.annotations[0]['color']=='#123456'
         server.annotations[0].update(note='Browser comment',color='#F472B6')
         sync_now(t);wait('browser comment imported',lambda:notes(tmp)[0]['body']=='Browser comment')
         assert notes(tmp)[0]['color']=='pink'
