@@ -70,7 +70,7 @@ with tempfile.TemporaryDirectory(prefix='botui-pdf-text-') as tmp:
             t.run('send-keys','-t','shelf','-H',*[f'{b:02x}' for b in seq.encode()])
         # First right click loads the PDF text lazily and opens the same menu.
         mouse(*xy('bravo'),code=2);mouse(*xy('bravo'),code=2,end='m')
-        frame=t.see('Selected text')
+        frame=t.see('Add note')
         for label in ['Copy','Highlight','Search','Translate','Define','Add note']: assert label in frame,frame
         t.keys('Enter');copied(d,'bravo')
         mouse(*xy('bravo'));mouse(*xy('bravo'),end='m')

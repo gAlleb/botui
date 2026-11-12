@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Replace the full-dialog text action chooser with a 15×8-cell context menu beside the right-clicked word/selection. Keep the book visible; support mouse selection, arrows/Enter, Escape and outside-click dismissal.
+- Space t in PDF/DjVu now opens the shared theme picker over the page, with live preview, light/dark palettes and additional Original/Inverted entries. Preview is temporary; Apply persists the choice and Cancel restores the previous appearance.
+
 - Remove service-specific dictionary/translation adapters. Keep Free Dictionary and Google Translate enabled as editable HTTP profiles in the default TOML, and migrate old named providers once using declarative conversion data. Language controls follow profile parameters instead of service names.
 - PDF/DjVu themed paper and ink now use the reading theme, independently of interface colors. Preserve original/inverted modes, saturated image colors and opacity controls; refresh the open page after changing the reading theme in F2.
 - Right-click a word or selection in EPUB/FB2 and text-layer PDF for Copy, Highlight, Search, Translate, Define and Add note. Preserve existing selections when clicking inside them; load PDF text lazily before showing the menu.

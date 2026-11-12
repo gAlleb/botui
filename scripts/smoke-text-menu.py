@@ -42,9 +42,12 @@ command = ["printf", "Translation: %s", "{text}"]
         x,y=pos;seq=f'\033[<{button};{x};{y}{end}'
         t.run('send-keys','-t','shelf','-H',*[f'{b:02x}' for b in seq.encode()])
     def menu(word='bravo'):
-        pos=xy(word);mouse(pos);mouse(pos,end='m');f=t.see('Selected text')
+        pos=xy(word);mouse(pos);mouse(pos,end='m');f=t.see('Add note')
         for label in ['Copy','Highlight','Search','Translate','Define','Add note']:assert label in f,f
-    def choose(label):t.click(label,t.see('Selected text'))
+        assert 'Alpha bravo charlie delta.' in f, 'Popup hid the selected text'
+        row,line=next((i,l) for i,l in enumerate(f.splitlines(),1) if 'Copy' in l)
+        assert abs(line.index('Copy')+1-pos[0])<=17 and abs(row-pos[1])<=8, f
+    def choose(label):t.click(label,t.see('Add note'))
     def copied(value):
         for _ in range(100):
             if (d/'copied').exists() and (d/'copied').read_text()==value:return
@@ -63,6 +66,7 @@ command = ["printf", "Translation: %s", "{text}"]
         a=xy('Alpha');b=xy('charlie');b=(b[0]+len('charlie')-1,b[1])
         mouse(a,0);mouse(b,32);mouse(b,0,'m')
         menu();choose('Copy');copied('Alpha bravo charlie')
+        menu();t.click('Alpha',t.see('Add note'));t.wait('Outside click closes menu',lambda f:'Add note' not in f)
         menu();t.keys('Escape');t.see('Alpha bravo');t.keys('q')
     finally:t.run('kill-server',required=False)
     print(f'PASS {kind}: all six context actions, word targeting, existing range and cancel')

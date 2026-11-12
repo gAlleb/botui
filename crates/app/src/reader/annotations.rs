@@ -17,9 +17,9 @@ pub(super) fn run(
 ) -> io::Result<()> {
     let store = || store.ok_or_else(|| io::Error::other("Local storage is unavailable"));
     match command {
-        Command::ContextMenu => {
+        Command::ContextMenu(at) => {
             use crate::text_menu::Action as M;
-            let Some(action) = crate::text_menu::choose(term)? else {
+            let Some(action) = crate::text_menu::choose(term, at, |f| reader.draw(f, None))? else {
                 return Ok(());
             };
             if matches!(action, M::Search) {

@@ -12,7 +12,7 @@ use std::time::{Duration, Instant};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum Command {
-    ContextMenu,
+    ContextMenu(Position),
     Copy,
     Highlight,
     Comment,
@@ -185,7 +185,7 @@ impl Study {
                             self.visual = None;
                         }
                         self.keys.reset();
-                        action(Command::ContextMenu)
+                        action(Command::ContextMenu(p))
                     }
                     MouseEventKind::Down(MouseButton::Left) => {
                         if let Some((_, command)) = self.buttons.iter().find(|(r, _)| r.contains(p))

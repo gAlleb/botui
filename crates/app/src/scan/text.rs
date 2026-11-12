@@ -87,7 +87,7 @@ pub(super) struct Text {
     pending_end: Option<Position>,
     auto_cursor: bool,
     pending_visual: bool,
-    context_pending: bool,
+    context_pending: Option<Position>,
     search_forward: bool,
     reveal: Option<PdfRegion>,
     worker: Worker,
@@ -115,7 +115,7 @@ impl Text {
             pending_end: None,
             auto_cursor: false,
             pending_visual: false,
-            context_pending: false,
+            context_pending: None,
             search_forward: true,
             reveal: None,
             worker: Worker::new(),
@@ -374,7 +374,7 @@ impl Text {
         })
     }
     pub fn clear(&mut self) {
-        self.context_pending = false;
+        self.context_pending = None;
         self.enabled = false;
         self.normal = false;
         self.keys.reset();
@@ -418,7 +418,7 @@ impl Text {
                         }
                         self.enabled = true;
                         self.keys.reset();
-                        self.context_pending = true;
+                        self.context_pending = Some(p);
                         if let Some(hit) = self.hit(p, false) {
                             let inside = self
                                 .start
@@ -540,12 +540,13 @@ impl Text {
             _ => None,
         }
     }
-    pub fn take_context_menu(&mut self) -> bool {
-        if self.context_pending && self.pending.is_none() {
-            self.context_pending = false;
-            self.cursor.is_some()
+    pub fn take_context_menu(&mut self) -> Option<Position> {
+        if self.pending.is_none() {
+            self.context_pending
+                .take()
+                .filter(|_| self.cursor.is_some())
         } else {
-            false
+            None
         }
     }
     pub fn leader_action(&mut self, c: crate::leader::Command) -> Option<Action> {

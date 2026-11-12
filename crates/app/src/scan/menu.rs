@@ -17,7 +17,7 @@ pub(super) const ITEMS: &[(&str, &str, usize)] = &[
     ("Zoom out", "-", 9),
     ("Rotate clockwise", "Space r r", 41),
     ("Rotate counterclockwise", "Space r R", 42),
-    ("Cycle page colors", "Space t", 43),
+    ("Page theme / colors", "Space t", 43),
     ("Pan left", "←", 10),
     ("Pan right", "→", 11),
     ("Pan up", "↑", 12),

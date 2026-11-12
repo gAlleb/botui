@@ -19,7 +19,7 @@ BOTUI is a terminal book reader for Linux. Open an EPUB, FB2, PDF or DjVu from d
 - Optional Vim cursor and Space command menu; right-click words or selections to copy, highlight, search, translate, define or add a note
 - Editable dictionary and translation connections; Free Dictionary and Google Translate enabled as ordinary HTTP profiles
 - EPUB tables with merged cells, MathML and TeX formulas, SVG diagrams and inline illustrations
-- PDF and DjVu zoom, fit to width and page colors that match the reader theme
+- PDF and DjVu zoom, fit to width and a Space theme picker with live preview, Original and Inverted
 - Keyboard and mouse controls, themes, adjustable margins and zen mode
 
 ## Libraries
@@ -158,7 +158,7 @@ In a Space submenu, `q`, `Esc` and `Backspace` return to the root; `Esc` closes 
 | `Space l w` | Page width / column gap; PDF zoom |
 | `Space l f` | Opaque/transparent background |
 | `Space l u` | Border style |
-| `Space t` | Reading theme; PDF: original / inverted / reading theme |
+| `Space t` | Theme picker with live preview; PDF also has Original / Inverted |
 | `Space s` | Settings |
 | `Space ?` | Help |
 | `q` / `Q` / `Space q` | Close book and return to its source |
@@ -500,8 +500,8 @@ Smoke tests need tmux, Python 3.11+, the PDF and DjVu helpers above, and `c44` a
 
 BOTUI and its generated book jackets use [GPL-3.0-or-later](LICENSE). Covers supplied by books and catalogs retain their original rights.
 
-PDF/DjVu: `Space t` cycles original colors, inversion and **Reading theme**. The third mode uses **F2 → Reader → Reading theme** (`theme`), not the interface palette. Neutral paper and ink follow the reading colors; saturated illustrations retain their colors. `Space l f` controls opacity as in EPUB/FB2. F2 and library screens keep `interface_theme`.
+PDF/DjVu: `Space t` opens a compact **Page theme** picker over the visible page. Choose **Original**, **Inverted**, Terminal or a reading palette. ↑/↓ preview the choice immediately; ←/→ choose light/dark; Enter or a mouse click applies it. Esc (or a click outside) cancels and restores the previous appearance without saving. Applying a reading palette updates `theme`; original/inverted modes retain that palette for later use. F2 is not required. Neutral paper and ink follow the reading colors; saturated illustrations retain their colors. `Space l f` controls opacity as in EPUB/FB2. F2 and library screens keep `interface_theme`.
 
 ### Right-click text actions
 
-Right-click a word, or right-click inside an existing selection, to open **Copy, Highlight, Search, Translate, Define, Add note**. A click inside the selection preserves the entire passage; a click on another word targets that word. Search opens in-book search with the selected text (PDF starts its text-layer search). Escape dismisses the menu. The same actions work in EPUB, FB2 and PDF with an embedded text layer; scans without text cannot provide word actions. Translation and definitions use the connections selected in F2 → Dictionaries.
+Right-click a word, or right-click inside an existing selection, to open a small menu beside the pointer: **Copy, Highlight, Search, Translate, Define, Add note**. The book remains visible behind the menu. A click inside the selection preserves the entire passage; a click on another word targets that word. Search opens in-book search with the selected text (PDF starts its text-layer search). Escape or a click outside dismisses the menu; use the mouse or ↑/↓ and Enter to choose. The same actions work in EPUB, FB2 and PDF with an embedded text layer; scans without text cannot provide word actions. Translation and definitions use the connections selected in F2 → Dictionaries.

@@ -144,7 +144,7 @@ In a Space submenu, `q`, `Esc` and `Backspace` return to the root; `Esc` closes 
 | `Space l w` | Page width / column gap; PDF zoom |
 | `Space l f` | Opaque/transparent background |
 | `Space l u` | Border style |
-| `Space t` | Reading theme; PDF: original / inverted / reading theme |
+| `Space t` | Theme picker with live preview; PDF also has Original / Inverted |
 | `Space s` | Settings |
 | `Space ?` | Help |
 | `q` / `Q` / `Space q` | Close book and return to its source |
@@ -252,7 +252,7 @@ Everything is in the same `config.toml`: `[lookup]`, `[[lookup.profiles]]`, `[[o
 
 `Space l 3` enables continuous scrolling. `Space l w` opens width/zoom controls; `Space r +` and `Space r -` adjust zoom, including below 100%. At 100% in scroll mode, the sheet fits the reading pane width. `Space r 0` restores fit and `Space r p` opens a compact page-number dialog.
 
-`Space t` cycles original colors, inversion and match background. `Space l f` changes opacity. `Space o` opens the contents tree; arrows fold/expand sections. Scroll mode separates sheets with a dim dotted line across the pane.
+`Space t` opens a compact theme picker over the page, including Original and Inverted. `Space l f` changes opacity. `Space o` opens the contents tree; arrows fold/expand sections. Scroll mode separates sheets with a dim dotted line across the pane.
 
 PDF text layers support selection, copying and highlights. Selections snap to words and retain coordinates through zoom and rotation. Extraction order may differ from visual order in complex multi-column PDFs. `Space a p` creates a PDF/DjVu page note. `Space f` searches the text layer.
 
@@ -483,8 +483,8 @@ The interface can use the terminal palette or BookOrbit reader themes. **Space l
 
 The XDG config, state and data environment variables override those defaults. Local reading records use a content hash, so moving a file preserves its position.
 
-PDF/DjVu: `Space t` cycles original colors, inversion and **Reading theme**. The third mode uses **F2 → Reader → Reading theme** (`theme`), not the interface palette. Neutral paper and ink follow the reading colors; saturated illustrations retain their colors. `Space l f` controls opacity as in EPUB/FB2. F2 and library screens keep `interface_theme`.
+PDF/DjVu: `Space t` opens a compact **Page theme** picker over the visible page. Choose **Original**, **Inverted**, Terminal or a reading palette. ↑/↓ preview the choice immediately; ←/→ choose light/dark; Enter or a mouse click applies it. Esc (or a click outside) cancels and restores the previous appearance without saving. Applying a reading palette updates `theme`; original/inverted modes retain that palette for later use. F2 is not required. Neutral paper and ink follow the reading colors; saturated illustrations retain their colors. `Space l f` controls opacity as in EPUB/FB2. F2 and library screens keep `interface_theme`.
 
 ### Right-click text actions
 
-Right-click a word, or right-click inside an existing selection, to open **Copy, Highlight, Search, Translate, Define, Add note**. A click inside the selection preserves the entire passage; a click on another word targets that word. Search opens in-book search with the selected text (PDF starts its text-layer search). Escape dismisses the menu. The same actions work in EPUB, FB2 and PDF with an embedded text layer; scans without text cannot provide word actions. Translation and definitions use the connections selected in F2 → Dictionaries.
+Right-click a word, or right-click inside an existing selection, to open a small menu beside the pointer: **Copy, Highlight, Search, Translate, Define, Add note**. The book remains visible behind the menu. A click inside the selection preserves the entire passage; a click on another word targets that word. Search opens in-book search with the selected text (PDF starts its text-layer search). Escape or a click outside dismisses the menu; use the mouse or ↑/↓ and Enter to choose. The same actions work in EPUB, FB2 and PDF with an embedded text layer; scans without text cannot provide word actions. Translation and definitions use the connections selected in F2 → Dictionaries.

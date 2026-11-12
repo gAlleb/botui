@@ -14,10 +14,13 @@ pub(crate) enum Edit {
     Dark(bool),
     Accept(Theme),
     Cancel,
+    Original,
+    Inverted,
 }
 
 pub(crate) struct Picker {
     row: usize,
+    scan: bool,
     dark: bool,
     offset: usize,
     popup: Rect,
@@ -30,6 +33,7 @@ impl Picker {
     pub(crate) fn new(theme: Theme) -> Self {
         Self {
             row: theme.row(),
+            scan: false,
             dark: theme.dark(),
             offset: 0,
             popup: Rect::default(),
@@ -39,15 +43,45 @@ impl Picker {
         }
     }
 
+    pub(crate) fn for_scan(theme: Theme, appearance: botui_store::ScanAppearance) -> Self {
+        let mut picker = Self::new(theme);
+        picker.scan = true;
+        picker.row = if appearance.terminal_paper {
+            theme.row() + 2
+        } else {
+            usize::from(appearance.inverted)
+        };
+        picker
+    }
+    fn count(&self) -> usize {
+        Theme::COUNT + if self.scan { 2 } else { 0 }
+    }
+    fn theme_row(&self, row: usize) -> usize {
+        row.saturating_sub(if self.scan { 2 } else { 0 })
+    }
     pub(crate) fn preview(&self) -> Theme {
-        Theme::at(self.row, self.dark)
+        Theme::at(self.theme_row(self.row), self.dark)
+    }
+    pub(crate) fn scan_mode(&self) -> (bool, bool) {
+        (self.row == 1, self.row >= 2)
+    }
+    fn accept(&self, row: usize, dark: bool) -> Edit {
+        if self.scan && row < 2 {
+            if row == 0 {
+                Edit::Original
+            } else {
+                Edit::Inverted
+            }
+        } else {
+            Edit::Accept(Theme::at(self.theme_row(row), dark))
+        }
     }
 
     pub(crate) fn edit(&mut self, edit: Edit) {
         match edit {
             Edit::Row(row) => self.row = row,
             Edit::Dark(dark) => self.dark = dark,
-            Edit::Cancel | Edit::Accept(_) => {}
+            Edit::Cancel | Edit::Accept(_) | Edit::Original | Edit::Inverted => {}
         }
     }
 
@@ -56,7 +90,12 @@ impl Picker {
     }
     pub(crate) fn draw_named(&mut self, f: &mut Frame, title: &str) {
         let screen = f.area();
-        let popup = centered(screen, 46, Theme::COUNT as u16 + 4);
+        // Leave reading context visible even in a short terminal; scroll the list.
+        let height = (self.count() as u16 + 4).min(screen.height.saturating_sub(4).max(5));
+        let popup = centered(screen, 46, height);
+        crate::overlay::paint(f, popup, |f| self.draw_panel(f, title, popup));
+    }
+    fn draw_panel(&mut self, f: &mut Frame, title: &str, popup: Rect) {
         self.popup = popup;
         let style = self.preview().style();
         f.render_widget(Clear, popup);
@@ -102,30 +141,36 @@ impl Picker {
             .offset
             .min(self.row)
             .max((self.row + 1).saturating_sub(height))
-            .min(Theme::COUNT.saturating_sub(height));
-        for (y, row) in (self.offset..Theme::COUNT).take(height).enumerate() {
+            .min(self.count().saturating_sub(height));
+        for (y, row) in (self.offset..self.count()).take(height).enumerate() {
             let y = self.rows.y + y as u16;
             let current = self.row == row;
-            let light = Theme::at(row, false);
+            let theme_row = self.theme_row(row);
+            let light = Theme::at(theme_row, false);
             let row_style = if current {
                 style.add_modifier(Modifier::REVERSED)
             } else {
                 style
             };
-            let name = if row == 0 {
+            let name = if theme_row == 0 {
                 body.width
             } else {
                 light_x - body.x
             };
             f.render_widget(
-                Paragraph::new(light.palette_name()).style(row_style),
+                Paragraph::new(if self.scan && row < 2 {
+                    if row == 0 { "Original" } else { "Inverted" }
+                } else {
+                    light.palette_name()
+                })
+                .style(row_style),
                 Rect::new(body.x, y, name, 1),
             );
-            if row == 0 {
+            if theme_row == 0 {
                 continue;
             }
             for (dark, x) in [(false, light_x), (true, dark_x)] {
-                let theme = Theme::at(row, dark);
+                let theme = Theme::at(theme_row, dark);
                 let cursor = if current && self.dark == dark {
                     "›"
                 } else {
@@ -170,11 +215,11 @@ impl Picker {
     }
 
     pub(crate) fn input(&self, event: Event) -> Option<Edit> {
-        let shift = |delta| Edit::Row(self.row.saturating_add_signed(delta).min(Theme::COUNT - 1));
+        let shift = |delta| Edit::Row(self.row.saturating_add_signed(delta).min(self.count() - 1));
         match event {
             Event::Key(k) if k.kind != KeyEventKind::Release => match k.code {
                 KeyCode::Esc | KeyCode::Char('q' | 'Q' | 't' | 'T') => Some(Edit::Cancel),
-                KeyCode::Enter | KeyCode::Char(' ') => Some(Edit::Accept(self.preview())),
+                KeyCode::Enter | KeyCode::Char(' ') => Some(self.accept(self.row, self.dark)),
                 KeyCode::Up | KeyCode::BackTab | KeyCode::Char('k') => Some(shift(-1)),
                 KeyCode::Down | KeyCode::Tab | KeyCode::Char('j') => Some(shift(1)),
                 KeyCode::PageUp => Some(shift(
@@ -184,7 +229,7 @@ impl Picker {
                     Some(shift(isize::try_from(self.rows.height.max(1)).unwrap_or(1)))
                 }
                 KeyCode::Home => Some(Edit::Row(0)),
-                KeyCode::End => Some(Edit::Row(Theme::COUNT - 1)),
+                KeyCode::End => Some(Edit::Row(self.count() - 1)),
                 KeyCode::Left | KeyCode::Char('h') => Some(Edit::Dark(false)),
                 KeyCode::Right | KeyCode::Char('l') => Some(Edit::Dark(true)),
                 _ => None,
@@ -199,7 +244,7 @@ impl Picker {
                     }
                     if self.footer.contains(pos) {
                         return Some(if m.column < self.footer.x + self.footer.width / 2 {
-                            Edit::Accept(self.preview())
+                            self.accept(self.row, self.dark)
                         } else {
                             Edit::Cancel
                         });
@@ -208,7 +253,7 @@ impl Picker {
                         return None;
                     }
                     let row = self.offset + usize::from(m.row - self.rows.y);
-                    if row >= Theme::COUNT {
+                    if row >= self.count() {
                         return None;
                     }
                     let dark = if m.column >= self.rows.right() - self.swatch_width {
@@ -218,7 +263,7 @@ impl Picker {
                     } else {
                         self.dark
                     };
-                    Some(Edit::Accept(Theme::at(row, dark)))
+                    Some(self.accept(row, dark))
                 }
                 _ => None,
             },
@@ -232,6 +277,20 @@ mod tests {
     use super::*;
     use crossterm::event::{KeyModifiers, MouseEvent};
     use ratatui::{Terminal, backend::TestBackend};
+
+    #[test]
+    fn scan_rows_keep_original_inverted_and_themes_distinct() {
+        let theme = Theme::from_id("sepia-dark");
+        let mut picker = Picker::for_scan(theme, botui_store::ScanAppearance::default());
+        assert_eq!(picker.accept(0, false), Edit::Original);
+        assert_eq!(picker.accept(1, true), Edit::Inverted);
+        assert_eq!(picker.accept(theme.row() + 2, true), Edit::Accept(theme));
+        picker.edit(Edit::Row(1));
+        assert_eq!(picker.scan_mode(), (true, false));
+        picker.edit(Edit::Row(theme.row() + 2));
+        assert_eq!(picker.scan_mode(), (false, true));
+        assert_eq!(picker.preview(), theme);
+    }
 
     #[test]
     fn click_uses_the_displayed_row_after_scrolling_a_short_list() {

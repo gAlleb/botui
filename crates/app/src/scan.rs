@@ -173,10 +173,15 @@ pub(super) fn read_pages(
     let mut dirty = false;
     let mut text = text::Text::new(store.as_ref());
     let mut leader = crate::leader::Leader::new();
+    let mut palette: Option<crate::reader::theme_picker::Picker> = None;
     let selectable = kind == FileKind::Pdf && plates.is_none();
 
     loop {
-        let _reading_dialogs = crate::settings::reader_dialogs(reading_theme);
+        let preview_theme = palette
+            .as_ref()
+            .filter(|p| p.scan_mode().1)
+            .map_or(reading_theme, |p| p.preview());
+        let _reading_dialogs = crate::settings::reader_dialogs(preview_theme);
         if selectable {
             text.poll(path);
         }
@@ -255,10 +260,13 @@ pub(super) fn read_pages(
             .max(screen.height.saturating_mul(size.height))
             .clamp(240, 1600);
         let side = (u32::from(side) * u32::from(crop.percent.max(100)) / 100).min(1920) as u16;
-        let appearance = checkpoint.scan_appearance;
+        let mut appearance = checkpoint.scan_appearance;
+        if let Some(p) = &palette {
+            (appearance.inverted, appearance.terminal_paper) = p.scan_mode();
+        }
         let paper = appearance
             .terminal_paper
-            .then(|| paper::Paper::for_reader(picker.protocol_type(), reading_theme));
+            .then(|| paper::Paper::for_reader(picker.protocol_type(), preview_theme));
         // A scaled page may end partway through a terminal cell. The block
         // renderer drops alpha there, so pad that fraction with the same paper.
         picker.set_background_color(paper.and_then(|p| p.cell_padding(picker.protocol_type())));
@@ -545,12 +553,15 @@ pub(super) fn read_pages(
                     &mut dialog_hits,
                 );
             }
-            crate::settings::paint_book(f, reading_theme);
+            crate::settings::paint_book(f, preview_theme);
             leader.draw(f, crate::leader::Context::Pdf);
+            if let Some(p) = &mut palette {
+                p.draw_named(f, " Page theme ");
+            }
         })?;
-        if selectable && text.take_context_menu() {
+        if selectable && let Some(at) = text.take_context_menu() {
             let background = rendered.buffer.clone();
-            match text.context_menu(term, store.as_ref(), &background) {
+            match text.context_menu(at, term, store.as_ref(), &background) {
                 Ok(Some(query)) => {
                     search.start(&worker, path, kind, query);
                 }
@@ -585,6 +596,41 @@ pub(super) fn read_pages(
         let Some(mut e) = event else {
             continue;
         };
+        if let Some(p) = &mut palette {
+            use crate::reader::theme_picker::Edit;
+            if let Some(edit) = p.input(e) {
+                match edit {
+                    Edit::Cancel => palette = None,
+                    Edit::Accept(theme) => {
+                        match crate::settings::Settings::update(|s| s.theme = Some(theme.id())) {
+                            Ok(_) => {
+                                reading_theme = theme;
+                                checkpoint.scan_appearance.inverted = false;
+                                checkpoint.scan_appearance.terminal_paper = true;
+                                dirty = true;
+                                palette = None;
+                                message = format!("Reading theme · {}", theme.name());
+                            }
+                            Err(e) => message = e.to_string(),
+                        }
+                    }
+                    Edit::Original | Edit::Inverted => {
+                        checkpoint.scan_appearance.inverted = edit == Edit::Inverted;
+                        checkpoint.scan_appearance.terminal_paper = false;
+                        message = if edit == Edit::Original {
+                            "Original colors"
+                        } else {
+                            "Inverted colors"
+                        }
+                        .into();
+                        dirty = true;
+                        palette = None;
+                    }
+                    edit => p.edit(edit),
+                }
+            }
+            continue;
+        }
         if matches!(e, Event::FocusGained)
             && let Some(s) = live.as_mut()
         {
@@ -888,18 +934,18 @@ pub(super) fn read_pages(
             41..=43 => {
                 let appearance = &mut checkpoint.scan_appearance;
                 if action == 43 {
-                    (appearance.inverted, appearance.terminal_paper) =
-                        match (appearance.inverted, appearance.terminal_paper) {
-                            (_, true) => (false, false),
-                            (true, false) => (false, true),
-                            (false, false) => (true, false),
-                        };
-                } else {
-                    let step = if action == 41 { 1 } else { 3 };
-                    appearance.quarter_turns = (appearance.quarter_turns % 4 + step) % 4;
-                    crop.x = 128;
-                    crop.y = 0;
+                    palette = Some(crate::reader::theme_picker::Picker::for_scan(
+                        reading_theme,
+                        *appearance,
+                    ));
+                    menu = false;
+                    message.clear();
+                    continue;
                 }
+                let step = if action == 41 { 1 } else { 3 };
+                appearance.quarter_turns = (appearance.quarter_turns % 4 + step) % 4;
+                crop.x = 128;
+                crop.y = 0;
                 message = format!(
                     "{}° · {}",
                     u16::from(appearance.quarter_turns) * 90,

@@ -17,12 +17,13 @@ pub(super) fn background(f: &mut Frame, saved: &Buffer) {
 impl Text {
     pub fn context_menu(
         &mut self,
+        at: Position,
         term: &mut AppTerminal,
         store: Option<&LocalState>,
         saved: &Buffer,
     ) -> io::Result<Option<String>> {
         use crate::text_menu::Action as M;
-        let Some(action) = crate::text_menu::choose(term)? else {
+        let Some(action) = crate::text_menu::choose(term, at, |f| background(f, saved))? else {
             return Ok(None);
         };
         if matches!(action, M::Search) {

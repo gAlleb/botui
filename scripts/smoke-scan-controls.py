@@ -64,8 +64,8 @@ with tempfile.TemporaryDirectory(prefix="botui-width-") as tmp:
         term.see("[Space l w 90%]")
         term.keys("Space", "r", "0")
         term.see("[Space l w 100%]")
-        term.keys("Space", "r", "r", "Space", "t")
-        term.see("90° · Inverted colors")
+        term.keys("Space", "r", "r", "Space", "t");term.see("Page theme");term.keys("Home","Down","Enter")
+        term.see("Inverted colors")
         term.keys("Space", "b", "a")
         term.see("Page bookmarked")
         def checkpoint_saved():
@@ -81,13 +81,13 @@ with tempfile.TemporaryDirectory(prefix="botui-width-") as tmp:
         term.see("2 / 3")
         term.keys("Space", "r", "R")
         term.see("0° · Inverted colors")
-        term.keys("Space", "t")
-        term.see("0° · Reading theme")
+        term.keys("Space", "t");term.see("Page theme");term.keys("Home","Down","Down","Enter")
+        term.see("Reading theme")
         # Cursor feedback occupies the status line; verify the persisted color
         # state as well as the ordinary reading notifications above and below.
         term.keys("Space", "c")
         for inverted, themed in [(False, False), (True, False), (False, True)]:
-            term.keys("Space", "t")
+            term.keys("Space", "t");term.see("Page theme");term.keys("Home",*(["Down"]*(2 if themed else int(inverted))),"Enter")
             deadline = time.monotonic() + 5
             while time.monotonic() < deadline:
                 appearance = (scroll.saved(root) or {}).get("scan_appearance", {})
@@ -98,8 +98,8 @@ with tempfile.TemporaryDirectory(prefix="botui-width-") as tmp:
             else:
                 raise AssertionError((inverted, themed, appearance))
         term.keys("Space", "c")
-        term.keys("Space", "t")
-        term.see("0° · Original colors")
+        term.keys("Space", "t");term.see("Page theme");term.keys("Home","Enter")
+        term.see("Original colors")
         scroll.stop(term)
     finally:
         term.run("kill-server", required=False)
