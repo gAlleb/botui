@@ -45,8 +45,8 @@ Click any image to open it at full size.
       <strong>BookOrbit search as you type</strong><br><sub>Tokyo Night · 13 pt</sub>
     </td>
     <td width="50%" valign="top">
-      <a href="docs/images/reading-spread.png"><img src="docs/images/reading-spread.png" alt="Two-page EPUB spread"></a><br>
-      <strong>Two-page EPUB spread</strong><br><sub>Sepia Dark · 12 pt</sub>
+      <a href="docs/images/reading-spread.png"><img src="docs/images/reading-spread.png" alt="EPUB highlights and comment editor with color selection"></a><br>
+      <strong>Highlights and notes</strong><br><sub>Color selection and editable comments</sub>
     </td>
   </tr>
 </table>

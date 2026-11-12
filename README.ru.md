@@ -45,8 +45,8 @@ BOTUI — терминальная читалка для Linux. Читайте �
       <strong>Поиск по мере ввода в BookOrbit</strong><br><sub>Tokyo Night · 13 pt</sub>
     </td>
     <td width="50%" valign="top">
-      <a href="docs/images/reading-spread.png"><img src="docs/images/reading-spread.png" alt="Разворот EPUB"></a><br>
-      <strong>Разворот EPUB</strong><br><sub>Sepia Dark · 12 pt</sub>
+      <a href="docs/images/reading-spread.png"><img src="docs/images/reading-spread.png" alt="Хайлайты EPUB и редактор заметки с выбором цвета"></a><br>
+      <strong>Хайлайты и заметки</strong><br><sub>Выбор цвета и редактирование комментариев</sub>
     </td>
   </tr>
 </table>
