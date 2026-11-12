@@ -1,39 +1,6 @@
 //! Small raster patches keep PDF highlights out of the page renderer and its cache.
 use super::*;
 impl Picture {
-    pub(crate) fn page_mapping(&self, area: Rect, crop: Crop) -> Option<(Rect, [f32; 4])> {
-        let ready = self.ready.borrow();
-        let (w, h) = self.dimensions();
-        let cw = crop.span(w);
-        let ch = crop.span(h);
-        let size = if monochrome() {
-            let scale = (f32::from(area.width) / cw as f32)
-                .min(f32::from(area.height) * 2. / ch as f32)
-                .min(1.);
-            Size::new(
-                (cw as f32 * scale).round() as u16,
-                ((ch as f32 * scale).round() as u16).div_ceil(2),
-            )
-        } else {
-            ready
-                .iter()
-                .find(|(r, _)| r.size == area.as_size() && r.crop == crop)?
-                .1
-                .size()
-        };
-        let x = (w - cw) * u32::from(crop.x) / 255;
-        let y = (h - ch) * u32::from(crop.y) / 255;
-        Some((
-            crate::centered(area, size.width, size.height),
-            [
-                x as f32 / w as f32,
-                y as f32 / h as f32,
-                (x + cw) as f32 / w as f32,
-                (y + ch) as f32 / h as f32,
-            ],
-        ))
-    }
-
     pub(crate) fn text_patch(
         &self,
         window: [f32; 4],

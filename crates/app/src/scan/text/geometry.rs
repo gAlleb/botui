@@ -9,7 +9,7 @@ pub(super) struct View {
     pub turns: u8,
 }
 
-pub(super) fn rotate(mut r: [f32; 4], turns: u8) -> [f32; 4] {
+pub(in crate::scan) fn rotate(mut r: [f32; 4], turns: u8) -> [f32; 4] {
     for _ in 0..turns % 4 {
         r = [1. - r[3], r[0], 1. - r[1], r[2]];
     }

@@ -529,3 +529,5 @@ BOTUI and its generated book jackets use [GPL-3.0-or-later](LICENSE). Covers sup
 RAR decoder: [rars](https://github.com/bitplane/rars), [Apache-2.0](docs/licenses/rars-Apache-2.0.txt).
 
 PDF/DjVu and comics: **Space l w** opens zoom and spread spacing. Use **[ / ]** or the gap buttons to set **0–32 terminal cells**; zero joins the facing pages. `scan_gap` remembers the choice independently of text columns.
+
+In single-page and spread modes, **+ / −** zoom the page canvas into the available margins; only the edge of the reading pane clips it. Arrow keys pan enlarged pages. **Space r 0** returns to Fit page.

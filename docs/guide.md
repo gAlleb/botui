@@ -508,3 +508,5 @@ CBZ (ZIP) and CBR (RAR) use built-in decoders; no external unpacker is required.
 **F2 → Appearance → Interface theme** includes the new dark **Graphite**, **Midnight**, **Pine** and **Plum** palettes (`graphite`, `midnight`, `pine`, `plum`). Reading gains **Parchment**, **Sage**, **Dusk** and **Slate**, each with light and dark variants: for example `parchment-light`, `sage-dark`, `dusk-light` and `slate-dark`. These are available in both the ordinary reading theme picker and **PDF / image theme**.
 
 PDF/DjVu and comics: **Space l w** opens zoom and spread spacing. Use **[ / ]** or the gap buttons to set **0–32 terminal cells**; zero joins the facing pages. `scan_gap` remembers the choice independently of text columns.
+
+In single-page and spread modes, **+ / −** zoom the page canvas into the available margins; only the edge of the reading pane clips it. Arrow keys pan enlarged pages. **Space r 0** returns to Fit page.

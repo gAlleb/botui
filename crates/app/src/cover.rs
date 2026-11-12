@@ -187,6 +187,8 @@ struct Rendition {
     placement: ImagePlacement,
 }
 
+type PageWindow = (Size, [f32; 4], Box<Picture>);
+
 pub(crate) struct Picture {
     pub(crate) identity: u64,
     epoch: Cell<u64>,
@@ -197,6 +199,7 @@ pub(crate) struct Picture {
     strip: RefCell<Option<(StripKey, Box<Picture>)>>,
     strip_cells: RefCell<Option<(CellStrip, image::RgbImage)>>,
     ready: RefCell<Vec<(Rendition, Protocol)>>,
+    page_window: RefCell<Option<PageWindow>>,
 }
 
 impl Picture {
@@ -212,6 +215,7 @@ impl Picture {
             strip: Default::default(),
             strip_cells: Default::default(),
             ready: RefCell::new(Vec::new()),
+            page_window: RefCell::new(None),
         }
     }
 
@@ -257,6 +261,7 @@ impl Picture {
         if self.cell_pixels.replace(pixels) != pixels {
             self.ready.borrow_mut().clear();
             self.sliced.take();
+            self.page_window.take();
         }
     }
     /// Fit the whole illustration once. Scrolling changes only which rows are painted.
@@ -494,6 +499,23 @@ impl Picture {
         }
         if let Some((_, page)) = &*cache {
             page.draw(f, area, picker);
+        }
+    }
+    pub fn draw_window(&self, frame: &mut Frame, area: Rect, picker: &Picker, window: [f32; 4]) {
+        self.refresh_resolution(picker);
+        let mut cache = self.page_window.borrow_mut();
+        if cache
+            .as_ref()
+            .is_none_or(|(size, bounds, _)| *size != area.as_size() || *bounds != window)
+        {
+            *cache = Some((
+                area.as_size(),
+                window,
+                Box::new(self.text_patch(window, area.as_size(), picker, &[])),
+            ));
+        }
+        if let Some((_, _, picture)) = &*cache {
+            picture.draw(frame, area, picker);
         }
     }
     pub fn draw(&self, frame: &mut Frame, area: Rect, picker: &Picker) {

@@ -4,6 +4,7 @@ mod contents;
 mod controls;
 mod flow;
 mod history;
+mod layout;
 mod menu;
 mod pages;
 mod paper;
@@ -102,6 +103,7 @@ pub(super) fn read_pages(
         ..Crop::default()
     };
     let initial_zoom = crop.percent;
+    let mut reveal: Option<botui_store::PdfRegion> = None;
     let mut gap = prefs.scan_gap.unwrap_or(2).min(32);
     let mut dialog: Option<controls::Dialog> = None;
     let store = LocalState::for_file(path)
@@ -283,6 +285,28 @@ pub(super) fn read_pages(
         picker.set_background_color(paper.and_then(|p| p.cell_padding(picker.protocol_type())));
         pages.configure(appearance, paper);
         pages.poll();
+        if !scrolling
+            && pages.get(n).is_some()
+            && let Some(region) = reveal.take()
+        {
+            let dimensions: Vec<_> = (0..cols)
+                .map(|i| {
+                    pages
+                        .get(n + u32::from(i))
+                        .map_or((600, 800), |p| p.dimensions())
+                })
+                .collect();
+            let mut area = body;
+            area.height = area.height.saturating_sub(u16::from(!zen || show_progress));
+            crop = layout::reveal(
+                area,
+                ratatui::layout::Size::new(size.width, size.height),
+                &dimensions,
+                gap,
+                crop,
+                text::rotate(region.bounds, appearance.quarter_turns),
+            );
+        }
         let view = flow::Viewport {
             side,
             width: crop.fit(body, false).width,
@@ -463,40 +487,39 @@ pub(super) fn read_pages(
                     }
                 }
             } else {
-                // Pack fitted sheets together: letterboxing belongs outside the spread.
-                let slot_width = area.width.saturating_sub(if cols == 2 { gap } else { 0 }) / cols;
-                let widths: Vec<u16> = (0..cols)
+                let dimensions: Vec<_> = (0..cols)
                     .map(|i| {
-                        pages.get(shown + u32::from(i)).map_or(slot_width, |page| {
-                            let (w, h) = page.dimensions();
-                            let fitted =
-                                (u64::from(area.height) * u64::from(size.height) * u64::from(w)
-                                    / (u64::from(h.max(1)) * u64::from(size.width.max(1))))
-                                    as u16;
-                            fitted.max(1).min(slot_width)
-                        })
+                        pages
+                            .get(shown + u32::from(i))
+                            .map_or((600, 800), |p| p.dimensions())
                     })
                     .collect();
-                let total_width = widths.iter().sum::<u16>() + if cols == 2 { gap } else { 0 };
-                let mut x = area.x + area.width.saturating_sub(total_width) / 2;
-                for i in 0..cols {
-                    let page_number = shown.saturating_add(u32::from(i));
-                    let w = widths[usize::from(i)];
-                    let slot = Rect::new(x, area.y, w, area.height);
-                    x += w + gap;
+                for (i, placement) in layout::pages(
+                    area,
+                    ratatui::layout::Size::new(size.width, size.height),
+                    &dimensions,
+                    gap,
+                    crop,
+                )
+                .into_iter()
+                .enumerate()
+                {
+                    let Some(placement) = placement else {
+                        continue;
+                    };
+                    let page_number = shown.saturating_add(i as u32);
                     if let Some(page) = pages.get(page_number) {
-                        page.draw_region(f, crop.fit(slot, true), &picker, crop);
+                        page.draw_window(f, placement.screen, &picker, placement.window);
                         if selectable {
                             text.page(
                                 page_number,
-                                page,
-                                crop.fit(slot, true),
-                                crop,
+                                placement.screen,
+                                placement.window,
                                 appearance.quarter_turns,
                             );
                         }
                     } else if let Some(error) = pages.error(page_number, side) {
-                        pages::draw_error(f, slot, page_number, error);
+                        pages::draw_error(f, placement.screen, page_number, error);
                     }
                 }
             }
@@ -815,6 +838,7 @@ pub(super) fn read_pages(
                     n = target.page;
                     offset = target.offset;
                     crop = target.crop;
+                    reveal = (!scrolling).then_some(region);
                     dirty = true;
                 }
                 continue;
@@ -1049,6 +1073,7 @@ pub(super) fn read_pages(
                                 n = target.page;
                                 offset = target.offset;
                                 crop = target.crop;
+                                reveal = (!scrolling).then_some(region);
                                 dirty = true;
                             }
                             Ok(None) => (),

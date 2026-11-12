@@ -9,7 +9,8 @@ use botui_core::{Anchor, TextRange};
 use botui_fixed::text::PageText;
 use botui_store::{HighlightColor, LocalState, Note, PdfRegion};
 use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind};
-use geometry::{View, rotate};
+use geometry::View;
+pub(super) use geometry::rotate;
 use ratatui::{
     Frame,
     layout::{Position, Rect},
@@ -265,15 +266,13 @@ impl Text {
         self.views.clear();
         self.buttons.clear();
     }
-    pub fn page(&mut self, page: u32, picture: &Picture, slot: Rect, crop: Crop, turns: u8) {
-        if let Some((screen, window)) = picture.page_mapping(slot, crop) {
-            self.views.push(View {
-                page,
-                screen,
-                window,
-                turns,
-            });
-        }
+    pub fn page(&mut self, page: u32, screen: Rect, window: [f32; 4], turns: u8) {
+        self.views.push(View {
+            page,
+            screen,
+            window,
+            turns,
+        });
     }
     pub fn strip(
         &mut self,
@@ -1048,12 +1047,20 @@ mod tests {
         )));
         let crop = Crop::default();
         let area = Rect::new(0, 0, 80, 30);
+        let font = picker.font_size();
+        let placement = crate::scan::layout::pages(
+            area,
+            ratatui::layout::Size::new(font.width, font.height),
+            &[picture.dimensions()],
+            0,
+            crop,
+        )[0]
+        .unwrap();
         terminal
-            .draw(|f| picture.draw_region(f, area, &picker, crop))
+            .draw(|f| picture.draw_window(f, placement.screen, &picker, placement.window))
             .unwrap();
-        let (r, w) = picture.page_mapping(area, crop).unwrap();
-        assert_eq!(w, [0., 0., 1., 1.]);
-        assert!(!r.is_empty());
+        assert_eq!(placement.window, [0., 0., 1., 1.]);
+        assert!(!placement.screen.is_empty());
         let patch = picture.text_patch(
             [0., 0.1, 0.5, 0.2],
             ratatui::layout::Size::new(20, 3),
