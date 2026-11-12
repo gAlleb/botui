@@ -7,7 +7,10 @@ fn back_visits_parents_and_preserves_selection_and_scroll_before_leaving_the_roo
     for name in ["A", "B", "C", "C/Child"] {
         fs::create_dir_all(root.join(name)).unwrap();
     }
-    let mut picker = Picker::new(root.into()).unwrap();
+    // Navigation does not depend on the user's config or first-run initialization.
+    let mut picker =
+        Picker::open_with_settings(root.into(), None, crate::settings::Settings::default())
+            .unwrap();
     picker.list = ListState::default().with_selected(Some(2)).with_offset(1);
     picker.load(&root.join("C")).unwrap();
     picker.load(&root.join("C/Child")).unwrap();
@@ -30,7 +33,9 @@ fn returning_from_a_local_shelf_restores_the_folder_even_if_its_order_changed() 
     let temp = tempfile::tempdir().unwrap();
     let root = temp.path();
     fs::create_dir(root.join("B")).unwrap();
-    let mut picker = Picker::new(root.into()).unwrap();
+    let mut picker =
+        Picker::open_with_settings(root.into(), None, crate::settings::Settings::default())
+            .unwrap();
     picker.browse(LocalView::Recent).unwrap();
     fs::create_dir(root.join("A")).unwrap();
     assert!(!picker.back().unwrap());

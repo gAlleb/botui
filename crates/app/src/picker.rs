@@ -87,6 +87,14 @@ impl Picker {
 
     fn open(dir: PathBuf, source: Option<crate::cache::Source>) -> io::Result<Self> {
         let settings = crate::settings::Settings::load()?;
+        Self::open_with_settings(dir, source, settings)
+    }
+
+    fn open_with_settings(
+        dir: PathBuf,
+        source: Option<crate::cache::Source>,
+        settings: crate::settings::Settings,
+    ) -> io::Result<Self> {
         let mut picker = Self {
             search: None,
             source,
