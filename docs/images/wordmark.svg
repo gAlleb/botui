@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="400" height="200" viewBox="0 0 400 200" role="img" aria-labelledby="title">
+  <title id="title">BOTUI</title>
+  <!-- Same lettering and offset shadow as crates/app/src/shelf/home/masthead/mark.rs.
+       A transparent 2:1 canvas aligns the wordmark with the square owl in the README. -->
+  <defs><path id="letters" d="M0 0h9v1h-9z M16 0h5v1h-5z M26 0h11v1h-11z M39 0h4v1h-4z M46 0h4v1h-4z M52 0h7v1h-7z M2 1h2v1h-2z M8 1h2v1h-2z M15 1h2v1h-2z M20 1h2v1h-2z M26 1h2v1h-2z M30 1h3v1h-3z M35 1h2v1h-2z M40 1h2v1h-2z M47 1h2v1h-2z M54 1h3v1h-3z M2 2h2v1h-2z M9 2h2v1h-2z M14 2h2v1h-2z M21 2h2v1h-2z M26 2h1v1h-1z M30 2h3v1h-3z M36 2h1v1h-1z M40 2h2v1h-2z M47 2h2v1h-2z M54 2h3v1h-3z M2 3h2v1h-2z M9 3h2v1h-2z M13 3h2v1h-2z M22 3h2v1h-2z M30 3h3v1h-3z M40 3h2v1h-2z M47 3h2v1h-2z M54 3h3v1h-3z M2 4h8v1h-8z M13 4h2v1h-2z M22 4h2v1h-2z M30 4h3v1h-3z M40 4h2v1h-2z M47 4h2v1h-2z M54 4h3v1h-3z M2 5h8v1h-8z M13 5h2v1h-2z M22 5h2v1h-2z M30 5h3v1h-3z M40 5h2v1h-2z M47 5h2v1h-2z M54 5h3v1h-3z M2 6h2v1h-2z M9 6h2v1h-2z M13 6h2v1h-2z M22 6h2v1h-2z M30 6h3v1h-3z M40 6h2v1h-2z M47 6h2v1h-2z M54 6h3v1h-3z M2 7h2v1h-2z M9 7h2v1h-2z M13 7h2v1h-2z M22 7h2v1h-2z M30 7h3v1h-3z M40 7h2v1h-2z M47 7h2v1h-2z M54 7h3v1h-3z M2 8h2v1h-2z M9 8h2v1h-2z M14 8h2v1h-2z M21 8h2v1h-2z M30 8h3v1h-3z M40 8h2v1h-2z M47 8h2v1h-2z M54 8h3v1h-3z M2 9h2v1h-2z M8 9h2v1h-2z M15 9h2v1h-2z M20 9h2v1h-2z M30 9h3v1h-3z M41 9h2v1h-2z M46 9h2v1h-2z M54 9h3v1h-3z M0 10h9v1h-9z M16 10h5v1h-5z M28 10h7v1h-7z M42 10h5v1h-5z M52 10h7v1h-7z"/></defs>
+  <g transform="translate(23 64) scale(6)" shape-rendering="crispEdges">
+    <use href="#letters" transform="translate(1 1)" fill="#757a91"/>
+    <use href="#letters" fill="#cba6f7"/>
+  </g>
+</svg>

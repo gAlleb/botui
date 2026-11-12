@@ -1,4 +1,7 @@
-<p align="center"><img src="docs/images/mascot.png" width="200" height="200" alt="Сова BOTUI на двух книгах"></p>
+<p align="center">
+  <img src="docs/images/mascot.png" width="30%" alt="Сова BOTUI на двух книгах">
+  <img src="docs/images/wordmark.svg" width="60%" alt="BOTUI">
+</p>
 
 # botui
 
