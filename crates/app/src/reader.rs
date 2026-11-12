@@ -1399,11 +1399,11 @@ pub fn read_server(
             let _dialog_theme = crate::settings::reader_dialogs(reader.theme);
             if let Some(sync) = annotation_sync.as_mut()
                 && sync.tick()
+                && let Some(store) = &state
             {
-                if let Some(store) = &state {
-                    reader.study.notes = store.notes()?;
-                }
-                reader.study.message = Some(sync.message.clone());
+                // Background updates must not open the text tools or replace their feedback.
+                // Sync status is available explicitly through Space a s.
+                reader.study.notes = store.notes()?;
             }
 
             if let Some(message) = viewer.collect() {

@@ -201,11 +201,10 @@ pub(super) fn read_pages(
     loop {
         if let Some(sync) = annotation_sync.as_mut()
             && sync.tick()
+            && let Some(store) = &store
         {
-            if let Some(store) = &store {
-                text.notes = store.notes()?;
-            }
-            message = sync.message.clone();
+            // Keep background sync status in Space a s, without replacing reader feedback.
+            text.notes = store.notes()?;
         }
         let preview_theme = palette
             .as_ref()

@@ -12,6 +12,7 @@ class Handler(s.Handler):
     def do_GET(self):
         if urlsplit(self.path).path==BASE:
             assert self.headers.get('Authorization')==f'Bearer {self.server.token}'
+            self.server.annotation_reads+=1
             return self.reply(503,{'message':'offline'}) if self.server.offline else self.reply(200,self.server.annotations)
         return super().do_GET()
     def do_POST(self):
@@ -52,11 +53,17 @@ def sync_now(t):
     t.keys('Escape','Space','a','s');t.see('BookOrbit annotations')
     t.keys('Home','Down','Enter')
 with tempfile.TemporaryDirectory(prefix='botui-annotation-sync-') as temp,s.Fixture(False) as server:
-    tmp=Path(temp);server.RequestHandlerClass=Handler;server.annotations=[];server.next_id=0;server.offline=False
+    tmp=Path(temp);server.RequestHandlerClass=Handler;server.annotations=[];server.next_id=0;server.offline=False;server.annotation_reads=0
     threading.Thread(target=server.serve_forever,daemon=True).start()
     url=f'http://127.0.0.1:{server.server_port}/reader';t=s.Terminal(tmp,BINARY,url)
     try:
         s.login(t,url);t.keys('Enter');t.click('EPUB',s.formats(t));t.see(s.EPUB_MARK)
+        # A background sync must not open text controls or require Escape to read.
+        wait('initial annotation sync fetched',lambda:server.annotation_reads>0)
+        time.sleep(.4)
+        frame=t.run('capture-pane','-p','-t','shelf').stdout
+        assert 'BookOrbit annotations synchronized' not in frame and '[Esc Read]' not in frame,frame
+        t.keys('Space','a','s');t.see('BookOrbit annotations synchronized');t.keys('Escape')
         # Select a word and save using the real annotation editor.
         frame=t.see('показаны');row,line=next((i,l) for i,l in enumerate(frame.splitlines(),1) if 'показаны' in l);x=line.index('показаны')+1
         seq=(f'\x1b[<0;{x};{row}M\x1b[<0;{x};{row}m')*2
@@ -72,13 +79,20 @@ with tempfile.TemporaryDirectory(prefix='botui-annotation-sync-') as temp,s.Fixt
         # Read-only HTTP failure must preserve the local note; edits while disconnected are durable.
         server.offline=True
         path,v=state(tmp);v['notes'][0]['body']='Offline edit';v['notes'][0]['updated']+=1;path.write_text(json.dumps(v))
-        sync_now(t);t.see('Annotations pending locally');assert notes(tmp)[0]['body']=='Offline edit'
+        sync_now(t)
+        time.sleep(.5)
+        t.keys('Space','a','s');t.see('Annotations pending locally');t.keys('Escape')
+        assert notes(tmp)[0]['body']=='Offline edit'
         server.offline=False;sync_now(t);wait('offline edit uploaded',lambda:server.annotations[0]['note']=='Offline edit')
         server.annotations.clear();sync_now(t);wait('remote removal imported',lambda:not notes(tmp))
         t.keys('Space','q');s.formats(t)
         assert any(r[0]=='PATCH' and r[1].startswith(BASE) for r in server.requests)
         server.progress[303]=dict(fileId=303,updatedAt=None,percentage=33,text={"cfi":None,"page":2})
+        reads=server.annotation_reads
         t.click('PDF',s.formats(t));t.wait('PDF page opened',lambda f:'2 / 3' in f and 'Space r p' in f)
+        wait('PDF annotation sync fetched',lambda:server.annotation_reads>reads)
+        time.sleep(.4)
+        assert 'BookOrbit annotations synchronized' not in t.run('capture-pane','-p','-t','shelf').stdout
         t.keys('Space','c');t.wait('PDF text ready',lambda f:'NORMAL' in f and 'Loading text' not in f)
         t.keys('v','Space','a','h');t.see('Highlight');t.keys('3','Enter');t.see('Annotation saved')
         wait('PDF highlight uploaded',lambda:len(server.annotations)==1)
