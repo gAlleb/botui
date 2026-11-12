@@ -25,15 +25,12 @@ fn start(p: Profile, text: String, source: String, target: String) -> Ticket<io:
     WORKER.with(|w| w.start(move |cancel| providers::request(&p, &text, &source, &target, cancel)))
 }
 pub fn test(term: &mut AppTerminal, p: Profile) -> io::Result<()> {
-    let _ = run(
-        term,
-        "hello",
-        vec![p],
-        0,
-        "auto".into(),
-        "en".into(),
-        |_| {},
-    )?;
+    let target = if p.target_language.is_empty() {
+        Settings::load()?.lookup.target_language
+    } else {
+        p.target_language.clone()
+    };
+    let _ = run(term, "hello", vec![p], 0, "auto".into(), target, |_| {})?;
     Ok(())
 }
 /// Return a result only when explicitly asked to save it as a passage note.
@@ -76,6 +73,10 @@ fn run(
     mut target: String,
     mut underneath: impl FnMut(&mut ratatui::Frame),
 ) -> io::Result<Option<String>> {
+    let default_target = target.clone();
+    if !profiles[index].target_language.is_empty() {
+        target = profiles[index].target_language.clone();
+    }
     let mut job = None;
     let mut requested = None;
     let mut result = String::new();
@@ -225,6 +226,11 @@ fn run(
                     index,
                 )? {
                     index = i;
+                    target = if profiles[i].target_language.is_empty() {
+                        default_target.clone()
+                    } else {
+                        profiles[i].target_language.clone()
+                    };
                 }
             }
             KeyCode::Char('l' | 'L' | 's' | 'S')

@@ -181,6 +181,8 @@ In a Space submenu, `q`, `Esc` and `Backspace` return to the root; `Esc` closes 
 | `← → / PgUp PgDn` | Navigate pages; in PDF arrows also pan |
 | `↑ ↓ / j k` | Move through text; one line in continuous text scroll |
 | `h l` | Previous/next page or horizontal movement |
+| `1 / 2 / 3` | Single page / spread / scroll; in Vim: command count |
+| `+ / = / -` | PDF/DjVu: zoom in / zoom in / zoom out |
 | `Home End` | Start/end (PDF: document; Vim: line) |
 | `Tab` | Focus visible contents; arrows fold/expand, Enter opens |
 | `F1 / F2` | Help / settings |
@@ -265,6 +267,8 @@ On startup, older configs gain missing dictionary/translation defaults, the Spac
 
 **F2 → Dictionaries → Word definitions / Translation** lets you add, edit, test and delete connections. **Save changes & back** writes them to the same TOML. **F2 → Library → OPDS catalogs** manages saved catalogs.
 
+Both lists start empty. Choose an HTTP API, an OpenAI-compatible API or a local command, then enter your own name, optional description and connection settings. HTTP requests and response paths are configurable; examples are commented out below.
+
 <details>
 <summary>Complete config.toml example</summary>
 
@@ -345,69 +349,68 @@ list_view = false
 # Add/edit/delete a profile in its list, then Save changes & back.
 # These names select the default connection in each list; names must be unique.
 [lookup]
-dictionary = "English dictionary"
-translation = "Google Translate"
+dictionary = ""
+translation = ""
 source_language = "auto"
 target_language = "en"
+profiles = []
 
-# Defining profiles replaces the built-in profile list; keep the ones you use.
-# Remove a whole [[lookup.profiles]] block to delete a connection; update the default
-# name above if needed. To disable all providers, set profiles = [] under [lookup]
-# and remove all [[lookup.profiles]] blocks. purpose selects the UI group.
-# Use language codes (en, ru, de, …). "auto" is for source detection only.
-# Free Dictionary is English-only; target_language applies to translation and AI explanations.
-[[lookup.profiles]]
-name = "English dictionary"
-purpose = "dictionary"
-provider = "free-dictionary"
-endpoint = "https://api.dictionaryapi.dev/api/v2/entries/en"
-# This provider returns English definitions, regardless of target_language.
+# No built-in connections. Add your own in F2 > Dictionaries or below.
+# Remove profiles = [] before enabling any [[lookup.profiles]] blocks.
+# name is unique; description is optional and editable. purpose selects the group.
+# HTTP templates: {text}, {source}, {target}, {key}. URL/query values are encoded;
+# JSON string values are escaped safely. Headers are passed as configured.
+# response_path uses /object/key/0 and * for array items. Empty = JSON root.
+# response_format = "text" reads a plain UTF-8 response instead of JSON.
+# Supported methods: GET (default), POST, PUT, PATCH, DELETE.
 
-[[lookup.profiles]]
-name = "Google Translate"
-purpose = "translation"
-provider = "google-web"
-endpoint = "https://translate.googleapis.com/translate_a/single"
-# Unofficial web endpoint, no key. Use Google Cloud for the official API.
-
-# Offline dictionary program (install it and its dictionaries separately).
+# Example only: an English definitions API, not an installed connection.
 # [[lookup.profiles]]
-# name = "Local dictionary"
+# name = "My English dictionary"
+# description = "English definitions"
 # purpose = "dictionary"
-# provider = "command"
-# command = ["sdcv", "-n", "{text}"]
-# Arguments are passed without a shell. Also available: {source}, {target}.
+# provider = "http"
+# endpoint = "https://api.dictionaryapi.dev/api/v2/entries/en/{text}"
+# method = "GET"
+# response_format = "json"
+# response_path = "/*/meanings/*/definitions/*/definition"
+# response_separator = "\n"
 
+# Example only: a custom JSON translation API. Match your service's schema.
 # [[lookup.profiles]]
-# name = "LibreTranslate"
+# name = "My translator"
 # purpose = "translation"
-# provider = "libre-translate"
+# provider = "http"
 # endpoint = "http://localhost:5000/translate"
-# api_key = "optional key"
-
-# [[lookup.profiles]]
-# name = "DeepL"
-# purpose = "translation"
-# provider = "deepl"
-# endpoint = "https://api-free.deepl.com/v2/translate"
-# key_command = ["pass", "show", "translation/deepl"]
+# method = "POST"
+# query = { version = "1" }
+# headers = { Authorization = "Bearer {key}" }
+# body = '{"q":"{text}","source":"{source}","target":"{target}"}'
+# response_format = "json"
+# response_path = "/translatedText"
+# response_separator = ""
+# key_command = ["pass", "show", "translation/api"]
 # api_key = "plain-text alternative"
 # key_command takes precedence over api_key. Keep only the method you use.
 
-# [[lookup.profiles]]
-# name = "Google Cloud"
-# purpose = "translation"
-# provider = "google-cloud"
-# api_key = "your API key"
-
 # OpenAI-compatible chat completions, including a locally hosted server.
 # [[lookup.profiles]]
-# name = "Explanations"
+# name = "My explanations"
+# description = "Explain the selected word"
 # purpose = "dictionary" # or "translation"
 # provider = "openai"
 # endpoint = "http://localhost:11434/v1/chat/completions"
 # model = "your-installed-model"
+# target_language = "ru" # Explanation language; empty uses lookup.target_language.
 # api_key = "optional key"
+
+# Offline dictionary program (install it and its dictionaries separately).
+# [[lookup.profiles]]
+# name = "My local dictionary"
+# purpose = "dictionary"
+# provider = "command"
+# command = ["sdcv", "-n", "{text}"]
+# Arguments are passed without a shell. Also available: {source}, {target}.
 ```
 
 </details>

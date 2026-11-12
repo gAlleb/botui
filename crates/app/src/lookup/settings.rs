@@ -63,45 +63,32 @@ pub fn language(term: &mut AppTerminal, current: &str, source: bool) -> io::Resu
     }
 }
 
+fn connection_count(n: usize) -> String {
+    format!("{n} {}", if n == 1 { "connection" } else { "connections" })
+}
 /// Separate definitions from translation in both navigation and configuration.
 pub fn rows(c: &Config) -> Vec<(String, &'static str)> {
     vec![
         (
             format!(
-                "Word definitions · {} connections",
-                c.profiles(Purpose::Dictionary).len()
+                "Word definitions\t{}",
+                connection_count(c.profiles(Purpose::Dictionary).len())
             ),
             "Dictionaries for word meanings and examples. Add, configure, test or remove a dictionary.",
         ),
         (
             format!(
-                "Translation · {} connections",
-                c.profiles(Purpose::Translation).len()
+                "Translation\t{}",
+                connection_count(c.profiles(Purpose::Translation).len())
             ),
             "Services for translating selected text. Add, configure, test or remove a translator and choose languages.",
         ),
     ]
 }
-fn providers(purpose: Purpose) -> Vec<Provider> {
-    let all = [
-        Provider::FreeDictionary,
-        Provider::GoogleWeb,
-        Provider::DeepL,
-        Provider::GoogleCloud,
-        Provider::LibreTranslate,
-        Provider::OpenAi,
-        Provider::Command,
-    ];
-    all.into_iter()
-        .filter(|p| {
-            supports_both(*p)
-                || match purpose {
-                    Purpose::Dictionary => *p == Provider::FreeDictionary,
-                    Purpose::Translation => *p != Provider::FreeDictionary,
-                }
-        })
-        .collect()
+fn providers(_purpose: Purpose) -> Vec<Provider> {
+    vec![Provider::Http, Provider::OpenAi, Provider::Command]
 }
+
 pub fn open(term: &mut AppTerminal, section: usize) -> io::Result<()> {
     let purpose = if section == 0 {
         Purpose::Dictionary
@@ -123,7 +110,7 @@ pub fn open(term: &mut AppTerminal, section: usize) -> io::Result<()> {
             .map(|&i| {
                 let p = &c.profiles[i];
                 format!(
-                    "{}{} · {}",
+                    "{}{}\t{}",
                     p.name,
                     if c.selected(purpose) == p.name {
                         " [default]"
@@ -143,24 +130,18 @@ pub fn open(term: &mut AppTerminal, section: usize) -> io::Result<()> {
             .into(),
         );
         if purpose == Purpose::Translation {
-            rows.push(format!("Source language: {}", c.source_language));
+            rows.push(format!("Source language	{}", c.source_language));
         }
-        rows.push(format!(
-            "{}: {}",
-            if purpose == Purpose::Dictionary {
-                "AI explanation language"
-            } else {
-                "Translate into"
-            },
-            c.target_language
-        ));
+        if purpose == Purpose::Translation {
+            rows.push(format!("Translate into	{}", c.target_language));
+        }
         let title = if purpose == Purpose::Dictionary {
             "Word definitions"
         } else {
             "Translation"
         };
         let hint = if purpose == Purpose::Dictionary {
-            "Dictionaries explain words and give examples. Select a dictionary to configure it, set it as default, test it or delete it. Free Dictionary provides English definitions; the explanation language applies to AI services."
+            "Dictionaries explain words and give examples. Select a dictionary to configure it, set it as default, test it or delete it. Only connections from your configuration are listed."
         } else {
             "Translators translate a selected passage. Select a service to configure it, set it as default, test it or delete it. Choose input and output languages below the list."
         };
@@ -187,16 +168,21 @@ fn purpose_label(p: Purpose) -> &'static str {
     }
 }
 fn supports_both(p: Provider) -> bool {
-    matches!(p, Provider::Command | Provider::OpenAi)
+    matches!(p, Provider::Command | Provider::OpenAi | Provider::Http)
 }
 fn has_key(p: Provider) -> bool {
     matches!(
         p,
-        Provider::GoogleCloud | Provider::DeepL | Provider::LibreTranslate | Provider::OpenAi
+        Provider::GoogleCloud
+            | Provider::DeepL
+            | Provider::LibreTranslate
+            | Provider::OpenAi
+            | Provider::Http
     )
 }
 fn status(p: &Profile) -> &'static str {
     match p.provider {
+        Provider::Http if p.endpoint.is_empty() => "Enter server address",
         Provider::FreeDictionary | Provider::GoogleWeb => "No API key needed",
         Provider::Command if p.command.first().is_none_or(|s| s.trim().is_empty()) => {
             "Choose a program"
@@ -209,31 +195,6 @@ fn status(p: &Profile) -> &'static str {
             "API key required"
         }
         _ => "Configured · test connection",
-    }
-}
-fn description(p: &Profile) -> &'static str {
-    match p.provider {
-        Provider::FreeDictionary => {
-            "English word definitions, pronunciation and examples. Ready to try; no account or API key needed. Does not translate text."
-        }
-        Provider::GoogleWeb => {
-            "Translate text between languages without an API key. Uses Google's unofficial web interface; availability can change."
-        }
-        Provider::GoogleCloud => {
-            "Google Cloud Translation API. Requires your API key and an enabled translation service in your Google Cloud account."
-        }
-        Provider::DeepL => {
-            "DeepL translation API. Enter your API key. The default address is for API Free; API Pro uses api.deepl.com."
-        }
-        Provider::LibreTranslate => {
-            "Your LibreTranslate server. Set its address; an API key is optional and depends on the server."
-        }
-        Provider::OpenAi => {
-            "Definitions or translation through an OpenAI-compatible service. Set the server address and model. Local servers may not need an API key."
-        }
-        Provider::Command => {
-            "Run a local dictionary or translation program. Add {text} as an argument for the selected passage; {source} and {target} insert language codes. No shell is used."
-        }
     }
 }
 fn edit_connection(term: &mut AppTerminal, index: usize, purpose: Purpose) -> io::Result<()> {
@@ -266,7 +227,7 @@ fn edit_connection(term: &mut AppTerminal, index: usize, purpose: Purpose) -> io
             let available = providers(purpose);
             let Some(n) = choose(
                 term,
-                "Add connection · choose service",
+                "Add connection · connection type",
                 &available
                     .iter()
                     .map(|p| p.label().into())
@@ -298,6 +259,7 @@ fn edit_connection(term: &mut AppTerminal, index: usize, purpose: Purpose) -> io
         };
         match result {
             EditResult::Save(p, default) => {
+                let p = *p;
                 if existing {
                     c.profiles[index] = p.clone();
                 } else {
@@ -350,6 +312,16 @@ fn edit_connection(term: &mut AppTerminal, index: usize, purpose: Purpose) -> io
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Action {
     Name,
+    Type,
+    Description,
+    TargetLanguage,
+    Method,
+    Query,
+    Headers,
+    Body,
+    ResponseFormat,
+    ResponsePath,
+    ResponseSeparator,
     Purpose,
     Endpoint,
     Key,
@@ -369,6 +341,91 @@ fn editor_rows(p: &Profile, default: bool, existing: bool) -> Vec<Row> {
     let mut rows = Vec::new();
     let mut add = |action, label| rows.push(Row { action, label });
     add(Action::Name, format!("Name: {}", p.name));
+    add(
+        Action::Type,
+        format!("Connection type: {}", p.provider.label()),
+    );
+    add(
+        Action::Description,
+        format!(
+            "Description: {}",
+            if p.description.is_empty() {
+                "None"
+            } else {
+                &p.description
+            }
+        ),
+    );
+    if p.provider == Provider::OpenAi && p.purpose == Purpose::Dictionary {
+        add(
+            Action::TargetLanguage,
+            format!(
+                "Explanation language: {}",
+                if p.target_language.is_empty() {
+                    "Use configured target language"
+                } else {
+                    &p.target_language
+                }
+            ),
+        );
+    }
+    if p.provider == Provider::Http {
+        add(
+            Action::Method,
+            format!(
+                "Method: {}",
+                if p.method.is_empty() {
+                    "GET"
+                } else {
+                    &p.method
+                }
+            ),
+        );
+        add(
+            Action::Query,
+            format!("Query parameters: {}", p.query.len()),
+        );
+        add(Action::Headers, format!("Headers: {}", p.headers.len()));
+        add(
+            Action::Body,
+            format!(
+                "JSON body: {}",
+                if p.body.is_empty() {
+                    "None"
+                } else {
+                    "Configured"
+                }
+            ),
+        );
+        add(
+            Action::ResponseFormat,
+            format!(
+                "Response format: {}",
+                if p.response_format.is_empty() {
+                    "json"
+                } else {
+                    &p.response_format
+                }
+            ),
+        );
+        if p.response_format != "text" {
+            add(
+                Action::ResponsePath,
+                format!(
+                    "Text path: {}",
+                    if p.response_path.is_empty() {
+                        "Root"
+                    } else {
+                        &p.response_path
+                    }
+                ),
+            );
+            add(
+                Action::ResponseSeparator,
+                format!("Join results with: {:?}", p.response_separator),
+            );
+        }
+    }
     if supports_both(p.provider) {
         add(
             Action::Purpose,
@@ -408,7 +465,10 @@ fn editor_rows(p: &Profile, default: bool, existing: bool) -> Vec<Row> {
                     "Provided by command"
                 } else if !p.api_key.is_empty() {
                     "Saved (hidden)"
-                } else if matches!(p.provider, Provider::OpenAi | Provider::LibreTranslate) {
+                } else if matches!(
+                    p.provider,
+                    Provider::OpenAi | Provider::LibreTranslate | Provider::Http
+                ) {
                     "Optional · none"
                 } else {
                     "Required · enter key…"
@@ -418,7 +478,7 @@ fn editor_rows(p: &Profile, default: bool, existing: bool) -> Vec<Row> {
         add(
             Action::KeyCommand,
             format!(
-                "Get key from password manager: {}",
+                "Key command: {}",
                 if p.key_command.is_empty() {
                     "Off"
                 } else {
@@ -460,7 +520,7 @@ fn editor_rows(p: &Profile, default: bool, existing: bool) -> Vec<Row> {
     rows
 }
 enum EditResult {
-    Save(Profile, bool),
+    Save(Box<Profile>, bool),
     Delete,
 }
 fn validate(p: &Profile) -> Result<(), &'static str> {
@@ -488,6 +548,9 @@ fn validate(p: &Profile) -> Result<(), &'static str> {
     if p.provider == Provider::OpenAi && p.model.trim().is_empty() {
         return Err("Enter the model name used by your server.");
     }
+    if p.provider == Provider::Http {
+        super::providers::validate_http(p)?;
+    }
     Ok(())
 }
 fn edit_profile(
@@ -505,8 +568,11 @@ fn edit_profile(
         let Some(i) = super::settings_ui::choose(
             term,
             &p.name,
-            description(&p),
-            &rows.iter().map(|r| r.label.clone()).collect::<Vec<_>>(),
+            &p.description,
+            &rows
+                .iter()
+                .map(|r| r.label.replacen(": ", "\t", 1))
+                .collect::<Vec<_>>(),
             selected,
         )?
         else {
@@ -543,13 +609,112 @@ fn edit_profile(
                 )?;
                 continue;
             }
-            return Ok(Some(EditResult::Save(p, default)));
+            return Ok(Some(EditResult::Save(Box::new(p), default)));
         };
         selected = i;
         match rows[i].action {
+            Action::Type => {
+                let choices = providers(p.purpose);
+                if let Some(i) = choose(
+                    term,
+                    "Connection type",
+                    &choices
+                        .iter()
+                        .map(|v| v.label().to_owned())
+                        .collect::<Vec<_>>(),
+                    choices.iter().position(|v| *v == p.provider).unwrap_or(0),
+                )? {
+                    if p.endpoint.is_empty() {
+                        p.endpoint = p.provider.endpoint().into();
+                    }
+                    p.provider = choices[i];
+                }
+            }
             Action::Name => {
                 if let Some(value) = field(term, "Connection name", &p.name)? {
                     p.name = value;
+                }
+            }
+            Action::Description => {
+                if let Some(value) = field(term, "Description · empty hides it", &p.description)? {
+                    p.description = value;
+                }
+            }
+            Action::TargetLanguage => {
+                if let Some(value) = language(term, &p.target_language, false)? {
+                    p.target_language = value;
+                }
+            }
+            Action::Method => {
+                let methods = ["GET", "POST", "PUT", "PATCH", "DELETE"];
+                if let Some(i) = choose(
+                    term,
+                    "HTTP method",
+                    &methods.iter().map(|s| s.to_string()).collect::<Vec<_>>(),
+                    methods.iter().position(|s| *s == p.method).unwrap_or(0),
+                )? {
+                    p.method = methods[i].into();
+                }
+            }
+            Action::Query => {
+                if let Some(map) = edit_pairs(term, "Query parameters", &p.query)? {
+                    p.query = map;
+                }
+            }
+            Action::Headers => {
+                if let Some(map) = edit_pairs(term, "HTTP headers", &p.headers)? {
+                    p.headers = map;
+                }
+            }
+            Action::Body => {
+                if let Some(value) = field(
+                    term,
+                    "JSON body · {text}, {source}, {target}, {key}",
+                    &p.body,
+                )? {
+                    p.body = value;
+                }
+            }
+            Action::ResponseFormat => {
+                if let Some(i) = choose(
+                    term,
+                    "Response format",
+                    &["JSON".into(), "Plain text".into()],
+                    usize::from(p.response_format == "text"),
+                )? {
+                    p.response_format = if i == 0 { "json" } else { "text" }.into();
+                }
+            }
+            Action::ResponsePath => {
+                if let Some(value) = field(
+                    term,
+                    "Text path · /translation or /items/*/text · empty = root",
+                    &p.response_path,
+                )? {
+                    p.response_path = value;
+                }
+            }
+            Action::ResponseSeparator => {
+                let options = ["New line", "Space", "None", "Custom…"];
+                let current = match p.response_separator.as_str() {
+                    "\n" => 0,
+                    " " => 1,
+                    "" => 2,
+                    _ => 3,
+                };
+                if let Some(i) = choose(
+                    term,
+                    "Separator between results",
+                    &options.iter().map(|s| s.to_string()).collect::<Vec<_>>(),
+                    current,
+                )? {
+                    p.response_separator = match i {
+                        0 => "\n".into(),
+                        1 => " ".into(),
+                        2 => String::new(),
+                        _ => field(term, "Custom separator", &p.response_separator)?
+                            .unwrap_or(p.response_separator),
+                    };
                 }
             }
             Action::Purpose => {
@@ -569,7 +734,7 @@ fn edit_profile(
             Action::Endpoint => {
                 if let Some(value) = field(
                     term,
-                    "Server address · empty restores default",
+                    "Server address",
                     if p.endpoint.is_empty() {
                         p.provider.endpoint()
                     } else {
@@ -638,7 +803,7 @@ fn edit_profile(
                     )?;
                     continue;
                 }
-                return Ok(Some(EditResult::Save(p, default)));
+                return Ok(Some(EditResult::Save(Box::new(p), default)));
             }
             Action::Delete => {
                 if choose(
@@ -665,7 +830,7 @@ fn edit_command(
     }
     loop {
         let mut rows = vec![format!(
-            "Program: {}",
+            "Program\t{}",
             if args[0].is_empty() {
                 "Enter program name…"
             } else {
@@ -676,7 +841,7 @@ fn edit_command(
             args.iter()
                 .enumerate()
                 .skip(1)
-                .map(|(i, a)| format!("Argument {i}: {a}")),
+                .map(|(i, a)| format!("Argument {i}\t{a}")),
         );
         rows.extend(["+ Add argument…".into(), "Apply command".into()]);
         if key {
@@ -733,20 +898,88 @@ fn edit_command(
         }
     }
 }
+fn edit_pairs(
+    term: &mut AppTerminal,
+    title: &str,
+    original: &std::collections::BTreeMap<String, String>,
+) -> io::Result<Option<std::collections::BTreeMap<String, String>>> {
+    let mut values = original.clone();
+    loop {
+        let names: Vec<_> = values.keys().cloned().collect();
+        let mut rows = names.clone();
+        rows.extend(["+ Add entry…".into(), "Apply entries".into()]);
+        let Some(i) = super::settings_ui::choose(
+            term,
+            title,
+            "Values accept {text}, {source}, {target}, {key}. Select an entry to edit or delete it. Header values are hidden in the list.",
+            &rows,
+            0,
+        )?
+        else {
+            return Ok(None);
+        };
+        if i == names.len() + 1 {
+            return Ok(Some(values));
+        }
+        let name = if i == names.len() {
+            let Some(name) = field(term, "Entry name", "")? else {
+                continue;
+            };
+            if name.trim().is_empty() {
+                continue;
+            }
+            name
+        } else {
+            names[i].clone()
+        };
+        if values.contains_key(&name) {
+            match choose(
+                term,
+                &name,
+                &["Edit value".into(), "Delete entry".into()],
+                0,
+            )? {
+                Some(1) => {
+                    values.remove(&name);
+                    continue;
+                }
+                Some(0) => (),
+                _ => continue,
+            }
+        }
+        if let Some(value) = prompt::field(
+            term,
+            &name,
+            "[ Apply ]",
+            values.get(&name).map(String::as_str).unwrap_or(""),
+            title == "HTTP headers",
+            |_| {},
+        )? {
+            values.insert(name, value);
+        }
+    }
+}
 #[cfg(test)]
 mod tests {
     use super::*;
     #[test]
-    fn builtins_show_effective_addresses_without_irrelevant_credentials() {
-        for p in Config::default().profiles {
-            let rows = editor_rows(&p, true, true);
-            assert!(rows.iter().any(|r| r.label.contains(p.provider.endpoint())));
-            assert!(!rows.iter().any(|r| matches!(
-                r.action,
-                Action::Key | Action::KeyCommand | Action::Model | Action::Program
-            )));
-            assert_eq!(status(&p), "No API key needed");
-            assert!(validate(&p).is_ok());
+    fn connections_are_user_owned_and_creation_offers_protocols() {
+        assert!(Config::default().profiles.is_empty());
+        assert_eq!(
+            providers(Purpose::Dictionary),
+            vec![Provider::Http, Provider::OpenAi, Provider::Command]
+        );
+        for provider in Provider::ALL {
+            let p = Profile {
+                provider,
+                ..Profile::default()
+            };
+            assert_eq!(
+                editor_rows(&p, false, false)
+                    .iter()
+                    .any(|r| r.action == Action::TargetLanguage),
+                provider == Provider::OpenAi
+            );
         }
     }
     #[test]

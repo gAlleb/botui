@@ -39,12 +39,12 @@ pub fn field(
             underneath(f);
             let area = centered(f.area(), 64, 5);
             let border = crate::appearance::block().title(format!(" {title} "));
-            let inner = border.inner(area);
+            let inner = border.inner(area).inner(ratatui::layout::Margin::new(1, 0));
             f.render_widget(Clear, area);
             f.render_widget(border, area);
             if !inner.is_empty() {
                 let label = value.display(inner.width.saturating_sub(1), secret);
-                f.render_widget(Paragraph::new(format!(" {label}")), inner);
+                f.render_widget(Paragraph::new(label), inner);
                 accept = Rect::new(inner.x, inner.bottom() - 1, inner.width.min(12), 1);
                 cancel = Rect::new(
                     accept.right(),
@@ -150,7 +150,7 @@ fn choose_rows(
         term.draw(|f| {
             let area = centered(f.area(), 70, (labels.len().clamp(3, 18) + 3) as u16);
             let block = crate::appearance::block().title(format!(" {title} "));
-            let inner = block.inner(area);
+            let inner = block.inner(area).inner(ratatui::layout::Margin::new(1, 0));
             f.render_widget(Clear, area);
             f.render_widget(block, area);
             rows = Rect {
@@ -400,4 +400,67 @@ pub fn collection_name(
 ) -> io::Result<Option<String>> {
     let name = edit(term, "New collection name", "[ Create ↵ ]", "", underneath)?;
     Ok(name.map(|s| s.trim().to_owned()).filter(|s| !s.is_empty()))
+}
+
+/// Tab separates semantic columns; ordinary labels remain intact.
+pub(crate) fn columns(labels: &[String], width: u16) -> Vec<String> {
+    fn clip(s: &str, limit: usize) -> String {
+        let mut out = String::new();
+        for ch in s.chars() {
+            let mut next = out.clone();
+            next.push(ch);
+            if ratatui::text::Line::raw(next.as_str()).width() > limit {
+                break;
+            }
+            out = next;
+        }
+        out
+    }
+    if width < 2 {
+        return labels.iter().map(|_| String::new()).collect();
+    }
+    let width = usize::from(width);
+    let left_width = labels
+        .iter()
+        .filter_map(|s| s.split_once('\t'))
+        .map(|(s, _)| ratatui::text::Line::raw(s).width())
+        .max()
+        .unwrap_or(0)
+        .min(width.saturating_sub(4) / 2);
+    labels
+        .iter()
+        .map(|s| {
+            if let Some((left, right)) = s.split_once('\t') {
+                let left = clip(left, left_width);
+                let pad =
+                    left_width.saturating_sub(ratatui::text::Line::raw(left.as_str()).width());
+                format!(
+                    "{left}{}  {}",
+                    " ".repeat(pad),
+                    clip(right, width.saturating_sub(left_width + 2))
+                )
+            } else {
+                clip(s, width)
+            }
+        })
+        .collect()
+}
+#[cfg(test)]
+mod column_tests {
+    #[test]
+    fn values_align_and_fit_narrow_windows() {
+        let labels = vec![
+            "Word definitions\t1 connection".into(),
+            "Translation\t12 connections".into(),
+        ];
+        let rows = super::columns(&labels, 60);
+        assert_eq!(rows[0].find("1 connection"), rows[1].find("12 connections"));
+        for width in [0, 1, 12, 30] {
+            assert!(
+                super::columns(&labels, width)
+                    .iter()
+                    .all(|s| ratatui::text::Line::raw(s.as_str()).width() <= usize::from(width))
+            );
+        }
+    }
 }

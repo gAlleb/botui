@@ -641,7 +641,7 @@ pub(super) fn read_pages(
                 }
             }
         }
-        if !menu && !from_leader && !text.normal() && !crate::leader::reading_event(&e) {
+        if !menu && !from_leader && !text.normal() && !crate::leader::pdf_reading_event(&e) {
             continue;
         }
         if !menu && let Some(result) = splitter.input(&e) {

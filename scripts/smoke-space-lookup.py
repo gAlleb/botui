@@ -102,7 +102,7 @@ endpoint = "http://127.0.0.1:{server.server_port}/translate"
         t.keys('F2');t.keys('Tab','Tab','Tab','Tab');t.see('Word definitions')
         t.keys('Down','Enter');t.see('Test translation')
         t.keys('End','Enter');t.see('Russian');t.keys('Home','Enter')
-        t.see('Translate into: en')
+        t.see('Translate into')
         import tomllib
         saved=tomllib.loads(config.read_text())
         assert saved['lookup']['target_language']=='en' and len(saved['lookup']['profiles'])==2

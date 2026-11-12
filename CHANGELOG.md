@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Restore direct PDF/DjVu zoom with `+`, `=` and `-`. Keep `1 / 2 / 3` for single-page, spread and scroll in ordinary reading; digits remain command counts in Vim.
+
+- Dictionary and translation lists start empty. Add an HTTP API, OpenAI-compatible API or local command, with an editable name and optional description. Generic HTTP connections expose method, query, headers, JSON body and response extraction in F2 and TOML; existing service-specific profiles remain compatible.
+- F2 and its nested editors consistently use the interface palette, then restore the reading palette. Settings and dialogs share horizontal padding and aligned label/value columns, including connection counts.
+- Explanation language is configured on an OpenAI-compatible dictionary connection. Deleting the last connection keeps the list empty after restarting.
+
 - Older TOML files gain missing dictionary/translation settings, Space hint delay, wheel step and OPDS list on startup, preserving existing values and comments.
 
 - Split dictionary settings into Word definitions and Translation, each with add/edit/test/delete, service-specific fields, visible default addresses, default selection and unsaved-change handling. Move Space menu delay to Reader settings.
@@ -12,7 +18,7 @@
 - Reader popups for dictionaries, highlights and notes retain the reading palette. Vim j/k move by visible text rows; braces move between paragraphs.
 
 - Space opens a contextual command menu with a configurable short delay. Space c toggles an optional Vim cursor; Normal supports yank operators and counts, Visual selections, word/line motions, search and named marks. Escape clears a selection or pending command; another Escape hides the cursor and returns to reading. The cursor stays hidden during ordinary reading.
-- Separate dictionary and translation connections, source/target languages, local commands and configurable APIs. Results can be copied or saved as passage notes. Connections, API keys or key commands are editable in F2 and TOML; English definitions and Google web translation are available without extra local tools.
+- Separate dictionary and translation connections, source/target languages, local commands and configurable APIs. Results can be copied or saved as passage notes. Connections, API keys or key commands are editable in F2 and TOML.
 - Named OPDS catalogs and credentials are configurable in `[[opds]]` and F2 → Library, alongside the existing BookOrbit and reader settings.
 
 - PDFs with embedded text support word selection with the mouse or keyboard, copying, colored highlights and multiline comments. The **Space a a** panel searches, edits, deletes and exports notes to Markdown. Saved highlights stay attached to the page through zoom, rotation and reopening. Text extraction runs on demand; image-only scans are not OCRed.

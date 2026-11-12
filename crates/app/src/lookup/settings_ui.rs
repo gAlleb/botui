@@ -29,7 +29,11 @@ pub fn choose(
             if inner.height < 3 {
                 return;
             }
-            let description_height = 4.min(inner.height.saturating_sub(3));
+            let description_height = if description.trim().is_empty() {
+                0
+            } else {
+                4.min(inner.height.saturating_sub(3))
+            };
             f.render_widget(
                 Paragraph::new(description).wrap(Wrap { trim: true }).dim(),
                 Rect::new(
@@ -46,7 +50,7 @@ pub fn choose(
                 inner.height.saturating_sub(description_height + 3),
             );
             f.render_stateful_widget(
-                List::new(labels.iter().map(String::as_str))
+                List::new(crate::prompt::columns(labels, rows.width))
                     .highlight_style(Style::new().reversed()),
                 rows,
                 &mut state,

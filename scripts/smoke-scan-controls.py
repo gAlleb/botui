@@ -30,13 +30,18 @@ with tempfile.TemporaryDirectory(prefix="botui-width-") as tmp:
         term.see("2 / 3  ·  67%")
         term.keys("Left", "Space", "p", "Space", "z")
         term.see("Space l w")
-        term.keys("Space", "l", "3")
+        term.keys("1", "2", "3")
         frame = term.wait("Paper fits pane", lambda f: "Fit width" in f and ":" * 60 in f)
         left, right = paper(frame)
-        term.keys("Space", "r", "-")
+        term.keys("-")
         frame = term.wait("Paper shrinks", lambda f: "90%" in f and ":" * 35 in f and paper(f)[0] > left)
         a, b = paper(frame)
         assert abs((right - left) * .9 - (b - a)) <= 2 and abs((a-left)-(right-b)) <= 1
+        term.keys("+")
+        term.wait("Direct plus restores width", lambda f: "100%" in f and paper(f)[1] - paper(f)[0] > b - a)
+        term.keys("-"); term.see("90%")
+        term.keys("="); term.see("100%")
+        term.keys("-"); frame = term.see("90%")
         term.click("[Space l w 90%]", frame)
         term.click("[ − ]", term.see("Page width / zoom"))
         term.see("80%")
@@ -52,7 +57,7 @@ with tempfile.TemporaryDirectory(prefix="botui-width-") as tmp:
         term.see("Enter 1–3")
         term.keys("C-u", "2", "Enter")
         term.see("2 / 3")
-        term.keys("Space", "r", "-")
+        term.keys("-")
         term.see("90%")
         scroll.stop(term)
         term = scroll.start(root, book)
@@ -114,7 +119,7 @@ with tempfile.TemporaryDirectory(prefix="botui-small-sheets-") as tmp:
 def check_search(root, book, page_count):
     term = scroll.start(root, book)
     try:
-        term.keys("Space", "l", "3")
+        term.keys("1", "2", "3")
         pixels = re.compile(r"([.:%#*=+@-])\1{14,}")
         paper = term.wait("Rendered first sheet", lambda f:
                           f"1 / {page_count}" in f and pixels.search(f))

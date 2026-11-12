@@ -6,6 +6,7 @@ The table records how each reading or navigation scenario was checked. See the [
 
 | Scenario | Verification |
 |---|---|
+| Dictionary settings: empty restart, custom HTTP CRUD, JSON templates, masked headers, consistent nested palettes, aligned columns and small-window mouse navigation. | smoke-lookup-settings; unit tests for templates and response paths |
 | Space menu, Normal yank operators, dictionary result, translation language switch, saved passage note and named OPDS credentials. | smoke-space-lookup with isolated local HTTP server |
 | Select PDF words with mouse and keyboard, copy exact quotes, edit/delete comments, export, rotate/zoom and reopen. | smoke-pdf-text; normalized geometry and persistence tests |
 | Sign in to BookOrbit with no personal collections. Choose a library, book and edition, then navigate back. | smoke-shelf |

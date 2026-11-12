@@ -1,4 +1,5 @@
 //! Explicit dictionary/translation requests; no network traffic while reading.
+mod http;
 mod providers;
 pub(crate) mod settings;
 mod settings_ui;
@@ -17,6 +18,7 @@ pub enum Purpose {
 pub enum Provider {
     #[default]
     Command,
+    Http,
     FreeDictionary,
     GoogleWeb,
     GoogleCloud,
@@ -28,7 +30,8 @@ pub enum Provider {
 }
 impl Provider {
     #[cfg(test)]
-    pub const ALL: [Self; 7] = [
+    pub const ALL: [Self; 8] = [
+        Self::Http,
         Self::Command,
         Self::FreeDictionary,
         Self::GoogleWeb,
@@ -39,6 +42,7 @@ impl Provider {
     ];
     pub fn label(self) -> &'static str {
         match self {
+            Self::Http => "HTTP API",
             Self::Command => "Local command",
             Self::FreeDictionary => "Free Dictionary · English definitions",
             Self::GoogleWeb => "Google Translate · web (unofficial)",
@@ -50,7 +54,7 @@ impl Provider {
     }
     pub fn endpoint(self) -> &'static str {
         match self {
-            Self::Command => "",
+            Self::Command | Self::Http => "",
             Self::FreeDictionary => "https://api.dictionaryapi.dev/api/v2/entries/en",
             Self::GoogleWeb => "https://translate.googleapis.com/translate_a/single",
             Self::GoogleCloud => "https://translation.googleapis.com/language/translate/v2",
@@ -71,6 +75,15 @@ pub struct Profile {
     pub key_command: Vec<String>,
     pub command: Vec<String>,
     pub model: String,
+    pub description: String,
+    pub target_language: String,
+    pub method: String,
+    pub query: std::collections::BTreeMap<String, String>,
+    pub headers: std::collections::BTreeMap<String, String>,
+    pub body: String,
+    pub response_format: String,
+    pub response_path: String,
+    pub response_separator: String,
 }
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(default)]
@@ -84,21 +97,9 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Self {
         Self {
-            profiles: vec![
-                Profile {
-                    name: "English dictionary".into(),
-                    provider: Provider::FreeDictionary,
-                    ..Profile::default()
-                },
-                Profile {
-                    name: "Google Translate".into(),
-                    purpose: Purpose::Translation,
-                    provider: Provider::GoogleWeb,
-                    ..Profile::default()
-                },
-            ],
-            dictionary: "English dictionary".into(),
-            translation: "Google Translate".into(),
+            profiles: vec![],
+            dictionary: String::new(),
+            translation: String::new(),
             source_language: "auto".into(),
             target_language: "en".into(),
         }
@@ -118,7 +119,7 @@ impl Config {
                     ..Profile::default()
                 },
             );
-            if config.dictionary == "English dictionary" {
+            if config.dictionary.is_empty() || config.dictionary == "English dictionary" {
                 config.dictionary = "Legacy command".into();
             }
         }
@@ -147,7 +148,7 @@ mod tests {
     fn sample_toml_and_profiles_round_trip() {
         let s: crate::settings::Settings =
             toml_edit::de::from_str(include_str!("../../../config.example.toml")).unwrap();
-        assert_eq!(s.lookup.profiles.len(), 2);
+        assert!(s.lookup.profiles.is_empty());
         let mut c = s.lookup;
         c.profiles.push(Profile {
             name: "Local".into(),
@@ -156,6 +157,6 @@ mod tests {
         });
         let encoded = toml_edit::ser::to_string(&c).unwrap();
         let copy: Config = toml_edit::de::from_str(&encoded).unwrap();
-        assert_eq!(copy.profiles[2].command, ["sdcv", "{text}"]);
+        assert_eq!(copy.profiles[0].command, ["sdcv", "{text}"]);
     }
 }

@@ -5,7 +5,7 @@ import importlib.util,tempfile,re,json,shutil,subprocess,time,os
 root=Path(__file__).resolve().parents[1]
 spec=importlib.util.spec_from_file_location('sources',root/'scripts/smoke-sources.py');s=importlib.util.module_from_spec(spec);spec.loader.exec_module(s)
 def start(d,path,*env):
-    t=s.shelf.Terminal(d,Path('/usr/bin/env'),args=['NO_COLOR=1',*env,str(root/'target/debug/botui'),str(path)])
+    t=s.shelf.Terminal(d,Path('/usr/bin/env'),args=['NO_COLOR=1',*env,str(Path(os.environ.get('BOTUI_BINARY', root/'target/debug/botui')).resolve()),str(path)])
     return t
 def stop(t):
     t.keys('Space','q')

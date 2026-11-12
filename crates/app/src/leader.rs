@@ -53,6 +53,12 @@ fn group(c: char, label: &'static str, g: &'static str) -> Entry {
     }
 }
 /// Ordinary reading keeps navigation and standard function keys, not legacy letters.
+pub fn pdf_reading_event(event: &Event) -> bool {
+    reading_event(event)
+        || matches!(event, Event::Key(k)
+        if matches!(k.code, KeyCode::Char('+' | '=' | '-' | '−'))
+        && !k.modifiers.intersects(KeyModifiers::CONTROL | KeyModifiers::ALT))
+}
 pub fn reading_event(event: &Event) -> bool {
     let Event::Key(k) = event else {
         return true;
@@ -75,7 +81,7 @@ pub fn reading_event(event: &Event) -> bool {
             | KeyCode::Enter
             | KeyCode::Esc
             | KeyCode::F(1..=5)
-            | KeyCode::Char('h' | 'j' | 'k' | 'l')
+            | KeyCode::Char('h' | 'j' | 'k' | 'l' | '1' | '2' | '3')
     )
 }
 fn entries(context: Context, path: &str) -> Vec<Entry> {
@@ -359,10 +365,7 @@ mod tests {
     }
     #[test]
     fn reading_has_no_legacy_command_letters() {
-        for c in "vVtTbBgGnNaAsSzZqQ123%[]{}/+ -"
-            .chars()
-            .filter(|c| *c != ' ')
-        {
+        for c in "vVtTbBgGnNaAsSzZqQ%[]{}/+ -".chars().filter(|c| *c != ' ') {
             assert!(
                 !reading_event(&Event::Key(KeyEvent::new(
                     KeyCode::Char(c),
@@ -371,12 +374,20 @@ mod tests {
                 "{c}"
             );
         }
-        for c in "hjkl".chars() {
+        for c in "hjkl123".chars() {
             assert!(reading_event(&Event::Key(KeyEvent::new(
                 KeyCode::Char(c),
                 KeyModifiers::NONE
             ))));
         }
+    }
+    #[test]
+    fn pdf_keeps_direct_zoom_without_enabling_legacy_letters() {
+        let event = |code| Event::Key(KeyEvent::new(code, KeyModifiers::NONE));
+        for c in "+=-−".chars() {
+            assert!(pdf_reading_event(&event(KeyCode::Char(c))));
+        }
+        assert!(!pdf_reading_event(&event(KeyCode::Char('v'))));
     }
     #[test]
     fn reader_commands_are_documented() {

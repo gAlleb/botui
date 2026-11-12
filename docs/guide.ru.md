@@ -170,6 +170,8 @@ botui --config-path                         # создать конфиг и в�
 | `← → / PgUp PgDn` | Листать страницы; в PDF стрелки также сдвигают увеличенный лист |
 | `↑ ↓ / j k` | Перемещение по тексту; по строке в режиме прокрутки текста |
 | `h l` | Предыдущая/следующая страница или горизонтальное перемещение |
+| `1 / 2 / 3` | Одна страница / разворот / прокрутка; в Vim — счётчик |
+| `+ / = / -` | PDF/DjVu: увеличить / увеличить / уменьшить масштаб |
 | `Home End` | Начало/конец (PDF: документ; Vim: строка) |
 | `Tab` | Фокус видимого оглавления; стрелки сворачивают/разворачивают, Enter открывает |
 | `F1 / F2` | Справка / настройки |
@@ -234,11 +236,11 @@ botui --config-path                         # создать конфиг и в�
 
 ### Словари, перевод и подключения OPDS
 
-**F2 → Dictionaries** содержит два раздела: **Word definitions** (значения слов) и **Translation** (перевод). В каждом есть свой список подключений и кнопка добавления. Выберите нужное, чтобы изменить его, проверить, назначить по умолчанию или удалить. Редактор показывает только поля выбранного сервиса и действующий адрес сервера. Free Dictionary и Google web не требуют ключа. **Save changes & back** сохраняет изменения; при выходе с несохранёнными правками можно сохранить их, отбросить или продолжить редактирование. Программа и её аргументы задаются отдельными полями — без JSON и экранирования для оболочки.
+**F2 → Dictionaries** разделяет **Word definitions** (значения слов) и **Translation** (перевод). Оба списка изначально пустые. При добавлении выбирается способ подключения: **HTTP API**, **OpenAI-compatible API** или **Local command**. Название и необязательное описание задаёшь сам. Подключение можно изменить, проверить, выбрать основным или удалить. После удаления последнего подключения список остаётся пустым и после перезапуска.
 
-Исходный язык и язык перевода/объяснения выбираются под списком подключений. В окне ответа **P** меняет подключение, **L/S** — язык перевода/источника, **Y** копирует ответ, **N** сохраняет его в заметку к исходному фрагменту, **Esc** закрывает окно. Задержка **Space menu delay** находится в **F2 → Reader** и влияет только на появление подсказки, не на выполнение команд.
+У HTTP API настраиваются адрес, метод, параметры запроса, заголовки, JSON-тело и путь к тексту ответа. Шаблоны используют `{text}`, `{source}`, `{target}` и `{key}`. Путь `/items/*/text` собирает строки из элементов массива; разделитель объединяет результаты. Поддерживается и обычный текстовый ответ. Для других протоколов и способов авторизации можно подключить локальную команду. Примеры сервисов находятся в config.example.toml, а не в меню добавления. Старые конфигурации с названиями провайдеров продолжают читаться.
 
-Поддерживаются English Free Dictionary, неофициальный веб-сервис Google Translate, официальные API Google Cloud Translation и DeepL, LibreTranslate, совместимые с OpenAI chat API и локальные команды вроде `sdcv`. Free Dictionary возвращает только английские определения. Локальная команда требует отдельно установленного словаря; объяснения от языковой модели не являются статьями проверенного словаря.
+**Save changes & back** сохраняет изменения. При выходе из изменённой формы можно сохранить, отменить изменения или продолжить редактирование. Пустое описание не занимает место над формой. Пароли скрыты. Языки перевода находятся под списком переводчиков; **Explanation language** — в настройках конкретного OpenAI-совместимого словаря. В окне результата: **P** — подключение, **L/S** — язык результата/исходный язык, **Y** — копировать, **N** — сохранить заметку, **Esc** — закрыть. Задержка подсказки Space находится в **F2 → Reader**, по умолчанию 150 мс; команды выполняются сразу.
 
 Запрос выполняется только по вашей команде, с лимитом 20 секунд и ограниченным кэшем ответов в памяти. Во внешний сервис уходит выбранное слово или фрагмент. Автоматического перевода в фоне и скрытой замены провайдера нет. Esc закрывает окно; уже отправленный HTTP-запрос может завершиться в фоне. Ключ можно задать текстом или командой получения ключа; команда имеет приоритет. В настройках ключ скрыт.
 
@@ -355,69 +357,68 @@ list_view = false
 # Add/edit/delete a profile in its list, then Save changes & back.
 # These names select the default connection in each list; names must be unique.
 [lookup]
-dictionary = "English dictionary"
-translation = "Google Translate"
+dictionary = ""
+translation = ""
 source_language = "auto"
 target_language = "en"
+profiles = []
 
-# Defining profiles replaces the built-in profile list; keep the ones you use.
-# Remove a whole [[lookup.profiles]] block to delete a connection; update the default
-# name above if needed. To disable all providers, set profiles = [] under [lookup]
-# and remove all [[lookup.profiles]] blocks. purpose selects the UI group.
-# Use language codes (en, ru, de, …). "auto" is for source detection only.
-# Free Dictionary is English-only; target_language applies to translation and AI explanations.
-[[lookup.profiles]]
-name = "English dictionary"
-purpose = "dictionary"
-provider = "free-dictionary"
-endpoint = "https://api.dictionaryapi.dev/api/v2/entries/en"
-# This provider returns English definitions, regardless of target_language.
+# No built-in connections. Add your own in F2 > Dictionaries or below.
+# Remove profiles = [] before enabling any [[lookup.profiles]] blocks.
+# name is unique; description is optional and editable. purpose selects the group.
+# HTTP templates: {text}, {source}, {target}, {key}. URL/query values are encoded;
+# JSON string values are escaped safely. Headers are passed as configured.
+# response_path uses /object/key/0 and * for array items. Empty = JSON root.
+# response_format = "text" reads a plain UTF-8 response instead of JSON.
+# Supported methods: GET (default), POST, PUT, PATCH, DELETE.
 
-[[lookup.profiles]]
-name = "Google Translate"
-purpose = "translation"
-provider = "google-web"
-endpoint = "https://translate.googleapis.com/translate_a/single"
-# Unofficial web endpoint, no key. Use Google Cloud for the official API.
-
-# Offline dictionary program (install it and its dictionaries separately).
+# Example only: an English definitions API, not an installed connection.
 # [[lookup.profiles]]
-# name = "Local dictionary"
+# name = "My English dictionary"
+# description = "English definitions"
 # purpose = "dictionary"
-# provider = "command"
-# command = ["sdcv", "-n", "{text}"]
-# Arguments are passed without a shell. Also available: {source}, {target}.
+# provider = "http"
+# endpoint = "https://api.dictionaryapi.dev/api/v2/entries/en/{text}"
+# method = "GET"
+# response_format = "json"
+# response_path = "/*/meanings/*/definitions/*/definition"
+# response_separator = "\n"
 
+# Example only: a custom JSON translation API. Match your service's schema.
 # [[lookup.profiles]]
-# name = "LibreTranslate"
+# name = "My translator"
 # purpose = "translation"
-# provider = "libre-translate"
+# provider = "http"
 # endpoint = "http://localhost:5000/translate"
-# api_key = "optional key"
-
-# [[lookup.profiles]]
-# name = "DeepL"
-# purpose = "translation"
-# provider = "deepl"
-# endpoint = "https://api-free.deepl.com/v2/translate"
-# key_command = ["pass", "show", "translation/deepl"]
+# method = "POST"
+# query = { version = "1" }
+# headers = { Authorization = "Bearer {key}" }
+# body = '{"q":"{text}","source":"{source}","target":"{target}"}'
+# response_format = "json"
+# response_path = "/translatedText"
+# response_separator = ""
+# key_command = ["pass", "show", "translation/api"]
 # api_key = "plain-text alternative"
 # key_command takes precedence over api_key. Keep only the method you use.
 
-# [[lookup.profiles]]
-# name = "Google Cloud"
-# purpose = "translation"
-# provider = "google-cloud"
-# api_key = "your API key"
-
 # OpenAI-compatible chat completions, including a locally hosted server.
 # [[lookup.profiles]]
-# name = "Explanations"
+# name = "My explanations"
+# description = "Explain the selected word"
 # purpose = "dictionary" # or "translation"
 # provider = "openai"
 # endpoint = "http://localhost:11434/v1/chat/completions"
 # model = "your-installed-model"
+# target_language = "ru" # Explanation language; empty uses lookup.target_language.
 # api_key = "optional key"
+
+# Offline dictionary program (install it and its dictionaries separately).
+# [[lookup.profiles]]
+# name = "My local dictionary"
+# purpose = "dictionary"
+# provider = "command"
+# command = ["sdcv", "-n", "{text}"]
+# Arguments are passed without a shell. Also available: {source}, {target}.
 ```
 
 Для менеджера паролей используйте `password_command`. Массив запускает команду с указанными аргументами. Строка выполняется через `sh -c`. Команда должна успешно завершиться и выдать пароль первой строкой. Для хранения открытым текстом есть поле `password`.

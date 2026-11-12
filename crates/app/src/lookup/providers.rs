@@ -1,3 +1,4 @@
+pub use super::http::validate as validate_http;
 use super::{Profile, Provider, Purpose};
 use serde_json::{Value, json};
 use std::{
@@ -108,6 +109,7 @@ pub fn request(
         .build()
         .map_err(|_| failure("Cannot initialize HTTP client"))?;
     let req = match p.provider {
+        Provider::Http => super::http::request(&client, p, text, source, target, &key)?,
         Provider::FreeDictionary => {
             url.path_segments_mut()
                 .map_err(|_| failure("Invalid dictionary endpoint"))?
@@ -178,6 +180,9 @@ pub fn request(
     if data.len() as u64 > LIMIT {
         return Err(failure("Service response is too large"));
     }
+    if p.provider == Provider::Http {
+        return super::http::decode(p, &data);
+    }
     let value: Value =
         serde_json::from_slice(&data).map_err(|_| failure("Service returned invalid JSON"))?;
     decode(p.provider, &value)
@@ -236,7 +241,7 @@ pub fn decode(provider: Provider, v: &Value) -> io::Result<String> {
             .as_str()
             .unwrap_or("")
             .to_string(),
-        Provider::Command => String::new(),
+        Provider::Command | Provider::Http => String::new(),
     };
     if output.trim().is_empty() {
         Err(failure("No definition or translation returned"))

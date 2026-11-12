@@ -350,6 +350,9 @@ impl Drop for DialogTheme {
 pub fn reader_dialogs(theme: crate::theme::Theme) -> DialogTheme {
     DialogTheme(DIALOG_THEME.replace(Some(theme)))
 }
+pub fn interface_dialogs() -> DialogTheme {
+    DialogTheme(DIALOG_THEME.replace(None))
+}
 pub fn paint_dialog(frame: &mut Frame) {
     if let Some(theme) = DIALOG_THEME.get() {
         paint_book(frame, theme);
@@ -420,7 +423,7 @@ mod dialog_tests {
         assert_eq!(settings.leader_delay_ms, Some(240));
         assert_eq!(settings.keys.get(&'x').unwrap(), "next");
         assert_eq!(settings.interface_theme.as_deref(), Some("nord"));
-        assert_eq!(settings.lookup.profiles.len(), 2);
+        assert!(settings.lookup.profiles.is_empty());
         assert!(settings.opds.is_empty());
         assert!(!extend_config(&mut doc).unwrap());
         assert_eq!(saved, doc.to_string());
@@ -478,6 +481,24 @@ mod dialog_tests {
                         Color::Reset
                     }
                 );
+                {
+                    let _settings = interface_dialogs();
+                    assert_eq!(DIALOG_THEME.get(), None);
+                    let mut reference = Terminal::new(TestBackend::new(12, 4)).unwrap();
+                    reference
+                        .draw(|f| {
+                            f.render_widget(Paragraph::new("Settings"), f.area());
+                            paint_interface(f);
+                        })
+                        .unwrap();
+                    term.draw(|f| {
+                        f.render_widget(Paragraph::new("Settings"), f.area());
+                        paint_dialog(f);
+                    })
+                    .unwrap();
+                    assert_eq!(term.backend().buffer(), reference.backend().buffer());
+                }
+                assert_eq!(DIALOG_THEME.get(), Some(theme));
                 {
                     let _nested = reader_dialogs(crate::theme::Theme::TERMINAL);
                 }

@@ -92,7 +92,7 @@ struct SettingRow {
 }
 fn rows(tab: usize, s: &Settings) -> Vec<SettingRow> {
     let pair = |k: &str, v: &str, hint| SettingRow {
-        label: format!(" {k:<23} {v}"),
+        label: format!("{k}\t{v}"),
         hint,
     };
     let view = |grid| if grid { "Cover grid" } else { "List" };
@@ -291,6 +291,7 @@ fn rows(tab: usize, s: &Settings) -> Vec<SettingRow> {
     }
 }
 pub fn show(term: &mut AppTerminal, start: Open, ctx: Context) -> io::Result<()> {
+    let _palette = crate::settings::interface_dialogs();
     let mut tab = if start == Open::Help { 4 } else { 0 };
     let mut state = ListState::default().with_selected(Some(0));
     let mut status = String::new();
@@ -319,7 +320,7 @@ pub fn show(term: &mut AppTerminal, start: Open, ctx: Context) -> io::Result<()>
             } else {
                 " Settings "
             });
-            let inner = block.inner(area);
+            let inner = block.inner(area).inner(ratatui::layout::Margin::new(1, 0));
             f.render_widget(block, area);
             if inner.height < 3 {
                 crate::settings::paint_interface(f);
@@ -370,8 +371,14 @@ pub fn show(term: &mut AppTerminal, start: Open, ctx: Context) -> io::Result<()>
                 4 => guide_view.draw(f, body, &guide),
                 _ => {
                     f.render_stateful_widget(
-                        List::new(labels.iter().map(|row| row.label.as_str()))
-                            .highlight_style(Style::new().reversed()),
+                        List::new(crate::prompt::columns(
+                            &labels
+                                .iter()
+                                .map(|row| row.label.clone())
+                                .collect::<Vec<_>>(),
+                            body.width,
+                        ))
+                        .highlight_style(Style::new().reversed()),
                         body,
                         &mut state,
                     );

@@ -118,6 +118,10 @@ pub(super) fn entries(ctx: Context, p: &Settings) -> Vec<Entry> {
                         "Navigate; scroll mode moves through text",
                     ),
                     ("Mouse wheel", "Scroll; F2 → Reader sets lines per tick"),
+                    (
+                        "1 / 2 / 3",
+                        "Single page / two-page spread / continuous scroll",
+                    ),
                     ("F3 / F4 / F5", "Next / previous match / search results"),
                     (
                         "Mouse",
@@ -143,7 +147,12 @@ pub(super) fn entries(ctx: Context, p: &Settings) -> Vec<Entry> {
                         "Navigate pages; arrows pan a zoomed page",
                     ),
                     ("Home / End", "First / last page"),
+                    ("+ / = / −", "Zoom in / zoom in / zoom out"),
                     ("Mouse wheel", "Scroll; F2 → Reader sets lines per tick"),
+                    (
+                        "1 / 2 / 3",
+                        "Single page / two-page spread / continuous scroll",
+                    ),
                     ("Tab; ← / →", "Focus contents; fold / expand a section"),
                     ("F3 / F4 / F5", "Next / previous matching page / results"),
                     (
