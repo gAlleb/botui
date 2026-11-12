@@ -160,7 +160,7 @@ In a Space submenu, `q`, `Esc` and `Backspace` return to the root; `Esc` closes 
 | `Space t` | Reading theme; PDF: original / inverted / match background |
 | `Space s` | Settings |
 | `Space ?` | Help |
-| `Space q` | Close book and return to its source |
+| `q` / `Q` / `Space q` | Close book and return to its source |
 | `Space r c` | Open cover in external viewer |
 | `Space r s` | Reading statistics |
 | `Space r [` | Jump back |

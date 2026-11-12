@@ -27,7 +27,7 @@ If a book or catalog has no cover image, BOTUI makes a [cloth jacket](images/gen
 
 **F2** opens Settings: Appearance, Reader, Library, BookOrbit, Dictionaries, Keys, About and Legal. **F1** (or **?** on a shelf) opens the shortcut guide for the current screen. Use **[ / ]** to switch groups or type **/** to find a key or command. The footer shortcuts are clickable.
 
-**Q** on shelves and **Space q** in a reader go back one step. In BookOrbit: reader → book card → the shelf, dashboard or search you opened it from. In the local library: reader → folder → parent folders → library root → source chooser. Selection and scroll position are kept when you return. On the source chooser, **Q** exits BOTUI. When launched with a single file path, closing that file ends the command.
+**Q** on shelves and during ordinary reading go back one step. In BookOrbit: reader → book card → the shelf, dashboard or search you opened it from. In the local library: reader → folder → parent folders → library root → source chooser. Selection and scroll position are kept when you return. On the source chooser, **Q** exits BOTUI. When launched with a single file path, closing that file ends the command.
 
 **Esc** also goes back on library screens; in a reader it opens the reading menu. In a search field, **Q** is typed into the query and **Esc** closes the search. Click **Home** on a BookOrbit shelf to go straight to the source chooser.
 
@@ -147,7 +147,7 @@ In a Space submenu, `q`, `Esc` and `Backspace` return to the root; `Esc` closes 
 | `Space t` | Reading theme; PDF: original / inverted / match background |
 | `Space s` | Settings |
 | `Space ?` | Help |
-| `Space q` | Close book and return to its source |
+| `q` / `Q` / `Space q` | Close book and return to its source |
 | `Space r c` | Open cover in external viewer |
 | `Space r s` | Reading statistics |
 | `Space r [` | Jump back |

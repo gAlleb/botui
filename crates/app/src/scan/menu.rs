@@ -39,5 +39,5 @@ pub(super) const ITEMS: &[(&str, &str, usize)] = &[
     ("Change borders", "Space l u", 25),
     ("Settings", "F2", 26),
     ("Keyboard shortcuts", "F1", 27),
-    ("Close book", "Space q", 5),
+    ("Close book", "Q / Space q", 5),
 ];

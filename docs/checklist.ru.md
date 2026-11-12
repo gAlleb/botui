@@ -115,3 +115,5 @@ target/x86_64-unknown-linux-musl/release/examples/reflow-bench /путь/к/кн
 - Реальные издания: [Flatland, Standard Ebooks](https://github.com/standardebooks/edwin-a-abbott_flatland) — 13 SVG; «О природе ума» — SVG-обёртка с JPEG из архива. Для замеров обычного чтения используются прежняя сборка и те же книги, без параллельной компиляции.
 
 - Справочник команд: Rust-тесты проверяют наличие всех команд Space и полного примера TOML в обеих README и руководствах. `smoke-lookup-settings.py` проверяет редактирование словарей/перевода, выбор по умолчанию, проверку, удаление и сохранность настроек. `smoke-config.py` проверяет дополнение существующего TOML.
+
+- `scripts/smoke-reader-navigation.py`: проверяет возврат из EPUB/FB2/PDF, переходы Reading → Normal → Visual → Reading, каждый уровень Space, закрытие окон и восстановление позиции. `q` закрывает книгу в обычном чтении; из меню возвращает в чтение.

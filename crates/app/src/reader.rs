@@ -674,7 +674,7 @@ impl Reader {
                 ),
                 Action::JumpBack => ("Jump back".into(), "Space r ["),
                 Action::JumpForward => ("Jump forward".into(), "Space r ]"),
-                Action::Close => ("Close book".into(), "Space q"),
+                Action::Close => ("Close book".into(), "Q / Space q"),
                 _ => unreachable!("visible reader menu command"),
             };
             Row::new([

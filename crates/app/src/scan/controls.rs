@@ -126,7 +126,7 @@ impl Dialog {
                         KeyCode::Char('+' | '=') | KeyCode::Right => Command::Zoom(true),
                         KeyCode::Char('-' | '−') | KeyCode::Left => Command::Zoom(false),
                         KeyCode::Char('0') => Command::Fit,
-                        KeyCode::Enter | KeyCode::Char('w' | 'W') => Command::Close,
+                        KeyCode::Enter | KeyCode::Char('q' | 'Q' | 'w' | 'W') => Command::Close,
                         _ => Command::None,
                     },
                     Self::Page { value, invalid } => {

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Restore direct `q` / `Q` back navigation in ordinary EPUB/FB2 and PDF/DjVu reading. Closing a book returns to its source; Space submenus still go back one level without closing the book. Q also closes page-width dialogs.
+
 - Restore direct PDF/DjVu zoom with `+`, `=` and `-`. Keep `1 / 2 / 3` for single-page, spread and scroll in ordinary reading; digits remain command counts in Vim.
 
 - Dictionary and translation lists start empty. Add an HTTP API, OpenAI-compatible API or local command, with an editable name and optional description. Generic HTTP connections expose method, query, headers, JSON body and response extraction in F2 and TOML; existing service-specific profiles remain compatible.

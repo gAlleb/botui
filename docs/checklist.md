@@ -115,3 +115,5 @@ The canvas regression compares grouped rendering with individual shaping cluster
 - Real editions: [Flatland, Standard Ebooks](https://github.com/standardebooks/edwin-a-abbott_flatland), with 13 SVGs, and *On the Nature of Mind*, with an SVG wrapper around an archive JPEG. Compare ordinary reading against the prior binary on the same books, without concurrent compilation.
 
 - Command reference: Rust tests require every Space command and the complete TOML example in both READMEs and guides. `smoke-lookup-settings.py` checks definition/translation profile editing, defaults, testing, deletion and preserved settings. `smoke-config.py` checks upgrades of existing TOML files.
+
+- `scripts/smoke-reader-navigation.py`: checks EPUB/FB2/PDF back navigation, Reading → Normal → Visual → Reading, each Space submenu, panel closing and restored position. Direct `q` closes a book in ordinary reading; in a menu it resumes reading.

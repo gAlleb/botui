@@ -112,6 +112,7 @@ pub(super) fn entries(ctx: Context, p: &Settings) -> Vec<Entry> {
             Context::Text => (
                 "EPUB & FB2 · reading without cursor",
                 &[
+                    ("Q", "Close book and return to its source"),
                     ("← / → · PgUp / PgDn", "Previous / next page"),
                     (
                         "h j k l / arrows",
@@ -142,6 +143,7 @@ pub(super) fn entries(ctx: Context, p: &Settings) -> Vec<Entry> {
             Context::Scan => (
                 "PDF & DjVu · reading without cursor",
                 &[
+                    ("Q", "Close book and return to its source"),
                     (
                         "← / → · PgUp / PgDn",
                         "Navigate pages; arrows pan a zoomed page",
