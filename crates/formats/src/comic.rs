@@ -1,6 +1,6 @@
 //! Comic archives reuse the image-page reader and existing ZIP decoder.
 //! RAR decoding is built in; no external program or full archive extraction.
-use super::{FileKind, Result, invalid};
+use super::{Result, invalid};
 use botui_core::{Anchor, ContentsEntry, Document};
 use std::{
     cmp::Ordering,
@@ -9,6 +9,30 @@ use std::{
     path::Path,
 };
 const IMAGE_LIMIT: u64 = 16 << 20;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ArchiveKind {
+    Zip,
+    Rar,
+}
+impl ArchiveKind {
+    // Catalogs and local collections sometimes name RAR files .cbz (or ZIP
+    // files .cbr). Use the same signature check for the index, cover and pages.
+    fn detect(path: &Path) -> Result<Self> {
+        let mut header = Vec::with_capacity(8);
+        File::open(path)?.take(8).read_to_end(&mut header)?;
+        if header.starts_with(b"Rar!\x1a\x07\x00") || header.starts_with(b"Rar!\x1a\x07\x01\x00") {
+            Ok(Self::Rar)
+        } else if [b"PK\x03\x04", b"PK\x05\x06", b"PK\x07\x08"]
+            .iter()
+            .any(|magic| header.starts_with(*magic))
+        {
+            Ok(Self::Zip)
+        } else {
+            Err(invalid("Comic archive is not a supported ZIP or RAR file").into())
+        }
+    }
+}
 
 fn page_name(name: &str) -> bool {
     !name.chars().any(char::is_control)
@@ -50,7 +74,7 @@ fn natural(a: &str, b: &str) -> Ordering {
     x.len().cmp(&y.len()).then_with(|| a.cmp(b))
 }
 pub(super) fn open(path: &Path) -> Result<Document> {
-    let mut pages: Vec<(String, String)> = if FileKind::from_path(path) == Some(FileKind::Cbz) {
+    let mut pages: Vec<(String, String)> = if ArchiveKind::detect(path)? == ArchiveKind::Zip {
         let zip = zip::ZipArchive::new(BufReader::new(File::open(path)?))?;
         let mut names = Vec::new();
         for name in zip.file_names() {
@@ -108,7 +132,7 @@ pub(super) fn open(path: &Path) -> Result<Document> {
     })
 }
 pub(super) fn image(path: &Path, member: &str) -> Result<Vec<u8>> {
-    if FileKind::from_path(path) == Some(FileKind::Cbr) {
+    if ArchiveKind::detect(path)? == ArchiveKind::Rar {
         return rar_image(path, member);
     }
     let mut zip = zip::ZipArchive::new(BufReader::new(File::open(path)?))?;
@@ -186,6 +210,72 @@ mod tests {
 mod archive_tests {
     use super::*;
     use std::io::Write;
+    #[test]
+    fn zip_named_cbr_keeps_the_cover_and_every_page() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("actually-zip.CbR");
+        let mut zip = zip::ZipWriter::new(File::create(&path).unwrap());
+        for (name, bytes) in [
+            ("10.png", "ten"),
+            ("2.png", "two"),
+            ("1.png", "one"),
+            ("rar:3.png", "colon"),
+        ] {
+            zip.start_file(name, zip::write::SimpleFileOptions::default())
+                .unwrap();
+            zip.write_all(bytes.as_bytes()).unwrap();
+        }
+        zip.finish().unwrap();
+        let doc = crate::open_document(&path).unwrap();
+        assert_eq!(doc.image_pages, ["1.png", "2.png", "10.png", "rar:3.png"]);
+        for (member, expected) in doc.image_pages.iter().zip(["one", "two", "ten", "colon"]) {
+            assert_eq!(super::image(&path, member).unwrap(), expected.as_bytes());
+        }
+        assert_eq!(crate::cover(&path).unwrap().unwrap(), b"one");
+    }
+
+    #[test]
+    fn rar4_and_rar5_named_cbz_keep_the_cover_and_every_page() {
+        for name in ["rar4", "rar4-solid", "rar5", "rar5-solid"] {
+            let fixture = Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join(format!("../../scripts/fixtures/comics/{name}.cbr"));
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join("actually-rar.CbZ");
+            std::fs::copy(&fixture, &path).unwrap();
+            let expected = crate::open_document(&fixture).unwrap();
+            let doc = crate::open_document(&path).unwrap();
+            assert_eq!(doc.image_pages, expected.image_pages, "{name}");
+            assert_eq!(doc.contents.len(), 3);
+            for member in &doc.image_pages {
+                let image = super::image(&path, member).unwrap();
+                assert!(image.starts_with(b"\x89PNG\r\n\x1a\n"));
+                assert_eq!(
+                    image,
+                    super::image(&fixture, member).unwrap(),
+                    "{name}: {member}"
+                );
+            }
+            assert_eq!(
+                crate::cover(&path).unwrap(),
+                crate::cover(&fixture).unwrap()
+            );
+        }
+    }
+
+    #[test]
+    fn invalid_or_truncated_comics_fail_without_guessing_from_the_suffix() {
+        let dir = tempfile::tempdir().unwrap();
+        for suffix in ["cbz", "cbr"] {
+            let path = dir.path().join(format!("invalid.{suffix}"));
+            for bytes in [b"".as_slice(), b"PK", b"Rar!\x1a\x07", b"not an archive"] {
+                std::fs::write(&path, bytes).unwrap();
+                let error = crate::open_document(&path).unwrap_err().to_string();
+                assert!(error.contains("not a supported ZIP or RAR"), "{error}");
+                assert!(super::image(&path, "1.png").is_err());
+            }
+        }
+    }
+
     #[test]
     fn cbz_pages_cover_and_empty_archive_are_checked() {
         let dir = tempfile::tempdir().unwrap();

@@ -125,7 +125,7 @@ Positions and notes are local.
 
 PDF contents require Python 3, PyGObject and the Poppler GI bindings. Image-only EPUBs use the fixed-page reader. There is no OCR: scans and comic images do not provide word selection, definitions or translation.
 
-Comic pages may be JPEG, PNG or WebP, up to 16 MiB each. Password-protected and multi-volume CBR archives are not supported. The extension must match the archive: `.cbz` for ZIP, `.cbr` for RAR.
+Comic pages may be JPEG, PNG or WebP, up to 16 MiB each. Password-protected and multi-volume RAR archives are not supported. Files with a `.cbz` or `.cbr` extension are recognized as ZIP or RAR by their contents, so mislabeled archives also open without renaming.
 
 Kitty displays covers and pages as images, including inside tmux with graphics passthrough. Terminals without an image protocol can use colored half-blocks. [Detailed format limits](checklist.md#coverage-limits)
 

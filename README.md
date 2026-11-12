@@ -142,7 +142,7 @@ Formatted Markdown distinguishes heading levels with numbers and colors, preserv
 
 Markdown reads local images within the document’s directory or its subdirectories; remote images are not downloaded. Raw HTML is shown as text, and MDX/Obsidian plugins are not executed. Notes keep their positions when switching views or resizing; external edits to the source file can shift them. Limits: 4 MiB of Markdown text and 16 MiB per image.
 
-Comic pages may be JPEG, PNG or WebP, up to 16 MiB each. Password-protected and multi-volume CBR archives are not supported. The extension must match the archive: `.cbz` for ZIP, `.cbr` for RAR.
+Comic pages may be JPEG, PNG or WebP, up to 16 MiB each. Password-protected and multi-volume RAR archives are not supported. Files with a `.cbz` or `.cbr` extension are recognized as ZIP or RAR by their contents, so mislabeled archives also open without renaming.
 
 Kitty displays covers and pages as images, including inside tmux with graphics passthrough. Terminals without an image protocol can use colored half-blocks. [Detailed format limits](docs/checklist.md#coverage-limits)
 

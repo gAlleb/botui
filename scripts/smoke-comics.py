@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""CBZ and real stored RAR4: natural page order, reader controls and persistence."""
+"""ZIP and RAR4/5, including mislabeled suffixes: pages, controls and persistence."""
 import importlib.util, os, struct, subprocess, tempfile, zipfile, zlib, tomllib, json
 from pathlib import Path
 spec=importlib.util.spec_from_file_location('shelf',Path(__file__).with_name('smoke-shelf.py'))
@@ -22,11 +22,12 @@ def rar(items):
         result+=header(0x74,0x8000,body)+data
     return result+header(0x7b,0,b'')
 
-def run(ext, fixture=None):
+def run(ext, fixture=None, archive=None):
     with tempfile.TemporaryDirectory(prefix='botui-comic-') as tmp:
         root=Path(tmp);book=root/f'Panels.{ext}'
         items=[('pages/10.png',png((20,40,220))),('pages/2 [b].png',png((20,210,40))),('pages/1.png',png((220,30,40))),('__MACOSX/._1.png',b'junk'),('ComicInfo.xml',b'<ComicInfo/>')]
-        if ext=='cbz':
+        archive = archive or ext
+        if archive=='cbz':
             with zipfile.ZipFile(book,'w',compression=zipfile.ZIP_DEFLATED) as z:
                 for name,data in items:z.writestr(name,data)
         else:
@@ -67,8 +68,11 @@ def run(ext, fixture=None):
         try:t.see('Panels');t.see(ext.upper())
         finally:t.run('kill-server',required=False)
         assert not (root/'external-unpacker').exists(), 'CBR invoked an external unpacker'
-        print(f'PASS {fixture.name if fixture else ext}: natural order, image rendering, menus, notes, bookmark, theme, reopen and local shelf')
+        print(f'PASS {fixture.name if fixture else archive} as .{ext}: natural order, image rendering, menus, notes, bookmark, theme, reopen and local shelf')
 
 if __name__=='__main__':
     run('cbz');run('cbr')
-    for fixture in sorted((Path(__file__).parent/'fixtures/comics').glob('*.cbr')):run('cbr',fixture)
+    run('cbr',archive='cbz');run('cbz',archive='cbr')
+    for fixture in sorted((Path(__file__).parent/'fixtures/comics').glob('*.cbr')):
+        run('cbr',fixture)
+        run('cbz',fixture,archive='cbr')
