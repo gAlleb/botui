@@ -1,8 +1,11 @@
 # Changelog
 
-## Unreleased
+## 0.1.9 — 2026-11-12
 
 - Give Markdown its own reading presentation: distinct heading levels, numbered and nested lists, theme-aware code/quote/table panels, horizontal rules and labeled GitHub-style alerts. Highlight Markdown examples and source view; retain source addresses for selections and annotations.
+- Add the existing BOTUI wordmark beside the owl in both README headers, using a small vector asset.
+- Reorganize the English and Russian READMEs and user guides around reading, controls and configuration; keep licensing separate from feature instructions.
+- Make picker navigation tests independent of a user configuration file so clean package builds can run the full test suite.
 
 ## 0.1.8 — 2026-11-12
 
