@@ -179,6 +179,7 @@ pub(super) fn read_pages(
     let mut text = text::Text::new(store.as_ref());
     let mut leader = crate::leader::Leader::new();
     let mut sixel: Option<sixel::Cache> = None;
+    let mut motion = sixel::Motion::default();
     let mut palette: Option<crate::reader::theme_picker::Picker> = None;
     let selectable = kind == FileKind::Pdf && plates.is_none();
     let image_only = plates.is_some();
@@ -342,6 +343,14 @@ pub(super) fn read_pages(
             );
         }
         let strip = view.strip(&pages);
+        if scrolling && motion.busy() && sixel.as_ref().is_some_and(sixel::Cache::settled) {
+            let rows = motion.step(view.height);
+            strip.shift(&mut n, &mut offset, rows);
+            if rows > 0 && strip.end(n, offset) {
+                finished = true;
+            }
+            dirty = true;
+        }
         let (shown, shown_offset) = if pages.get(n).is_some() {
             last_sheet = Some((n, offset, scrolling));
             (n, offset)
@@ -717,7 +726,8 @@ pub(super) fn read_pages(
             }
             continue;
         }
-        let busy = sixel.as_ref().is_some_and(sixel::Cache::busy)
+        let busy = motion.busy()
+            || sixel.as_ref().is_some_and(sixel::Cache::busy)
             || viewer.busy()
             || text.busy()
             || search.busy()
@@ -744,6 +754,11 @@ pub(super) fn read_pages(
         let Some(mut e) = event else {
             continue;
         };
+        if matches!(e, Event::Key(_) | Event::Resize(..))
+            || matches!(e, Event::Mouse(m) if matches!(m.kind, MouseEventKind::Down(_)))
+        {
+            motion.clear();
+        }
         if let Some(p) = &mut palette {
             use crate::reader::theme_picker::Edit;
             if let Some(edit) = p.input(e) {
@@ -1098,6 +1113,10 @@ pub(super) fn read_pages(
                     33 => -scroll_lines,
                     _ => scroll_lines,
                 };
+                if sixel.is_some() && matches!(action, 33 | 34) {
+                    motion.push(d);
+                    continue;
+                }
                 strip.shift(&mut n, &mut offset, d);
                 if d > 0 && strip.end(n, offset) {
                     finished = true;

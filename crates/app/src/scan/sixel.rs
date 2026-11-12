@@ -28,6 +28,29 @@ struct Lane {
     worker: Worker,
     job: Option<(Key, Ticket<Result<Protocol, String>>)>,
 }
+/// Mouse gestures may arrive faster than Sixel frames. Keep their distance,
+/// but let each submitted viewport finish before advancing the next one.
+#[derive(Default)]
+pub(super) struct Motion {
+    pending: i32,
+}
+impl Motion {
+    pub fn push(&mut self, rows: i32) {
+        self.pending = self.pending.saturating_add(rows);
+    }
+    pub fn busy(&self) -> bool {
+        self.pending != 0
+    }
+    pub fn clear(&mut self) {
+        self.pending = 0;
+    }
+    pub fn step(&mut self, height: u16) -> i32 {
+        let limit = i32::from((height / 12).max(1));
+        let rows = self.pending.clamp(-limit, limit);
+        self.pending -= rows;
+        rows
+    }
+}
 pub(super) struct Cache {
     ready: LruCache<Key, Result<Protocol, String>>,
     lanes: [Lane; 2],
@@ -73,6 +96,9 @@ impl Cache {
     }
     pub fn busy(&self) -> bool {
         self.lanes.iter().any(|l| l.job.is_some())
+    }
+    pub fn settled(&self) -> bool {
+        self.complete && self.has_frame() && !self.busy()
     }
     pub fn set_paper(&mut self, paper: Option<[u8; 3]>) {
         self.paper = paper;
@@ -190,6 +216,28 @@ mod tests {
     use super::*;
     use ratatui::{Terminal, backend::TestBackend};
     use ratatui_image::picker::ProtocolType;
+
+    #[test]
+    fn fast_gestures_keep_their_distance_without_a_single_large_jump() {
+        let mut motion = Motion::default();
+        for _ in 0..24 {
+            motion.push(1);
+        }
+        let mut shown = 0;
+        let mut frames = 0;
+        while motion.busy() {
+            let step = motion.step(60);
+            assert!(step <= 5);
+            shown += step;
+            frames += 1;
+        }
+        assert_eq!(shown, 24);
+        assert!(frames >= 5);
+        motion.push(-12);
+        assert_eq!(motion.step(60), -5);
+        motion.clear();
+        assert!(!motion.busy(), "Opening a menu must stop pending movement");
+    }
 
     #[test]
     fn pending_zoom_keeps_both_pages_at_the_old_coordinates_until_complete() {

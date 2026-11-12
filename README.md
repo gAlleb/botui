@@ -156,6 +156,8 @@ Use **1 / 2 / 3** for a single page, a two-page spread or continuous scroll. In 
 
 Text size and typeface come from your terminal: use its font-size controls to enlarge or reduce text. BOTUI reflows the page. **F2 → Reader** controls first-line indentation, paragraph spacing and mouse-wheel step. Drag the contents divider to resize the sidebar.
 
+In Foot/Sixel, fast wheel and touchpad gestures advance through bounded intermediate frames while preserving the requested scrolling distance. Opening a menu or using a navigation key stops queued motion. Large images still take longer to transmit than in Kitty.
+
 ### Themes
 
 **F2 → Appearance → Interface theme** controls shelves, settings and other interface screens. **Space t** changes the reading palette over the open page: ↑/↓ preview a palette, ←/→ choose light/dark, Enter or a click applies, and Escape cancels. The interface starts in Catppuccin Mocha; **Terminal** follows your terminal’s colors.
