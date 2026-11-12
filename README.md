@@ -17,7 +17,9 @@ BOTUI is a terminal book reader for Linux. Read books, documents and comics from
 - BookOrbit offline downloads and reading-position sync across devices
 - Single pages, two-page spreads and continuous scrolling, with adjustable margins, spacing and zoom
 - Independent interface and reading themes, live preview and a distraction-free zen mode
-- Text selection, colored highlights, editable comments, bookmarks and Markdown export
+- Local notes and colored highlights work independently of any server, with editable comments and Markdown export
+- Two-way BookOrbit sync for passage notes and highlights, including comment edits, colors and deletions
+- Text selection and bookmarks
 - Word definitions and translation through editable HTTP, OpenAI-compatible or local connections
 - Mouse controls, a Space command menu and an optional Vim cursor
 - EPUB tables, equations and illustrations; formatted Markdown with code highlighting and a source view
@@ -173,6 +175,8 @@ For PDF, DjVu and image-only EPUB, the picker also offers **Original** and **Inv
 Drag to select text, double-click a word or triple-click a paragraph (a text block in PDF). Right-click a word or selection for **Copy, Highlight, Search, Translate, Define, Add note** in a small menu beside the text. Right-clicking inside a selection keeps the whole passage. Escape or a click outside closes the menu.
 
 Click a saved highlight to open its comment, or choose **Add note** from its context menu. Choose a color with the mouse, enter a comment and click **Save** or press **Ctrl+S**. Enter inserts a newline. Clearing a comment keeps the highlight; deleting both text and color removes the annotation.
+
+The highlight and comment editor offers all ten BookOrbit preset colors, with colored names and swatches. Imported custom RGB colors keep their exact value. Click a color or use Tab / Shift+Tab; **No fill** keeps a comment marked by an underline without a colored background.
 
 **Space a a** opens the searchable list of highlights and notes. Select an entry to see its text and position in the book/section or its page number; use **Go**, **Edit**, **Color**, **Delete** or **Export**. **Space a p** adds a page note to a fixed-page document. Notes and highlights remain available locally. When you open an edition from a connected BookOrbit shelf, BOTUI synchronizes passage comments, colors and deletions in both directions: text uses exact CFI ranges, and PDF text highlights use page coordinates. Changes made offline are sent when you reopen that edition through BookOrbit. **Space a s** shows synchronization status and offers **Sync now / retry unconfirmed uploads**.
 

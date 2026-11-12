@@ -91,7 +91,7 @@ The canvas regression compares grouped rendering with individual shaping cluster
 
 ## Next reader improvements
 
-1. **Extended annotation positions and colors.** Whole-page notes and ranges across PDF pages / EPUB spine documents remain local. Exact CFI ranges and single-page PDF text highlights sync through BookOrbit. The owner confirmed EPUB highlights in the basic colors and multiline comment exchange on the live server; PDF, offline and conflict checks use a test server. BOTUI currently offers five colors and displays other colors using the nearest one, preserving the original BookOrbit color when only the comment changes. The full palette is not available in the interface yet.
+1. **Extended annotation positions.** Whole-page notes and ranges across PDF pages / EPUB spine documents remain local. Exact CFI ranges and single-page PDF text highlights sync through BookOrbit. The owner confirmed EPUB highlights in the basic colors and multiline comment exchange on the live server; PDF, offline and conflict checks use a test server.
 2. **SyncTeX — not implemented yet.** Navigate between a position in a PDF and the corresponding line of its `.tex` source using a `.synctex` file. This is separate from the existing rendering of MathML and marked-up TeX formulas inside EPUB. OCR is outside the current scope: PDF selection requires an existing text layer.
 
 ### Terminal and device checks

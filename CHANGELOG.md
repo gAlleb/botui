@@ -1,6 +1,11 @@
 # Changelog
 
-## Unreleased
+## 0.1.10 — 2026-11-12
+
+- Synchronize passage notes and highlights with BookOrbit in both directions, including comment/color edits and deletions. Keep local annotations independent of the server, reconcile offline edits when reopening the connected edition, and preserve conflicting copies and uncertain upload records. Expose sync status and retry through Space a s without opening text controls during background updates.
+- Offer all ten BookOrbit highlight colors with colored names and swatches; preserve exact custom RGB colors and upgrade older nearest-color imports. Keep comments visible with an underline when No fill is selected, including in PDF.
+- Fix Foot/Sixel PDF selection overlays corrupting image-cell metadata. Encode selection patches off the input thread and keep command menus responsive over selected text.
+- Pace fast Foot/Sixel touchpad gestures through completed intermediate frames while retaining the full requested scroll distance.
 
 - Reuse prepared page palettes while scrolling or panning in Foot/Sixel, compact the image transfer without reducing its color count or resolution, and reserve the high-zoom cache for visible pages. Draw themed PDF paper with the exact surrounding background color instead of an approximated image-palette color.
 - Detect ZIP/RAR comic archives by their contents, including files with swapped `.cbz` / `.cbr` extensions; use the same decoder for covers and every page.
