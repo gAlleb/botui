@@ -291,6 +291,9 @@ pub(super) fn read_pages(
         // A scaled page may end partway through a terminal cell. The block
         // renderer drops alpha there, so pad that fraction with the same paper.
         picker.set_background_color(paper.and_then(|p| p.cell_padding(picker.protocol_type())));
+        if let Some(cache) = &mut sixel {
+            cache.set_paper(paper.map(paper::Paper::background));
+        }
         pages.configure(appearance, paper);
         pages.poll();
         if !scrolling
@@ -651,8 +654,12 @@ pub(super) fn read_pages(
                 );
             }
         })?;
-        // Prepare the adjacent spread while the current one is being read.
-        if !scrolling && let Some(cache) = &mut sixel {
+        // Prepare adjacent fitted spreads. At high zoom, keep the raster budget
+        // for visible pages instead of evicting them with speculative canvases.
+        if !scrolling
+            && crop.percent <= 100
+            && let Some(cache) = &mut sixel
+        {
             let area = Rect {
                 height: view.height,
                 ..body

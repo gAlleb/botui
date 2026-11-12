@@ -1,4 +1,5 @@
 //! Terminal image rendering shared by the shelf and fixed-page reader.
+pub(crate) mod sixel;
 mod text_overlay;
 use image::{DynamicImage, ImageReader, Limits};
 use ratatui::{

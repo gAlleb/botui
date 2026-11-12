@@ -21,6 +21,9 @@ impl Paper {
             cell_background: clear && protocol == ProtocolType::Halfblocks,
         }
     }
+    pub fn background(self) -> [u8; 3] {
+        self.bg
+    }
     pub fn apply(self, image: DynamicImage) -> DynamicImage {
         // A neutral source pixel is ink coverage on white paper. Saturated colors
         // stay opaque; between those cases blend in premultiplied space.

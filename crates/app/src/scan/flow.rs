@@ -121,6 +121,19 @@ impl Strip<'_> {
                     let end = (u64::from(h) * u64::from(skip + u32::from(take)))
                         .div_ceil(u64::from(rows))
                         .min(u64::from(h)) as u32;
+                    let font = self.picker.font_size();
+                    let full_width = (u64::from(self.width) * u64::from(font.width) * u64::from(w)
+                        / u64::from(cw))
+                    .max(1) as u32;
+                    let left = (full_width - u32::from(self.width) * u32::from(font.width))
+                        * u32::from(self.crop.x)
+                        / 255;
+                    cache.set_canvas(Some((
+                        full_width,
+                        rows * u32::from(font.height),
+                        left,
+                        skip * u32::from(font.height),
+                    )));
                     cache.draw(
                         p,
                         f,
@@ -133,6 +146,7 @@ impl Strip<'_> {
                             end as f32 / h as f32,
                         ],
                     );
+                    cache.set_canvas(None);
                 } else {
                     p.draw_strip(f, area, self.picker, self.crop, skip, rows);
                 }

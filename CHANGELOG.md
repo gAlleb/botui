@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Reuse prepared page palettes while scrolling or panning in Foot/Sixel, compact the image transfer without reducing its color count or resolution, and reserve the high-zoom cache for visible pages. Draw themed PDF paper with the exact surrounding background color instead of an approximated image-palette color.
 - Detect ZIP/RAR comic archives by their contents, including files with swapped `.cbz` / `.cbr` extensions; use the same decoder for covers and every page.
 - Keep comic artwork in its original colors. Space t and F2 → Reader → Comic background change only the surrounding background, saved independently of PDF colors in `comic_background`.
 - Fix disappearing dialogs over Foot/Sixel images, avoid resending artwork when only its background changes, and encode/cache page images off the input thread. Align facing pages in Sixel without changing Kitty, Alacritty or Ghostty rendering. Prevent enlarged pages from scrolling the terminal and shifting their lower edges at the bottom of the viewport.

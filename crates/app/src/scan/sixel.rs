@@ -10,7 +10,10 @@ use ratatui::{
     layout::{Rect, Size},
 };
 use ratatui_image::{Image, picker::Picker, protocol::Protocol};
-use std::{num::NonZeroUsize, sync::mpsc::TryRecvError};
+use std::{
+    num::NonZeroUsize,
+    sync::{Arc, Mutex, mpsc::TryRecvError},
+};
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 struct Key {
@@ -19,6 +22,7 @@ struct Key {
     height: u16,
     font: (u16, u16),
     window: [u32; 4],
+    default_background: bool,
 }
 struct Lane {
     worker: Worker,
@@ -30,6 +34,9 @@ pub(super) struct Cache {
     requested: Vec<(Key, Rect)>,
     displayed: Option<(Vec<(Key, Rect)>, Buffer)>,
     complete: bool,
+    rasters: Arc<Mutex<crate::cover::sixel::Cache>>,
+    paper: Option<[u8; 3]>,
+    canvas: Option<(u32, u32, u32, u32)>,
 }
 impl Cache {
     pub fn new() -> Self {
@@ -42,6 +49,9 @@ impl Cache {
             requested: Vec::new(),
             displayed: None,
             complete: false,
+            rasters: Arc::new(Mutex::new(crate::cover::sixel::Cache::new())),
+            paper: None,
+            canvas: None,
         }
     }
     pub fn poll(&mut self) {
@@ -63,6 +73,12 @@ impl Cache {
     }
     pub fn busy(&self) -> bool {
         self.lanes.iter().any(|l| l.job.is_some())
+    }
+    pub fn set_paper(&mut self, paper: Option<[u8; 3]>) {
+        self.paper = paper;
+    }
+    pub fn set_canvas(&mut self, canvas: Option<(u32, u32, u32, u32)>) {
+        self.canvas = canvas;
     }
     pub fn begin_frame(&mut self) {
         self.requested.clear();
@@ -106,7 +122,7 @@ impl Cache {
     pub fn has_frame(&self) -> bool {
         self.displayed.is_some()
     }
-    fn key(picture: &Picture, size: Size, picker: &Picker, window: [f32; 4]) -> Key {
+    fn key(&self, picture: &Picture, size: Size, picker: &Picker, window: [f32; 4]) -> Key {
         let font = picker.font_size();
         Key {
             image: picture.identity,
@@ -114,10 +130,11 @@ impl Cache {
             height: size.height,
             font: (font.width, font.height),
             window: window.map(f32::to_bits),
+            default_background: self.paper.is_some() && !crate::settings::opaque(),
         }
     }
     pub fn prepare(&mut self, picture: &Picture, size: Size, picker: &Picker, window: [f32; 4]) {
-        let key = Self::key(picture, size, picker, window);
+        let key = self.key(picture, size, picker, window);
         if size.width == 0
             || size.height == 0
             || self.ready.contains(&key)
@@ -129,7 +146,17 @@ impl Cache {
             return;
         }
         if let Some(lane) = self.lanes.iter_mut().find(|l| l.job.is_none()) {
-            let encode = picture.window_encoder(size, picker.clone(), window);
+            let encode = picture.cached_sixel_encoder(
+                size,
+                picker.clone(),
+                window,
+                crate::cover::sixel::View {
+                    canvas: self.canvas,
+                    paper: self.paper,
+                    default_background: key.default_background,
+                },
+                self.rasters.clone(),
+            );
             lane.job = Some((key, lane.worker.start(move |_| encode())));
         }
     }
@@ -142,7 +169,7 @@ impl Cache {
         window: [f32; 4],
     ) {
         self.prepare(picture, area.as_size(), picker, window);
-        let key = Self::key(picture, area.as_size(), picker, window);
+        let key = self.key(picture, area.as_size(), picker, window);
         self.requested.push((key, area));
         match self.ready.get(&key) {
             Some(Ok(protocol)) => f.render_widget(Image::new(protocol), area),
@@ -176,10 +203,16 @@ mod tests {
         let zoom = [Rect::new(0, 0, 6, 8), Rect::new(6, 0, 6, 8)];
         let mut cache = Cache::new();
         let prepare = |cache: &mut Cache, n: usize, area: Rect| {
-            let key = Cache::key(&pictures[n], area.as_size(), &picker, window);
+            let key = cache.key(&pictures[n], area.as_size(), &picker, window);
             cache.ready.put(
                 key,
-                pictures[n].window_encoder(area.as_size(), picker.clone(), window)(),
+                pictures[n].cached_sixel_encoder(
+                    area.as_size(),
+                    picker.clone(),
+                    window,
+                    Default::default(),
+                    cache.rasters.clone(),
+                )(),
             );
         };
         let mut term = Terminal::new(TestBackend::new(12, 8)).unwrap();
