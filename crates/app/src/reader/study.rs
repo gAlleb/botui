@@ -150,9 +150,15 @@ impl Study {
         self.map.iter().any(|c| c.source.contains(at))
     }
     pub fn active_note(&self) -> Option<&Note> {
+        if let Some(range) = self.selection
+            && let Some(note) = self.notes.iter().find(|n| n.range() == Some(range))
+        {
+            return Some(note);
+        }
         self.notes.iter().find(|n| {
             if let Some(range) = self.selection {
-                n.range() == Some(range)
+                n.range()
+                    .is_some_and(|r| r.start <= range.start && range.end <= r.end)
             } else {
                 self.cursor
                     .is_some_and(|c| n.range().is_some_and(|r| r.contains(c)) || n.anchor() == c)
@@ -224,6 +230,10 @@ impl Study {
                     }
                     MouseEventKind::Up(MouseButton::Left) if self.drag.take().is_some() => {
                         self.pointer = None;
+                        if !self.dragged && self.active_note().is_some() {
+                            self.link = None;
+                            return action(Command::Peek);
+                        }
                         if !self.dragged
                             && let Some(link) = self.link.take()
                         {
@@ -592,6 +602,23 @@ fn highlight(color: HighlightColor) -> Style {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn word_inside_highlight_edits_it_but_crossing_selection_does_not() {
+        let mut study = Study::default();
+        study.notes.push(serde_json::from_value(serde_json::json!({
+            "id": "saved", "block": 0, "byte": 6, "end": [0, 19], "body": "comment", "updated": 0
+        })).unwrap());
+        let at = |byte| Anchor { block: 0, byte };
+        study.selection = Some(TextRange::new(at(6), at(11)));
+        assert_eq!(study.active_note().unwrap().id, "saved");
+        study.selection = Some(TextRange::new(at(0), at(11)));
+        assert!(study.active_note().is_none());
+        study.selection = None;
+        study.cursor = Some(at(18));
+        assert!(study.active_note().is_some());
+        study.cursor = Some(at(19));
+        assert!(study.active_note().is_none());
+    }
     #[test]
     fn saving_annotation_leaves_normal_and_gv_restores_exact_range() {
         use crate::vim::{Edit, Motion};

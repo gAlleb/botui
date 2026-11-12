@@ -89,14 +89,33 @@ with tempfile.TemporaryDirectory(prefix='botui-pdf-text-') as tmp:
         data=notes(d);assert len(data)==1 and data[0]['color']=='green',data
         assert data[0]['quote']=='bravo charlie' and len(data[0]['pdf_regions'])==2,data
         assert data[0]['pdf_regions'][0]['page']==1
-        t.keys('Space','a','n');t.see('Comment');t.type('Remember this range');t.keys('C-s');t.see('Annotation saved')
+        time.sleep(.5)
+        mouse(*xy('bravo'));mouse(*xy('bravo'),end='m')
+        t.see('Comment');t.type('Remember this range');t.keys('C-s');t.see('Annotation saved')
         assert notes(d)[0]['body']=='Remember this range'
-        # Clearing an existing comment removes the annotation, not just its color.
-        t.keys('Space','a','n');t.see('Comment');t.keys('C-u','C-s');t.see('Annotation deleted');assert notes(d)==[]
+        # Reopen with no cached text: clicking the saved mark waits for extraction.
+        t.run('kill-server',required=False)
+        t=start(d,file)
+        t.wait('Restored annotated PDF',lambda f:'▀' in f or '▄' in f)
+        mouse(*xy('bravo'));mouse(*xy('bravo'),end='m')
+        t.see('Remember this range');t.see('Ctrl+S Save');t.keys('Escape')
+        # Clearing the comment preserves the highlight and its original identity.
+        t.keys('Space','a','n');t.see('Comment');t.keys('C-u','C-s');t.see('Annotation saved')
+        assert len(notes(d))==1 and notes(d)[0]['id']==data[0]['id'] and notes(d)[0]['body']==''
+        # Removing the color as well deletes an empty annotation; choose it by mouse.
+        t.keys('Space','a','n');frame=t.see('Comment')
+        def click_label(label):
+            frame=t.see(label)
+            row,line=next((i,line) for i,line in enumerate(frame.splitlines(),1) if label in line)
+            x=line.index(label)+1
+            mouse(x,row);mouse(x,row,end='m')
+        click_label('6 None');t.see('None ✓');click_label('[Ctrl+S Save]')
+        t.see('Annotation deleted');assert notes(d)==[]
         t.keys('Space','a','h','Enter');t.see('Annotation saved');t.keys('Space','c')
         # Page rotation/zoom must not change stored coordinates or trigger a new extraction.
         before=notes(d);t.keys('Space','r','r','Space','r','+','Space','r','-');time.sleep(.2);assert notes(d)==before
-        t.keys('Space','a','a');t.see('PDF highlights & notes');t.keys('n');t.see('Comment');t.type('Persisted PDF quote');t.keys('C-s')
+        t.keys('Space','a','a');frame=t.see('PDF highlights & notes');assert '% · p.1/2' in frame,frame
+        t.keys('n');t.see('Comment');t.type('Persisted PDF quote');t.keys('C-s')
         t.see('PDF highlights & notes');t.keys('e','Escape','Space','q')
         t.run('has-session','-t','shelf',required=False)
     finally:t.run('kill-server',required=False)

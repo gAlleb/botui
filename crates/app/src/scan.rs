@@ -559,6 +559,13 @@ pub(super) fn read_pages(
                 p.draw_named(f, " Page theme ");
             }
         })?;
+        if selectable && text.take_note_click() {
+            let background = rendered.buffer.clone();
+            if let Err(e) = text.run(text::Action::Comment, term, store.as_ref(), &background) {
+                text.message = e.to_string();
+            }
+            continue;
+        }
         if selectable && let Some(at) = text.take_context_menu() {
             let background = rendered.buffer.clone();
             match text.context_menu(at, term, store.as_ref(), &background) {
@@ -969,7 +976,7 @@ pub(super) fn read_pages(
                         // A can also be selected from the reading menu.
                         let background =
                             note_background.unwrap_or_else(|| ratatui::buffer::Buffer::empty(body));
-                        match text.list(term, store, path, &background) {
+                        match text.list(term, store, path, total, &background) {
                             Ok(Some(region)) => {
                                 let previous = Location {
                                     page: n,

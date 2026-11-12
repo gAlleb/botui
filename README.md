@@ -15,7 +15,7 @@ BOTUI is a terminal book reader for Linux. Open an EPUB, FB2, PDF or DjVu from d
 - Offline reading with BookOrbit progress sync across devices
 - Single pages, two-page spreads and continuous scrolling, with an optional contents sidebar
 - In-book search, bookmarks, jump history and reading stats
-- Text selection, clipboard copy, colored highlights and comments in EPUB/FB2 and text-layer PDF; Markdown export
+- Text selection, clipboard copy, colored highlights and comments in EPUB/FB2 and text-layer PDF; click to edit notes, choose colors with the mouse, see passage positions and export Markdown
 - Optional Vim cursor and Space command menu; right-click words or selections to copy, highlight, search, translate, define or add a note
 - Editable dictionary and translation connections; Free Dictionary and Google Translate enabled as ordinary HTTP profiles
 - EPUB tables with merged cells, MathML and TeX formulas, SVG diagrams and inline illustrations
@@ -220,11 +220,15 @@ In a Space submenu, `q`, `Esc` and `Backspace` return to the root; `Esc` closes 
 | --- | --- |
 | `↑ ↓ / Enter / click` | Choose and activate an item |
 | `Esc` | Close panel; editor offers to save/discard unsaved changes |
-| `Ctrl+S / Enter` | Note editor: save / new line; empty saved comment deletes annotation |
-| `Tab` | Note editor: change highlight color |
+| `Ctrl+S / Enter` | Note editor: save / new line; clearing the comment keeps its highlight; no text and no color deletes the annotation |
+| `Tab` or click a color | Note editor: highlight color; ✓ marks the current choice |
 | `[ ] / { }` | Page layout panel: narrow/widen page / decrease/increase column gap |
 | `/ / N / H / Y / Del / E` | Annotation list: filter / edit / color / copy / delete / export |
 | `P / L / S / Y / N` | Lookup result: provider / target language / source language / copy / save as note |
+
+Click a saved highlight or note in the book to open its comment. Right-click inside an existing highlight and choose **Add note** to attach text to the same annotation; its full passage and identity are preserved. A drag still selects text. In the editor, click a color button (the current choice has ✓), then click **Save**; **Cancel** leaves the saved annotation unchanged. Clearing only the comment keeps the colored highlight. Use **Delete** in the annotation list to remove the whole annotation.
+
+The annotation list shows each passage's position: book percentage for EPUB/FB2, or percentage and page/total for PDF. The selected EPUB/FB2 entry also shows the section title and percentage within that section, when the book has an outline. Percentages refer to the beginning of the passage, not your current reading position, and do not depend on window size. Click a row to preview the note, **Edit** to change it, **Color** to recolor it, or **Go** to return to the passage.
 
 </details>
 

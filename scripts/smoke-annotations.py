@@ -84,20 +84,29 @@ with tempfile.TemporaryDirectory() as name:
             t.keys("Escape")
             t.see("SELECT")
             t.keys("Space", "a", "h")
-            t.see("Highlight")
-            t.keys("2", "Enter")
+            frame = t.see("Highlight")
+            click(t, point(frame, "2 Green"))
+            frame = t.see("Green ✓")
+            click(t, point(frame, "[Enter Save]"))
             t.see("Annotation saved")
             assert notes(tmp)[0]["quote"] == "bravo", notes(tmp)
             assert notes(tmp)[0]["color"] == "green"
             assert "48;2;164;206;133" in t.run("capture-pane", "-p", "-e", "-t", "shelf").stdout
-            t.keys("Space", "a", "n")
+            saved_id = notes(tmp)[0]["id"]
+            time.sleep(.5)
+            click(t, point(t.see("bravo"), "bravo"))
             footer = t.see("Ctrl+S Save")
             assert "[Ctrl+S Save]  [Esc Cancel]  [Enter New line]  [Tab Color]" in footer
             for width in [52, 80, 115]:
                 t.run("resize-window", "-t", "shelf", "-x", str(width), "-y", "30")
-                footer = t.see("[Tab Color]")
+                right = (width - min(width, 82)) // 2 + min(width, 82)
+                footer = t.wait("editor resized", lambda f: any(" Comment " in line and len(line.rstrip()) == right for line in f.splitlines()) and "[Tab Color]" in f)
                 for label in ["[Ctrl+S Save]", "[Esc Cancel]", "[Enter New line]"]:
                     assert label in footer, footer
+                click(t, point(footer, "3 Blue"))
+                footer = t.see("Blue ✓")
+                click(t, point(footer, "2 Green"))
+                t.see("Green ✓")
             t.type("First observation")
             t.keys("Enter")
             t.type("  Second line  ")
@@ -105,7 +114,7 @@ with tempfile.TemporaryDirectory() as name:
             t.keys("Home", "BSpace", "Enter")
             t.keys("C-s")
             t.see("Annotation saved")
-            assert len(notes(tmp)) == 1
+            assert len(notes(tmp)) == 1 and notes(tmp)[0]["id"] == saved_id
             assert notes(tmp)[0]["body"] == "First observation\n  Second line  ", notes(tmp)
             # Range addresses survive width, spread and contents pane changes.
             t.keys("Escape")
@@ -113,7 +122,8 @@ with tempfile.TemporaryDirectory() as name:
             t.keys("Space", "l", "w", "]", "Enter", "Space", "l", "2", "Space", "z")
             t.see("Contents")
             t.keys("Space", "a", "a")
-            t.see("Highlights & notes · 1")
+            frame = t.see("Highlights & notes · 1")
+            assert "Book " in frame and "%" in frame, frame
             t.keys("/")
             t.type("unfindable")
             t.see("Highlights & notes · 0")
@@ -137,7 +147,7 @@ with tempfile.TemporaryDirectory() as name:
             t.keys("Space", "a", "a")
             t.see("Highlights & notes · 1")
             # Cancel leaves the saved note intact. Saving a cleared comment
-            # removes the whole annotation, including its colored range.
+            # keeps its highlight; choosing None as well removes the annotation.
             t.keys("n")
             t.see("Ctrl+S Save")
             t.keys("C-u", "BSpace", "C-u", "Escape")
@@ -148,6 +158,13 @@ with tempfile.TemporaryDirectory() as name:
             t.keys("C-u", "BSpace", "C-u")
             t.type("   ")
             frame = t.see("[Ctrl+S Save]")
+            click(t, point(frame, "[Ctrl+S Save]"))
+            t.see("Highlights & notes · 1")
+            assert len(notes(tmp)) == 1 and notes(tmp)[0]["color"] == "green"
+            t.keys("n")
+            frame = t.see("Ctrl+S Save")
+            click(t, point(frame, "6 None"))
+            frame = t.see("None ✓")
             click(t, point(frame, "[Ctrl+S Save]"))
             t.see("Highlights & notes · 0")
             assert notes(tmp) == []
@@ -217,6 +234,25 @@ with tempfile.TemporaryDirectory() as name:
             before=t.run("capture-pane","-p","-t","shelf").stdout
             time.sleep(.25)
             assert before==t.run("capture-pane","-p","-t","shelf").stdout
+            # Right-click one word inside a long saved highlight: edit the same
+            # annotation, preserving the full range rather than creating a duplicate.
+            t.keys("Space", "a", "h", "Enter")
+            t.see("Annotation saved")
+            original = notes(tmp)[0].copy()
+            t.keys("Space", "a", "a", "Enter")
+            frame = t.see("bravo")
+            t.keys("Escape")
+            x, y = point(frame, "bravo")
+            mouse(t, f"\033[<2;{x};{y}M\033[<2;{x};{y}m")
+            t.see("Add note")
+            t.keys("End", "Enter")
+            t.see("Ctrl+S Save")
+            t.type("Attached to the full highlight")
+            t.keys("C-s")
+            t.see("Annotation saved")
+            saved = notes(tmp)
+            assert len(saved) == 1 and saved[0]["id"] == original["id"], saved
+            assert saved[0]["quote"] == original["quote"] and saved[0]["end"] == original["end"], saved
         finally:
             t.run("kill-server", required=False)
     for i, file in enumerate(sys.argv[1:]):

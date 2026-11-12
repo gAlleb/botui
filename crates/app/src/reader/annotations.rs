@@ -240,19 +240,33 @@ fn list(term: &mut AppTerminal, reader: &mut Reader, store: &LocalState) -> io::
                     n.quote.clone()
                 };
                 Row::new([
+                    format!("{:.1}%", reader.doc.text_percentage(n.anchor())),
                     n.color.map_or("Note", HighlightColor::label).to_owned(),
                     quote.replace('\n', " "),
                 ])
             });
             f.render_stateful_widget(
-                Table::new(rows, [Constraint::Length(8), Constraint::Fill(1)]).row_highlight_style(
+                Table::new(
+                    rows,
+                    [
+                        Constraint::Length(7),
+                        Constraint::Length(8),
+                        Constraint::Fill(1),
+                    ],
+                )
+                .row_highlight_style(
                     ratatui::style::Style::default().add_modifier(Modifier::REVERSED),
                 ),
                 rows_area,
                 &mut table,
             );
             if let Some(note) = notes.get(selected) {
-                let preview = format!("{}\n\n{}", note.quote, note.body);
+                let preview = format!(
+                    "{}\n{}\n\n{}",
+                    super::notes::position(&reader.doc, note.anchor()),
+                    note.quote,
+                    note.body
+                );
                 f.render_widget(
                     Paragraph::new(preview).wrap(Wrap { trim: false }),
                     Rect::new(inner.x, rows_area.bottom() + 1, inner.width, preview_height),

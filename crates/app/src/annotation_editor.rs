@@ -84,7 +84,12 @@ pub(crate) fn edit(
                     .enumerate()
                     .map(|(i, c)| {
                         (
-                            format!("{} {}", i + 1, c.map_or("None", HighlightColor::label)),
+                            format!(
+                                "[{} {}{}]",
+                                i + 1,
+                                c.map_or("None", HighlightColor::label),
+                                if c == color { " ✓" } else { "" }
+                            ),
                             c,
                         )
                     })
@@ -214,7 +219,7 @@ pub(crate) fn edit(
                 .map(LineInput::into_text)
                 .collect::<Vec<_>>()
                 .join("\n");
-            let remove = body.trim().is_empty() && (!color_only || color.is_none());
+            let remove = body.trim().is_empty() && color.is_none();
             return Ok(Some(crate::annotation_editor::Edit {
                 body,
                 color,

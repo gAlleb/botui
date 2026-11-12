@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Open saved EPUB/FB2 and PDF annotations by clicking their text. Attach comments to existing highlights without creating duplicates. Show book/section position and PDF page totals in annotation lists; make color choices explicit clickable buttons with a selection marker. Clearing a comment preserves its colored highlight.
+
 - Replace the full-dialog text action chooser with a 15×8-cell context menu beside the right-clicked word/selection. Keep the book visible; support mouse selection, arrows/Enter, Escape and outside-click dismissal.
 - Space t in PDF/DjVu now opens the shared theme picker over the page, with live preview, light/dark palettes and additional Original/Inverted entries. Preview is temporary; Apply persists the choice and Cancel restores the previous appearance.
 

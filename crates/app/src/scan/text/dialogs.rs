@@ -173,6 +173,7 @@ impl Text {
         term: &mut AppTerminal,
         store: &LocalState,
         path: &Path,
+        total: Option<u32>,
         saved: &Buffer,
     ) -> io::Result<Option<PdfRegion>> {
         self.notes = store.notes()?;
@@ -241,7 +242,7 @@ impl Text {
                     rows = Rect::new(inner.x, inner.y + 1, inner.width, height / 2);
                     let values = notes.iter().map(|n| {
                         Row::new([
-                            format!("{}", n.anchor().block + 1),
+                            position(n, total),
                             if n.quote.is_empty() {
                                 n.body.replace('\n', " ")
                             } else {
@@ -250,14 +251,14 @@ impl Text {
                         ])
                     });
                     f.render_stateful_widget(
-                        Table::new(values, [Constraint::Length(6), Constraint::Min(1)])
+                        Table::new(values, [Constraint::Length(24), Constraint::Min(1)])
                             .row_highlight_style(ratatui::style::Style::new().reversed()),
                         rows,
                         &mut table,
                     );
                     let preview = notes
                         .get(selected)
-                        .map(|n| format!("{}\n\n{}", n.quote, n.body))
+                        .map(|n| format!("{}\n{}\n\n{}", position(n, total), n.quote, n.body))
                         .unwrap_or_else(|| "No annotations".into());
                     f.render_widget(
                         Paragraph::new(preview).wrap(Wrap { trim: false }),
@@ -381,5 +382,22 @@ impl Text {
                 _ => (),
             }
         }
+    }
+}
+
+fn position(note: &Note, total: Option<u32>) -> String {
+    let page = note.anchor().block + 1;
+    match total.filter(|n| *n > 0) {
+        Some(count) => {
+            let top = note
+                .pdf_regions
+                .first()
+                .map_or(0., |r| r.bounds[1].clamp(0., 1.));
+            let percent = (100. * (page.saturating_sub(1) as f64 + f64::from(top))
+                / f64::from(count))
+            .clamp(0., 100.);
+            format!("{percent:.1}% · p.{page}/{count}")
+        }
+        None => format!("Page {page}"),
     }
 }

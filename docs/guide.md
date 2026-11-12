@@ -206,11 +206,15 @@ In a Space submenu, `q`, `Esc` and `Backspace` return to the root; `Esc` closes 
 | --- | --- |
 | `↑ ↓ / Enter / click` | Choose and activate an item |
 | `Esc` | Close panel; editor offers to save/discard unsaved changes |
-| `Ctrl+S / Enter` | Note editor: save / new line; empty saved comment deletes annotation |
-| `Tab` | Note editor: change highlight color |
+| `Ctrl+S / Enter` | Note editor: save / new line; clearing the comment keeps its highlight; no text and no color deletes the annotation |
+| `Tab` or click a color | Note editor: highlight color; ✓ marks the current choice |
 | `[ ] / { }` | Page layout panel: narrow/widen page / decrease/increase column gap |
 | `/ / N / H / Y / Del / E` | Annotation list: filter / edit / color / copy / delete / export |
 | `P / L / S / Y / N` | Lookup result: provider / target language / source language / copy / save as note |
+
+Click a saved highlight or note in the book to open its comment. Right-click inside an existing highlight and choose **Add note** to attach text to the same annotation; its full passage and identity are preserved. A drag still selects text. In the editor, click a color button (the current choice has ✓), then click **Save**; **Cancel** leaves the saved annotation unchanged. Clearing only the comment keeps the colored highlight. Use **Delete** in the annotation list to remove the whole annotation.
+
+The annotation list shows each passage's position: book percentage for EPUB/FB2, or percentage and page/total for PDF. The selected EPUB/FB2 entry also shows the section title and percentage within that section, when the book has an outline. Percentages refer to the beginning of the passage, not your current reading position, and do not depend on window size. Click a row to preview the note, **Edit** to change it, **Color** to recolor it, or **Go** to return to the passage.
 
 ### Tables, equations and illustrations
 
@@ -228,7 +232,7 @@ FB2 also preserves italic, bold and struck-through text in ordinary paragraphs. 
 
 Drag to select a passage, double-click a word, or triple-click a paragraph. For keyboard selection, enter `Space c`, then `v`. `Space a y` copies, `Space a h` highlights, and `Space a n` opens a comment. Normal also supports copy operators such as `yiw` and `yip`.
 
-`Space a a` opens annotations: Del deletes, N edits, H changes color, Y copies the quote, / filters, and E exports. In the editor, Enter inserts a line and Ctrl+S saves; saving an empty comment deletes the annotation. Esc cancels editing.
+`Space a a` opens annotations: Del deletes, N edits, H changes color, Y copies the quote, / filters, and E exports. In the editor, Enter inserts a line and Ctrl+S saves; clearing the comment keeps the highlight; removing both text and color deletes the annotation. Esc cancels editing.
 
 Annotations are stored on this device. BookOrbit range-annotation sync is not implemented. PDF requires a text layer; no OCR is performed.
 

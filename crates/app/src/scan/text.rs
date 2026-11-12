@@ -82,6 +82,8 @@ pub(super) struct Text {
     cursor: Option<WordAt>,
     start: Option<WordAt>,
     drag: bool,
+    dragged: bool,
+    note_pending: bool,
     clicks: Option<(Position, Instant, u8)>,
     pending: Option<Position>,
     pending_end: Option<Position>,
@@ -110,6 +112,8 @@ impl Text {
             cursor: None,
             start: None,
             drag: false,
+            dragged: false,
+            note_pending: false,
             clicks: None,
             pending: None,
             pending_end: None,
@@ -365,15 +369,26 @@ impl Text {
         Some((range, quote, regions))
     }
     pub fn active_note(&self) -> Option<&Note> {
-        let at = self.cursor?;
-        let w = self.word(at)?;
-        self.notes.iter().find(|n| {
-            n.pdf_regions
-                .iter()
-                .any(|r| r.page == at.page && r.bounds == w.bounds)
-        })
+        let (_, _, regions) = self.selection()?;
+        self.notes
+            .iter()
+            .filter(|n| {
+                regions.iter().all(|r| {
+                    n.pdf_regions
+                        .iter()
+                        .any(|saved| saved.page == r.page && saved.bounds == r.bounds)
+                })
+            })
+            .min_by_key(|n| n.pdf_regions.len())
+    }
+    pub fn take_note_click(&mut self) -> bool {
+        if self.pending.is_some() || !std::mem::take(&mut self.note_pending) {
+            return false;
+        }
+        self.active_note().is_some()
     }
     pub fn clear(&mut self) {
+        self.note_pending = false;
         self.context_pending = None;
         self.enabled = false;
         self.normal = false;
@@ -413,6 +428,7 @@ impl Text {
                 let p = Position::new(m.column, m.row);
                 match m.kind {
                     MouseEventKind::Down(MouseButton::Right) => {
+                        self.note_pending = false;
                         if !self.views.iter().any(|v| v.screen.contains(p)) {
                             return None;
                         }
@@ -449,6 +465,8 @@ impl Text {
                         self.pending = None;
                         self.pending_end = None;
                         self.drag = true;
+                        self.dragged = false;
+                        self.note_pending = false;
                         let count = self
                             .clicks
                             .filter(|(old, t, _)| {
@@ -468,6 +486,7 @@ impl Text {
                         Some(Action::None)
                     }
                     MouseEventKind::Drag(MouseButton::Left) if self.drag => {
+                        self.dragged = true;
                         if self.pending.is_some() {
                             self.pending_end = Some(p);
                         }
@@ -478,6 +497,10 @@ impl Text {
                     }
                     MouseEventKind::Up(MouseButton::Left) if self.drag => {
                         self.drag = false;
+                        self.note_pending = !self.dragged
+                            && self
+                                .clicks
+                                .is_some_and(|(at, _, count)| at == p && count == 1);
                         Some(Action::None)
                     }
                     _ => None,
@@ -893,6 +916,25 @@ fn color(c: Option<HighlightColor>) -> [u8; 3] {
 mod tests {
     use super::*;
     use botui_fixed::text::Word;
+    #[test]
+    fn selection_crossing_saved_pdf_highlight_creates_a_new_annotation() {
+        let mut text = Text::new(None);
+        text.cache.insert(1, Ok(page("Alpha bravo charlie")));
+        text.start = Some(WordAt { page: 1, index: 1 });
+        text.cursor = Some(WordAt { page: 1, index: 2 });
+        let (_, _, regions) = text.selection().unwrap();
+        text.notes.push(
+            serde_json::from_value(serde_json::json!({
+                "id": "saved", "block": 0, "byte": 6, "end": [0, 19], "body": "", "updated": 0,
+                "pdf_regions": regions
+            }))
+            .unwrap(),
+        );
+        text.start = text.cursor;
+        assert_eq!(text.active_note().unwrap().id, "saved");
+        text.start = Some(WordAt { page: 1, index: 0 });
+        assert!(text.active_note().is_none());
+    }
     #[test]
     fn reading_leaves_color_keys_to_pdf_but_normal_uses_visual() {
         let mut text = Text::new(None);
