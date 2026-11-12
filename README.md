@@ -4,31 +4,20 @@
 
 **English** · [Русский](README.ru.md)
 
-BOTUI is a terminal book reader for Linux. Open an EPUB, FB2, Markdown, PDF, DjVu, CBZ or CBR from disk, an OPDS catalog or your BookOrbit library. Read one page at a time, open a two-page spread or scroll continuously.
+BOTUI is a terminal book reader for Linux. Read books, documents and comics from local folders, your [BookOrbit library](https://github.com/bookorbit/bookorbit) or OPDS catalogs. Supported formats are EPUB, FB2, Markdown, PDF, DjVu, CBZ and CBR.
 
-[Highlights](#highlights) · [Screenshots](#screenshots) · [Installation](#installation) · [First run](#first-run) · [User guide](docs/guide.md) · [Release notes](CHANGELOG.md)
+[Highlights](#highlights) · [Screenshots](#screenshots) · [Installation](#installation) · [First run](#first-run) · [Formats](#formats) · [Reading](#reading) · [Controls](#controls) · [Configuration](#configuration) · [User guide](docs/guide.md)
 
 ## Highlights
 
-- EPUB, FB2, Markdown, PDF, DjVu, CBZ and CBR from local folders, OPDS catalogs and BookOrbit
-- Cover grid, collections and library search as you type
-- Offline reading with BookOrbit progress sync across devices
-- Single pages, two-page spreads and continuous scrolling, with an optional contents sidebar
-- Markdown with formatted/source views, code highlighting, tables, local images and stable annotations
-- PDF/comic spreads with a saved 0–32-cell gap and zoom into the full reading pane
-- In-book search, bookmarks, jump history and reading stats
-- Text selection, clipboard copy, colored highlights and comments in EPUB/FB2/Markdown and text-layer PDF; click to edit notes, choose colors with the mouse, see passage positions and export Markdown
-- Optional Vim cursor and Space command menu; right-click words or selections to copy, highlight, search, translate, define or add a note
-- Editable dictionary and translation connections; Free Dictionary and Google Translate enabled as ordinary HTTP profiles
-- EPUB tables with merged cells, MathML and TeX formulas, SVG diagrams and inline illustrations
-- PDF and DjVu zoom, fit to width and a Space theme picker with live preview, Original and Inverted
-- Keyboard and mouse controls, themes, adjustable margins and zen mode
-
-## Libraries
-
-- **Local folders.** Browse by cover or title, find books as you type and organize them into collections. BOTUI remembers your place and caches the jackets it generates for books without covers.
-- **BookOrbit.** Browse authors, series and collections. Opening an edition saves a copy on your device. Continue offline and sync your reading position when you reconnect. [BookOrbit project](https://github.com/bookorbit/bookorbit)
-- **OPDS.** Browse OPDS 1 and 2 catalogs. Downloaded editions stay on the OPDS downloads shelf and keep their reading positions on this device.
+- Cover grids, collections and library search as you type
+- BookOrbit offline downloads and reading-position sync across devices
+- Single pages, two-page spreads and continuous scrolling, with adjustable margins, spacing and zoom
+- Independent interface and reading themes, live preview and a distraction-free zen mode
+- Text selection, colored highlights, editable comments, bookmarks and Markdown export
+- Word definitions and translation through editable HTTP, OpenAI-compatible or local connections
+- Mouse controls, a Space command menu and an optional Vim cursor
+- EPUB tables, equations and illustrations; formatted Markdown with code highlighting and a source view
 
 ## Screenshots
 
@@ -57,8 +46,6 @@ Click any image to open it at full size.
   </tr>
 </table>
 
-### More themes and font sizes
-
 <table>
   <tr>
     <td width="50%" valign="top">
@@ -79,6 +66,14 @@ Click any image to open it at full size.
 Download the executable for your architecture (`botui-x86_64` or `botui-aarch64`). Each release includes `SHA256SUMS`. [Linux releases](https://github.com/gAlleb/botui/releases)
 
 Branch builds contain the same files in `botui-linux.tar.gz`. [GitHub Actions](https://github.com/gAlleb/botui/actions/workflows/build.yml)
+
+To install the downloaded binary for your user (substitute `botui-aarch64` on ARM64):
+
+```sh
+install -Dm755 ./botui-x86_64 "$HOME/.local/bin/botui"
+```
+
+Make sure `~/.local/bin` is on your `PATH`. You can also run the executable by its full path.
 
 ### With mise
 
@@ -103,37 +98,85 @@ cargo build --release --locked -p botui --target-dir target &&
   install -Dm755 target/release/botui ./dist/botui
 ```
 
-### Format support
-
-| Format | Tools needed for reading |
-| --- | --- |
-| EPUB, FB2, Markdown, CBZ, CBR | Built in; no external unpacker for comics |
-| PDF | Poppler utilities (`pdfinfo`, `pdftoppm`, `pdftotext`) or Python 3 with Poppler GI and Cairo |
-| DjVu | DjVuLibre (`djvused`, `ddjvu`, `djvutxt`) |
-
-The PDF contents tree uses Python 3 with PyGObject and the Poppler GI bindings. Searching a PDF or DjVu requires a text layer. PDF text selection and highlights also require Poppler's `pdftotext`; no OCR is performed.
-
-Kitty displays pages and covers as images, including inside tmux with graphics passthrough. Terminals without an image protocol can use colored half-blocks.
-
 ## First run
 
 ```sh
 botui                          # Choose a library
 botui --library "$HOME/Books"  # Remember a local folder
 botui ./examples/first-light.fb2
-botui --resume                 # Continue your last unfinished local book
+botui --resume                 # Continue your last unfinished local book or download
 ```
 
-On the start screen, press **Enter** for your local library, **B** for BookOrbit or **P** for OPDS. On a shelf, press **/** to search as you type. Use the arrows and **Enter**, or click a book.
+Press **Enter/L** for the local library, **B** for BookOrbit or **P** for OPDS. Use arrows and **Enter**, or click an item. **F1** shows controls for the current screen; **F2** opens settings. The interface labels are in English.
+
+## Libraries
+
+All supported formats use the same readers regardless of their source. BookOrbit and OPDS must provide a downloadable edition in one of these formats.
+
+| Source | How to use it |
+| --- | --- |
+| Local folders | Browse covers or filenames, search with **/** and manage collections. **P** chooses a folder; **R** makes the current folder your library root. |
+| BookOrbit | Sign in, browse books, authors, series and collections, then open an edition from its card. **Read** keeps a downloaded copy; **D Save offline** prepares it for later. Reading position syncs with your account. |
+| OPDS | Open an OPDS 1 or 2 catalog, browse or search, and choose a downloadable edition. Saved catalogs are managed in **F2 → Library → OPDS catalogs**. Reading positions stay on this device. |
+
+On a shelf, **V** switches cover grid/list and **/** searches. **Q** goes back one step: from a BookOrbit reader to its card and original shelf, or from a local book to its folder and parent folders. BOTUI keeps the selection and scroll position. **Q** on the source chooser exits; closing a file opened directly from the command line ends that command.
+
+Offline copies are available through **D BookOrbit offline** and **O OPDS downloads** on the start screen. [Offline sync](docs/guide.md#offline-reading-and-sync) · [Managing collections](docs/guide.md#managing-collections)
+
+## Formats
+
+| Format | Reading features | Runtime requirements |
+| --- | --- | --- |
+| EPUB / FB2 | Reflowing text, contents, illustrations, search and passage annotations. EPUB also renders styled tables, MathML/marked TeX and static SVG. | Built in |
+| Markdown (`.md`, `.markdown`) | Headings, lists, quotes, task lists, tables, code highlighting and local images. **F9** switches formatted/source views; selection and notes work in both. | Built in |
+| PDF | Fixed pages, contents, zoom, rotation and page notes. A text layer enables search; `pdftotext` also enables word selection and highlights. | Poppler utilities (`pdfinfo`, `pdftoppm`, `pdftotext`), or Python 3 with Poppler GI and Cairo for rendering |
+| DjVu | Fixed pages, contents, zoom, rotation and page notes; search when a text layer is available. | DjVuLibre (`djvused`, `ddjvu`, `djvutxt`) |
+| CBZ / CBR | Image pages in natural filename order, contents, zoom, rotation, bookmarks and page notes. | Built-in ZIP/RAR decoders; no external unpacker |
+
+PDF contents require Python 3, PyGObject and the Poppler GI bindings. Image-only EPUBs use the fixed-page reader. There is no OCR: scans and comic images do not provide word selection, definitions or translation.
+
+Markdown reads local images within the document’s directory or its subdirectories; remote images are not downloaded. Raw HTML is shown as text, and MDX/Obsidian plugins are not executed. Notes keep their positions when switching views or resizing; external edits to the source file can shift them. Limits: 4 MiB of Markdown text and 16 MiB per image.
+
+Comic pages may be JPEG, PNG or WebP, up to 16 MiB each. Password-protected and multi-volume CBR archives are not supported. The extension must match the archive: `.cbz` for ZIP, `.cbr` for RAR.
+
+Kitty displays covers and pages as images, including inside tmux with graphics passthrough. Terminals without an image protocol can use colored half-blocks. [Detailed format limits](docs/checklist.md#coverage-limits)
+
+## Reading
+
+### Layout and text size
+
+Use **1 / 2 / 3** for a single page, a two-page spread or continuous scroll. In Vim these digits are counts; use **Space l 1 / 2 / 3** to change layout. **Space o** opens contents, **Space z** toggles zen mode, and **Space p** toggles its progress footer.
+
+**Space l w** adjusts text page width and the gap between columns. For PDF, DjVu, comics and image-only EPUBs, the same panel controls zoom and spread spacing. Its gap buttons or **[ / ]** set **0–32 terminal cells**; zero joins facing pages. `scan_gap` saves this independently of text spacing. **+ / −** zoom fixed pages, arrows pan, and **Space r 0** restores Fit page (Fit width in scroll mode). Enlarged pages fill the available margins and are clipped only at the reading pane edge.
+
+Text size and typeface come from your terminal: use its font-size controls to enlarge or reduce text. BOTUI reflows the page. **F2 → Reader** controls first-line indentation, paragraph spacing and mouse-wheel step. Drag the contents divider to resize the sidebar.
+
+### Themes
+
+**F2 → Appearance → Interface theme** controls shelves, settings and other interface screens. **Space t** changes the reading palette over the open page: ↑/↓ preview a palette, ←/→ choose light/dark, Enter or a click applies, and Escape cancels. The interface starts in Catppuccin Mocha; **Terminal** follows your terminal’s colors.
+
+For fixed pages, the picker also offers **Original** and **Inverted**. Reading palettes recolor neutral paper and ink while retaining saturated illustration colors. The choice is saved in `scan_theme`, also editable through **F2 → Reader → PDF / image theme**. Text reading uses its own `theme` setting. **Space l f** switches opaque/transparent page backgrounds; window opacity belongs to the terminal.
+
+### Text, highlights and notes
+
+Drag to select text, double-click a word or triple-click a paragraph (a text block in PDF). Right-click a word or selection for **Copy, Highlight, Search, Translate, Define, Add note** in a small menu beside the text. Right-clicking inside a selection keeps the whole passage. Escape or a click outside closes the menu.
+
+Click a saved highlight to open its comment, or choose **Add note** from its context menu. Choose a color with the mouse, enter a comment and click **Save** or press **Ctrl+S**. Enter inserts a newline. Clearing a comment keeps the highlight; deleting both text and color removes the annotation.
+
+**Space a a** opens the searchable list of highlights and notes. Select an entry to see its text and position in the book/section or its page number; use **Go**, **Edit**, **Color**, **Delete** or **Export**. **Space a p** adds a page note to a fixed-page document. Notes and highlights are stored on this device; BookOrbit range-annotation sync is not implemented.
+
+**Define** and **Translate** use the connections selected in [Configuration](#dictionaries-and-translation). They send the chosen text only when requested. Keyboard equivalents and Vim motions are listed below.
 
 ## Controls
+
+Press **Space**, then the command keys **in sequence**. Menu hints appear after 150 ms by default; commands work immediately. In a submenu, **q / Esc / Backspace** go back; Escape closes the root menu.
+
+Books open without a cursor. **Space c** enables Vim navigation and selection; **v / V** select only in this mode. Escape cancels a pending command or selection, then returns from idle Normal mode to ordinary reading. **Space c** also returns to reading directly. Explicit `[keys]` overrides apply to ordinary EPUB/FB2 reading and do not replace Space commands or Vim motions.
 
 <details>
 <summary>All reading, Vim and panel commands</summary>
 
-Books open without a cursor. **Space** opens commands; hints appear after **150 ms**, but the next key works immediately. Press keys in sequence, not together. `Space c` enables Vim. Only then do `v`/`V` select text. Legacy letters such as `t`, `b` and `v` have no action in ordinary reading. Explicit user `[keys]` overrides are an exception for EPUB/FB2; they do not override Vim or Space.
-
-In a Space submenu, `q`, `Esc` and `Backspace` return to the root; `Esc` closes the root menu. Shelves and editors have their own contextual keys, listed separately.
+Commands depend on the document: text actions need selectable text; page zoom, rotation and page notes apply to PDF, DjVu, comics and image-only EPUBs. Text-reader commands below also apply to Markdown unless a format is named explicitly. In ordinary reading, q/Q returns to the source; in Vim use Space q.
 
 | Keys | Action |
 | --- | --- |
@@ -151,17 +194,17 @@ In a Space submenu, `q`, `Esc` and `Backspace` return to the root; `Esc` closes 
 | `Space a a` | Highlights and notes |
 | `Space a e` | Export annotations to Markdown |
 | `F9` / `Space r v` | Markdown: formatted view / original source |
-| `Space a v` | Show/hide note body (EPUB/FB2) |
-| `Space a p` | Page note (PDF/DjVu) |
+| `Space a v` | Show/hide note body (text reader) |
+| `Space a p` | Page note (PDF/DjVu/comics) |
 | `Space d d` | Word definition |
 | `Space d t` | Translate selected text |
 | `Space l 1` | Single page |
 | `Space l 2` | Two-page spread |
 | `Space l 3` | Continuous scroll |
-| `Space l w` | Page width / column gap; PDF/comic zoom and spread gap |
+| `Space l w` | Text width / column gap; fixed-page zoom / spread gap |
 | `Space l f` | Opaque/transparent background |
 | `Space l u` | Border style |
-| `Space t` | Theme picker with live preview; PDF also has Original / Inverted |
+| `Space t` | Theme picker with live preview; fixed pages also have Original / Inverted |
 | `Space s` | Settings |
 | `Space ?` | Help |
 | `q` / `Q` / `Space q` | Close book and return to its source |
@@ -169,25 +212,25 @@ In a Space submenu, `q`, `Esc` and `Backspace` return to the root; `Esc` closes 
 | `Space r s` | Reading statistics |
 | `Space r [` | Jump back |
 | `Space r ]` | Jump forward |
-| `Space r i` | Links and illustrations (EPUB/FB2) |
-| `Space r f` | Follow visible links (EPUB/FB2) |
-| `Space r p` | Go to page (PDF/DjVu) |
-| `Space r +` | Zoom in (PDF/DjVu) |
-| `Space r -` | Zoom out (PDF/DjVu) |
-| `Space r 0` | Fit page / fit width in scroll (PDF/DjVu) |
-| `Space r r` | Rotate clockwise (PDF/DjVu) |
-| `Space r R` | Rotate counterclockwise (PDF/DjVu) |
+| `Space r i` | Links and illustrations (text reader) |
+| `Space r f` | Follow visible links (text reader) |
+| `Space r p` | Go to page (PDF/DjVu/comics) |
+| `Space r +` | Zoom in (PDF/DjVu/comics) |
+| `Space r -` | Zoom out (PDF/DjVu/comics) |
+| `Space r 0` | Fit page / fit width in scroll (PDF/DjVu/comics) |
+| `Space r r` | Rotate clockwise (PDF/DjVu/comics) |
+| `Space r R` | Rotate counterclockwise (PDF/DjVu/comics) |
 
 **Direct navigation in ordinary reading**
 
 | Keys | Action |
 | --- | --- |
-| `← → / PgUp PgDn` | Navigate pages; in PDF arrows also pan |
+| `← → / PgUp PgDn` | Navigate pages; arrows also pan fixed pages |
 | `↑ ↓ / j k` | Move through text; one line in continuous text scroll |
 | `h l` | Previous/next page or horizontal movement |
 | `1 / 2 / 3` | Single page / spread / scroll; in Vim: command count |
-| `+ / = / -` | PDF/DjVu: zoom in / zoom in / zoom out |
-| `Home End` | Start/end (PDF: document; Vim: line) |
+| `+ / = / -` | PDF/DjVu/comics: zoom in / zoom in / zoom out |
+| `Home End` | Start/end (fixed pages: document; Vim: line) |
 | `Tab` | Focus visible contents; arrows fold/expand, Enter opens |
 | `F1 / F2` | Help / settings |
 | `F3 / F4 / F5` | Next match / previous match / result list |
@@ -205,7 +248,7 @@ In a Space submenu, `q`, `Esc` and `Backspace` return to the root; `Esc` closes 
 | `w b e` | Next word / previous word / word end |
 | `0 ^ $` | Logical line start / first text / end |
 | `{ }` | Previous/next paragraph (PDF: text block) |
-| `gj gk / g0 g$` | Screen rows / screen row edges (EPUB/FB2) |
+| `gj gk / g0 g$` | Screen rows / screen row edges (text reader) |
 | `gg / G` | Start/end of text (PDF: current page) |
 | `y` | Copy selection in Visual; begin copy operator in Normal |
 | `yw ye yy y$` | Copy to next word / word end / logical line / line end |
@@ -225,13 +268,9 @@ In a Space submenu, `q`, `Esc` and `Backspace` return to the root; `Esc` closes 
 | `Esc` | Close panel; editor offers to save/discard unsaved changes |
 | `Ctrl+S / Enter` | Note editor: save / new line; clearing the comment keeps its highlight; no text and no color deletes the annotation |
 | `Tab` or click a color | Note editor: highlight color; ✓ marks the current choice |
-| `[ ] / { }` | Page layout panel: narrow/widen page / decrease/increase column gap |
+| `[ ] / { }` | Text layout panel: narrow/widen page / decrease/increase column gap |
 | `/ / N / H / Y / Del / E` | Annotation list: filter / edit / color / copy / delete / export |
 | `P / L / S / Y / N` | Lookup result: provider / target language / source language / copy / save as note |
-
-Click a saved highlight or note in the book to open its comment. Right-click inside an existing highlight and choose **Add note** to attach text to the same annotation; its full passage and identity are preserved. A drag still selects text. In the editor, click a color button (the current choice has ✓), then click **Save**; **Cancel** leaves the saved annotation unchanged. Clearing only the comment keeps the colored highlight. Use **Delete** in the annotation list to remove the whole annotation.
-
-The annotation list shows each passage's position: book percentage for EPUB/FB2, or percentage and page/total for PDF. The selected EPUB/FB2 entry also shows the section title and percentage within that section, when the book has an outline. Percentages refer to the beginning of the passage, not your current reading position, and do not depend on window size. Click a row to preview the note, **Edit** to change it, **Color** to recolor it, or **Go** to return to the passage.
 
 </details>
 
@@ -263,40 +302,42 @@ botui --license
 
 </details>
 
-## Settings and help
+## Configuration
 
-Press **F2** for settings or **F1** for shortcuts on the current screen. The interface starts in **Catppuccin Mocha**. Choose **Terminal** to follow your terminal palette.
+**F2** edits settings in the same TOML file used for manual configuration. Run `botui --config-path` to locate it. Reader, appearance, library, BookOrbit and lookup settings are kept together; saving preserves unrelated values and comments.
 
-In **F2 → Reader → Paragraph spacing**, follow the book’s layout or choose 0, 1 or 2 blank lines between paragraphs in EPUB and FB2.
+### Dictionaries and translation
 
-Run `botui --config-path` to locate the TOML file. The [configuration example](config.example.toml) covers library paths, appearance, reading, definition and translation providers, OPDS and BookOrbit sign-in with a password or password command.
+**F2 → Dictionaries** has separate **Word definitions** and **Translation** lists. Add, edit, test, delete or select a default connection, then choose **Save changes & back**. Free Dictionary and Google Translate are enabled as editable HTTP profiles in the default config. They are not hardcoded providers; you can replace or remove them. An explicitly empty list stays empty.
 
-On startup, older configs gain missing dictionary/translation defaults, the Space hint delay, mouse-wheel step and an empty OPDS list. Existing values, connections and comments are preserved.
+Choose the connection type that fits your service:
 
-**F2 → Dictionaries → Word definitions / Translation** lets you add, edit, test and delete connections. **Save changes & back** writes them to the same TOML. **F2 → Library → OPDS catalogs** manages saved catalogs.
-
-Free Dictionary and Google Translate are enabled by ordinary HTTP profiles in the default TOML; both can be edited or deleted. Choose an HTTP API, an OpenAI-compatible API or a local command, then enter your own name, optional description and connection settings. HTTP requests and response paths are configurable; additional recipes are commented out below.
-
-### How dictionary connections work
-
-`[lookup]` contains shared settings and default connection names. Each `[[lookup.profiles]]` block defines one connection. `dictionary` and `translation` refer to its exact `name`; an empty name uses the first connection of that purpose. If your config has `profiles = []`, remove that line before adding profile blocks.
-
-All current profiles use the same configuration format. Older versions had short service-specific profiles with hidden endpoints and response parsers. On startup, old service-specific profiles are converted once to explicit HTTP fields; the runtime has no service-specific adapters. F2 creates **HTTP API**, **OpenAI-compatible API**, or **Local command** connections. A generic HTTP profile describes the service's request and response schema explicitly. Empty optional fields written by the UI may be omitted in hand-written TOML.
-
-| HTTP field | Meaning |
+| Type | Configuration |
 | --- | --- |
-| `name`, `provider`, `endpoint` | Unique name, `"http"`, and full service URL |
-| `purpose` | `"dictionary"` (default) or `"translation"` |
-| `method`, `response_format` | Default to `"GET"` and `"json"`; only required for other values |
-| `response_path` | Path to JSON strings, e.g. `/translatedText` or `/*/shortdef/*`; `*` iterates arrays. Empty works only for a string at the JSON root |
-| `response_separator` | `"\n"` puts definitions on separate lines; the default concatenates strings without a separator |
-| `query`, `headers`, `body` | Only the parameters, headers and JSON body required by the service |
-| `api_key` / `key_command` | Choose one; the command takes precedence. HTTP sends the key only where `{key}` appears in the template |
-| `description` | Optional label for your own reference |
+| HTTP API | `provider = "http"`, a URL, the request parameters and the path to text in the response |
+| OpenAI-compatible API | `provider = "openai"`, the chat-completions URL and a model; optional key and explanation language |
+| Local command | `provider = "command"` and a program/argument array; install the program and its dictionaries separately |
 
-`{text}` is the selected text, `{source}` / `{target}` are language codes, and `{key}` is the key. URL and query values are encoded automatically; JSON body placeholders belong inside strings. Language selection affects a request only when its adapter or template uses that parameter; selecting Russian does not translate an English-only dictionary.
+`[lookup]` holds the default `dictionary` and `translation` names and shared languages. Each `[[lookup.profiles]]` block defines one connection; its unique `name` is what the defaults refer to. An empty default name selects the first profile of that purpose. Remove `profiles = []` before adding profile blocks.
 
-The full example below and `config.example.toml` contain **identical** profiles for Free Dictionary (HTTP), Merriam-Webster Collegiate, a custom translator, an OpenAI-compatible server and local `sdcv`. Free Dictionary and Google Translate are active defaults. The additional recipes are inactive templates. Merriam-Webster needs a key for the Collegiate product; this example displays short definitions (`shortdef`), without audio or full entry formatting. [Merriam-Webster schema](https://dictionaryapi.com/products/json#sec-2.shortdef). Save the profile, select it as default and use **Test connection with ‘hello’** in F2. Testing sends a real request; leaving without saving discards profile edits.
+A short profile and a longer one use **the same schema**: the longer one supplies optional values or parameters required by that service. For HTTP:
+
+| Field | Meaning |
+| --- | --- |
+| `name`, `provider`, `endpoint` | Connection name, `"http"`, full service URL |
+| `purpose` | `"dictionary"` by default, or `"translation"` |
+| `method`, `response_format` | `"GET"` and `"json"` by default; omit unless different |
+| `response_path` | Path to JSON strings, such as `/translatedText` or `/*/shortdef/*`; `*` iterates arrays. Empty selects the root. |
+| `response_separator` | Defaults to no separator; use `"\n"` for definitions on separate lines |
+| `query`, `headers`, `body` | Only the request fields required by the service |
+| `api_key` / `key_command` | A key value or a command returning it; the command takes precedence. HTTP sends it only where `{key}` appears. |
+| `description` | Optional label for your reference |
+
+Templates use `{text}`, `{source}`, `{target}` and `{key}`. URL/query values are encoded automatically; JSON body placeholders go inside strings. A language choice affects only templates that use it: selecting Russian does not turn an English-only dictionary into a translator. Plain-text responses use `response_format = "text"`.
+
+The complete example below is identical to [config.example.toml](config.example.toml). Free Dictionary and Google Translate are active; Merriam-Webster Collegiate, a custom translator, an OpenAI-compatible server and `sdcv` are commented templates. Merriam-Webster needs a **Collegiate** API key; the template extracts short definitions (`shortdef`). Uncomment its block, supply your key and select its name in `lookup.dictionary`, or enter the same fields in F2. **Test connection with ‘hello’** sends a real request.
+
+Older service-specific profiles are converted once to explicit HTTP fields. New settings are added to older configs without overwriting existing choices. Additional connection fields, language substitutions and credential examples are documented in the config itself.
 
 <details>
 <summary>Complete config.toml example</summary>
@@ -493,10 +534,6 @@ response_separator = ""
 
 </details>
 
-[Create and delete collections, add books and remove them](docs/guide.md#managing-collections)
-
-See the [user guide](docs/guide.md) for offline sync, bookmarks, notes, footnotes and PDF controls.
-
 ## Development
 
 | Command | What it checks |
@@ -508,38 +545,10 @@ Smoke tests need tmux, Python 3.11+, the PDF and DjVu helpers above, and `c44` a
 
 [Architecture](docs/architecture.md) · [Verification checklist](docs/checklist.md) · [Coverage limits](docs/checklist.md#coverage-limits)
 
-## Page appearance
-
-PDF/DjVu: `Space t` opens a compact **Page theme** picker over the visible page. Choose **Original**, **Inverted**, Terminal or a reading palette. ↑/↓ preview the choice immediately; ←/→ choose light/dark; Enter or a mouse click applies it. Esc (or a click outside) cancels and restores the previous appearance without saving. **F2 → Reader → PDF / image theme** and `Space t` save the same `scan_theme` setting: `original`, `inverted`, `terminal` or a palette ID such as `sage-dark`. It applies on reopen and to other PDF/DjVu files, comics and image-only EPUBs. Old per-book color flags do not override the config. The ordinary reading `theme` stays independent; cancelling preview saves nothing. Neutral paper and ink follow the reading colors; saturated illustrations retain their colors. `Space l f` controls opacity as in EPUB/FB2. F2 and library screens keep `interface_theme`.
-
-### Right-click text actions
-
-Right-click a word, or right-click inside an existing selection, to open a small menu beside the pointer: **Copy, Highlight, Search, Translate, Define, Add note**. The book remains visible behind the menu. A click inside the selection preserves the entire passage; a click on another word targets that word. Search opens in-book search with the selected text (PDF starts its text-layer search). Escape or a click outside dismisses the menu; use the mouse or ↑/↓ and Enter to choose. The same actions work in EPUB, FB2, Markdown and PDF with an embedded text layer; scans without text cannot provide word actions. Translation and definitions use the connections selected in F2 → Dictionaries.
-
-
-### CBZ and CBR comics
-
-CBZ (ZIP) and CBR (RAR) use built-in decoders; no external unpacker is required. JPEG, PNG and WebP pages support natural filename order (1, 2, 10), a first-page cover, contents, zoom, rotation, spreads, scrolling, bookmarks and page notes. Reading position survives closing the book. Comics do not expose text search, dictionaries or word selection; no OCR is performed. Password-protected and multi-volume CBRs are not supported yet; individual pages are limited to 16 MiB. Compressed RAR4/RAR5 and solid variants are covered by test fixtures.
-
-### Additional palettes
-
-**F2 → Appearance → Interface theme** includes the new dark **Graphite**, **Midnight**, **Pine** and **Plum** palettes (`graphite`, `midnight`, `pine`, `plum`). Reading gains **Parchment**, **Sage**, **Dusk** and **Slate**, each with light and dark variants: for example `parchment-light`, `sage-dark`, `dusk-light` and `slate-dark`. These are available in both the ordinary reading theme picker and **PDF / image theme**.
+[Release notes](CHANGELOG.md)
 
 ## License
 
 BOTUI and its generated book jackets use [GPL-3.0-or-later](LICENSE). Covers supplied by books and catalogs retain their original rights.
 
-RAR decoder: [rars](https://github.com/bitplane/rars), [Apache-2.0](docs/licenses/rars-Apache-2.0.txt).
-
-PDF/DjVu and comics: **Space l w** opens zoom and spread spacing. Use **[ / ]** or the gap buttons to set **0–32 terminal cells**; zero joins the facing pages. `scan_gap` remembers the choice independently of text columns.
-
-In single-page and spread modes, **+ / −** zoom the page canvas into the available margins; only the edge of the reading pane clips it. Arrow keys pan enlarged pages. **Space r 0** returns to Fit page.
-
-
-## Reading Markdown
-
-Open `.md` or `.markdown` files directly or from a local folder. The reader displays headings with a contents tree, emphasis, quotes, ordered/unordered lists, task boxes, tables, fenced code and local illustrations. **F9**, **Space r v**, or the **Source / Formatted** footer button switches between the formatted document and its original source. Both are reading views; the file is not edited.
-
-Mouse selection, Copy, Search, Translate, Define, highlights, comments, bookmarks and Vim navigation work in both views. Notes keep the same source addresses when switching views, changing width or reopening the file. Formatted copy omits Markdown delimiters, and phrase search crosses inline formatting. Source view copies the original characters. As with other book formats, changing the file externally can change saved passage positions.
-
-Code uses a small built-in lexical highlighter for Rust, Python, JavaScript/TypeScript, JSON, TOML, shell, C/C++, Go, Java, YAML and SQL. Unknown languages still get a readable code block; no syntax package needs installing. Very large code blocks are rendered without token coloring. Local images resolve relative to the Markdown file and must stay inside its directory (subdirectories are supported); remote images are not downloaded. Raw HTML is shown as text. This is a CommonMark reader with tables, strikethrough and task lists, not an MDX or Obsidian plugin runtime. Markdown text is limited to 4 MiB and each illustration to 16 MiB.
+The RAR decoder [rars](https://github.com/bitplane/rars) uses [Apache-2.0](docs/licenses/rars-Apache-2.0.txt). Component notices are available in **F2 → Legal**, through `botui --license` and in [docs/licenses](docs/licenses/).
