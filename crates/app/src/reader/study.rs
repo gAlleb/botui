@@ -271,7 +271,9 @@ impl Study {
                     }
                     // Unbound letters must not execute conflicting legacy reader commands.
                     return match k.code {
-                        KeyCode::F(1..=5) | KeyCode::PageUp | KeyCode::PageDown => None,
+                        KeyCode::F(1..=5) | KeyCode::F(9) | KeyCode::PageUp | KeyCode::PageDown => {
+                            None
+                        }
                         KeyCode::Char('K') => action(Command::Lookup),
                         _ => Some(Action::Resize),
                     };
@@ -375,6 +377,12 @@ impl Study {
                         }
                         M::BackWord => doc.move_text(to, false, true),
                         M::EndWord => doc.word_end(to),
+                        M::Start if doc.markdown.is_some() => {
+                            doc.paragraph_at(to).map_or(to, |r| r.start)
+                        }
+                        M::First if doc.markdown.is_some() => {
+                            doc.paragraph_at(to).map_or(to, |r| r.start)
+                        }
                         M::Start => botui_core::Anchor { byte: 0, ..to },
                         M::First => botui_core::Anchor {
                             byte: doc.blocks[to.block].text.len()
@@ -385,15 +393,7 @@ impl Study {
                             .paragraph_at(to)
                             .map_or(to, |r| doc.move_text(r.end, false, false)),
                         M::NextParagraph | M::PreviousParagraph => {
-                            let block = if m == M::NextParagraph {
-                                ((to.block + 1)..doc.blocks.len())
-                                    .find(|&i| !doc.blocks[i].text.is_empty())
-                            } else {
-                                (0..to.block)
-                                    .rev()
-                                    .find(|&i| !doc.blocks[i].text.is_empty())
-                            };
-                            block.map_or(to, |block| Anchor { block, byte: 0 })
+                            doc.move_paragraph(to, m == M::NextParagraph)
                         }
                         M::Down | M::Up | M::ScreenDown | M::ScreenUp => {
                             let (next, col) = pager.move_text_line(
@@ -414,6 +414,20 @@ impl Study {
                                 }
                             })
                         }
+                        M::Top if doc.markdown.is_some() => {
+                            doc.character_at(Anchor::default()).map_or(at, |r| r.start)
+                        }
+                        M::Bottom if doc.markdown.is_some() => doc
+                            .markdown
+                            .as_ref()
+                            .and_then(|m| m.paragraphs.last())
+                            .and_then(|r| {
+                                doc.paragraph_at(Anchor {
+                                    block: 0,
+                                    byte: r.start,
+                                })
+                            })
+                            .map_or(at, |r| r.start),
                         M::Top => doc
                             .blocks
                             .iter()
@@ -448,10 +462,7 @@ impl Study {
                             if let Some(r) = doc.paragraph_at(to) {
                                 object = Some(object.map_or(r, |o: TextRange| o.union(r)));
                             }
-                            botui_core::Anchor {
-                                block: (to.block + 1).min(doc.blocks.len().saturating_sub(1)),
-                                byte: 0,
-                            }
+                            doc.move_paragraph(to, true)
                         }
                     };
                 }

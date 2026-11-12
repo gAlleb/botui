@@ -224,12 +224,16 @@ impl NetProvider for Stylesheets {
 
 #[derive(Clone, Debug)]
 pub struct SourceText {
+    /// Decoded Markdown entity or normalized code text, if unlike the source slice.
+    pub display: Option<String>,
     pub start: Anchor,
     pub end: usize,
     pub child: usize,
 }
 #[derive(Clone, Copy, Default, PartialEq, Eq, Debug)]
 pub struct Face {
+    /// Lightweight code token: keyword, string, comment, number.
+    pub syntax: u8,
     pub bold: bool,
     pub italic: bool,
     pub underline: bool,

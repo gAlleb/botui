@@ -13,6 +13,26 @@ pub(super) fn web(value: &str) -> bool {
 pub fn illustration(path: &Path, member: &str) -> Result<Vec<u8>> {
     const LIMIT: u64 = 16 << 20;
     match FileKind::from_path(path) {
+        Some(FileKind::Markdown) => {
+            let member = percent_encoding::percent_decode_str(member).decode_utf8()?;
+            let base = path
+                .canonicalize()?
+                .parent()
+                .ok_or_else(|| invalid("Missing Markdown directory"))?
+                .to_path_buf();
+            let image = base.join(member.as_ref()).canonicalize()?;
+            if !image.starts_with(&base) {
+                return Err(
+                    invalid("Markdown images must be inside the document directory").into(),
+                );
+            }
+            let mut bytes = Vec::new();
+            File::open(image)?.take(LIMIT + 1).read_to_end(&mut bytes)?;
+            if bytes.len() as u64 > LIMIT {
+                return Err(invalid("Illustration exceeds size limit").into());
+            }
+            Ok(bytes)
+        }
         Some(FileKind::Cbz | FileKind::Cbr) => super::comic::image(path, member),
         Some(FileKind::Epub) => {
             let mut zip = zip::ZipArchive::new(BufReader::new(File::open(path)?))?;

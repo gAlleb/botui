@@ -31,6 +31,9 @@ impl Paint {
         let face = values.as_ref().map_or(Face::default(), |s| {
             let decoration = s.clone_text_decoration_line();
             Face {
+                syntax: el
+                    .and_then(|e| super::marker(e, "data-botui-syntax"))
+                    .unwrap_or(0) as u8,
                 bold: s.clone_font_weight().value() >= 600.,
                 italic: s.clone_font_style() != FontStyle::NORMAL,
                 underline: decoration.contains(TextDecorationLine::UNDERLINE),
@@ -61,6 +64,23 @@ impl Cursor {
         glyph: &str,
     ) -> Option<(Anchor, usize)> {
         while let Some(span) = spans.get(self.part) {
+            if let Some(display) = &span.display {
+                let rest = display.get(self.offset..).unwrap_or("");
+                if rest.is_empty() {
+                    self.part += 1;
+                    self.offset = 0;
+                    continue;
+                }
+                if rest.starts_with(glyph) {
+                    self.offset += glyph.len();
+                    return Some((span.start, span.end));
+                }
+                if let Some(c) = rest.chars().next().filter(|c| c.is_whitespace()) {
+                    self.offset += c.len_utf8();
+                    continue;
+                }
+                return None;
+            }
             let text = &blocks.get(span.start.block)?.text;
             let begin = span.start.byte + self.offset;
             let end = span.end.min(text.len());
@@ -700,11 +720,13 @@ mod tests {
             let split = text.char_indices().nth(7).map_or(text.len(), |(i, _)| i);
             let sources = vec![vec![
                 SourceText {
+                    display: None,
                     start: Anchor::default(),
                     end: split,
                     child: 0,
                 },
                 SourceText {
+                    display: None,
                     start: Anchor {
                         block: 0,
                         byte: split,

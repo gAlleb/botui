@@ -132,7 +132,7 @@ def check(tmp):
         t.keys('Space','p')
         t.wait('Zen footer hidden', lambda f: not footer.search(f) and not cfg()['zen_progress'])
         t.keys('F2');t.see('Nord')
-        t.keys('Escape');t.wait('Returned to reading', lambda f:'Interface theme' not in f and 'Почта на пристани' in f);t.keys('F1');t.see('Keyboard shortcuts');t.see('EPUB & FB2');t.keys('Escape','Space','q')
+        t.keys('Escape');t.wait('Returned to reading', lambda f:'Interface theme' not in f and 'Почта на пристани' in f);t.keys('F1');t.see('Keyboard shortcuts');t.see('EPUB, FB2 & Markdown');t.keys('Escape','Space','q')
     finally:t.run('kill-server',required=False)
 if __name__=='__main__':
     with tempfile.TemporaryDirectory(prefix='botui-settings-') as d:check(Path(d))

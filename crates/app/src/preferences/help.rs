@@ -110,7 +110,7 @@ pub(super) fn entries(ctx: Context, p: &Settings) -> Vec<Entry> {
                 ],
             ),
             Context::Text => (
-                "EPUB & FB2 · reading without cursor",
+                "EPUB, FB2 & Markdown · reading without cursor",
                 &[
                     ("Q", "Close book and return to its source"),
                     ("← / → · PgUp / PgDn", "Previous / next page"),

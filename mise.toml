@@ -54,7 +54,7 @@ description = "Exercise library, authentication and reader flows in isolated ter
 run = """
 set -eu
 cargo build --workspace --locked
-for part in config reader reader-navigation annotations text-menu pdf-text space-lookup lookup-settings lookup-migration text-search library shelf sources progress offline resources preferences details bookorbit-bookmarks scroll splitters local-navigation local-startup scan-controls scan-theme comics scan-zoom palette-events about typography outline native-scroll svg; do
+for part in config reader reader-navigation annotations text-menu pdf-text space-lookup lookup-settings lookup-migration text-search library shelf sources progress offline resources preferences details bookorbit-bookmarks scroll splitters local-navigation local-startup scan-controls page-layout scan-theme comics markdown scan-zoom palette-events about typography outline native-scroll svg; do
   python3 "scripts/smoke-$part.py"
 done
 """

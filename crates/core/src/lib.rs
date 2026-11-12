@@ -1,6 +1,7 @@
 //! Text pagination shared by every source and terminal frontend.
 
 mod location;
+mod markdown;
 mod media;
 pub use media::TableRow;
 mod pagination;
@@ -22,6 +23,7 @@ use unicode_width::UnicodeWidthStr;
 
 #[derive(Clone, Debug, Default)]
 pub struct Document {
+    pub markdown: Option<Markdown>,
     /// FB2 verse and explicit breaks before a block keep their own spacing.
     pub fixed_breaks: std::collections::BTreeSet<usize>,
     /// Lightweight inline faces in otherwise plain text (e.g. FB2), in source bytes.
@@ -35,6 +37,35 @@ pub struct Document {
     pub locations: Locations,
     pub title: String,
     pub blocks: Vec<Block>,
+}
+
+/// Both views share the UTF-8 offsets of the original Markdown file.
+#[derive(Clone, Debug)]
+pub struct Markdown {
+    pub rendered: publisher::Chapter,
+    pub source: publisher::Chapter,
+    pub show_source: bool,
+    pub passages: Vec<publisher::SourceText>,
+    pub paragraphs: Vec<std::ops::Range<usize>>,
+    pub text: String,
+    pub mapping: Vec<(std::ops::Range<usize>, std::ops::Range<usize>)>,
+}
+impl Document {
+    pub fn toggle_markdown(&mut self) -> bool {
+        let Some(md) = &mut self.markdown else {
+            return false;
+        };
+        md.show_source = !md.show_source;
+        self.styled.insert(
+            0,
+            if md.show_source {
+                md.source.clone()
+            } else {
+                md.rendered.clone()
+            },
+        );
+        true
+    }
 }
 
 /// Preorder entry in the publisher's outline. Parent indexes refer to earlier entries.
@@ -565,6 +596,7 @@ mod tests {
 
     fn document(paragraphs: &[&str]) -> Document {
         Document {
+            markdown: None,
             fixed_breaks: Default::default(),
             inline: Default::default(),
             image_pages: vec![],
@@ -774,6 +806,7 @@ mod tests {
                     "<!doctype html><html><body><p data-botui-text='0'>{text}</p></body></html>"
                 );
                 let sources = vec![vec![SourceText {
+                    display: None,
                     start: Anchor { block, byte: 0 },
                     end: text.len(),
                     child: 0,

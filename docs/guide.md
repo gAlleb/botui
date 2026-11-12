@@ -134,6 +134,7 @@ In a Space submenu, `q`, `Esc` and `Backspace` return to the root; `Esc` closes 
 | `Space a n` | Comment on passage |
 | `Space a a` | Highlights and notes |
 | `Space a e` | Export annotations to Markdown |
+| `F9` / `Space r v` | Markdown: formatted view / original source |
 | `Space a v` | Show/hide note body (EPUB/FB2) |
 | `Space a p` | Page note (PDF/DjVu) |
 | `Space d d` | Word definition |
@@ -496,7 +497,7 @@ PDF/DjVu: `Space t` opens a compact **Page theme** picker over the visible page.
 
 ### Right-click text actions
 
-Right-click a word, or right-click inside an existing selection, to open a small menu beside the pointer: **Copy, Highlight, Search, Translate, Define, Add note**. The book remains visible behind the menu. A click inside the selection preserves the entire passage; a click on another word targets that word. Search opens in-book search with the selected text (PDF starts its text-layer search). Escape or a click outside dismisses the menu; use the mouse or ↑/↓ and Enter to choose. The same actions work in EPUB, FB2 and PDF with an embedded text layer; scans without text cannot provide word actions. Translation and definitions use the connections selected in F2 → Dictionaries.
+Right-click a word, or right-click inside an existing selection, to open a small menu beside the pointer: **Copy, Highlight, Search, Translate, Define, Add note**. The book remains visible behind the menu. A click inside the selection preserves the entire passage; a click on another word targets that word. Search opens in-book search with the selected text (PDF starts its text-layer search). Escape or a click outside dismisses the menu; use the mouse or ↑/↓ and Enter to choose. The same actions work in EPUB, FB2, Markdown and PDF with an embedded text layer; scans without text cannot provide word actions. Translation and definitions use the connections selected in F2 → Dictionaries.
 
 
 ### CBZ and CBR comics
@@ -510,3 +511,12 @@ CBZ (ZIP) and CBR (RAR) use built-in decoders; no external unpacker is required.
 PDF/DjVu and comics: **Space l w** opens zoom and spread spacing. Use **[ / ]** or the gap buttons to set **0–32 terminal cells**; zero joins the facing pages. `scan_gap` remembers the choice independently of text columns.
 
 In single-page and spread modes, **+ / −** zoom the page canvas into the available margins; only the edge of the reading pane clips it. Arrow keys pan enlarged pages. **Space r 0** returns to Fit page.
+
+
+## Reading Markdown
+
+Open `.md` or `.markdown` files directly or from a local folder. The reader displays headings with a contents tree, emphasis, quotes, ordered/unordered lists, task boxes, tables, fenced code and local illustrations. **F9**, **Space r v**, or the **Source / Formatted** footer button switches between the formatted document and its original source. Both are reading views; the file is not edited.
+
+Mouse selection, Copy, Search, Translate, Define, highlights, comments, bookmarks and Vim navigation work in both views. Notes keep the same source addresses when switching views, changing width or reopening the file. Formatted copy omits Markdown delimiters, and phrase search crosses inline formatting. Source view copies the original characters. As with other book formats, changing the file externally can change saved passage positions.
+
+Code uses a small built-in lexical highlighter for Rust, Python, JavaScript/TypeScript, JSON, TOML, shell, C/C++, Go, Java, YAML and SQL. Unknown languages still get a readable code block; no syntax package needs installing. Very large code blocks are rendered without token coloring. Local images resolve relative to the Markdown file and must stay inside its directory (subdirectories are supported); remote images are not downloaded. Raw HTML is shown as text. This is a CommonMark reader with tables, strikethrough and task lists, not an MDX or Obsidian plugin runtime. Markdown text is limited to 4 MiB and each illustration to 16 MiB.

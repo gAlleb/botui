@@ -55,6 +55,7 @@ pub(super) fn chapter(
             .enumerate()
             .filter_map(|(index, child)| {
                 origins.get(&child.id()).map(|&(start, end)| SourceText {
+                    display: None,
                     start,
                     end,
                     child: index,

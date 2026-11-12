@@ -2,6 +2,7 @@
 
 mod comic;
 mod cover;
+mod markdown;
 mod metadata;
 pub use metadata::{BookMetadata, book_metadata};
 mod epub;
@@ -39,6 +40,7 @@ pub enum FileKind {
     Djvu,
     Cbz,
     Cbr,
+    Markdown,
 }
 
 impl FileKind {
@@ -48,6 +50,8 @@ impl FileKind {
 
     pub fn from_extension(ext: &str) -> Option<Self> {
         [
+            ("md", Self::Markdown),
+            ("markdown", Self::Markdown),
             ("epub", Self::Epub),
             ("fb2", Self::Fb2),
             ("pdf", Self::Pdf),
@@ -67,10 +71,14 @@ impl FileKind {
             Self::Djvu => "DjVu",
             Self::Cbz => "CBZ",
             Self::Cbr => "CBR",
+            Self::Markdown => "Markdown",
         }
     }
     pub fn readable(self) -> bool {
-        matches!(self, Self::Epub | Self::Fb2 | Self::Cbz | Self::Cbr)
+        matches!(
+            self,
+            Self::Epub | Self::Fb2 | Self::Cbz | Self::Cbr | Self::Markdown
+        )
     }
 }
 
@@ -80,11 +88,12 @@ pub fn supports_path(path: &Path) -> bool {
 
 pub fn open_document(path: &Path) -> Result<Document> {
     match FileKind::from_path(path) {
+        Some(FileKind::Markdown) => markdown::open(path),
         Some(FileKind::Epub) => open_epub(path),
         Some(FileKind::Fb2) => fb2::open(path),
         Some(FileKind::Cbz | FileKind::Cbr) => comic::open(path),
         Some(kind) => Err(invalid(format!("No built-in viewer for {}", kind.label())).into()),
-        None => Err(invalid("Choose an EPUB, FB2, CBZ or CBR file").into()),
+        None => Err(invalid("Choose an EPUB, FB2, Markdown, CBZ or CBR file").into()),
     }
 }
 

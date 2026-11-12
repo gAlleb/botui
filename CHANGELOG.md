@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Add a saved 0–32-cell spread gap for PDF/DjVu/CBR/CBZ in Space l w. Pack facing sheets together at zero gap.
+- Zoom fixed pages into available margins and clip the entire spread at the reading pane; keep text hits, highlights and annotation jumps aligned.
+- Read Markdown with headings, lists, quotes, tables, code colors and local images. F9 / Space r v / footer buttons switch to the original source while retaining annotation addresses. Use the existing ebook layout engine with a small CommonMark parser and lexical code coloring.
+
+
 - Add built-in CBZ/CBR reading with natural page order, covers, contents, zoom, spreads, scrolling and saved page annotations. RAR decoding is embedded with optional writer, encryption, recovery and Rayon features disabled; no external unpacker is used.
 - Add an explicit PDF / image theme setting shared by F2 and the Space picker. Persist Original, Inverted or a named palette in scan_theme, independently of EPUB/FB2 theme and old per-book color flags.
 - Add Graphite, Midnight, Pine and Plum dark interface themes, plus Parchment, Sage, Dusk and Slate reading palettes in light/dark variants.

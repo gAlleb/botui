@@ -51,6 +51,7 @@ enum Action {
     Resources,
     Cover,
     VisibleLinks,
+    Source,
     Follow(usize),
     ReturnLink,
     KeepLink,
@@ -131,7 +132,7 @@ struct Reader {
     sidebar: navigation::Navigation,
     sidebar_rect: Rect,
     splitter: crate::splitter::Splitter,
-    footer: [Rect; 6],
+    footer: [Rect; 7],
     remote_marked: bool,
     sidebar_focus: bool,
     links: links::Links,
@@ -159,6 +160,14 @@ struct Reader {
 }
 
 impl Reader {
+    fn leader_context(&self) -> crate::leader::Context {
+        if self.doc.markdown.is_some() {
+            crate::leader::Context::Markdown
+        } else {
+            crate::leader::Context::Text
+        }
+    }
+
     fn study_input(&mut self, event: &Event) -> Option<Action> {
         if self.menu.is_some()
             || self.nav.is_some()
@@ -285,7 +294,7 @@ impl Reader {
             sidebar,
             sidebar_rect: Rect::default(),
             splitter,
-            footer: [Rect::default(); 6],
+            footer: [Rect::default(); 7],
             remote_marked: false,
             sidebar_focus: false,
             links,
@@ -400,7 +409,11 @@ impl Reader {
                         });
                     }
                 }
-                let mut para = Paragraph::new(self.search.line(line)).style(if line.table_header {
+                let mut para = Paragraph::new(
+                    self.search
+                        .line(line, self.theme.dark() || self.theme.id() == "terminal"),
+                )
+                .style(if line.table_header {
                     style.add_modifier(Modifier::BOLD)
                 } else {
                     style
@@ -492,6 +505,15 @@ impl Reader {
                 } else {
                     ""
                 },
+                if let Some(md) = &self.doc.markdown {
+                    if md.show_source {
+                        " F9 Formatted "
+                    } else {
+                        " F9 Source "
+                    }
+                } else {
+                    ""
+                },
             ]
             .into_iter()
             .enumerate()
@@ -541,7 +563,8 @@ impl Reader {
             self.links.controls(frame, footer, style);
         }
         self.study.controls(frame, style);
-        self.leader.draw(frame, crate::leader::Context::Text);
+        let context = self.leader_context();
+        self.leader.draw(frame, context);
         if let Some(panel) = &mut self.layout_panel {
             panel.draw(
                 frame,
@@ -785,6 +808,7 @@ impl Reader {
                 KeyCode::Enter if self.links.visiting() && self.menu.is_none() => {
                     Some(Action::KeepLink)
                 }
+                KeyCode::F(9) if self.doc.markdown.is_some() => Some(Action::Source),
                 KeyCode::F(6) if self.menu.is_none() => Some(Action::VisibleLinks),
                 KeyCode::F(2) => Some(Action::Settings),
                 KeyCode::F(5) => Some(Action::SearchResults),
@@ -892,6 +916,7 @@ impl Reader {
                             Action::Settings,
                             Action::Help,
                             Action::VisibleLinks,
+                            Action::Source,
                         ][i]
                     })
             }
@@ -944,6 +969,26 @@ impl Reader {
     }
     fn apply(&mut self, action: Action) {
         match action {
+            Action::Source => {
+                if std::sync::Arc::make_mut(&mut self.doc).toggle_markdown() {
+                    let options = crate::settings::Settings::load().unwrap_or_default();
+                    self.pager.reconfigure(
+                        &self.doc,
+                        self.text_rect.width,
+                        self.text_rect.height,
+                        self.mode,
+                        self.gap,
+                        ReflowOptions {
+                            repair_printed: false,
+                            inline_images: !options.hide_inline_images,
+                            paragraph_indent: 0,
+                            paragraph_spacing: None,
+                        },
+                    );
+                    self.search.reflow(&self.pager, &self.doc);
+                    self.menu = None;
+                }
+            }
             Action::ReturnLink => {
                 if let Some(a) = self.links.back() {
                     self.pager.seek(a);
@@ -1455,7 +1500,7 @@ pub fn read_server(
                     && reader.nav.is_none()
                     && reader.palette.is_none()
                     && reader.layout_panel.is_none()
-                    && let Some(command) = reader.leader.input(&e, crate::leader::Context::Text)
+                    && let Some(command) = reader.leader.input(&e, reader.leader_context())
                 {
                     use crate::leader::Command as L;
                     let action = match command {

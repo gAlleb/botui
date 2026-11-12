@@ -326,6 +326,7 @@ pub(super) fn read_book(reader: impl Read + Seek, fallback: &str) -> Result<Docu
         }
     }
     Ok(Document {
+        markdown: None,
         fixed_breaks: Default::default(),
         inline: Default::default(),
         image_pages,

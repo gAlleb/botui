@@ -89,6 +89,33 @@ impl Pager {
 
 impl Document {
     pub fn text_range(&self, range: TextRange) -> String {
+        if let Some(md) = &self.markdown
+            && !md.show_source
+        {
+            let raw = &self.blocks[0].text;
+            let mut result = String::new();
+            let mut previous = None;
+            for passage in &md.passages {
+                let start = passage.start.byte.max(range.start.byte);
+                let end = passage.end.min(range.end.byte);
+                if start >= end {
+                    continue;
+                }
+                if let Some(last) = previous {
+                    let gap = &raw[last..start];
+                    if gap.contains('\n') {
+                        result.push('\n');
+                    }
+                }
+                if let Some(text) = &passage.display {
+                    result.push_str(text);
+                } else if let Some(text) = raw.get(start..end) {
+                    result.push_str(text);
+                }
+                previous = Some(end);
+            }
+            return result;
+        }
         let mut parts = Vec::new();
         for block in range.start.block..=range.end.block.min(self.blocks.len().saturating_sub(1)) {
             let Some(text) = self.blocks.get(block).map(|b| b.text.as_str()) else {
@@ -113,6 +140,14 @@ impl Document {
         parts.join("\n\n")
     }
     pub fn character_at(&self, at: Anchor) -> Option<TextRange> {
+        if let Some(md) = self.markdown.as_ref().filter(|m| !m.show_source) {
+            let pos = md.display_position(at.byte);
+            let (i, g) = md
+                .text
+                .grapheme_indices(true)
+                .find(|(i, g)| i + g.len() > pos)?;
+            return md.source_range(i..i + g.len());
+        }
         let text = &self.blocks.get(at.block)?.text;
         let (byte, g) = text
             .grapheme_indices(true)
@@ -126,6 +161,14 @@ impl Document {
         ))
     }
     pub fn word_at(&self, at: Anchor) -> Option<TextRange> {
+        if let Some(md) = self.markdown.as_ref().filter(|m| !m.show_source) {
+            let pos = md.display_position(at.byte);
+            let (i, w) = md
+                .text
+                .split_word_bound_indices()
+                .find(|(i, w)| i + w.len() > pos)?;
+            return md.source_range(i..i + w.len());
+        }
         let text = &self.blocks.get(at.block)?.text;
         let (byte, word) = text
             .split_word_bound_indices()
@@ -139,6 +182,38 @@ impl Document {
         ))
     }
     pub fn paragraph_at(&self, at: Anchor) -> Option<TextRange> {
+        if let Some(md) = &self.markdown {
+            let p = md
+                .paragraphs
+                .iter()
+                .filter(|p| p.contains(&at.byte))
+                .min_by_key(|p| p.len())
+                .or_else(|| md.paragraphs.iter().find(|p| p.end > at.byte))?;
+            if md.show_source {
+                return Some(TextRange::new(
+                    Anchor {
+                        byte: p.start,
+                        ..at
+                    },
+                    Anchor { byte: p.end, ..at },
+                ));
+            }
+            let a = md.mapping.partition_point(|(_, r)| r.end <= p.start);
+            let b = md
+                .mapping
+                .partition_point(|(_, r)| r.start < p.end)
+                .checked_sub(1)?;
+            return Some(TextRange::new(
+                Anchor {
+                    byte: md.mapping.get(a)?.1.start,
+                    ..at
+                },
+                Anchor {
+                    byte: md.mapping.get(b)?.1.end,
+                    ..at
+                },
+            ));
+        }
         let text = &self.blocks.get(at.block)?.text;
         Some(TextRange::new(
             Anchor { byte: 0, ..at },
@@ -148,7 +223,53 @@ impl Document {
             },
         ))
     }
+    pub fn move_paragraph(&self, at: Anchor, forward: bool) -> Anchor {
+        if let Some(md) = &self.markdown {
+            let current = self.paragraph_at(at).map_or(at.byte, |r| r.start.byte);
+            let mut starts: Vec<_> = md
+                .paragraphs
+                .iter()
+                .filter_map(|p| {
+                    self.paragraph_at(Anchor {
+                        block: 0,
+                        byte: p.start,
+                    })
+                    .map(|r| r.start)
+                })
+                .collect();
+            starts.sort();
+            starts.dedup();
+            return if forward {
+                starts.into_iter().find(|a| a.byte > at.byte)
+            } else {
+                starts.into_iter().rev().find(|a| a.byte < current)
+            }
+            .unwrap_or(at);
+        }
+        let block = if forward {
+            ((at.block + 1)..self.blocks.len()).find(|&i| !self.blocks[i].text.is_empty())
+        } else {
+            (0..at.block)
+                .rev()
+                .find(|&i| !self.blocks[i].text.is_empty())
+        };
+        block.map_or(at, |block| Anchor { block, byte: 0 })
+    }
     pub fn word_end(&self, at: Anchor) -> Anchor {
+        if let Some(md) = self.markdown.as_ref().filter(|m| !m.show_source) {
+            let pos = md.display_position(at.byte);
+            return md
+                .text
+                .unicode_word_indices()
+                .filter_map(|(i, w)| {
+                    let end = i + w.grapheme_indices(true).next_back()?.0;
+                    (end > pos)
+                        .then(|| md.source_range(end..i + w.len()).map(|r| r.start))
+                        .flatten()
+                })
+                .next()
+                .unwrap_or(at);
+        }
         for block in at.block..self.blocks.len() {
             for (offset, word) in self.blocks[block].text.unicode_word_indices() {
                 let byte = offset + word.grapheme_indices(true).next_back().unwrap().0;
@@ -162,6 +283,23 @@ impl Document {
     }
     /// Move between graphemes or word starts, crossing paragraph boundaries.
     pub fn move_text(&self, at: Anchor, forward: bool, word: bool) -> Anchor {
+        if let Some(md) = self.markdown.as_ref().filter(|m| !m.show_source) {
+            let pos = md.display_position(at.byte);
+            let positions: Box<dyn Iterator<Item = (usize, &str)> + '_> = if word {
+                Box::new(md.text.unicode_word_indices())
+            } else {
+                Box::new(md.text.grapheme_indices(true))
+            };
+            let mut anchors = positions
+                .filter(|(i, _)| if forward { *i > pos } else { *i < pos })
+                .filter_map(|(i, s)| md.source_range(i..i + s.len()).map(|r| r.start));
+            return if forward {
+                anchors.next()
+            } else {
+                anchors.last()
+            }
+            .unwrap_or(at);
+        }
         let Some(block) = self.blocks.get(at.block) else {
             return at;
         };
@@ -234,6 +372,8 @@ impl PageLine {
                         let offset = byte - span.bytes.start;
                         let range = if rendered == source {
                             at.byte + offset..at.byte + offset + g.len()
+                        } else if doc.markdown.is_some() {
+                            at.byte..end
                         } else {
                             // CSS transformations can change UTF-8 length. Match grapheme
                             // ordinals, leaving synthetic layout padding unselectable.

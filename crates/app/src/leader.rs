@@ -12,6 +12,7 @@ use std::time::{Duration, Instant};
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Context {
     Text,
+    Markdown,
     Pdf,
     Images,
     Shelf,
@@ -82,6 +83,7 @@ pub fn reading_event(event: &Event) -> bool {
             | KeyCode::Enter
             | KeyCode::Esc
             | KeyCode::F(1..=5)
+            | KeyCode::F(9)
             | KeyCode::Char('h' | 'j' | 'k' | 'l' | 'q' | 'Q' | '1' | '2' | '3')
     )
 }
@@ -111,7 +113,7 @@ fn entries(context: Context, path: &str) -> Vec<Entry> {
                 group: "",
             },
         ],
-        "reading" if context == Context::Text => vec![
+        "reading" if matches!(context, Context::Text | Context::Markdown) => vec![
             key('i', "Links & illustrations", Char('I')),
             key('c', "Open cover", Char('C')),
             key('s', "Reading statistics", Char('S')),
@@ -131,7 +133,7 @@ fn entries(context: Context, path: &str) -> Vec<Entry> {
             key('[', "Jump back", Char(',')),
             key(']', "Jump forward", Char('.')),
         ],
-        "notes" if context == Context::Text => vec![
+        "notes" if matches!(context, Context::Text | Context::Markdown) => vec![
             key('a', "All highlights & notes", Char('A')),
             key('n', "Comment", Char('N')),
             key('h', "Highlight", Char('H')),
@@ -193,6 +195,9 @@ fn entries(context: Context, path: &str) -> Vec<Entry> {
             key('q', "Back to library", Char('Q')),
         ],
     };
+    if context == Context::Markdown && path == "reading" {
+        items.insert(0, key('v', "Formatted / source", F(9)));
+    }
     if context == Context::Images {
         if path == "notes" {
             items.retain(|e| !matches!(e.key, 'n' | 'h' | 'y'));

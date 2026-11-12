@@ -281,6 +281,7 @@ pub(super) fn parse(bytes: &[u8], fallback: &str) -> Result<Document> {
         })
         .collect();
     Ok(Document {
+        markdown: None,
         fixed_breaks,
         inline,
         styled: Default::default(),

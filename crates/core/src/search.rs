@@ -7,6 +7,7 @@ struct Paragraph {
     offsets: Vec<usize>,
     text: String,
     folded: String,
+    source_bytes: Option<Vec<(Range<usize>, Range<usize>)>>,
 }
 pub struct SearchIndex {
     paragraphs: Vec<Paragraph>,
@@ -26,8 +27,21 @@ impl Pager {
                 offsets,
                 text,
                 folded,
+                source_bytes: None,
             });
             start = end + 1;
+        }
+        if let Some(md) = &doc.markdown
+            && !md.show_source
+        {
+            let text = md.text.clone();
+            rows = vec![Paragraph {
+                start: 0,
+                offsets: vec![0],
+                folded: text.to_lowercase(),
+                text,
+                source_bytes: Some(md.mapping.clone()),
+            }];
         }
         let mut visible = std::collections::BTreeMap::<usize, Vec<Range<usize>>>::new();
         for (&start, chapter) in &doc.styled {
@@ -72,6 +86,7 @@ pub struct SearchMatch {
     pub anchor: Anchor,
     paragraph: usize,
     bytes: Range<usize>,
+    source_end: usize,
 }
 
 impl SearchIndex {
@@ -105,11 +120,35 @@ impl SearchIndex {
                 };
                 let start = first.start;
                 let part = p.offsets.partition_point(|n| *n <= start).saturating_sub(1);
-                let anchor = Anchor {
+                let mut anchor = Anchor {
                     block: p.start + part,
                     byte: start - p.offsets[part],
                 };
-                if let Some(ranges) = self.visible.get(&anchor.block) {
+                let mut source_end = anchor.byte + last.end - start;
+                if let Some(mapping) = &p.source_bytes {
+                    let first = mapping.partition_point(|(r, _)| r.end <= start);
+                    let end = mapping.partition_point(|(r, _)| r.start < last.end);
+                    if first >= end {
+                        continue;
+                    }
+                    let (display_a, raw_a) = &mapping[first];
+                    let (display_b, raw_b) = &mapping[end - 1];
+                    anchor.byte = raw_a.start
+                        + if display_a.len() == raw_a.len() {
+                            start.saturating_sub(display_a.start)
+                        } else {
+                            0
+                        };
+                    source_end = raw_b.end
+                        - if display_b.len() == raw_b.len() {
+                            display_b.end.saturating_sub(last.end)
+                        } else {
+                            0
+                        };
+                }
+                if p.source_bytes.is_none()
+                    && let Some(ranges) = self.visible.get(&anchor.block)
+                {
                     let i = ranges.partition_point(|r| r.end <= anchor.byte);
                     if !ranges.get(i).is_some_and(|r| {
                         r.start <= anchor.byte && last.end - p.offsets[part] <= r.end
@@ -121,6 +160,7 @@ impl SearchIndex {
                     anchor,
                     paragraph,
                     bytes: start..last.end,
+                    source_end,
                 });
                 if hits.len() == 5000 {
                     return hits;
@@ -148,10 +188,7 @@ impl SearchIndex {
     pub fn visible_range(&self, hit: &SearchMatch, line: &PageLine) -> Option<Range<usize>> {
         let p = self.paragraphs.get(hit.paragraph)?;
         if !line.spans.is_empty() {
-            return line.source_range(
-                hit.anchor.block,
-                &(hit.anchor.byte..hit.anchor.byte + hit.bytes.len()),
-            );
+            return line.source_range(hit.anchor.block, &(hit.anchor.byte..hit.source_end));
         }
         let part = line.start.block.checked_sub(p.start)?;
         let from = p.offsets.get(part)?.checked_add(line.start.byte)?;

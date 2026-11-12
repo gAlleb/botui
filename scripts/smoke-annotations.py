@@ -47,7 +47,7 @@ with tempfile.TemporaryDirectory() as name:
     (bin_dir / "dictionary").write_text('#!/usr/bin/env python3\nimport json,os,sys\nfrom pathlib import Path\n(Path(os.environ["HOME"]) / "lookup-args").write_text(json.dumps(sys.argv[1:]))\nprint("Definition: " + sys.argv[-1])\n')
     (bin_dir / "dictionary").chmod(0o755)
     os.environ["PATH"] = str(bin_dir) + os.pathsep + os.environ["PATH"]
-    for kind in ["fb2", "epub"]:
+    for kind in os.environ.get("BOTUI_TEST_FORMATS", "fb2 epub md").split():
         tmp = root / kind
         tmp.mkdir()
         (tmp / "config/botui").mkdir(parents=True)
@@ -55,7 +55,9 @@ with tempfile.TemporaryDirectory() as name:
         path = tmp / f"study.{kind}"
         prose = "Alpha <em>bravo</em> charlie delta. Привет мир."
         paragraphs = "".join(f"<p>Paragraph {i:03} for navigation and stable reading.</p>" for i in range(90))
-        if kind == "fb2":
+        if kind == "md":
+            path.write_text("Alpha *bravo* charlie delta. Привет мир.\n\n" + "\n\n".join(f"Paragraph {i:03} for navigation and stable reading." for i in range(90)))
+        elif kind == "fb2":
             path.write_text('<FictionBook><body><section><p>' + prose.replace("em>", "emphasis>") + '</p>' + paragraphs + '</section></body></FictionBook>')
         else:
             with zipfile.ZipFile(path, "w") as z:
@@ -93,6 +95,17 @@ with tempfile.TemporaryDirectory() as name:
             assert notes(tmp)[0]["color"] == "green"
             assert "48;2;164;206;133" in t.run("capture-pane", "-p", "-e", "-t", "shelf").stdout
             saved_id = notes(tmp)[0]["id"]
+            if kind == "md":
+                saved_range = (notes(tmp)[0]["block"], notes(tmp)[0]["byte"], notes(tmp)[0]["end"])
+                t.keys("F9")
+                t.see("*bravo*")
+                time.sleep(.5)
+                click(t, point(t.see("*bravo*"), "bravo"))
+                t.see("Ctrl+S Save")
+                t.keys("Escape", "Escape", "Space", "r", "v")
+                t.see("Alpha bravo")
+                assert (notes(tmp)[0]["block"], notes(tmp)[0]["byte"], notes(tmp)[0]["end"]) == saved_range
+
             time.sleep(.5)
             click(t, point(t.see("bravo"), "bravo"))
             footer = t.see("Ctrl+S Save")
@@ -274,4 +287,4 @@ with tempfile.TemporaryDirectory() as name:
             assert (tmp/"copied").read_text()==word
             print(f"Real book selection and reflow: {Path(file).name}",flush=True)
         finally:t.run("kill-server",required=False)
-print("Passed FB2/EPUB exact selection, clipboard, annotation edits, reflow, search, export and persistence.")
+print("Passed text-format exact selection, clipboard, annotation edits, reflow, search, export and persistence.")
