@@ -140,6 +140,7 @@ fn entries(context: Context, path: &str) -> Vec<Entry> {
             key('y', "Copy", Char('Y')),
             key('v', "Show / hide note body", F(8)),
             key('e', "Export Markdown", Char('E')),
+            key('s', "BookOrbit sync", F(10)),
         ],
         "notes" => vec![
             key('p', "Page note", Char('I')),
@@ -148,6 +149,7 @@ fn entries(context: Context, path: &str) -> Vec<Entry> {
             key('h', "Highlight", Char('H')),
             key('y', "Copy", Char('Y')),
             key('e', "Export Markdown", Char('E')),
+            key('s', "BookOrbit sync", F(10)),
         ],
         "layout" => vec![
             key('1', "Single page", Char('1')),

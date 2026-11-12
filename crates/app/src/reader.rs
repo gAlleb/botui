@@ -34,6 +34,7 @@ use crate::{AppTerminal, centered, theme::Theme};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum Action {
+    AnnotationSync,
     Study(study::Command),
     Menu,
     Zen,
@@ -1205,6 +1206,7 @@ impl Reader {
             | Action::Study(_)
             | Action::Export
             | Action::Resize
+            | Action::AnnotationSync
             | Action::Close => {}
         }
     }
@@ -1370,6 +1372,10 @@ pub fn read_server(
         path,
         resume_anchor,
     );
+    let mut annotation_sync = live
+        .as_ref()
+        .and_then(|l| l.annotations.clone())
+        .map(|context| crate::annotation_sync::Live::text(context, path, reader.doc.clone()));
     if let Some(store) = &state {
         match store.notes() {
             Ok(notes) => reader.study.notes = notes,
@@ -1391,6 +1397,15 @@ pub fn read_server(
     let result: io::Result<()> = (|| {
         loop {
             let _dialog_theme = crate::settings::reader_dialogs(reader.theme);
+            if let Some(sync) = annotation_sync.as_mut()
+                && sync.tick()
+            {
+                if let Some(store) = &state {
+                    reader.study.notes = store.notes()?;
+                }
+                reader.study.message = Some(sync.message.clone());
+            }
+
             if let Some(message) = viewer.collect() {
                 crate::prompt::message(term, "View cover", &message)?;
             }
@@ -1445,6 +1460,7 @@ pub fn read_server(
                     .then_some(remaining)
                     .into_iter()
                     .chain(live.as_ref().filter(|_| can_sync).map(|s| s.timeout()))
+                    .chain(annotation_sync.as_ref().map(|s| s.timeout()))
                     .chain(
                         reader
                             .pager
@@ -1470,6 +1486,7 @@ pub fn read_server(
                         || reader.pager.is_paginating()
                         || images
                         || (can_sync && live.is_some())
+                        || annotation_sync.is_some()
                     {
                         break Action::Resize;
                     }
@@ -1512,6 +1529,7 @@ pub fn read_server(
                 {
                     use crate::leader::Command as L;
                     let action = match command {
+                        Some(L::Key(KeyCode::F(10))) => Some(Action::AnnotationSync),
                         Some(L::Dictionary) => Some(Action::Study(study::Command::Lookup)),
                         Some(L::Translate) => Some(Action::Study(study::Command::Translate)),
                         Some(L::Key(KeyCode::F(7))) => Some(Action::Study(study::Command::Normal)),
@@ -1547,6 +1565,18 @@ pub fn read_server(
                     break action;
                 }
             };
+            if action == Action::AnnotationSync {
+                if let Some(sync) = annotation_sync.as_mut() {
+                    sync.review(term)?;
+                } else {
+                    crate::prompt::message(
+                        term,
+                        "BookOrbit annotations",
+                        "Open this edition from a connected BookOrbit shelf to synchronize its notes.",
+                    )?;
+                }
+                continue;
+            }
             let supplement = match action {
                 Action::Sidebar(edit) => reader.sidebar.supplement(edit),
                 Action::NavEdit(edit) => reader.nav.as_ref().and_then(|nav| nav.supplement(edit)),
@@ -1750,6 +1780,9 @@ pub fn read_server(
     reader.pager.seek(origin);
     reader.flush(&mut state, notices);
     crate::stats::finish(state.as_ref(), opened, notices);
+    if let Some(sync) = annotation_sync.as_mut() {
+        sync.finish(notices);
+    }
     result?;
     let a = reader.pager.anchor();
     let percent = reader.reading_percent();

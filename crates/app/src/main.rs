@@ -1,4 +1,5 @@
 mod annotation_editor;
+mod annotation_sync;
 mod appearance;
 mod cache;
 mod catalog;

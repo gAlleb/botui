@@ -17,6 +17,7 @@ const POLL: Duration = Duration::from_secs(15);
 type SyncJob = JoinHandle<botui_bookorbit::Result<(Progress, Option<Move>)>>;
 
 pub struct Live {
+    pub annotations: Option<crate::annotation_sync::Context>,
     session: Arc<Session>,
     path: PathBuf,
     pub base: Progress,
@@ -30,6 +31,7 @@ pub struct Live {
 impl Live {
     pub fn new(session: Arc<Session>, path: &Path, base: Progress) -> Self {
         Self {
+            annotations: None,
             session,
             path: path.into(),
             base,

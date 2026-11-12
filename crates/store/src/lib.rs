@@ -176,7 +176,7 @@ impl LocalState {
         Self::in_directory(path, &dir, cache.as_deref())
     }
 
-    fn in_directory(path: &Path, dir: &Path, cache: Option<&Path>) -> io::Result<Self> {
+    pub fn in_directory(path: &Path, dir: &Path, cache: Option<&Path>) -> io::Result<Self> {
         let mut file = fs::File::open(path)?;
         #[cfg(unix)]
         let key = fingerprint::digest(&mut file, cache)?;

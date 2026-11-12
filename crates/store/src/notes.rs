@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::{fs, io, path::PathBuf};
 use tempfile::NamedTempFile;
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub struct Note {
     block: usize,
     byte: usize,
@@ -57,6 +57,28 @@ impl HighlightColor {
     }
 }
 impl Note {
+    pub fn imported(
+        id: String,
+        range: Option<TextRange>,
+        at: Anchor,
+        quote: String,
+        body: String,
+        color: Option<HighlightColor>,
+        pdf_regions: Vec<PdfRegion>,
+    ) -> Self {
+        let at = range.map_or(at, |r| r.start);
+        Self {
+            block: at.block,
+            byte: at.byte,
+            end: range.map(|r| (r.end.block, r.end.byte)),
+            id,
+            quote,
+            body,
+            color,
+            pdf_regions,
+            updated: now(),
+        }
+    }
     pub fn range(&self) -> Option<TextRange> {
         let (block, byte) = self.end?;
         Some(TextRange::new(self.anchor(), Anchor { block, byte }))
@@ -67,6 +89,13 @@ impl Note {
             byte: self.byte,
         }
     }
+}
+// Sync baselines and visible notes share one atomic replacement. Legacy arrays remain readable.
+#[derive(Default, Serialize, Deserialize)]
+struct NoteFile {
+    notes: Vec<Note>,
+    #[serde(default)]
+    sync: std::collections::BTreeMap<String, serde_json::Value>,
 }
 impl LocalState {
     pub fn named_marks(&self) -> io::Result<std::collections::BTreeMap<char, Anchor>> {
@@ -107,20 +136,58 @@ impl LocalState {
     fn note_path(&self) -> PathBuf {
         self.path.with_extension("notes")
     }
-    pub fn notes(&self) -> io::Result<Vec<Note>> {
-        match fs::File::open(self.note_path()) {
+    fn note_file(&self) -> io::Result<NoteFile> {
+        let mut file = match fs::File::open(self.note_path()) {
             Ok(f) => {
-                let mut notes: Vec<Note> = serde_json::from_reader(f)?;
-                for note in &mut notes {
-                    if note.id.is_empty() {
-                        note.id = format!("legacy-{}-{}", note.block, note.byte);
-                    }
+                #[derive(Deserialize)]
+                #[serde(untagged)]
+                enum Stored {
+                    Legacy(Vec<Note>),
+                    Current(NoteFile),
                 }
-                Ok(notes)
+                match serde_json::from_reader(f)? {
+                    Stored::Legacy(notes) => NoteFile {
+                        notes,
+                        ..Default::default()
+                    },
+                    Stored::Current(file) => file,
+                }
             }
-            Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(vec![]),
-            Err(e) => Err(e),
+            Err(e) if e.kind() == io::ErrorKind::NotFound => NoteFile::default(),
+            Err(e) => return Err(e),
+        };
+        for note in &mut file.notes {
+            if note.id.is_empty() {
+                note.id = format!("legacy-{}-{}", note.block, note.byte);
+            }
         }
+        Ok(file)
+    }
+    pub fn notes(&self) -> io::Result<Vec<Note>> {
+        Ok(self.note_file()?.notes)
+    }
+    pub fn annotation_state(&self, scope: &str) -> io::Result<(Vec<Note>, serde_json::Value)> {
+        let mut file = self.note_file()?;
+        Ok((file.notes, file.sync.remove(scope).unwrap_or_default()))
+    }
+    /// Serializes sync workers across processes without holding the editor's notes lock.
+    pub fn annotation_sync_lock(&self) -> io::Result<fs::File> {
+        let path = self.path.with_extension("annotations.lock");
+        fs::create_dir_all(path.parent().ok_or(io::ErrorKind::InvalidInput)?)?;
+        let file = fs::OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .write(true)
+            .open(path)?;
+        file.lock()?;
+        Ok(file)
+    }
+    pub fn update_annotations<T>(
+        &self,
+        scope: &str,
+        edit: impl FnOnce(&mut Vec<Note>, &mut serde_json::Value) -> io::Result<T>,
+    ) -> io::Result<T> {
+        self.update_file(|file| edit(&mut file.notes, file.sync.entry(scope.into()).or_default()))
     }
     pub fn edit_note(&self, at: Anchor, body: String) -> io::Result<Vec<Note>> {
         self.update_notes(|notes| {
@@ -207,6 +274,13 @@ impl LocalState {
         self.update_notes(|notes| notes.retain(|n| n.id != id))
     }
     fn update_notes(&self, update: impl FnOnce(&mut Vec<Note>)) -> io::Result<Vec<Note>> {
+        self.update_file(|file| {
+            update(&mut file.notes);
+            file.notes.sort_by_key(Note::anchor);
+            Ok(file.notes.clone())
+        })
+    }
+    fn update_file<T>(&self, update: impl FnOnce(&mut NoteFile) -> io::Result<T>) -> io::Result<T> {
         let path = self.note_path();
         let dir = path.parent().ok_or(io::ErrorKind::InvalidInput)?;
         fs::create_dir_all(dir)?;
@@ -216,13 +290,18 @@ impl LocalState {
             .write(true)
             .open(path.with_extension("notes.lock"))?;
         lock.lock()?;
-        let mut notes = self.notes()?;
-        update(&mut notes);
-        notes.sort_by_key(Note::anchor);
+        let mut file = self.note_file()?;
+        let result = update(&mut file)?;
+        file.notes.sort_by_key(Note::anchor);
         let mut tmp = NamedTempFile::new_in(dir)?;
-        serde_json::to_writer(tmp.as_file_mut(), &notes)?;
+        // Keep the original on-disk shape until this book actually uses synchronization.
+        if file.sync.is_empty() {
+            serde_json::to_writer(tmp.as_file_mut(), &file.notes)?;
+        } else {
+            serde_json::to_writer(tmp.as_file_mut(), &file)?;
+        }
         tmp.persist(path)?;
-        Ok(notes)
+        Ok(result)
     }
 }
 fn now() -> u64 {

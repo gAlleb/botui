@@ -13,6 +13,8 @@ pub struct Word {
 
 #[derive(Clone, Debug, Default)]
 pub struct PageText {
+    /// Unscaled page points in the same top-left coordinate space as word boxes.
+    pub size: [f32; 2],
     pub text: String,
     pub words: Vec<Word>,
 }
@@ -61,7 +63,10 @@ fn parse(xml: &str) -> io::Result<PageText> {
     if width <= 0. || height <= 0. {
         return Err(io::Error::other("Empty PDF page"));
     }
-    let mut result = PageText::default();
+    let mut result = PageText {
+        size: [width, height],
+        ..Default::default()
+    };
     let mut line_index = 0;
     for (block, node) in page
         .descendants()

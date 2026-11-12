@@ -152,6 +152,7 @@ Commands depend on the document: text actions need selectable text; page zoom, r
 | `Space a n` | Comment on passage |
 | `Space a a` | Highlights and notes |
 | `Space a e` | Export annotations to Markdown |
+| `Space a s` | BookOrbit annotation sync status / retry |
 | `F9` / `Space r v` | Markdown: formatted view / original source |
 | `Space a v` | Show/hide note body (text reader) |
 | `Space a p` | Page note (PDF/DjVu/comics) |
@@ -249,7 +250,9 @@ Drag to select text, double-click a word or triple-click a paragraph (a text blo
 
 Click a saved highlight to open its comment, or choose **Add note** from its context menu. Choose a color with the mouse, enter a comment and click **Save** or press **Ctrl+S**. Enter inserts a newline. Clearing a comment keeps the highlight; deleting both text and color removes the annotation.
 
-**Space a a** opens the searchable list of highlights and notes. Select an entry to see its text and position in the book/section or its page number; use **Go**, **Edit**, **Color**, **Delete** or **Export**. **Space a p** adds a page note to a fixed-page document. Notes and highlights are stored on this device; BookOrbit range-annotation sync is not implemented.
+**Space a a** opens the searchable list of highlights and notes. Select an entry to see its text and position in the book/section or its page number; use **Go**, **Edit**, **Color**, **Delete** or **Export**. **Space a p** adds a page note to a fixed-page document. Notes and highlights remain available locally. When you open an edition from a connected BookOrbit shelf, BOTUI synchronizes passage comments, colors and deletions in both directions: text uses exact CFI ranges, and PDF text highlights use page coordinates. Changes made offline are sent when you reopen that edition through BookOrbit. **Space a s** shows synchronization status and offers **Sync now / retry unconfirmed uploads**.
+
+Concurrent edits keep both versions. A lost upload response is reconciled against the server before another create is attempted. Marks that cannot be located exactly stay on their original side; status reports them. Whole-page notes, selections spanning PDF pages or EPUB spine documents, and formats without a usable CFI stay local. Browser styles and colors outside BOTUI’s five-color palette are preserved on the server when only the comment is edited; BOTUI displays the closest available highlight color.
 
 **Define** and **Translate** use the connections selected in [Configuration](#dictionaries-translation-and-saved-catalogs). They send the chosen text only when requested. Keyboard equivalents and Vim motions are listed below.
 

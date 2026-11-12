@@ -177,6 +177,11 @@ pub(super) fn read_pages(
     let mut focus: usize = 0;
     let mut dirty = false;
     let mut text = text::Text::new(store.as_ref());
+    let mut annotation_sync = (kind == FileKind::Pdf)
+        .then(|| live.as_ref().and_then(|l| l.annotations.clone()))
+        .flatten()
+        .map(|context| crate::annotation_sync::Live::pdf(context, path));
+
     let mut leader = crate::leader::Leader::new();
     let mut sixel: Option<sixel::Cache> = None;
     let mut motion = sixel::Motion::default();
@@ -194,6 +199,14 @@ pub(super) fn read_pages(
         .collect();
 
     loop {
+        if let Some(sync) = annotation_sync.as_mut()
+            && sync.tick()
+        {
+            if let Some(store) = &store {
+                text.notes = store.notes()?;
+            }
+            message = sync.message.clone();
+        }
         let preview_theme = palette
             .as_ref()
             .filter(|p| comic || p.scan_mode().1)
@@ -744,6 +757,7 @@ pub(super) fn read_pages(
         let timeout = timeout
             .into_iter()
             .chain(leader.timeout())
+            .chain(annotation_sync.as_ref().map(|s| s.timeout()))
             .chain(
                 live.as_ref()
                     .filter(|_| total.is_some() && base.is_some_and(|p| p.text.cfi.is_none()))
@@ -879,6 +893,19 @@ pub(super) fn read_pages(
                 continue;
             };
             from_leader = true;
+            if c == crate::leader::Command::Key(KeyCode::F(10)) {
+                if let Some(sync) = annotation_sync.as_mut() {
+                    sync.review(term)?;
+                } else {
+                    crate::prompt::message(
+                        term,
+                        "BookOrbit annotations",
+                        "Open a PDF or text edition from a connected BookOrbit shelf to synchronize annotations.",
+                    )?;
+                }
+                continue;
+            }
+
             if c == crate::leader::Command::Key(KeyCode::Tab) {
                 zen = false;
                 sidebar.focus();
@@ -1339,6 +1366,9 @@ pub(super) fn read_pages(
         && let Err(e) = crate::settings::Settings::update(|s| s.scan_zoom = Some(crop.percent))
     {
         notices.push(e.to_string());
+    }
+    if let Some(sync) = annotation_sync.as_mut() {
+        sync.finish(notices);
     }
     crate::stats::finish(store.as_ref(), opened, notices);
     if (dirty || save_failed)

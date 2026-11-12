@@ -27,6 +27,7 @@ The table records how each reading or navigation scenario was checked. See the [
 | Search an OPDS catalog, authenticate with HTTP Basic, follow feeds and choose an edition. | smoke-sources |
 | Display actual PDF and DjVu page images, open a spread, search the text layer and jump to a page. | smoke-sources |
 | Create local notes and bookmarks, export Markdown and track time with the book open. | smoke-reader and smoke-sources |
+| Synchronize BookOrbit range annotations: create, comment/color edit, delete, offline retry, conflicts, lost upload replies and edition isolation. | smoke-annotation-sync and annotation_sync tests |
 | Select exact text in EPUB/FB2 by mouse and keyboard, including reverse drag and dragging beyond the viewport. Copy, color, comment, search, edit, delete and export; reopen after resizing. Check dictionary arguments and named marks. | smoke-annotations, core source-range and CSS mapping tests |
 | Restore an exact BookOrbit file position, handle a conflict with another device and list a server bookmark without a location. | smoke-progress |
 | Open an edition for the first time and reuse an older offline copy. Read an EPUB from chapter 5 online to chapter 7 offline, then resume in BookOrbit. Check that the file transfers once, the two download shelves stay separate, progress syncs on reconnect and 99% can reach 100% at the same location. | smoke-offline |
@@ -90,7 +91,7 @@ The canvas regression compares grouped rendering with individual shaping cluster
 
 ## Next reader improvements
 
-1. **BookOrbit annotation sync.** Verify range addresses, colors and offline changes; local EPUB/FB2/PDF text selection and annotations are already implemented.
+1. **Extended annotation positions.** Whole-page notes and ranges across PDF pages / EPUB spine documents remain local. Exact CFI ranges and single-page PDF text highlights sync through BookOrbit; test both directions, offline edits, conflicts and lost POST replies.
 2. **SyncTeX.** A separate future feature for LaTeX sources. OCR is outside the current scope: PDF selection requires an existing text layer.
 
 ### Terminal and device checks

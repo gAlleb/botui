@@ -1,5 +1,5 @@
 //! Bidirectional correspondence between normalized UTF-8 and a Foliate text node's UTF-16 offsets.
-use super::{Anchor, Document};
+use super::{Anchor, Document, TextRange};
 use std::{collections::BTreeMap, sync::Arc};
 #[derive(Clone, Debug)]
 pub struct Run {
@@ -11,6 +11,56 @@ pub struct Run {
 #[derive(Default, Clone, Debug)]
 pub struct Locations(pub BTreeMap<usize, Vec<Run>>);
 impl Document {
+    /// A CFI range shares its DOM prefix; offsets are UTF-16, not UTF-8.
+    pub fn range_cfi(&self, range: TextRange) -> Option<String> {
+        if range.start >= range.end {
+            return None;
+        }
+        let a = self.cfi(range.start)?;
+        let b = self.cfi(range.end)?;
+        let a = a.strip_prefix("epubcfi(")?.strip_suffix(')')?;
+        let b = b.strip_prefix("epubcfi(")?.strip_suffix(')')?;
+        // A browser range cannot cross spine documents.
+        if a.split_once('!')?.0 != b.split_once('!')?.0 {
+            return None;
+        }
+        let common = a.bytes().zip(b.bytes()).take_while(|(a, b)| a == b).count();
+        let split = a[..common].rfind('/')?;
+        Some(format!(
+            "epubcfi({},{},{})",
+            &a[..split],
+            &a[split..],
+            &b[split..]
+        ))
+    }
+    pub fn resolve_range_cfi(&self, cfi: &str) -> Option<TextRange> {
+        let value = cfi.strip_prefix("epubcfi(")?.strip_suffix(')')?;
+        if value.len() > 8192 {
+            return None;
+        }
+        let mut parts = vec![String::new()];
+        let (mut bracket, mut escaped) = (false, false);
+        for c in value.chars() {
+            if escaped {
+                escaped = false;
+                continue;
+            }
+            match c {
+                '^' if bracket => escaped = true,
+                '[' if !bracket => bracket = true,
+                ']' if bracket => bracket = false,
+                _ if bracket => (),
+                ',' => parts.push(String::new()),
+                _ => parts.last_mut()?.push(c),
+            }
+        }
+        if bracket || escaped || parts.len() != 3 {
+            return None;
+        }
+        let start = self.resolve_cfi(&format!("epubcfi({}{})", parts[0], parts[1]))?;
+        let end = self.resolve_cfi(&format!("epubcfi({}{})", parts[0], parts[2]))?;
+        (start < end).then_some(TextRange { start, end })
+    }
     /// A fraction of the logical text, independent of the terminal dimensions.
     pub fn text_percentage(&self, a: Anchor) -> f64 {
         let total: usize = self.blocks.iter().map(|b| b.text.len()).sum();
@@ -173,5 +223,57 @@ impl Document {
                     byte: r.byte,
                 })
         })
+    }
+}
+
+#[cfg(test)]
+mod range_tests {
+    use super::*;
+    #[test]
+    fn cfi_ranges_round_trip_utf16_nested_nodes_and_escaped_assertions() {
+        let mut doc = Document {
+            blocks: vec![
+                super::super::Block {
+                    text: "a😀bc".into(),
+                    heading: false,
+                },
+                super::super::Block {
+                    text: "def".into(),
+                    heading: false,
+                },
+            ],
+            ..Default::default()
+        };
+        doc.locations.0.insert(
+            0,
+            vec![Run {
+                byte: 0,
+                end: 7,
+                utf16: 0,
+                path: "/6/2!/4/2/1".into(),
+            }],
+        );
+        doc.locations.0.insert(
+            1,
+            vec![Run {
+                byte: 0,
+                end: 3,
+                utf16: 0,
+                path: "/6/2!/4/4/1".into(),
+            }],
+        );
+        let range = TextRange::new(Anchor { block: 0, byte: 1 }, Anchor { block: 1, byte: 2 });
+        let cfi = doc.range_cfi(range).unwrap();
+        assert_eq!(doc.resolve_range_cfi(&cfi), Some(range));
+        assert_eq!(
+            doc.resolve_range_cfi("epubcfi(/6/2[escaped^,title]!/4,/2/1:1,/4/1:2)"),
+            Some(range)
+        );
+        assert!(
+            doc.resolve_range_cfi("epubcfi(/6/2!/4,/2/1:2,/4/1:2)")
+                .is_none()
+        ); // half a surrogate
+        doc.locations.0.get_mut(&1).unwrap()[0].path = "/6/4!/4/4/1".into();
+        assert!(doc.range_cfi(range).is_none());
     }
 }

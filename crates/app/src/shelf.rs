@@ -870,11 +870,18 @@ impl Shelf {
         path: &std::path::Path,
         base: Progress,
     ) -> Option<crate::live_progress::Live> {
-        Some(crate::live_progress::Live::new(
-            self.session.clone()?,
-            path,
-            base,
-        ))
+        let session = self.session.clone()?;
+        let file = base.file_id;
+        let mut live = crate::live_progress::Live::new(session.clone(), path, base);
+        if let Section::Files(book) = &self.current().section {
+            live.annotations = Some(crate::annotation_sync::Context {
+                session,
+                account: crate::offline::account(&self.server, &self.username),
+                book: book.id,
+                file,
+            });
+        }
+        Some(live)
     }
     pub fn synced(&mut self, p: &Progress) {
         self.complete(Loaded::Moved {

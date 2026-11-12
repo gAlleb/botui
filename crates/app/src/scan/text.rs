@@ -973,6 +973,7 @@ mod tests {
             })
             .collect();
         PageText {
+            size: [100., 100.],
             text: value.into(),
             words,
         }
