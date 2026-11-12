@@ -28,7 +28,7 @@ fn source(cmd: &Command, connected: bool) -> (char, &'static str, &'static str) 
         ),
         Command::Local => (
             'L',
-            "Browse a folder on this device. Open an EPUB, FB2, PDF or DjVu and pick up where you left off.",
+            "Browse a folder on this device. Open an EPUB, FB2, Markdown, PDF, DjVu or comic and pick up where you left off.",
             "P  Choose folder      /  Search",
         ),
         Command::Opds => (
@@ -81,8 +81,8 @@ impl Shelf {
         let short = illustrated && canvas.height <= masthead_h + sources + 1;
         let mut y = canvas.y + masthead_h + u16::from(illustrated && !short);
         if canvas.height >= 10 && !illustrated {
-            let tagline = if canvas.width >= 64 {
-                "Your TUI book reader.   EPUB · FB2 · PDF · DjVu"
+            let tagline = if canvas.width >= 82 {
+                "Your TUI book reader.   EPUB · FB2 · Markdown · PDF · DjVu · CBZ · CBR"
             } else {
                 "Your TUI book reader."
             };

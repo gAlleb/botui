@@ -162,7 +162,8 @@ pub(super) fn draw(f: &mut Frame, area: Rect, canvas: Rect) -> u16 {
     );
     f.render_widget(Paragraph::new("Your TUI book reader."), caption);
     f.render_widget(
-        Paragraph::new("EPUB  ·  FB2  ·  PDF  ·  DjVu").style(Style::new().fg(ink.shade)),
+        Paragraph::new("EPUB · FB2 · Markdown · PDF · DjVu · CBZ · CBR")
+            .style(Style::new().fg(ink.shade)),
         Rect {
             y: caption.y + 1,
             ..caption
