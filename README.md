@@ -59,6 +59,16 @@ Click any image to open it at full size.
       <strong>Text context menu</strong><br><sub>Copy, highlight, search, translate or add a note</sub>
     </td>
   </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <a href="docs/images/reading-contents.png"><img src="docs/images/reading-contents.png" alt="Contents sidebar, illustrated spread and text selection menu"></a><br>
+      <strong>Contents and illustrations</strong><br><sub>Chapter navigation alongside the illustrated book</sub>
+    </td>
+    <td width="50%" valign="top">
+      <a href="docs/images/bookorbit-shelf.png"><img src="docs/images/bookorbit-shelf.png" alt="BookOrbit library navigation and grid of book covers"></a><br>
+      <strong>BookOrbit bookshelf</strong><br><sub>Browse libraries with book covers</sub>
+    </td>
+  </tr>
 </table>
 
 <table>

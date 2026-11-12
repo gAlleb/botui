@@ -59,6 +59,16 @@ BOTUI — терминальная читалка для Linux. Читайте �
       <strong>Контекстное меню текста</strong><br><sub>Копирование, выделение, поиск, перевод и заметки</sub>
     </td>
   </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <a href="docs/images/reading-contents.png"><img src="docs/images/reading-contents.png" alt="Боковое оглавление, иллюстрированный разворот и меню выделения"></a><br>
+      <strong>Оглавление и иллюстрации</strong><br><sub>Навигация по главам рядом с текстом книги</sub>
+    </td>
+    <td width="50%" valign="top">
+      <a href="docs/images/bookorbit-shelf.png"><img src="docs/images/bookorbit-shelf.png" alt="Навигация по библиотекам BookOrbit и сетка обложек"></a><br>
+      <strong>Книжная полка BookOrbit</strong><br><sub>Библиотеки и сетка книжных обложек</sub>
+    </td>
+  </tr>
 </table>
 
 <table>
