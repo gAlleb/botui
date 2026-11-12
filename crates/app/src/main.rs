@@ -25,6 +25,7 @@ mod splitter;
 mod stats;
 mod terminal_frame;
 mod terminal_input;
+mod text_menu;
 mod theme;
 mod vim;
 

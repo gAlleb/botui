@@ -74,14 +74,34 @@ list_view = false
 # Add/edit/delete a profile in its list, then Save changes & back.
 # These names select the default connection in each list; names must be unique.
 [lookup]
-dictionary = ""
-translation = ""
+dictionary = "English dictionary"
+translation = "Google Translate"
 source_language = "auto"
-target_language = "en"
-profiles = []
+target_language = "ru"
 
-# No built-in connections. Add your own in F2 > Dictionaries or below.
-# Remove profiles = [] before enabling any [[lookup.profiles]] blocks.
+# Active defaults are ordinary editable HTTP profiles, not built-in providers.
+# Remove a block to remove a connection. Set profiles = [] under [lookup]
+# only if there are no [[lookup.profiles]] blocks and you want an empty list.
+[[lookup.profiles]]
+name = "English dictionary"
+purpose = "dictionary"
+provider = "http"
+endpoint = "https://api.dictionaryapi.dev/api/v2/entries/en/{text}"
+response_path = "/*/meanings/*/definitions/*/definition"
+response_separator = "\n"
+
+[[lookup.profiles]]
+name = "Google Translate"
+purpose = "translation"
+provider = "http"
+endpoint = "https://translate.googleapis.com/translate_a/single"
+query = { client = "gtx", sl = "{source}", tl = "{target}", dt = "t", q = "{text}" }
+response_path = "/0/*/0"
+# Translation segments must join without extra separators.
+response_separator = ""
+
+# Additional recipes below are inactive. Add your own in F2 > Dictionaries or below.
+# The active Google endpoint is unofficial; availability is not guaranteed.
 # Minimal HTTP profile: name, provider, endpoint, response_path for nested JSON.
 # purpose defaults to "dictionary"; method defaults to GET; response_format to json.
 # description, query, headers, body, api_key and key_command are optional.
@@ -94,6 +114,8 @@ profiles = []
 # response_path uses /object/key/0 and * for array items. Empty = JSON root.
 # response_format = "text" reads a plain UTF-8 response instead of JSON.
 # Supported methods: GET (default), POST, PUT, PATCH, DELETE.
+# Optional JSON source: "{source?}" omits its object field for auto/empty source.
+# {source:upper}/{target:upper} uppercase language codes; {source:upper?} combines both.
 
 # Example only: an English definitions API, not an installed connection.
 # [[lookup.profiles]]

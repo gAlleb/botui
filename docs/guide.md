@@ -144,7 +144,7 @@ In a Space submenu, `q`, `Esc` and `Backspace` return to the root; `Esc` closes 
 | `Space l w` | Page width / column gap; PDF zoom |
 | `Space l f` | Opaque/transparent background |
 | `Space l u` | Border style |
-| `Space t` | Reading theme; PDF: original / inverted / match background |
+| `Space t` | Reading theme; PDF: original / inverted / reading theme |
 | `Space s` | Settings |
 | `Space ?` | Help |
 | `q` / `Q` / `Space q` | Close book and return to its source |
@@ -234,7 +234,7 @@ Annotations are stored on this device. BookOrbit range-annotation sync is not im
 
 ### Dictionaries, translation and saved catalogs
 
-**F2 → Dictionaries** separates **Word definitions** and **Translation**. Both lists start empty. Add a connection, give it your own name and optional description, then configure **HTTP API**, **OpenAI-compatible API** or **Local command**. Existing connections can be edited, tested, selected as default and deleted. Deleting the last connection leaves the list empty after restarting.
+**F2 → Dictionaries** separates **Word definitions** and **Translation**. Free Dictionary and Google Translate are enabled by ordinary HTTP profiles in the default TOML; both can be edited or deleted. Add a connection, give it your own name and optional description, then configure **HTTP API**, **OpenAI-compatible API** or **Local command**. Existing connections can be edited, tested, selected as default and deleted. Deleting the last connection leaves the list empty after restarting.
 
 The HTTP editor exposes the address, method, query parameters, headers, JSON body and response text path. Use `{text}`, `{source}`, `{target}` and `{key}` in templates. A path such as `/items/*/text` collects strings from array items; the separator joins them. Plain-text responses are also supported. This covers JSON/text HTTP services; other protocols or authentication flows can be implemented through a local command. Service examples live in [config.example.toml](../config.example.toml), not in the Add menu. Older service-specific configurations remain readable.
 
@@ -359,14 +359,34 @@ list_view = false
 # Add/edit/delete a profile in its list, then Save changes & back.
 # These names select the default connection in each list; names must be unique.
 [lookup]
-dictionary = ""
-translation = ""
+dictionary = "English dictionary"
+translation = "Google Translate"
 source_language = "auto"
-target_language = "en"
-profiles = []
+target_language = "ru"
 
-# No built-in connections. Add your own in F2 > Dictionaries or below.
-# Remove profiles = [] before enabling any [[lookup.profiles]] blocks.
+# Active defaults are ordinary editable HTTP profiles, not built-in providers.
+# Remove a block to remove a connection. Set profiles = [] under [lookup]
+# only if there are no [[lookup.profiles]] blocks and you want an empty list.
+[[lookup.profiles]]
+name = "English dictionary"
+purpose = "dictionary"
+provider = "http"
+endpoint = "https://api.dictionaryapi.dev/api/v2/entries/en/{text}"
+response_path = "/*/meanings/*/definitions/*/definition"
+response_separator = "\n"
+
+[[lookup.profiles]]
+name = "Google Translate"
+purpose = "translation"
+provider = "http"
+endpoint = "https://translate.googleapis.com/translate_a/single"
+query = { client = "gtx", sl = "{source}", tl = "{target}", dt = "t", q = "{text}" }
+response_path = "/0/*/0"
+# Translation segments must join without extra separators.
+response_separator = ""
+
+# Additional recipes below are inactive. Add your own in F2 > Dictionaries or below.
+# The active Google endpoint is unofficial; availability is not guaranteed.
 # Minimal HTTP profile: name, provider, endpoint, response_path for nested JSON.
 # purpose defaults to "dictionary"; method defaults to GET; response_format to json.
 # description, query, headers, body, api_key and key_command are optional.
@@ -379,6 +399,8 @@ profiles = []
 # response_path uses /object/key/0 and * for array items. Empty = JSON root.
 # response_format = "text" reads a plain UTF-8 response instead of JSON.
 # Supported methods: GET (default), POST, PUT, PATCH, DELETE.
+# Optional JSON source: "{source?}" omits its object field for auto/empty source.
+# {source:upper}/{target:upper} uppercase language codes; {source:upper?} combines both.
 
 # Example only: an English definitions API, not an installed connection.
 # [[lookup.profiles]]
@@ -460,3 +482,9 @@ The interface can use the terminal palette or BookOrbit reader themes. **Space l
 | Offline books and Markdown exports | `~/.local/share/botui/downloads/`, `~/.local/share/botui/exports/` |
 
 The XDG config, state and data environment variables override those defaults. Local reading records use a content hash, so moving a file preserves its position.
+
+PDF/DjVu: `Space t` cycles original colors, inversion and **Reading theme**. The third mode uses **F2 → Reader → Reading theme** (`theme`), not the interface palette. Neutral paper and ink follow the reading colors; saturated illustrations retain their colors. `Space l f` controls opacity as in EPUB/FB2. F2 and library screens keep `interface_theme`.
+
+### Right-click text actions
+
+Right-click a word, or right-click inside an existing selection, to open **Copy, Highlight, Search, Translate, Define, Add note**. A click inside the selection preserves the entire passage; a click on another word targets that word. Search opens in-book search with the selected text (PDF starts its text-layer search). Escape dismisses the menu. The same actions work in EPUB, FB2 and PDF with an embedded text layer; scans without text cannot provide word actions. Translation and definitions use the connections selected in F2 → Dictionaries.

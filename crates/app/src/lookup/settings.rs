@@ -171,29 +171,16 @@ fn supports_both(p: Provider) -> bool {
     matches!(p, Provider::Command | Provider::OpenAi | Provider::Http)
 }
 fn has_key(p: Provider) -> bool {
-    matches!(
-        p,
-        Provider::GoogleCloud
-            | Provider::DeepL
-            | Provider::LibreTranslate
-            | Provider::OpenAi
-            | Provider::Http
-    )
+    matches!(p, Provider::OpenAi | Provider::Http)
 }
 fn status(p: &Profile) -> &'static str {
     match p.provider {
         Provider::Http if p.endpoint.is_empty() => "Enter server address",
-        Provider::FreeDictionary | Provider::GoogleWeb => "No API key needed",
         Provider::Command if p.command.first().is_none_or(|s| s.trim().is_empty()) => {
             "Choose a program"
         }
         Provider::Command => "Program configured",
         Provider::OpenAi if p.model.trim().is_empty() => "Choose a model",
-        Provider::GoogleCloud | Provider::DeepL
-            if p.api_key.is_empty() && p.key_command.is_empty() =>
-        {
-            "API key required"
-        }
         _ => "Configured · test connection",
     }
 }
@@ -465,10 +452,7 @@ fn editor_rows(p: &Profile, default: bool, existing: bool) -> Vec<Row> {
                     "Provided by command"
                 } else if !p.api_key.is_empty() {
                     "Saved (hidden)"
-                } else if matches!(
-                    p.provider,
-                    Provider::OpenAi | Provider::LibreTranslate | Provider::Http
-                ) {
+                } else if matches!(p.provider, Provider::OpenAi | Provider::Http) {
                     "Optional · none"
                 } else {
                     "Required · enter key…"

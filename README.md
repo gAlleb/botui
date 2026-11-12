@@ -16,7 +16,8 @@ BOTUI is a terminal book reader for Linux. Open an EPUB, FB2, PDF or DjVu from d
 - Single pages, two-page spreads and continuous scrolling, with an optional contents sidebar
 - In-book search, bookmarks, jump history and reading stats
 - Text selection, clipboard copy, colored highlights and comments in EPUB/FB2 and text-layer PDF; Markdown export
-- Optional Vim cursor, Space command menu, dictionaries and translation with selectable languages
+- Optional Vim cursor and Space command menu; right-click words or selections to copy, highlight, search, translate, define or add a note
+- Editable dictionary and translation connections; Free Dictionary and Google Translate enabled as ordinary HTTP profiles
 - EPUB tables with merged cells, MathML and TeX formulas, SVG diagrams and inline illustrations
 - PDF and DjVu zoom, fit to width and page colors that match the reader theme
 - Keyboard and mouse controls, themes, adjustable margins and zen mode
@@ -157,7 +158,7 @@ In a Space submenu, `q`, `Esc` and `Backspace` return to the root; `Esc` closes 
 | `Space l w` | Page width / column gap; PDF zoom |
 | `Space l f` | Opaque/transparent background |
 | `Space l u` | Border style |
-| `Space t` | Reading theme; PDF: original / inverted / match background |
+| `Space t` | Reading theme; PDF: original / inverted / reading theme |
 | `Space s` | Settings |
 | `Space ?` | Help |
 | `q` / `Q` / `Space q` | Close book and return to its source |
@@ -267,13 +268,13 @@ On startup, older configs gain missing dictionary/translation defaults, the Spac
 
 **F2 → Dictionaries → Word definitions / Translation** lets you add, edit, test and delete connections. **Save changes & back** writes them to the same TOML. **F2 → Library → OPDS catalogs** manages saved catalogs.
 
-Both lists start empty. Choose an HTTP API, an OpenAI-compatible API or a local command, then enter your own name, optional description and connection settings. HTTP requests and response paths are configurable; examples are commented out below.
+Free Dictionary and Google Translate are enabled by ordinary HTTP profiles in the default TOML; both can be edited or deleted. Choose an HTTP API, an OpenAI-compatible API or a local command, then enter your own name, optional description and connection settings. HTTP requests and response paths are configurable; additional recipes are commented out below.
 
 ### How dictionary connections work
 
-`[lookup]` contains shared settings and default connection names. Each `[[lookup.profiles]]` block defines one connection. `dictionary` and `translation` refer to its exact `name`; an empty name uses the first connection of that purpose. Remove `profiles = []` before adding profile blocks.
+`[lookup]` contains shared settings and default connection names. Each `[[lookup.profiles]]` block defines one connection. `dictionary` and `translation` refer to its exact `name`; an empty name uses the first connection of that purpose. If your config has `profiles = []`, remove that line before adding profile blocks.
 
-Short and long examples use the same configuration format. Legacy providers such as `free-dictionary` have a built-in endpoint and response parser. They remain compatible; F2 creates **HTTP API**, **OpenAI-compatible API**, or **Local command** connections. A generic HTTP profile describes the service's request and response schema explicitly. Empty optional fields written by the UI may be omitted in hand-written TOML.
+All current profiles use the same configuration format. Older versions had short service-specific profiles with hidden endpoints and response parsers. On startup, old service-specific profiles are converted once to explicit HTTP fields; the runtime has no service-specific adapters. F2 creates **HTTP API**, **OpenAI-compatible API**, or **Local command** connections. A generic HTTP profile describes the service's request and response schema explicitly. Empty optional fields written by the UI may be omitted in hand-written TOML.
 
 | HTTP field | Meaning |
 | --- | --- |
@@ -288,7 +289,7 @@ Short and long examples use the same configuration format. Legacy providers such
 
 `{text}` is the selected text, `{source}` / `{target}` are language codes, and `{key}` is the key. URL and query values are encoded automatically; JSON body placeholders belong inside strings. Language selection affects a request only when its adapter or template uses that parameter; selecting Russian does not translate an English-only dictionary.
 
-The full example below and `config.example.toml` contain **identical** profiles for Free Dictionary (HTTP), Merriam-Webster Collegiate, a custom translator, an OpenAI-compatible server and local `sdcv`. These are templates, not enabled services. Merriam-Webster needs a key for the Collegiate product; this example displays short definitions (`shortdef`), without audio or full entry formatting. [Merriam-Webster schema](https://dictionaryapi.com/products/json#sec-2.shortdef). Save the profile, select it as default and use **Test connection with ‘hello’** in F2. Testing sends a real request; leaving without saving discards profile edits.
+The full example below and `config.example.toml` contain **identical** profiles for Free Dictionary (HTTP), Merriam-Webster Collegiate, a custom translator, an OpenAI-compatible server and local `sdcv`. Free Dictionary and Google Translate are active defaults. The additional recipes are inactive templates. Merriam-Webster needs a key for the Collegiate product; this example displays short definitions (`shortdef`), without audio or full entry formatting. [Merriam-Webster schema](https://dictionaryapi.com/products/json#sec-2.shortdef). Save the profile, select it as default and use **Test connection with ‘hello’** in F2. Testing sends a real request; leaving without saving discards profile edits.
 
 <details>
 <summary>Complete config.toml example</summary>
@@ -370,14 +371,34 @@ list_view = false
 # Add/edit/delete a profile in its list, then Save changes & back.
 # These names select the default connection in each list; names must be unique.
 [lookup]
-dictionary = ""
-translation = ""
+dictionary = "English dictionary"
+translation = "Google Translate"
 source_language = "auto"
-target_language = "en"
-profiles = []
+target_language = "ru"
 
-# No built-in connections. Add your own in F2 > Dictionaries or below.
-# Remove profiles = [] before enabling any [[lookup.profiles]] blocks.
+# Active defaults are ordinary editable HTTP profiles, not built-in providers.
+# Remove a block to remove a connection. Set profiles = [] under [lookup]
+# only if there are no [[lookup.profiles]] blocks and you want an empty list.
+[[lookup.profiles]]
+name = "English dictionary"
+purpose = "dictionary"
+provider = "http"
+endpoint = "https://api.dictionaryapi.dev/api/v2/entries/en/{text}"
+response_path = "/*/meanings/*/definitions/*/definition"
+response_separator = "\n"
+
+[[lookup.profiles]]
+name = "Google Translate"
+purpose = "translation"
+provider = "http"
+endpoint = "https://translate.googleapis.com/translate_a/single"
+query = { client = "gtx", sl = "{source}", tl = "{target}", dt = "t", q = "{text}" }
+response_path = "/0/*/0"
+# Translation segments must join without extra separators.
+response_separator = ""
+
+# Additional recipes below are inactive. Add your own in F2 > Dictionaries or below.
+# The active Google endpoint is unofficial; availability is not guaranteed.
 # Minimal HTTP profile: name, provider, endpoint, response_path for nested JSON.
 # purpose defaults to "dictionary"; method defaults to GET; response_format to json.
 # description, query, headers, body, api_key and key_command are optional.
@@ -390,6 +411,8 @@ profiles = []
 # response_path uses /object/key/0 and * for array items. Empty = JSON root.
 # response_format = "text" reads a plain UTF-8 response instead of JSON.
 # Supported methods: GET (default), POST, PUT, PATCH, DELETE.
+# Optional JSON source: "{source?}" omits its object field for auto/empty source.
+# {source:upper}/{target:upper} uppercase language codes; {source:upper?} combines both.
 
 # Example only: an English definitions API, not an installed connection.
 # [[lookup.profiles]]
@@ -476,3 +499,9 @@ Smoke tests need tmux, Python 3.11+, the PDF and DjVu helpers above, and `c44` a
 ## License
 
 BOTUI and its generated book jackets use [GPL-3.0-or-later](LICENSE). Covers supplied by books and catalogs retain their original rights.
+
+PDF/DjVu: `Space t` cycles original colors, inversion and **Reading theme**. The third mode uses **F2 → Reader → Reading theme** (`theme`), not the interface palette. Neutral paper and ink follow the reading colors; saturated illustrations retain their colors. `Space l f` controls opacity as in EPUB/FB2. F2 and library screens keep `interface_theme`.
+
+### Right-click text actions
+
+Right-click a word, or right-click inside an existing selection, to open **Copy, Highlight, Search, Translate, Define, Add note**. A click inside the selection preserves the entire passage; a click on another word targets that word. Search opens in-book search with the selected text (PDF starts its text-layer search). Escape dismisses the menu. The same actions work in EPUB, FB2 and PDF with an embedded text layer; scans without text cannot provide word actions. Translation and definitions use the connections selected in F2 → Dictionaries.

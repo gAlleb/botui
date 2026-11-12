@@ -12,6 +12,7 @@ use std::time::{Duration, Instant};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum Command {
+    ContextMenu,
     Copy,
     Highlight,
     Comment,
@@ -176,6 +177,16 @@ impl Study {
             Event::Mouse(m) => {
                 let p = Position::new(m.column, m.row);
                 match m.kind {
+                    MouseEventKind::Down(MouseButton::Right) => {
+                        let hit = self.hit(p, false)?;
+                        if !self.selection.is_some_and(|r| r.contains(hit.start)) {
+                            self.selection = doc.word_at(hit.start);
+                            self.cursor = Some(hit.start);
+                            self.visual = None;
+                        }
+                        self.keys.reset();
+                        action(Command::ContextMenu)
+                    }
                     MouseEventKind::Down(MouseButton::Left) => {
                         if let Some((_, command)) = self.buttons.iter().find(|(r, _)| r.contains(p))
                         {

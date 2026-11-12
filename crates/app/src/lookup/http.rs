@@ -34,7 +34,17 @@ fn json_values(value: &mut Value, values: &[(&str, &str)]) {
     match value {
         Value::String(s) => *s = expand(s, values),
         Value::Array(a) => a.iter_mut().for_each(|v| json_values(v, values)),
-        Value::Object(o) => o.values_mut().for_each(|v| json_values(v, values)),
+        Value::Object(o) => {
+            o.retain(|_, v| {
+                !v.as_str().is_some_and(|s| {
+                    matches!(s, "{source?}" | "{source:upper?}")
+                        && values
+                            .iter()
+                            .any(|(k, v)| *k == "{source}" && matches!(*v, "auto" | ""))
+                })
+            });
+            o.values_mut().for_each(|v| json_values(v, values));
+        }
         _ => (),
     }
 }
@@ -72,11 +82,17 @@ pub fn request(
     key: &str,
 ) -> io::Result<reqwest::blocking::RequestBuilder> {
     validate(p).map_err(io::Error::other)?;
+    let source_upper = source.to_uppercase();
+    let target_upper = target.to_uppercase();
     let values = [
         ("{text}", text),
         ("{source}", source),
         ("{target}", target),
         ("{key}", key),
+        ("{source?}", source),
+        ("{source:upper}", source_upper.as_str()),
+        ("{source:upper?}", source_upper.as_str()),
+        ("{target:upper}", target_upper.as_str()),
     ];
     let encoded_values: Vec<_> = values.iter().map(|(k, v)| (*k, encoded(v))).collect();
     let refs: Vec<_> = encoded_values
@@ -169,6 +185,32 @@ pub fn decode(p: &Profile, bytes: &[u8]) -> io::Result<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn optional_source_and_uppercase_codes_are_data_templates() {
+        let p = Profile {
+            endpoint: "http://localhost/translate".into(),
+            method: "POST".into(),
+            body: r#"{"source":"{source:upper?}","target":"{target:upper}","text":"{text}"}"#
+                .into(),
+            ..Default::default()
+        };
+        let client = reqwest::blocking::Client::new();
+        for source in ["auto", "en"] {
+            let r = request(&client, &p, "literal {source}", source, "ru", "")
+                .unwrap()
+                .build()
+                .unwrap();
+            let body: Value =
+                serde_json::from_slice(r.body().unwrap().as_bytes().unwrap()).unwrap();
+            assert_eq!(body["target"], "RU");
+            assert_eq!(body["text"], "literal {source}");
+            if source == "auto" {
+                assert!(body.get("source").is_none());
+            } else {
+                assert_eq!(body["source"], "EN");
+            }
+        }
+    }
     #[test]
     fn templates_escape_data_without_recursive_substitution() {
         let client = reqwest::blocking::Client::new();

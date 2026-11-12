@@ -11,8 +11,8 @@ pub(super) struct Paper {
     pub cell_background: bool,
 }
 impl Paper {
-    pub fn for_reader(protocol: ProtocolType) -> Self {
-        let (bg, ink) = crate::settings::scan_colors();
+    pub fn for_reader(protocol: ProtocolType, theme: crate::theme::Theme) -> Self {
+        let (bg, ink) = crate::settings::scan_colors(theme);
         let clear = !crate::settings::opaque();
         Self {
             bg,
@@ -131,5 +131,29 @@ mod tests {
                 assert!(b[k].abs_diff(v as u8) <= 1);
             }
         }
+    }
+    #[test]
+    fn themed_raster_uses_book_paper_and_ink_but_preserves_saturated_images() {
+        let input =
+            image::RgbImage::from_raw(3, 1, vec![255, 255, 255, 0, 0, 0, 255, 0, 0]).unwrap();
+        let theme = crate::theme::Theme::from_id("sepia-dark");
+        let style = theme.style();
+        let rgb = |c| {
+            if let Some(Color::Rgb(r, g, b)) = c {
+                [r, g, b]
+            } else {
+                panic!("RGB theme")
+            }
+        };
+        let paper = Paper {
+            bg: rgb(style.bg),
+            ink: rgb(style.fg),
+            alpha: false,
+            cell_background: false,
+        };
+        let image = paper.apply(input.into()).into_rgba8();
+        assert_eq!(image[(0, 0)], Rgba([52, 46, 37, 255]));
+        assert_eq!(image[(1, 0)], Rgba([255, 213, 149, 255]));
+        assert_eq!(image[(2, 0)], Rgba([255, 0, 0, 255]));
     }
 }

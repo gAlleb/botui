@@ -82,7 +82,7 @@ with tempfile.TemporaryDirectory(prefix="botui-width-") as tmp:
         term.keys("Space", "r", "R")
         term.see("0° · Inverted colors")
         term.keys("Space", "t")
-        term.see("0° · Match background")
+        term.see("0° · Reading theme")
         # Cursor feedback occupies the status line; verify the persisted color
         # state as well as the ordinary reading notifications above and below.
         term.keys("Space", "c")

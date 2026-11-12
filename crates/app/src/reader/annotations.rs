@@ -17,6 +17,33 @@ pub(super) fn run(
 ) -> io::Result<()> {
     let store = || store.ok_or_else(|| io::Error::other("Local storage is unavailable"));
     match command {
+        Command::ContextMenu => {
+            use crate::text_menu::Action as M;
+            let Some(action) = crate::text_menu::choose(term)? else {
+                return Ok(());
+            };
+            if matches!(action, M::Search) {
+                let range = reader
+                    .study
+                    .range(&reader.doc, reader.pager.anchor())
+                    .ok_or_else(|| io::Error::other("Select some text first"))?;
+                let query = reader.doc.text_range(range);
+                reader.apply(super::Action::Navigate(super::navigation::Kind::Search));
+                if let Some(nav) = reader.nav.as_mut() {
+                    nav.paste(&query);
+                }
+            } else {
+                let command = match action {
+                    M::Copy => Command::Copy,
+                    M::Highlight => Command::Highlight,
+                    M::Translate => Command::Translate,
+                    M::Define => Command::Lookup,
+                    M::AddNote => Command::Comment,
+                    M::Search => unreachable!(),
+                };
+                run(term, reader, store().ok(), command)?;
+            }
+        }
         Command::Normal => {
             reader.study.toggle_normal(reader.pager.anchor());
         }

@@ -66,6 +66,8 @@ pub(super) fn read_pages(
         .is_none()
         .then(|| worker.start(move |cancel| botui_fixed::page_count(&p, kind, cancel)));
     let prefs = crate::settings::Settings::load()?;
+    let mut reading_theme =
+        crate::theme::Theme::from_id(prefs.theme.as_deref().unwrap_or("terminal"));
     let mut zen = prefs.zen;
     let mut zen_progress = prefs.zen_progress;
     let mut sidebar = contents::Contents::default();
@@ -174,6 +176,7 @@ pub(super) fn read_pages(
     let selectable = kind == FileKind::Pdf && plates.is_none();
 
     loop {
+        let _reading_dialogs = crate::settings::reader_dialogs(reading_theme);
         if selectable {
             text.poll(path);
         }
@@ -255,7 +258,7 @@ pub(super) fn read_pages(
         let appearance = checkpoint.scan_appearance;
         let paper = appearance
             .terminal_paper
-            .then(|| paper::Paper::for_reader(picker.protocol_type()));
+            .then(|| paper::Paper::for_reader(picker.protocol_type(), reading_theme));
         // A scaled page may end partway through a terminal cell. The block
         // renderer drops alpha there, so pad that fraction with the same paper.
         picker.set_background_color(paper.and_then(|p| p.cell_padding(picker.protocol_type())));
@@ -542,9 +545,20 @@ pub(super) fn read_pages(
                     &mut dialog_hits,
                 );
             }
-            crate::settings::paint_interface(f);
+            crate::settings::paint_book(f, reading_theme);
             leader.draw(f, crate::leader::Context::Pdf);
         })?;
+        if selectable && text.take_context_menu() {
+            let background = rendered.buffer.clone();
+            match text.context_menu(term, store.as_ref(), &background) {
+                Ok(Some(query)) => {
+                    search.start(&worker, path, kind, query);
+                }
+                Ok(None) => (),
+                Err(e) => text.message = e.to_string(),
+            }
+            continue;
+        }
         let busy = viewer.busy()
             || text.busy()
             || search.busy()
@@ -890,7 +904,7 @@ pub(super) fn read_pages(
                     "{}° · {}",
                     u16::from(appearance.quarter_turns) * 90,
                     if appearance.terminal_paper {
-                        "Match background"
+                        "Reading theme"
                     } else if appearance.inverted {
                         "Inverted colors"
                     } else {
@@ -971,6 +985,8 @@ pub(super) fn read_pages(
                     crate::preferences::Context::Scan,
                 )?;
                 let updated = crate::settings::Settings::load()?;
+                reading_theme =
+                    crate::theme::Theme::from_id(updated.theme.as_deref().unwrap_or("terminal"));
                 scroll_lines = i32::from(updated.scroll_lines.unwrap_or(1).clamp(1, 12));
                 zen = updated.zen;
                 zen_progress = updated.zen_progress;

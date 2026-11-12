@@ -19,47 +19,22 @@ pub enum Provider {
     #[default]
     Command,
     Http,
-    FreeDictionary,
-    GoogleWeb,
-    GoogleCloud,
-    #[serde(rename = "deepl", alias = "deep-l")]
-    DeepL,
-    LibreTranslate,
     #[serde(rename = "openai", alias = "open-ai")]
     OpenAi,
 }
 impl Provider {
     #[cfg(test)]
-    pub const ALL: [Self; 8] = [
-        Self::Http,
-        Self::Command,
-        Self::FreeDictionary,
-        Self::GoogleWeb,
-        Self::GoogleCloud,
-        Self::DeepL,
-        Self::LibreTranslate,
-        Self::OpenAi,
-    ];
+    pub const ALL: [Self; 3] = [Self::Http, Self::Command, Self::OpenAi];
     pub fn label(self) -> &'static str {
         match self {
             Self::Http => "HTTP API",
             Self::Command => "Local command",
-            Self::FreeDictionary => "Free Dictionary · English definitions",
-            Self::GoogleWeb => "Google Translate · web (unofficial)",
-            Self::GoogleCloud => "Google Cloud Translation",
-            Self::DeepL => "DeepL",
-            Self::LibreTranslate => "LibreTranslate",
             Self::OpenAi => "OpenAI-compatible API",
         }
     }
     pub fn endpoint(self) -> &'static str {
         match self {
             Self::Command | Self::Http => "",
-            Self::FreeDictionary => "https://api.dictionaryapi.dev/api/v2/entries/en",
-            Self::GoogleWeb => "https://translate.googleapis.com/translate_a/single",
-            Self::GoogleCloud => "https://translation.googleapis.com/language/translate/v2",
-            Self::DeepL => "https://api-free.deepl.com/v2/translate",
-            Self::LibreTranslate => "http://localhost:5000/translate",
             Self::OpenAi => "http://localhost:11434/v1/chat/completions",
         }
     }
@@ -84,6 +59,30 @@ pub struct Profile {
     pub response_format: String,
     pub response_path: String,
     pub response_separator: String,
+}
+impl Profile {
+    pub fn uses_language(&self, source: bool) -> bool {
+        if self.provider == Provider::OpenAi {
+            return true;
+        }
+        let tokens: &[&str] = if source {
+            &["{source}", "{source?}", "{source:upper}", "{source:upper?}"]
+        } else {
+            &["{target}", "{target:upper}"]
+        };
+        let contains = |s: &str| tokens.iter().any(|t| s.contains(t));
+        if self.provider == Provider::Command {
+            self.command.iter().any(|s| contains(s))
+        } else {
+            contains(&self.endpoint)
+                || contains(&self.body)
+                || self
+                    .query
+                    .values()
+                    .chain(self.headers.values())
+                    .any(|s| contains(s))
+        }
+    }
 }
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(default)]
@@ -204,7 +203,7 @@ mod tests {
     fn sample_toml_and_profiles_round_trip() {
         let s: crate::settings::Settings =
             toml_edit::de::from_str(include_str!("../../../config.example.toml")).unwrap();
-        assert!(s.lookup.profiles.is_empty());
+        assert_eq!(s.lookup.profiles.len(), 2);
         let mut c = s.lookup;
         c.profiles.push(Profile {
             name: "Local".into(),
@@ -213,6 +212,6 @@ mod tests {
         });
         let encoded = toml_edit::ser::to_string(&c).unwrap();
         let copy: Config = toml_edit::de::from_str(&encoded).unwrap();
-        assert_eq!(copy.profiles[0].command, ["sdcv", "{text}"]);
+        assert_eq!(copy.profiles.last().unwrap().command, ["sdcv", "{text}"]);
     }
 }

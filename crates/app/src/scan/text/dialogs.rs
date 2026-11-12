@@ -15,6 +15,30 @@ pub(super) fn background(f: &mut Frame, saved: &Buffer) {
     }
 }
 impl Text {
+    pub fn context_menu(
+        &mut self,
+        term: &mut AppTerminal,
+        store: Option<&LocalState>,
+        saved: &Buffer,
+    ) -> io::Result<Option<String>> {
+        use crate::text_menu::Action as M;
+        let Some(action) = crate::text_menu::choose(term)? else {
+            return Ok(None);
+        };
+        if matches!(action, M::Search) {
+            return Ok(self.selection().map(|(_, quote, _)| quote));
+        }
+        let action = match action {
+            M::Copy => Action::Copy,
+            M::Highlight => Action::Highlight,
+            M::Translate => Action::Lookup(crate::lookup::Purpose::Translation),
+            M::Define => Action::Lookup(crate::lookup::Purpose::Dictionary),
+            M::AddNote => Action::Comment,
+            M::Search => unreachable!(),
+        };
+        self.run(action, term, store, saved)?;
+        Ok(None)
+    }
     pub fn run(
         &mut self,
         action: Action,
@@ -244,7 +268,7 @@ impl Text {
                         ),
                     );
                 });
-                crate::settings::paint_interface(f);
+                crate::settings::paint_dialog(f);
             })?;
             let mut e = crate::settings::read_event()?;
             if let Event::Mouse(m) = e {

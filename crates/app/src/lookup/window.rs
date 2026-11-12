@@ -135,15 +135,15 @@ fn run(
         }
         let actions = [
             "[P Connection]",
-            if profile.provider == Provider::FreeDictionary {
-                "[L English only]"
-            } else {
+            if profile.uses_language(false) {
                 "[L Target language]"
-            },
-            if profile.provider == Provider::FreeDictionary {
-                "[S English only]"
             } else {
+                "[L Not used by profile]"
+            },
+            if profile.uses_language(true) {
                 "[S Source language]"
+            } else {
+                "[S Not used by profile]"
             },
             "[Y Copy]",
             "[N Save note]",
@@ -237,10 +237,11 @@ fn run(
                     };
                 }
             }
-            KeyCode::Char('l' | 'L' | 's' | 'S')
-                if profile.provider == Provider::FreeDictionary =>
-            {
-                status = "This dictionary contains English definitions. P chooses a different connection.".into();
+            KeyCode::Char('l' | 'L') if !profile.uses_language(false) => {
+                status = "This connection does not use a target-language parameter.".into();
+            }
+            KeyCode::Char('s' | 'S') if !profile.uses_language(true) => {
+                status = "This connection does not use a source-language parameter.".into();
             }
             KeyCode::Char('l' | 'L') => {
                 if let Some(s) = settings::language(term, &target, false)? {

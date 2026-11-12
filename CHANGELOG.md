@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Remove service-specific dictionary/translation adapters. Keep Free Dictionary and Google Translate enabled as editable HTTP profiles in the default TOML, and migrate old named providers once using declarative conversion data. Language controls follow profile parameters instead of service names.
+- PDF/DjVu themed paper and ink now use the reading theme, independently of interface colors. Preserve original/inverted modes, saturated image colors and opacity controls; refresh the open page after changing the reading theme in F2.
+- Right-click a word or selection in EPUB/FB2 and text-layer PDF for Copy, Highlight, Search, Translate, Define and Add note. Preserve existing selections when clicking inside them; load PDF text lazily before showing the menu.
+
 - Finish EPUB/FB2 Visual selection after saving an annotation; restore `gv` with the cursor on the final selected character. PDF annotation lists accept pasted searches, uppercase action keys and Home/End/PageUp/PageDown, and export the filtered list consistently with EPUB/FB2.
 - Connection tests always contact the provider instead of reusing cached results. Local dictionary commands preserve literal placeholder text inside a selection. Choosing the same connection preserves the language selected in the lookup window.
 - Explain minimal and optional dictionary fields, legacy adapters and generic HTTP profiles in both READMEs. Keep all configuration examples identical and add a tested Merriam-Webster Collegiate short-definition template.

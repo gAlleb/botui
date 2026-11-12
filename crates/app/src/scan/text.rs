@@ -87,6 +87,7 @@ pub(super) struct Text {
     pending_end: Option<Position>,
     auto_cursor: bool,
     pending_visual: bool,
+    context_pending: bool,
     search_forward: bool,
     reveal: Option<PdfRegion>,
     worker: Worker,
@@ -114,6 +115,7 @@ impl Text {
             pending_end: None,
             auto_cursor: false,
             pending_visual: false,
+            context_pending: false,
             search_forward: true,
             reveal: None,
             worker: Worker::new(),
@@ -372,6 +374,7 @@ impl Text {
         })
     }
     pub fn clear(&mut self) {
+        self.context_pending = false;
         self.enabled = false;
         self.normal = false;
         self.keys.reset();
@@ -409,6 +412,29 @@ impl Text {
             Event::Mouse(m) => {
                 let p = Position::new(m.column, m.row);
                 match m.kind {
+                    MouseEventKind::Down(MouseButton::Right) => {
+                        if !self.views.iter().any(|v| v.screen.contains(p)) {
+                            return None;
+                        }
+                        self.enabled = true;
+                        self.keys.reset();
+                        self.context_pending = true;
+                        if let Some(hit) = self.hit(p, false) {
+                            let inside = self
+                                .start
+                                .zip(self.cursor)
+                                .is_some_and(|(a, b)| hit >= a.min(b) && hit <= a.max(b));
+                            if !inside {
+                                self.cursor = Some(hit);
+                                self.start = Some(hit);
+                            }
+                        } else {
+                            self.cursor = None;
+                            self.start = None;
+                            self.pending = Some(p);
+                        }
+                        Some(Action::None)
+                    }
                     MouseEventKind::Down(MouseButton::Left) => {
                         if let Some((_, a)) = self.buttons.iter().find(|(r, _)| r.contains(p)) {
                             return Some(*a);
@@ -512,6 +538,14 @@ impl Text {
                 }
             }
             _ => None,
+        }
+    }
+    pub fn take_context_menu(&mut self) -> bool {
+        if self.context_pending && self.pending.is_none() {
+            self.context_pending = false;
+            self.cursor.is_some()
+        } else {
+            false
         }
     }
     pub fn leader_action(&mut self, c: crate::leader::Command) -> Option<Action> {

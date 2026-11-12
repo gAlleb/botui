@@ -129,6 +129,10 @@ pub(super) fn entries(ctx: Context, p: &Settings) -> Vec<Entry> {
                         "Click: cursor; drag: select; double/triple click: word/paragraph",
                     ),
                     ("Ctrl+C", "Copy mouse selection"),
+                    (
+                        "Right click",
+                        "Word/selection: Copy, Highlight, Search, Translate, Define, Add note",
+                    ),
                     ("Tab", "Focus contents when visible"),
                     (
                         "Esc / Enter",
@@ -151,6 +155,10 @@ pub(super) fn entries(ctx: Context, p: &Settings) -> Vec<Entry> {
                     ("Home / End", "First / last page"),
                     ("+ / = / −", "Zoom in / zoom in / zoom out"),
                     ("Mouse wheel", "Scroll; F2 → Reader sets lines per tick"),
+                    (
+                        "Right click",
+                        "PDF text: Copy, Highlight, Search, Translate, Define, Add note",
+                    ),
                     (
                         "1 / 2 / 3",
                         "Single page / two-page spread / continuous scroll",

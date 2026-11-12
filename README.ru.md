@@ -16,7 +16,8 @@ BOTUI — терминальная читалка для Linux. Откройте
 - Одна страница, разворот или непрерывная прокрутка. Оглавление слева можно скрыть
 - Поиск по тексту, закладки, история переходов и статистика чтения
 - Выделение, копирование, цветные пометки и комментарии в EPUB/FB2 и PDF с текстовым слоем; экспорт Markdown
-- Необязательный Vim-курсор, меню Space, словари и перевод с выбором языка
+- Необязательный Vim-курсор и меню Space; правый клик по слову или выделению — копирование, пометка, поиск, перевод, значение и заметка
+- Настраиваемые подключения словарей и перевода; Free Dictionary и Google Translate включены обычными HTTP-профилями
 - Таблицы с объединёнными ячейками, формулы MathML и TeX, SVG-схемы и иллюстрации в EPUB
 - Масштабирование PDF и DjVu, подгонка по ширине и фон страницы в цвет темы
 - Управление клавиатурой и мышью, темы оформления, настраиваемые поля и дзен-режим
@@ -267,13 +268,13 @@ botui --license
 
 В **F2 → Dictionaries → Word definitions / Translation** можно добавлять, изменять, проверять и удалять подключения. **Save changes & back** записывает их в тот же TOML. В **F2 → Library → OPDS catalogs** настраиваются каталоги OPDS.
 
-Оба списка изначально пустые. Выбери HTTP API, OpenAI-совместимый API или локальную команду, затем задай своё название, необязательное описание и параметры подключения. HTTP-запрос и путь к тексту ответа настраиваются; примеры ниже закомментированы.
+Free Dictionary и Google Translate включены обычными HTTP-профилями в исходном TOML; их можно изменить или удалить. Выбери HTTP API, OpenAI-совместимый API или локальную команду, затем задай своё название, необязательное описание и параметры подключения. HTTP-запрос и путь к тексту ответа настраиваются; дополнительные рецепты ниже закомментированы.
 
 ### Как устроено подключение словаря
 
-`[lookup]` задаёт общие настройки и имена выбранных подключений. Каждый блок `[[lookup.profiles]]` — одно подключение. `dictionary` и `translation` должны совпадать с его `name`; при пустом имени используется первое подключение соответствующего типа. Перед добавлением блоков удалите строку `profiles = []`.
+`[lookup]` задаёт общие настройки и имена выбранных подключений. Каждый блок `[[lookup.profiles]]` — одно подключение. `dictionary` и `translation` должны совпадать с его `name`; при пустом имени используется первое подключение соответствующего типа. Если в вашем конфиге есть строка `profiles = []`, удалите её перед добавлением блоков.
 
-Короткий и длинный примеры не означают разные форматы конфига. Старые профили вроде `provider = "free-dictionary"` используют готовый адаптер: адрес и разбор ответа уже в коде. Они совместимы, но новые подключения в F2 создаются как **HTTP API**, **OpenAI-compatible API** или **Local command**. Для HTTP нужно описать схему конкретного сервиса. Пустые дополнительные поля, записанные интерфейсом, можно не указывать вручную.
+Короткий и длинный примеры не означают разные форматы конфига. В старых версиях профили вроде `provider = "free-dictionary"` скрывали адрес и разбор ответа в коде. При запуске такие профили однократно переводятся в явные HTTP-поля. Специальных сервисных адаптеров больше нет; подключения в F2 создаются как **HTTP API**, **OpenAI-compatible API** или **Local command**. Для HTTP нужно описать схему конкретного сервиса. Пустые дополнительные поля, записанные интерфейсом, можно не указывать вручную.
 
 | Поле HTTP-профиля | Что указывать |
 | --- | --- |
@@ -288,7 +289,7 @@ botui --license
 
 `{text}` — выбранный текст, `{source}` и `{target}` — языки, `{key}` — ключ. URL и значения query кодируются автоматически; в JSON-теле подстановки должны находиться внутри строк. Выбор языка меняет запрос только если адаптер или шаблон использует соответствующий параметр: английский словарь от выбора `ru` не становится русским.
 
-В полном примере ниже и в `config.example.toml` находятся **одинаковые** профили Free Dictionary (HTTP), Merriam-Webster Collegiate, произвольного переводчика, OpenAI-совместимого сервера и локального `sdcv`. Это заготовки, а не включённые сервисы. Для Merriam-Webster нужен ключ именно Collegiate; пример выводит краткие определения `shortdef`, без произношения и полного форматирования статьи. [Схема Merriam-Webster](https://dictionaryapi.com/products/json#sec-2.shortdef). Сначала сохраните профиль, выберите его по умолчанию и выполните **Test connection with ‘hello’** в F2. Проверка выполняет настоящий запрос; выход без сохранения отменяет изменения профиля.
+В полном примере ниже и в `config.example.toml` находятся **одинаковые** профили Free Dictionary (HTTP), Merriam-Webster Collegiate, произвольного переводчика, OpenAI-совместимого сервера и локального `sdcv`. Free Dictionary и Google Translate включены по умолчанию. Дополнительные рецепты закомментированы. Для Merriam-Webster нужен ключ именно Collegiate; пример выводит краткие определения `shortdef`, без произношения и полного форматирования статьи. [Схема Merriam-Webster](https://dictionaryapi.com/products/json#sec-2.shortdef). Сначала сохраните профиль, выберите его по умолчанию и выполните **Test connection with ‘hello’** в F2. Проверка выполняет настоящий запрос; выход без сохранения отменяет изменения профиля.
 
 <details>
 <summary>Полный пример config.toml</summary>
@@ -370,14 +371,34 @@ list_view = false
 # Add/edit/delete a profile in its list, then Save changes & back.
 # These names select the default connection in each list; names must be unique.
 [lookup]
-dictionary = ""
-translation = ""
+dictionary = "English dictionary"
+translation = "Google Translate"
 source_language = "auto"
-target_language = "en"
-profiles = []
+target_language = "ru"
 
-# No built-in connections. Add your own in F2 > Dictionaries or below.
-# Remove profiles = [] before enabling any [[lookup.profiles]] blocks.
+# Active defaults are ordinary editable HTTP profiles, not built-in providers.
+# Remove a block to remove a connection. Set profiles = [] under [lookup]
+# only if there are no [[lookup.profiles]] blocks and you want an empty list.
+[[lookup.profiles]]
+name = "English dictionary"
+purpose = "dictionary"
+provider = "http"
+endpoint = "https://api.dictionaryapi.dev/api/v2/entries/en/{text}"
+response_path = "/*/meanings/*/definitions/*/definition"
+response_separator = "\n"
+
+[[lookup.profiles]]
+name = "Google Translate"
+purpose = "translation"
+provider = "http"
+endpoint = "https://translate.googleapis.com/translate_a/single"
+query = { client = "gtx", sl = "{source}", tl = "{target}", dt = "t", q = "{text}" }
+response_path = "/0/*/0"
+# Translation segments must join without extra separators.
+response_separator = ""
+
+# Additional recipes below are inactive. Add your own in F2 > Dictionaries or below.
+# The active Google endpoint is unofficial; availability is not guaranteed.
 # Minimal HTTP profile: name, provider, endpoint, response_path for nested JSON.
 # purpose defaults to "dictionary"; method defaults to GET; response_format to json.
 # description, query, headers, body, api_key and key_command are optional.
@@ -390,6 +411,8 @@ profiles = []
 # response_path uses /object/key/0 and * for array items. Empty = JSON root.
 # response_format = "text" reads a plain UTF-8 response instead of JSON.
 # Supported methods: GET (default), POST, PUT, PATCH, DELETE.
+# Optional JSON source: "{source?}" omits its object field for auto/empty source.
+# {source:upper}/{target:upper} uppercase language codes; {source:upper?} combines both.
 
 # Example only: an English definitions API, not an installed connection.
 # [[lookup.profiles]]
@@ -476,3 +499,9 @@ profiles = []
 ## Лицензия
 
 BOTUI и собственные обложки-заглушки распространяются под [GPL-3.0-or-later](LICENSE). Права на обложки из книг и каталогов сохраняются за их правообладателями.
+
+PDF/DjVu: `Space t` переключает оригинал, инверсию и **Reading theme**. Третий режим использует **F2 → Reader → Reading theme** (`theme`), а не палитру интерфейса. Нейтральные бумага и текст принимают цвета чтения; насыщенные иллюстрации сохраняют цвет. `Space l f` задаёт прозрачность как в EPUB/FB2. F2 и полки используют `interface_theme`.
+
+### Действия по правому клику
+
+Правый клик по слову или внутри выделения открывает **Copy, Highlight, Search, Translate, Define, Add note**. Клик внутри выделения сохраняет весь фрагмент; клик по другому слову выбирает это слово. Search открывает поиск по текущей книге с выбранным текстом (в PDF сразу запускает поиск по текстовому слою). Esc закрывает меню. Действия одинаковы для EPUB, FB2 и PDF со встроенным текстовым слоем; скан без текста не даёт действий над словом. Translate и Define используют подключения, выбранные в F2 → Dictionaries.

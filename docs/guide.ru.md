@@ -236,7 +236,7 @@ botui --config-path                         # создать конфиг и в�
 
 ### Словари, перевод и подключения OPDS
 
-**F2 → Dictionaries** разделяет **Word definitions** (значения слов) и **Translation** (перевод). Оба списка изначально пустые. При добавлении выбирается способ подключения: **HTTP API**, **OpenAI-compatible API** или **Local command**. Название и необязательное описание задаёшь сам. Подключение можно изменить, проверить, выбрать основным или удалить. После удаления последнего подключения список остаётся пустым и после перезапуска.
+**F2 → Dictionaries** разделяет **Word definitions** (значения слов) и **Translation** (перевод). Free Dictionary и Google Translate включены обычными HTTP-профилями в исходном TOML; их можно изменить или удалить. При добавлении выбирается способ подключения: **HTTP API**, **OpenAI-compatible API** или **Local command**. Название и необязательное описание задаёшь сам. Подключение можно изменить, проверить, выбрать основным или удалить. После удаления последнего подключения список остаётся пустым и после перезапуска.
 
 У HTTP API настраиваются адрес, метод, параметры запроса, заголовки, JSON-тело и путь к тексту ответа. Шаблоны используют `{text}`, `{source}`, `{target}` и `{key}`. Путь `/items/*/text` собирает строки из элементов массива; разделитель объединяет результаты. Поддерживается и обычный текстовый ответ. Для других протоколов и способов авторизации можно подключить локальную команду. Примеры сервисов находятся в config.example.toml, а не в меню добавления. Старые конфигурации с названиями провайдеров продолжают читаться.
 
@@ -357,14 +357,34 @@ list_view = false
 # Add/edit/delete a profile in its list, then Save changes & back.
 # These names select the default connection in each list; names must be unique.
 [lookup]
-dictionary = ""
-translation = ""
+dictionary = "English dictionary"
+translation = "Google Translate"
 source_language = "auto"
-target_language = "en"
-profiles = []
+target_language = "ru"
 
-# No built-in connections. Add your own in F2 > Dictionaries or below.
-# Remove profiles = [] before enabling any [[lookup.profiles]] blocks.
+# Active defaults are ordinary editable HTTP profiles, not built-in providers.
+# Remove a block to remove a connection. Set profiles = [] under [lookup]
+# only if there are no [[lookup.profiles]] blocks and you want an empty list.
+[[lookup.profiles]]
+name = "English dictionary"
+purpose = "dictionary"
+provider = "http"
+endpoint = "https://api.dictionaryapi.dev/api/v2/entries/en/{text}"
+response_path = "/*/meanings/*/definitions/*/definition"
+response_separator = "\n"
+
+[[lookup.profiles]]
+name = "Google Translate"
+purpose = "translation"
+provider = "http"
+endpoint = "https://translate.googleapis.com/translate_a/single"
+query = { client = "gtx", sl = "{source}", tl = "{target}", dt = "t", q = "{text}" }
+response_path = "/0/*/0"
+# Translation segments must join without extra separators.
+response_separator = ""
+
+# Additional recipes below are inactive. Add your own in F2 > Dictionaries or below.
+# The active Google endpoint is unofficial; availability is not guaranteed.
 # Minimal HTTP profile: name, provider, endpoint, response_path for nested JSON.
 # purpose defaults to "dictionary"; method defaults to GET; response_format to json.
 # description, query, headers, body, api_key and key_command are optional.
@@ -377,6 +397,8 @@ profiles = []
 # response_path uses /object/key/0 and * for array items. Empty = JSON root.
 # response_format = "text" reads a plain UTF-8 response instead of JSON.
 # Supported methods: GET (default), POST, PUT, PATCH, DELETE.
+# Optional JSON source: "{source?}" omits its object field for auto/empty source.
+# {source:upper}/{target:upper} uppercase language codes; {source:upper?} combines both.
 
 # Example only: an English definitions API, not an installed connection.
 # [[lookup.profiles]]
@@ -458,3 +480,9 @@ profiles = []
 | Скачанные книги и экспорт заметок | `~/.local/share/botui/downloads/`, `~/.local/share/botui/exports/` |
 
 Каталоги можно переопределить переменными XDG. Локальные позиции привязаны к содержимому файла. Переименование и перенос книги сохраняют место чтения.
+
+PDF/DjVu: `Space t` переключает оригинал, инверсию и **Reading theme**. Третий режим использует **F2 → Reader → Reading theme** (`theme`), а не палитру интерфейса. Нейтральные бумага и текст принимают цвета чтения; насыщенные иллюстрации сохраняют цвет. `Space l f` задаёт прозрачность как в EPUB/FB2. F2 и полки используют `interface_theme`.
+
+### Действия по правому клику
+
+Правый клик по слову или внутри выделения открывает **Copy, Highlight, Search, Translate, Define, Add note**. Клик внутри выделения сохраняет весь фрагмент; клик по другому слову выбирает это слово. Search открывает поиск по текущей книге с выбранным текстом (в PDF сразу запускает поиск по текстовому слою). Esc закрывает меню. Действия одинаковы для EPUB, FB2 и PDF со встроенным текстовым слоем; скан без текста не даёт действий над словом. Translate и Define используют подключения, выбранные в F2 → Dictionaries.

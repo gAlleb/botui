@@ -174,7 +174,10 @@ impl Reader {
                 return None;
             }
             if !self.study.mapping()
-                && matches!(m.kind, MouseEventKind::Down(MouseButton::Left))
+                && matches!(
+                    m.kind,
+                    MouseEventKind::Down(MouseButton::Left | MouseButton::Right)
+                )
                 && self.text_rect.contains(Position::new(m.column, m.row))
             {
                 self.study.begin_frame();

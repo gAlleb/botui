@@ -1,5 +1,6 @@
 //! One editable TOML document. UI changes patch individual values to retain user comments.
 mod legacy;
+mod lookup_migration;
 use crate::connection::Connection;
 use ratatui::{Frame, style::Color};
 use serde::{Deserialize, Serialize};
@@ -84,23 +85,29 @@ pub(crate) fn read_scan_event(
     }
     Ok(event)
 }
-pub(crate) fn scan_colors() -> ([u8; 3], [u8; 3]) {
+pub(crate) fn scan_colors(theme: crate::theme::Theme) -> ([u8; 3], [u8; 3]) {
     let t = TERMINAL.get();
     let rgb = |c| match c {
         Some(Color::Rgb(r, g, b)) => Some([r, g, b]),
         _ => None,
     };
-    let index = SHELL_THEME.get();
-    let (ink, fallback, _) = crate::shell_theme::ALL[index].colors();
-    // The same surface that paint_with places behind the sheet. In transparent
-    // mode the cells keep SGR default, so use the emulator's actual background.
-    let surface = if opaque() {
-        Some(solid_surface(index))
+    let style = theme.style();
+    let bg = rgb(if opaque() {
+        if theme == crate::theme::Theme::TERMINAL {
+            Some(solid_surface(0))
+        } else {
+            style.bg
+        }
     } else {
         t.bg
-    };
-    let bg = rgb(surface).or(rgb(Some(fallback))).unwrap_or([30, 30, 46]);
-    let fg = rgb(if index == 0 { t.fg } else { Some(ink) }).unwrap_or([222, 224, 230]);
+    })
+    .unwrap_or([30, 30, 46]);
+    let fg = rgb(if theme == crate::theme::Theme::TERMINAL {
+        t.fg
+    } else {
+        style.fg
+    })
+    .unwrap_or([222, 224, 230]);
     let lum = |v: [u8; 3]| {
         let [r, g, b] = v.map(|c| {
             let f = f64::from(c) / 255.;
@@ -169,8 +176,22 @@ fn decode(text: &str) -> io::Result<Settings> {
     })
 }
 fn document(text: &str) -> io::Result<DocumentMut> {
-    text.parse()
-        .map_err(|_| io::Error::other("Invalid TOML document in botui config"))
+    text.parse::<DocumentMut>().map_err(|e| {
+        let line = e.span().map(|r| {
+            text.as_bytes()[..r.start.min(text.len())]
+                .iter()
+                .filter(|&&b| b == b'\n')
+                .count()
+                + 1
+        });
+        io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!(
+                "Invalid config.toml{}; check TOML syntax and setting types",
+                line.map_or(String::new(), |n| format!(" at line {n}"))
+            ),
+        )
+    })
 }
 fn save(path: &Path, doc: &DocumentMut) -> io::Result<()> {
     let mut tmp = tempfile::NamedTempFile::new_in(path.parent().unwrap())?;
@@ -256,7 +277,9 @@ fn extend_config(doc: &mut DocumentMut) -> io::Result<bool> {
 
 impl Settings {
     pub fn load() -> io::Result<Self> {
-        decode(&read(&path()?)?)
+        let mut doc = document(&read(&path()?)?)?;
+        lookup_migration::migrate(&mut doc)?;
+        decode(&doc.to_string())
     }
     pub fn initialize() -> io::Result<Self> {
         let path = path()?;
@@ -264,9 +287,10 @@ impl Settings {
         let settings = match read(&path) {
             Ok(text) => {
                 // Validate before touching the user's document; do not print credentials on errors.
-                decode(&text)?;
                 let mut doc = document(&text)?;
-                let changed = extend_config(&mut doc)?;
+                let migrated = lookup_migration::migrate(&mut doc)?;
+                decode(&doc.to_string())?;
+                let changed = extend_config(&mut doc)? | migrated;
                 let settings = decode(&doc.to_string())?;
                 if changed {
                     save(&path, &doc)?;
@@ -290,8 +314,9 @@ impl Settings {
         let path = path()?;
         let _lock = lock_dir(&path)?;
         let text = read(&path)?;
-        let mut settings = decode(&text)?;
         let mut doc = document(&text)?;
+        lookup_migration::migrate(&mut doc)?;
+        let mut settings = decode(&doc.to_string())?;
         apply(&mut doc, &mut settings, change)?;
         if doc.to_string() != text {
             save(&path, &doc)?;
@@ -412,6 +437,22 @@ mod dialog_tests {
         widgets::{Clear, Paragraph},
     };
     #[test]
+    fn scan_paper_uses_reading_theme_independently_of_interface() {
+        let old_shell = SHELL_THEME.get();
+        let old_opaque = OPAQUE.swap(true, Ordering::Relaxed);
+        let theme = crate::theme::Theme::from_id("sepia-dark");
+        for shell in ["rose-pine", "catppuccin-mocha", "nord"] {
+            SHELL_THEME.set(crate::shell_theme::index(Some(shell)));
+            assert_eq!(scan_colors(theme), ([52, 46, 37], [255, 213, 149]));
+        }
+        assert_eq!(
+            scan_colors(crate::theme::Theme::from_id("sepia-light")),
+            ([241, 232, 208], [91, 70, 54])
+        );
+        SHELL_THEME.set(old_shell);
+        OPAQUE.store(old_opaque, Ordering::Relaxed);
+    }
+    #[test]
     fn config_upgrade_preserves_custom_values_and_is_idempotent() {
         let original = "# My paper\ninterface_theme = \"nord\"\nleader_delay_ms = 240\n[bookorbit]\npassword = \"test-only\" # keep comment\n[keys]\nx = \"next\"\n";
         let mut doc = document(original).unwrap();
@@ -423,7 +464,7 @@ mod dialog_tests {
         assert_eq!(settings.leader_delay_ms, Some(240));
         assert_eq!(settings.keys.get(&'x').unwrap(), "next");
         assert_eq!(settings.interface_theme.as_deref(), Some("nord"));
-        assert!(settings.lookup.profiles.is_empty());
+        assert_eq!(settings.lookup.profiles.len(), 2);
         assert!(settings.opds.is_empty());
         assert!(!extend_config(&mut doc).unwrap());
         assert_eq!(saved, doc.to_string());
