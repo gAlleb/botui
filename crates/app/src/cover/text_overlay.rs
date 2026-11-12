@@ -10,13 +10,17 @@ impl Picture {
         let source = self.source.clone();
         move || {
             let patch = Picture::new(source).text_patch(window, size, &picker, &[]);
-            picker
+            let mut protocol = picker
                 .new_protocol(
                     patch.source,
                     size,
                     Resize::Scale(Some(image::imageops::FilterType::Triangle)),
                 )
-                .map_err(|e| e.to_string())
+                .map_err(|e| e.to_string())?;
+            if let Protocol::Sixel(sixel) = &mut protocol {
+                keep_sixel_in_viewport(sixel);
+            }
+            Ok(protocol)
         }
     }
 
@@ -71,9 +75,90 @@ impl Picture {
     }
 }
 
+fn keep_sixel_in_viewport(sixel: &mut ratatui_image::protocol::sixel::Sixel) {
+    use std::fmt::Write;
+    let (start, escape, _) =
+        ratatui_image::picker::cap_parser::Parser::tmux_start_escape_end(sixel.is_tmux);
+    let (width, height) = (sixel.size.width, sixel.size.height);
+    if height > 1 {
+        // The library clears h rows using h cursor-down commands. At the
+        // bottom edge the last move clamps, so moving h rows back lands one
+        // row too high. Only travel between the rows that actually exist.
+        let mut old = String::new();
+        let mut clear = String::new();
+        for row in 0..height {
+            write!(old, "{escape}[{width}X{escape}[1B").unwrap();
+            write!(clear, "{escape}[{width}X").unwrap();
+            if row + 1 < height {
+                write!(clear, "{escape}[1B").unwrap();
+            }
+        }
+        write!(old, "{escape}[{height}A").unwrap();
+        write!(clear, "{escape}[{}A", height - 1).unwrap();
+        if sixel.data[start.len()..].starts_with(&old) {
+            sixel
+                .data
+                .replace_range(start.len()..start.len() + old.len(), &clear);
+        }
+    }
+    // The encoder ends its last band with "$-". Both commands are unnecessary.
+    // In Foot, the carriage return leaves the column at zero and disables
+    // trimming of the unused pixels in the final six-pixel band. Rounding the
+    // image up by 1–5 pixels then scrolls a full-height viewport by one cell.
+    if let Some(end) = sixel.data.rfind(&format!("{escape}\\")) {
+        let content = &sixel.data[..end];
+        let trimmed = content.trim_end_matches(['$', '-']).len();
+        sixel.data.replace_range(trimmed..end, "");
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn full_height_sixel_does_not_advance_below_its_last_row() {
+        for tmux in [false, true] {
+            for height in [1, 2, 7] {
+                let mut sixel = ratatui_image::protocol::sixel::Sixel::new(
+                    DynamicImage::new_rgb8(40, u32::from(height) * 19),
+                    Size::new(4, height),
+                    tmux,
+                )
+                .unwrap();
+                let (start, escape, _) =
+                    ratatui_image::picker::cap_parser::Parser::tmux_start_escape_end(tmux);
+                let begin = sixel.data[start.len()..]
+                    .find(&format!("{escape}P"))
+                    .unwrap()
+                    + start.len();
+                let end = sixel.data.rfind(&format!("{escape}\\")).unwrap();
+                let pixels = sixel.data[begin..end]
+                    .strip_suffix("$-")
+                    .unwrap()
+                    .to_owned();
+                keep_sixel_in_viewport(&mut sixel);
+                let begin = sixel.data[start.len()..]
+                    .find(&format!("{escape}P"))
+                    .unwrap()
+                    + start.len();
+                let end = sixel.data.rfind(&format!("{escape}\\")).unwrap();
+                assert_eq!(
+                    sixel.data[begin..end],
+                    pixels,
+                    "Encoded pixels must stay unchanged"
+                );
+                let clear = &sixel.data[start.len()..begin];
+                assert_eq!(
+                    clear.matches(&format!("{escape}[4X")).count(),
+                    usize::from(height)
+                );
+                assert_eq!(
+                    clear.matches(&format!("{escape}[1B")).count(),
+                    usize::from(height - 1)
+                );
+            }
+        }
+    }
     #[test]
     fn highlight_changes_only_selected_pixels_and_keeps_underlying_ink() {
         let mut raster = image::RgbImage::from_pixel(100, 100, image::Rgb([255, 255, 255]));

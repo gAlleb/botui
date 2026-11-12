@@ -6,12 +6,13 @@ ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location('shelf', ROOT / 'scripts/smoke-shelf.py')
 shelf = importlib.util.module_from_spec(spec); spec.loader.exec_module(shelf)
 SIXEL = re.compile(rb'\x1bP[^q\x1b]*q')
+RASTERS = re.compile(rb'\x1bP[^q\x1b]*q([^\x1b]*)\x1b\\')
 
 
 def check(binary, comic):
     with tempfile.TemporaryDirectory(prefix='botui-sixel-') as temp:
         root = Path(temp); (root/'botui').mkdir()
-        (root/'botui/config.toml').write_text('zen=true\nzen_progress=true\nopaque_background=true\nscan_theme="original"\n')
+        (root/'botui/config.toml').write_text('zen=true\nzen_progress=false\nreading_layout="spread"\nscan_gap=0\nopaque_background=true\nscan_theme="original"\n')
         book = root / ('pages.cbz' if comic else 'pages.pdf')
         if comic:
             with zipfile.ZipFile(book, 'w') as archive:
@@ -39,7 +40,13 @@ def check(binary, comic):
             raise AssertionError('Sixel frame did not finish')
         def send(keys): os.write(terminal,keys);return collect()
         try:
-            assert SIXEL.search(collect()), 'Sixel was not selected'
+            initial = collect()
+            assert SIXEL.search(initial), 'Sixel was not selected'
+            # Full-height rasters must not scroll Foot after their final band.
+            for frame in [initial, send(b'='), send(b'\x1b[B')]:
+                rasters = RASTERS.findall(frame)
+                assert rasters and all(not raster.endswith((b'-', b'$')) for raster in rasters), 'Trailing sixel cursor commands scroll the spread'
+            send(b' r0')
             title=b'Comic background' if comic else b'Page theme'
             assert title in send(b' t')
             for keys in (b'\x1b[B',b'\x1b[B'):
