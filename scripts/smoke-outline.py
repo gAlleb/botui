@@ -54,7 +54,7 @@ with tempfile.TemporaryDirectory(prefix='botui-outline-') as d:
             term.see('LeafSection')
             term.click('LeafSection',term.see('LeafSection'))
             term.see('2 / 3')
-            term.keys('q')
+            term.keys('Space', 'q')
             for _ in range(100):
                 if term.run('has-session','-t','shelf',required=False).returncode: break
                 time.sleep(.03)

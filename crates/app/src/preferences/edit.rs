@@ -31,6 +31,21 @@ pub(super) fn setting(
     p: &Settings,
 ) -> io::Result<()> {
     match (tab, i) {
+        (1, 12) => {
+            if let Some(value) = edit(
+                term,
+                "Space menu delay · milliseconds (0–1000)",
+                &p.leader_delay_ms.unwrap_or(150).to_string(),
+            )? {
+                let ms = value
+                    .parse::<u16>()
+                    .ok()
+                    .filter(|n| *n <= 1000)
+                    .ok_or_else(|| io::Error::other("Enter a delay from 0 to 1000 milliseconds"))?;
+                Settings::update(|s| s.leader_delay_ms = Some(ms))?;
+            }
+        }
+
         (0, 0) => {
             if let Some(i) = interface(term, p)? {
                 Settings::update(|s| s.interface_theme = Some(shell_theme::ALL[i].0.into()))?;

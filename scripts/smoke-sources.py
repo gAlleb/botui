@@ -49,8 +49,8 @@ def opds(tmp):
             t.click('Книги маяка',t.see('Книги маяка'));t.see('Атлас пролива');t.see('▀')
             t.see('Continuation');t.keys('PageDown','PageUp');t.see('Атлас пролива')
             t.click('Атлас пролива',t.see('Атлас пролива'));t.click('EPUB',t.wait('Форматы книги OPDS',lambda s:'EPUB' in s and '[V ' not in s))
-            t.see(shelf.EPUB_MARK);t.keys('q');t.see('EPUB')
-            t.click('PDF',t.see('PDF'));t.see('1 / 3');t.keys('q');t.see('EPUB')
+            t.see(shelf.EPUB_MARK);t.keys('Space','q');t.see('EPUB')
+            t.click('PDF',t.see('PDF'));t.see('1 / 3');t.keys('Space','q');t.see('EPUB')
             t.keys('Escape');t.see('Моя полка OPDS')
             t.keys('/');t.see('Search OPDS catalog');t.type('Amber & fire');t.keys('Enter');t.see('Verified match')
             assert server.seen=={'/search.xml','/find?q=Amber%20%26%20fire','/start','/shelf','/next','/pub/cover','/pub/first.epub','/pub/atlas.pdf'},server.seen
@@ -80,7 +80,7 @@ def opds2(tmp):
         t=Term(tmp,'--opds',f'http://127.0.0.1:{server.server_port}/v2')
         try:
             t.see('OPDS catalog');t.keys('Tab','Tab','Enter');t.click('Maps',t.see('Maps'));t.click('Harbour Atlas',t.see('Harbour Atlas'))
-            t.click('EPUB',t.wait('edition',lambda s:'EPUB' in s and '[V ' not in s));t.see(shelf.EPUB_MARK);t.keys('q');t.see('EPUB');t.keys('Escape');t.see('Harbour Atlas')
+            t.click('EPUB',t.wait('edition',lambda s:'EPUB' in s and '[V ' not in s));t.see(shelf.EPUB_MARK);t.keys('Space','q');t.see('EPUB');t.keys('Escape');t.see('Harbour Atlas')
             t.keys('/');t.see('Search OPDS catalog');t.type('Atlas & maps');t.keys('Enter');t.see('Loan only');t.click('Loan only',t.see('Loan only'));t.see('no direct download')
             assert server.seen=={'/v2','/file.epub','/search?query=Atlas%20%26%20maps','/v2-next'},server.seen
         finally:t.run('kill-server',required=False);server.shutdown()
@@ -99,7 +99,7 @@ def local_scan(tmp):
         t.keys("Escape")
         t.click("Atlas.pdf", t.see("Atlas.pdf"))
         t.see("1 / 3")
-        t.keys("q")
+        t.keys("Space", "q")
         t.see("[I File info]")
     finally:
         t.run("kill-server", required=False)
@@ -109,24 +109,24 @@ def scan(tmp,path):
     try:
         first=t.wait('Первая страница скана',lambda s:'▀' in s or '▄' in s)
         t.keys('Right');t.wait('Другое изображение на второй странице',lambda s:s!=first and ('▄' in s or '▀' in s))
-        t.keys('+');t.wait('Увеличенная страница',lambda s:'▄' in s or '▀' in s);t.keys('Down','-');t.keys('m');t.see('2 / 3');t.click('Two-page spread',t.see('Two-page spread'))
+        t.keys('Space', 'r', '+');t.wait('Увеличенная страница',lambda s:'▄' in s or '▀' in s);t.keys('Down', 'Space', 'r', '-');t.keys('Space', 'm');t.see('2 / 3');t.click('Two-page spread',t.see('Two-page spread'))
         t.wait('Возврат из меню в разворот',lambda s:'Two-page spread' not in s and ('▀' in s or '▄' in s))
-        t.keys('3');t.see('Scroll');t.keys('p');t.see('Go to page');t.keys('C-u');t.type('3');t.keys('Enter');t.see('3 / 3')
-        t.keys('C-g');t.see('Go to page');t.keys('C-u');t.type('1');t.keys('Enter');t.see('1 / 3')
-        t.keys('Home','/');t.see('Find in text layer');t.type('lighthouse');t.keys('Enter');t.see('1 matching page')
-        t.keys('b');t.see('Page bookmarked');t.keys('i');t.see('Page note');t.type('Watch the lighthouse');t.keys('Enter')
-        t.keys('Home','g');t.see('Page bookmarks');t.see('Page 2');t.keys('Enter')
-        t.keys('a');t.see('Watch the lighthouse');t.keys('Enter','e');t.see('Saved ')
+        t.keys('Space', 'l', '3');t.see('Scroll');t.keys('Space', 'r', 'p');t.see('Go to page');t.keys('C-u');t.type('3');t.keys('Enter');t.see('3 / 3')
+        t.keys('Space', 'r', 'p');t.see('Go to page');t.keys('C-u');t.type('1');t.keys('Enter');t.see('1 / 3')
+        t.keys('Home', 'Space', 'f');t.see('Find in text layer');t.type('lighthouse');t.keys('Enter');t.see('1 matching page')
+        t.keys('Space', 'b', 'a');t.see('Page bookmarked');t.keys('Space', 'a', 'p');t.see('Page note');t.type('Watch the lighthouse');t.keys('Enter')
+        t.keys('Home', 'Space', 'b', 'l');t.see('Page bookmarks');t.see('Page 2');t.keys('Enter')
+        t.keys('Space', 'a', 'a');t.see('Watch the lighthouse');t.keys('Enter', 'Space', 'a', 'e');t.see('Saved ')
         exports=tmp/'.local/share/botui/exports';assert any('## Page 2' in p.read_text() and 'Watch the lighthouse' in p.read_text() for p in exports.glob('*.md'))
-        t.keys('s');t.see('Total time book open');t.keys('Escape');t.wait('Statistics closed',lambda s:'Total time book open' not in s)
-        t.keys('m');t.see('2 / 3');t.keys('q')
+        t.keys('Space', 'r', 's');t.see('Total time book open');t.keys('Escape');t.wait('Statistics closed',lambda s:'Total time book open' not in s)
+        t.keys('Space', 'm');t.see('2 / 3');t.keys('Space', 'q')
         import time
         for _ in range(100):
             if t.run('has-session',required=False).returncode:break
             time.sleep(.025)
     finally:t.run('kill-server',required=False)
     t=Term(tmp,path)
-    try:t.wait('Восстановление скана',lambda s:'▀' in s or '▄' in s);t.keys('g');t.see('Page bookmarks');t.see('Page 2');t.keys('Enter');t.keys('s');frame=t.see('Sessions on this device');assert 'Sessions on this device  2' in frame,frame
+    try:t.wait('Восстановление скана',lambda s:'▀' in s or '▄' in s);t.keys('Space', 'b', 'l');t.see('Page bookmarks');t.see('Page 2');t.keys('Enter');t.keys('Space', 'r', 's');frame=t.see('Sessions on this device');assert 'Sessions on this device  2' in frame,frame
     finally:t.run('kill-server',required=False)
 
 if __name__=='__main__':

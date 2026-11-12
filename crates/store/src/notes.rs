@@ -19,6 +19,15 @@ pub struct Note {
     pub color: Option<HighlightColor>,
     #[serde(default)]
     pub updated: u64,
+    /// PDF word rectangles in unrotated, normalized page coordinates.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub pdf_regions: Vec<PdfRegion>,
+}
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+pub struct PdfRegion {
+    /// Physical page, starting at one.
+    pub page: u32,
+    pub bounds: [f32; 4],
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -126,6 +135,7 @@ impl LocalState {
                     quote: String::new(),
                     color: None,
                     updated: now(),
+                    pdf_regions: vec![],
                 });
             }
         })
@@ -139,6 +149,30 @@ impl LocalState {
         color: Option<HighlightColor>,
         body: String,
     ) -> io::Result<Vec<Note>> {
+        self.annotate_regions(id, range, quote, color, body, vec![])
+    }
+    pub fn annotate_regions(
+        &self,
+        id: Option<&str>,
+        range: TextRange,
+        quote: String,
+        color: Option<HighlightColor>,
+        body: String,
+        pdf_regions: Vec<PdfRegion>,
+    ) -> io::Result<Vec<Note>> {
+        if pdf_regions.iter().any(|r| {
+            r.page == 0
+                || r.bounds
+                    .iter()
+                    .any(|v| !v.is_finite() || !(0.0..=1.0).contains(v))
+                || r.bounds[0] >= r.bounds[2]
+                || r.bounds[1] >= r.bounds[3]
+        }) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "Invalid PDF annotation coordinates",
+            ));
+        }
         if range.start >= range.end || quote.trim().is_empty() {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
@@ -165,6 +199,7 @@ impl LocalState {
                 color,
                 body,
                 updated: now(),
+                pdf_regions,
             });
         })
     }
@@ -200,6 +235,60 @@ fn now() -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn pdf_ranges_survive_reopen_and_reject_invalid_coordinates() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = LocalState {
+            path: dir.path().join("reading.json"),
+            baseline: Default::default(),
+        };
+        let range = TextRange::new(Anchor { block: 2, byte: 7 }, Anchor { block: 3, byte: 10 });
+        let regions = vec![
+            PdfRegion {
+                page: 3,
+                bounds: [0.1, 0.2, 0.4, 0.3],
+            },
+            PdfRegion {
+                page: 4,
+                bounds: [0.2, 0.1, 0.8, 0.2],
+            },
+        ];
+        let notes = store
+            .annotate_regions(
+                None,
+                range,
+                "quoted\n\nwords".into(),
+                Some(HighlightColor::Blue),
+                "comment".into(),
+                regions.clone(),
+            )
+            .unwrap();
+        let reopened = store.notes().unwrap();
+        assert_eq!(reopened[0].range(), Some(range));
+        assert_eq!(reopened[0].pdf_regions, regions);
+        store
+            .edit_note(Anchor { block: 2, byte: 0 }, "whole page".into())
+            .unwrap();
+        assert_eq!(store.notes().unwrap().len(), 2);
+        assert!(
+            store
+                .annotate_regions(
+                    Some(&notes[0].id),
+                    range,
+                    "bad".into(),
+                    None,
+                    String::new(),
+                    vec![PdfRegion {
+                        page: 3,
+                        bounds: [0., 0., f32::NAN, 1.]
+                    }]
+                )
+                .is_err()
+        );
+        assert_eq!(store.notes().unwrap()[1].quote, "quoted\n\nwords");
+        store.delete_note(&notes[0].id).unwrap();
+        assert_eq!(store.notes().unwrap()[0].body, "whole page");
+    }
     #[test]
     fn legacy_and_overlapping_annotations_are_preserved() {
         let dir = tempfile::tempdir().unwrap();

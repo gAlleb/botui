@@ -28,6 +28,19 @@ impl Shelf {
         shelf.login = Some(form);
         shelf
     }
+    pub(crate) fn open_opds(&mut self, c: crate::opds_settings::Catalog) {
+        if let Some(form) = &mut self.login {
+            form.server = c.url.clone();
+            form.username = c.username.clone();
+        }
+        self.fetch("Opening OPDS catalog…", move |cancel| {
+            let pass = c.password(cancel)?;
+            let cat = Arc::new(Catalog::new(&c.url, c.username, pass)?);
+            let href = cat.root();
+            let feed = cat.feed(href.clone())?;
+            Ok(Loaded::Feed(cat, Box::new(feed), href))
+        });
+    }
     pub(super) fn submit_opds(&mut self) {
         let Some(form) = &mut self.login else { return };
         let address = form.server.trim().to_owned();

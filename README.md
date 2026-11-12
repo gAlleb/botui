@@ -15,7 +15,8 @@ BOTUI is a terminal book reader for Linux. Open an EPUB, FB2, PDF or DjVu from d
 - Offline reading with BookOrbit progress sync across devices
 - Single pages, two-page spreads and continuous scrolling, with an optional contents sidebar
 - In-book search, bookmarks, jump history and reading stats
-- EPUB/FB2 text selection, clipboard copy, colored highlights and comments with Markdown export
+- Text selection, clipboard copy, colored highlights and comments in EPUB/FB2 and text-layer PDF; Markdown export
+- Optional Vim cursor, Space command menu, dictionaries and translation with selectable languages
 - EPUB tables with merged cells, MathML and TeX formulas, SVG diagrams and inline illustrations
 - PDF and DjVu zoom, fit to width and page colors that match the reader theme
 - Keyboard and mouse controls, themes, adjustable margins and zen mode
@@ -107,7 +108,7 @@ cargo build --release --locked -p botui --target-dir target &&
 | PDF | Poppler utilities (`pdfinfo`, `pdftoppm`, `pdftotext`) or Python 3 with Poppler GI and Cairo |
 | DjVu | DjVuLibre (`djvused`, `ddjvu`, `djvutxt`) |
 
-The PDF contents tree uses Python 3 with PyGObject and the Poppler GI bindings. Searching a PDF or DjVu requires a text layer.
+The PDF contents tree uses Python 3 with PyGObject and the Poppler GI bindings. Searching a PDF or DjVu requires a text layer. PDF text selection and highlights also require Poppler's `pdftotext`; no OCR is performed.
 
 Kitty displays pages and covers as images, including inside tmux with graphics passthrough. Terminals without an image protocol can use colored half-blocks.
 
@@ -122,25 +123,294 @@ botui --resume                 # Continue your last unfinished local book
 
 On the start screen, press **Enter** for your local library, **B** for BookOrbit or **P** for OPDS. On a shelf, press **/** to search as you type. Use the arrows and **Enter**, or click a book.
 
-| While reading | Control |
+## Controls
+
+<details>
+<summary>All reading, Vim and panel commands</summary>
+
+Books open without a cursor. **Space** opens commands; hints appear after **150 ms**, but the next key works immediately. Press keys in sequence, not together. `Space c` enables Vim. Only then do `v`/`V` select text. Legacy letters such as `t`, `b` and `v` have no action in ordinary reading. Explicit user `[keys]` overrides are an exception for EPUB/FB2; they do not override Vim or Space.
+
+In a Space submenu, `q`, `Esc` and `Backspace` return to the root; `Esc` closes the root menu. Shelves and editors have their own contextual keys, listed separately.
+
+| Keys | Action |
 | --- | --- |
-| Single page, two-page spread, continuous scroll | **1**, **2**, **3** |
-| Toggle zen mode or show the contents sidebar | **Z** |
-| Show or hide page and percentage in zen mode | **%** |
-| Adjust text width and column gap, or zoom a scan | **W** |
-| Search inside the book | **/** |
-| Next match / previous match | **F3** / **F4** |
-| Set or remove a bookmark / open bookmarks | **B** / **G** |
-| Go to a PDF or DjVu page | **P** |
-| Return to the shelf | **Q** |
+| `Space c` | Toggle Vim cursor (Normal ↔ reading) |
+| `Space m` | Reading menu |
+| `Space o` | Contents |
+| `Space z` | Zen mode |
+| `Space p` | Dim progress footer in zen |
+| `Space f` | Find in book |
+| `Space b a` | Add/remove bookmark |
+| `Space b l` | Bookmark list |
+| `Space a y` | Copy selection; Normal: word under cursor |
+| `Space a h` | Color highlight |
+| `Space a n` | Comment on passage |
+| `Space a a` | Highlights and notes |
+| `Space a e` | Export annotations to Markdown |
+| `Space a v` | Show/hide note body (EPUB/FB2) |
+| `Space a p` | Page note (PDF/DjVu) |
+| `Space d d` | Word definition |
+| `Space d t` | Translate selected text |
+| `Space l 1` | Single page |
+| `Space l 2` | Two-page spread |
+| `Space l 3` | Continuous scroll |
+| `Space l w` | Page width / column gap; PDF zoom |
+| `Space l f` | Opaque/transparent background |
+| `Space l u` | Border style |
+| `Space t` | Reading theme; PDF: original / inverted / match background |
+| `Space s` | Settings |
+| `Space ?` | Help |
+| `Space q` | Close book and return to its source |
+| `Space r c` | Open cover in external viewer |
+| `Space r s` | Reading statistics |
+| `Space r [` | Jump back |
+| `Space r ]` | Jump forward |
+| `Space r i` | Links and illustrations (EPUB/FB2) |
+| `Space r f` | Follow visible links (EPUB/FB2) |
+| `Space r p` | Go to page (PDF/DjVu) |
+| `Space r +` | Zoom in (PDF/DjVu) |
+| `Space r -` | Zoom out (PDF/DjVu) |
+| `Space r 0` | Fit page / fit width in scroll (PDF/DjVu) |
+| `Space r r` | Rotate clockwise (PDF/DjVu) |
+| `Space r R` | Rotate counterclockwise (PDF/DjVu) |
+
+**Direct navigation in ordinary reading**
+
+| Keys | Action |
+| --- | --- |
+| `← → / PgUp PgDn` | Navigate pages; in PDF arrows also pan |
+| `↑ ↓ / j k` | Move through text; one line in continuous text scroll |
+| `h l` | Previous/next page or horizontal movement |
+| `Home End` | Start/end (PDF: document; Vim: line) |
+| `Tab` | Focus visible contents; arrows fold/expand, Enter opens |
+| `F1 / F2` | Help / settings |
+| `F3 / F4 / F5` | Next match / previous match / result list |
+| `Esc` | Back/close panel; reading menu |
+| `Ctrl+C` | Copy selected text |
+
+**Vim — after Space c**
+
+| Keys | Action |
+| --- | --- |
+| `Space c` | Enter Normal; repeat to return to reading from Normal or Visual |
+| `v / V` | Visual / logical line selection |
+| `Esc` | Cancel pending command or Visual; idle Normal → reading |
+| `h j k l` | Cursor left/down/up/right; j/k follow visible lines |
+| `w b e` | Next word / previous word / word end |
+| `0 ^ $` | Logical line start / first text / end |
+| `{ }` | Previous/next paragraph (PDF: text block) |
+| `gj gk / g0 g$` | Screen rows / screen row edges (EPUB/FB2) |
+| `gg / G` | Start/end of text (PDF: current page) |
+| `y` | Copy selection in Visual; begin copy operator in Normal |
+| `yw ye yy y$` | Copy to next word / word end / logical line / line end |
+| `yiw yaw yip yap` | Copy inner word / word with space / paragraph |
+| `3j / 3yw / y3w` | Repeat a motion or copy operation; counts can precede the operator or motion |
+| `viw / vaw / vip / vap / gv` | Select inner word / word with space / paragraph / restore previous selection |
+| `/ ? / n N` | Search forward/backward / next/previous match |
+| ``ma / 'a / `a`` | Set named mark a / return to it |
+| `Ctrl+O / Ctrl+I` | Jump back / forward |
+| `K` | Definition of word/selection |
+
+**Inside panels and editors**
+
+| Keys | Action |
+| --- | --- |
+| `↑ ↓ / Enter / click` | Choose and activate an item |
+| `Esc` | Close panel; editor offers to save/discard unsaved changes |
+| `Ctrl+S / Enter` | Note editor: save / new line; empty saved comment deletes annotation |
+| `Tab` | Note editor: change highlight color |
+| `[ ] / { }` | Page layout panel: narrow/widen page / decrease/increase column gap |
+| `/ / N / H / Y / Del / E` | Annotation list: filter / edit / color / copy / delete / export |
+| `P / L / S / Y / N` | Lookup result: provider / target language / source language / copy / save as note |
+
+</details>
+
+<details>
+<summary>Libraries, book cards and command-line options</summary>
+
+| Screen | Keys |
+| --- | --- |
+| Home | Enter/L: local library; B: BookOrbit; P: OPDS; D: BookOrbit offline; O: OPDS downloads; Q: quit |
+| Shelves | /: search; V: grid/list; U: borders; F: background; Enter/click: open; Q/Esc: back; F6: focus navigation |
+| BookOrbit | 0: dashboard; 1: books; 2: reading; 3: recent; 4: libraries; 5: collections; 6: authors; 7: series |
+| Local library | 1: folders; 2: reading; 3: recent; 4: collections; P: choose folder; R: use as root; A: collection membership; I: file details |
+| Collections | BookOrbit: N creates; local: New collection in section 4; Del deletes the selected collection after confirmation |
+| BookOrbit card | R: read; D: save; C/cover: external cover viewer; I: synopsis; H: hold/resume; X: reset reading; A: collections; L: reading log; B: related books |
+| Offline downloads | Del: delete downloaded copy after confirmation |
+
+```sh
+botui [FILE | DIRECTORY]
+botui --local [DIRECTORY]
+botui --library DIRECTORY
+botui --resume
+botui --server URL
+botui --opds URL
+botui --config-path
+botui --check-bookmarks TITLE
+botui --help
+botui --license
+```
+
+</details>
 
 ## Settings and help
 
-Press **F2** for settings or **?** for shortcuts on the current screen. The interface starts in **Catppuccin Mocha**. Choose **Terminal** to follow your terminal palette.
+Press **F2** for settings or **F1** for shortcuts on the current screen. The interface starts in **Catppuccin Mocha**. Choose **Terminal** to follow your terminal palette.
 
 In **F2 → Reader → Paragraph spacing**, follow the book’s layout or choose 0, 1 or 2 blank lines between paragraphs in EPUB and FB2.
 
-Run `botui --config-path` to locate the TOML file. The [configuration example](config.example.toml) covers library paths, appearance, key bindings and BookOrbit sign-in with a password or password command.
+Run `botui --config-path` to locate the TOML file. The [configuration example](config.example.toml) covers library paths, appearance, reading, definition and translation providers, OPDS and BookOrbit sign-in with a password or password command.
+
+On startup, older configs gain missing dictionary/translation defaults, the Space hint delay, mouse-wheel step and an empty OPDS list. Existing values, connections and comments are preserved.
+
+**F2 → Dictionaries → Word definitions / Translation** lets you add, edit, test and delete connections. **Save changes & back** writes them to the same TOML. **F2 → Library → OPDS catalogs** manages saved catalogs.
+
+<details>
+<summary>Complete config.toml example</summary>
+
+```toml
+# Local library. Uncomment to use a specific folder.
+# library_root = "/path/to/books"
+local_grid = false
+# Width of the navigation sidebar on the bookshelf, in cells. Omit for Auto.
+# sidebar_width = 28
+# Width of the contents sidebar in an open book, in cells. Omit for Auto.
+# contents_width = 24
+# Per downloaded edition, in MiB (BookOrbit and OPDS). 0 removes the limit.
+max_download_mib = 4096
+
+# Reader defaults. Use "terminal" to follow your terminal's colors.
+theme = "terminal"
+interface_theme = "catppuccin-mocha"
+# Optional override. By default, solid Terminal paper follows the active terminal background.
+# opaque_color = "#1f2125"
+zen = false
+# Show a dim page count and percentage in zen mode. Toggle with Space p.
+zen_progress = false
+# PDF/DjVu zoom in percent. In scroll mode 100 fits the reading pane.
+scan_zoom = 100
+# Preferred width of one text page and the space between facing pages, in terminal cells.
+# page_width = 78
+column_gap = 4
+# First line of a prose paragraph in EPUB/FB2, in cells (0–8; 0 disables).
+paragraph_indent = 0
+# Blank lines between EPUB/FB2 paragraphs (0, 1 or 2). Omit to follow the book.
+# paragraph_spacing = 1
+# Default layout for books without a saved mode: auto, single, spread, scroll.
+reading_layout = "auto"
+opaque_background = false
+# Window frames, cover cards and jackets: "rounded", "square", or "none".
+borders = "rounded"
+preserve_printed_lines = false
+hide_inline_images = false
+# Lines per mouse-wheel tick in continuous scroll (EPUB/FB2/PDF/DjVu, 1–12).
+scroll_lines = 1
+# Delay before the Space command menu appears. Fast sequences execute immediately.
+leader_delay_ms = 150
+# Legacy lookup_command is still read; use lookup.profiles for new configurations.
+
+[bookorbit]
+# Remember which navigation groups are folded on a wide screen.
+# libraries_collapsed = false
+# collections_collapsed = false
+server = ""
+username = ""
+list_view = false
+# Uncomment one way to sign in with this account.
+# password_command = ["pass", "show", "bookorbit"]
+# password = "your password"
+
+# Reader commands use Space; Space c toggles the optional Vim cursor.
+# Direct reader navigation and Vim mappings are documented in README and F1.
+# Optional explicit single-letter overrides for EPUB/FB2 reading only.
+# They never override Space commands or Vim motions. No overrides by default.
+[keys]
+# x = "next"
+# Supported action names:
+# next, previous, menu, zen, zen-progress, background, borders, cover, resources,
+# statistics, note, notes, export-notes, jump-back, jump-forward, theme, contents,
+# search, search-results, next-match, previous-match, bookmark, bookmarks,
+# single, spread, scroll, page-layout, wider-gap, narrower-gap,
+# wider-margins (alias narrower-page), narrower-margins (alias wider-page), close
+
+# Multiple OPDS catalogs. Credentials are optional for public catalogs.
+# [[opds]]
+# name = "My catalog"
+# url = "https://books.example.org/opds"
+# username = "reader"
+# password_command = ["pass", "show", "books/opds"]
+# password = "plain-text alternative"
+
+# F2 → Dictionaries has two independent lists: Word definitions and Translation.
+# Add/edit/delete a profile in its list, then Save changes & back.
+# These names select the default connection in each list; names must be unique.
+[lookup]
+dictionary = "English dictionary"
+translation = "Google Translate"
+source_language = "auto"
+target_language = "en"
+
+# Defining profiles replaces the built-in profile list; keep the ones you use.
+# Remove a whole [[lookup.profiles]] block to delete a connection; update the default
+# name above if needed. To disable all providers, set profiles = [] under [lookup]
+# and remove all [[lookup.profiles]] blocks. purpose selects the UI group.
+# Use language codes (en, ru, de, …). "auto" is for source detection only.
+# Free Dictionary is English-only; target_language applies to translation and AI explanations.
+[[lookup.profiles]]
+name = "English dictionary"
+purpose = "dictionary"
+provider = "free-dictionary"
+endpoint = "https://api.dictionaryapi.dev/api/v2/entries/en"
+# This provider returns English definitions, regardless of target_language.
+
+[[lookup.profiles]]
+name = "Google Translate"
+purpose = "translation"
+provider = "google-web"
+endpoint = "https://translate.googleapis.com/translate_a/single"
+# Unofficial web endpoint, no key. Use Google Cloud for the official API.
+
+# Offline dictionary program (install it and its dictionaries separately).
+# [[lookup.profiles]]
+# name = "Local dictionary"
+# purpose = "dictionary"
+# provider = "command"
+# command = ["sdcv", "-n", "{text}"]
+# Arguments are passed without a shell. Also available: {source}, {target}.
+
+# [[lookup.profiles]]
+# name = "LibreTranslate"
+# purpose = "translation"
+# provider = "libre-translate"
+# endpoint = "http://localhost:5000/translate"
+# api_key = "optional key"
+
+# [[lookup.profiles]]
+# name = "DeepL"
+# purpose = "translation"
+# provider = "deepl"
+# endpoint = "https://api-free.deepl.com/v2/translate"
+# key_command = ["pass", "show", "translation/deepl"]
+# api_key = "plain-text alternative"
+# key_command takes precedence over api_key. Keep only the method you use.
+
+# [[lookup.profiles]]
+# name = "Google Cloud"
+# purpose = "translation"
+# provider = "google-cloud"
+# api_key = "your API key"
+
+# OpenAI-compatible chat completions, including a locally hosted server.
+# [[lookup.profiles]]
+# name = "Explanations"
+# purpose = "dictionary" # or "translation"
+# provider = "openai"
+# endpoint = "http://localhost:11434/v1/chat/completions"
+# model = "your-installed-model"
+# api_key = "optional key"
+```
+
+</details>
 
 [Create and delete collections, add books and remove them](docs/guide.md#managing-collections)
 

@@ -14,7 +14,7 @@ spec.loader.exec_module(shelf)
 BINARY = ROOT / "target/debug/botui"
 
 def select(t, label):
-    t.keys("i")
+    t.keys('Space', 'r', 'i')
     t.see("Book links & illustrations")
     t.click(label, t.see(label))
 
@@ -46,7 +46,7 @@ def check(tmp):
         t.wait("cancelled external link",lambda f:"External website" not in f)
         select(t, "Next chapter")
         t.wait("exact in-book destination",lambda f:"Last passage." in f and "Book links" not in f)
-        t.keys(",")
+        t.keys('Space', 'r', '[')
         t.wait("back at paragraph with links", lambda f: "See Next chapter" in f and "Source note" in f)
     finally:
         t.run("kill-server", required=False)
@@ -85,26 +85,26 @@ def check_reference_return(tmp):
     t=shelf.Terminal(tmp,BINARY,args=[str(book)])
     try:
         t.see("Coast waypoint 000")
-        t.keys("3", "/"); t.see("Find:"); t.type("Coast waypoint 038"); t.see("1 match"); t.keys("Enter")
+        t.keys('Space', 'l', '3', 'Space', 'f'); t.see("Find:"); t.type("Coast waypoint 038"); t.see("1 match"); t.keys("Enter")
         source=t.wait("Reading before the cited paragraph",lambda f:"Find:" not in f and "Coast waypoint 038" in f and "Return marker" in f)
         t.click("ebb tide",source)
         note=t.see("Water moves seaward.")
         assert "[ Back · Esc ]" in note
         t.click("original citation",note)
         t.wait("Publisher backlink restores the exact viewport",lambda f:f==source)
-        t.keys("F6");links=t.see("Links on this page")
+        t.keys('Space', 'r', 'f');links=t.see("Links on this page")
         assert "tidal datum" in links and "original citation" not in links,links
         t.click("tidal datum",links)
         definition=t.see("Height relative to the tide gauge.")
         assert "Wrong definition" not in definition and "↩" in definition
         t.click("[ Back · Esc ]",definition)
         t.wait("Non-spine glossary keeps both the term and its definition",lambda f:f==source)
-        t.keys("2");spread=t.see("ebb tide"); t.click("ebb tide",spread)
+        t.keys('Space', 'l', '2');spread=t.see("ebb tide"); t.click("ebb tide",spread)
         t.see("Water moves seaward.")
         t.run("resize-window","-t","shelf","-x","155","-y","31")
         t.click("[ Back · Esc ]",t.see("[ Back · Esc ]"))
         t.wait("Spread reflows around original reading point",lambda f:"Coast waypoint 038" in f and "Return marker" in f and "Read here" not in f)
-        t.keys("3"); t.click("ebb tide",t.see("ebb tide")); t.see("Water moves seaward.")
+        t.keys('Space', 'l', '3'); t.click("ebb tide",t.see("ebb tide")); t.see("Water moves seaward.")
         t.keys("PageDown"); time.sleep(.8); t.keys("C-c")
         deadline=time.monotonic()+5
         while t.run("has-session","-t","shelf",required=False).returncode==0 and time.monotonic()<deadline:
@@ -137,9 +137,9 @@ def check_scanned_epub(tmp):
         t.wait("first scanned page", lambda f: "1 / 12" in f and "▀" in f)
         t.keys("Right")
         t.wait("second scanned page", lambda f: "2 / 12" in f and "▀" in f)
-        t.keys("2", "Right")
+        t.keys('Space', 'l', '2', 'Right')
         t.wait("next scanned spread", lambda f: "4 / 12" in f and "▀" in f)
-        t.keys("q")
+        t.keys('Space', 'q')
         deadline = time.monotonic() + 5
         while t.run("has-session", "-t", "shelf", required=False).returncode == 0:
             if time.monotonic() >= deadline:

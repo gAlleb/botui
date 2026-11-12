@@ -20,7 +20,7 @@ with tempfile.TemporaryDirectory() as name:
     t = shelf.Terminal(tmp, shelf.ROOT / "target/debug/botui", args=[str(path)])
     try:
         t.see("Paragraph 000")
-        t.keys("1", "/")
+        t.keys('Space', 'l', '1', 'Space', 'f')
         t.see("Find:")
         t.type("lighthouse")
         t.see("3 matches")
@@ -60,9 +60,9 @@ with tempfile.TemporaryDirectory() as name:
             rows = frame.splitlines()
             return any(first in a and second in b for a, b in zip(rows, rows[3:]))
         t.wait("spacing applies to the open FB2", lambda f: two_blank_lines(f, "At lighthouse 055", "Paragraph 056"))
-        t.keys("b", "F3")
+        t.keys('Space', 'b', 'a', 'F3')
         highlighted("088")
-        t.keys("b", "g")
+        t.keys('Space', 'b', 'a', 'Space', 'b', 'l')
         t.see("Bookmarks: 2"); t.keys("Home", "DC"); t.see("Delete bookmark?")
         t.keys("Escape"); t.see("Bookmarks: 2")
         t.click("[×]", t.see("[×]")); t.click("[ Delete bookmark ]", t.see("Delete bookmark?"))
@@ -70,7 +70,7 @@ with tempfile.TemporaryDirectory() as name:
         assert "088" in remaining and "055" not in remaining, remaining
         t.keys("Escape")
         t.see("At lighthouse 088")
-        t.keys("q")
+        t.keys('Space', 'q')
         deadline = time.monotonic() + 5
         while t.run("has-session", "-t", "shelf", required=False).returncode == 0:
             if time.monotonic() >= deadline:
@@ -78,9 +78,9 @@ with tempfile.TemporaryDirectory() as name:
             time.sleep(.04)
         t = shelf.Terminal(tmp, shelf.ROOT / "target/debug/botui", args=[str(path)])
         t.wait("saved spacing on reopen", lambda f: two_blank_lines(f, "lighthouse 088", "Paragraph 089"))
-        t.keys("g")
+        t.keys('Space', 'b', 'l')
         assert "088" in t.see("Bookmarks: 1")
-        t.keys("Escape", "q")
+        t.keys('Escape', 'Space', 'q')
     finally:
         t.run("kill-server", required=False)
 print("Passed search navigation, highlighting, live paragraph indent and spacing, and bookmark deletion.")

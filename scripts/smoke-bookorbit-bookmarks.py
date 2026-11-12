@@ -17,14 +17,14 @@ def open_book(tmp, server):
     t.keys("Enter")
     t.click("FB2", s.formats(t))
     t.see(s.FB2_MARK)
-    t.keys("g")
+    t.keys('Space', 'b', 'l')
     return t
 
 
 def close_book(t):
     t.keys("Escape")
     t.wait("Close bookmarks", lambda f: "Bookmarks:" not in f and s.FB2_MARK in f)
-    t.keys("q")
+    t.keys('Space', 'q')
     s.formats(t)
     s.quit_shelf(t)
 
@@ -92,16 +92,16 @@ def web_passage(tmp, server):
         t.keys("Enter")
         t.wait("Jump to the marked passage",
                lambda frame: "Bookmarks:" not in frame and "Внизу у воды" in frame)
-        t.keys("q")
+        t.keys('Space', 'q')
         s.formats(t)
         assert server.progress[302]["text"]["cfi"] == server.marks[302][0]["cfi"]
         t.click("FB2", s.formats(t))
         frame = t.see("Внизу у воды")
-        if "Z Zen" in frame:
-            t.keys("z")
+        if "Space z Zen" in frame:
+            t.keys('Space', 'z')
         t.wait("Resume exactly on the bookmarked words",
                lambda frame: frame.strip().startswith("Внизу у воды"))
-        t.keys("q")
+        t.keys('Space', 'q')
         s.formats(t)
         assert server.saved == [302]
     finally:

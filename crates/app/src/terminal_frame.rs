@@ -26,8 +26,15 @@ impl AppTerminal {
     }
 
     pub fn draw(&mut self, render: impl FnOnce(&mut Frame)) -> io::Result<()> {
+        self.draw_frame(render).map(|_| ())
+    }
+
+    pub fn draw_frame(
+        &mut self,
+        render: impl FnOnce(&mut Frame),
+    ) -> io::Result<ratatui::CompletedFrame<'_>> {
         let mut update = None;
-        self.0.try_draw(|frame| {
+        let frame = self.0.try_draw(|frame| {
             // Capability queries and image preparation happen before holding
             // the display. Only publishing the finished frame is synchronized.
             render(frame);
@@ -35,6 +42,6 @@ impl AppTerminal {
             execute!(io::stdout(), BeginSynchronizedUpdate)
         })?;
         drop(update);
-        Ok(())
+        Ok(frame)
     }
 }

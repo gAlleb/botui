@@ -8,7 +8,7 @@ def start(d,path,*env):
     t=s.shelf.Terminal(d,Path('/usr/bin/env'),args=['NO_COLOR=1',*env,str(root/'target/debug/botui'),str(path)])
     return t
 def stop(t):
-    t.keys('q')
+    t.keys('Space','q')
     for _ in range(100):
         if t.run('has-session','-t','shelf',required=False).returncode:break
         time.sleep(.035)
@@ -23,12 +23,12 @@ def text_scroll(d):
     file.write_text('<FictionBook><body><section>'+''.join(f'<p>Passage {i:03}.</p>' for i in range(100))+'</section></body></FictionBook>')
     t=start(d,file)
     try:
-        t.see('Passage 001');t.keys('3');state=t.see('Scroll ·');first=re.findall(r'Passage \d+',state)
+        t.see('Passage 001');t.keys('Space', 'l', '3');state=t.see('Scroll ·');first=re.findall(r'Passage \d+',state)
         t.keys('Down');second=t.wait('Line scroll keeps neighboring passages',lambda a:first[0] not in a and first[2] in a);assert len(set(first)&set(re.findall(r'Passage \d+',second)))>2
         t.keys('Up');t.wait('Up restores first row',lambda a: re.findall(r'Passage \d+',a)==first)
         wheel(t,65);t.wait('Wheel defaults to exactly one line',lambda a:a==second)
         t.keys('PageDown');last=t.wait('Page scroll advances',lambda a:first[2] not in a and 'Passage' in a)
-        at=re.findall(r'Passage \d+',last)[0];t.keys('2','3');t.see(at);stop(t)
+        at=re.findall(r'Passage \d+',last)[0];t.keys('Space', 'l', '2', 'Space', 'l', '3');t.see(at);stop(t)
         assert saved(d)['scrolling']
         t=start(d,file);t.see(at)
         for _ in range(18):t.keys('PageDown')
@@ -46,7 +46,7 @@ def configured_wheel(d):
     (d/'config/botui/config.toml').write_text('scroll_lines = 3\n')
     t=start(d,file)
     try:
-        t.see('Wheel passage');t.keys('3');first=t.see('Scroll')
+        t.see('Wheel passage');t.keys('Space', 'l', '3');first=t.see('Scroll')
         t.keys('Down','Down','Down');third=t.wait('Three keyboard lines',lambda f:'Wheel passage 002' in f and f!=first)
         t.keys('Up','Up','Up');t.wait('Return to starting slice',lambda f:f==first)
         wheel(t,65);t.wait('Configured wheel equals three single lines',lambda f:f==third)
@@ -62,11 +62,11 @@ def scan_scroll(d,file):
     d.mkdir();t=start(d,file)
     try:
         t.wait('First rendered page',lambda f:'::::::::' in f)
-        t.keys('m');controls=t.see('Continuous scroll')
+        t.keys('Space', 'm');controls=t.see('Continuous scroll')
         assert controls.index('Single page') < controls.index('Two-page spread') < controls.index('Continuous scroll')
-        t.click('Go to page number',controls);t.see('Go to page');t.keys('2','Enter');t.see('2 / 3');t.keys('b');t.see('Page bookmarked')
-        t.keys('p');t.see('Go to page');t.keys('1','Enter');t.see('1 / 3')
-        t.keys('m');t.click('Continuous scroll',t.see('Continuous scroll'));t.see('Scroll');both=False
+        t.click('Go to page number',controls);t.see('Go to page');t.keys('2','Enter');t.see('2 / 3');t.keys('Space', 'b', 'a');t.see('Page bookmarked')
+        t.keys('Space', 'r', 'p');t.see('Go to page');t.keys('1','Enter');t.see('1 / 3')
+        t.keys('Space', 'm');t.click('Continuous scroll',t.see('Continuous scroll'));t.see('Scroll');both=False
         samples=[]
         for i in range(130):
             t.keys('Down');time.sleep(.04)
@@ -81,20 +81,20 @@ def scan_scroll(d,file):
         wheel(t,65);t.wait('PDF/DjVu wheel equals one scan line',lambda f:f==one)
         t.keys('Up');t.wait('Transition restored',lambda f:f==a)
         # Jump away and back to the exact same slice spanning the two sheets.
-        t.keys('p');t.see('Go to page');t.keys('3','Enter');t.see('3 / 3')
-        t.keys(',');t.wait('Jump restores scroll offset',lambda a:'::::::::' in a and '########' in a)
-        t.keys('.');t.see('3 / 3');t.keys(',');t.see('1 / 3')
+        t.keys('Space', 'r', 'p');t.see('Go to page');t.keys('3','Enter');t.see('3 / 3')
+        t.keys('Space', 'r', '[');t.wait('Jump restores scroll offset',lambda a:'::::::::' in a and '########' in a)
+        t.keys('Space', 'r', ']');t.see('3 / 3');t.keys('Space', 'r', '[');t.see('1 / 3')
         stop(t);state=saved(d);assert state['scrolling'] and state['scan_offset']>0
         t=start(d,file);t.wait('Restored within the same physical sheet',lambda a:'::::::::' in a and '########' in a)
         # Delete an off-screen bookmark without moving or losing the saved position.
-        t.keys('g');t.see('Page bookmarks');t.keys('Delete');t.see('Delete bookmark?');t.keys('Escape')
+        t.keys('Space', 'b', 'l');t.see('Page bookmarks');t.keys('Delete');t.see('Delete bookmark?');t.keys('Escape')
         t.see('Page bookmarks');t.click('[×]',t.see('[×]'))
         t.click('[ Delete bookmark ]',t.see('[ Delete bookmark ]'))
         t.see('Bookmark removed');stop(t)
         after=saved(d)
         assert not after['marks'] and (after['block'],after['scan_offset'])==(state['block'],state['scan_offset'])
-        t=start(d,file);t.see('1 / 3');t.keys('g');t.see('No entries yet.');t.keys('Escape')
-        t.keys('2');t.wait('Spread leaves the scroll view',lambda a:'Scroll' not in a and '########' in a);stop(t)
+        t=start(d,file);t.see('1 / 3');t.keys('Space', 'b', 'l');t.see('No entries yet.');t.keys('Escape')
+        t.keys('Space', 'l', '2');t.wait('Spread leaves the scroll view',lambda a:'Scroll' not in a and '########' in a);stop(t)
     finally:t.run('kill-server',required=False)
 def damaged_sheet_and_search(d):
     # Force a real renderer subprocess failure on page 2, and count text extractions.
@@ -122,16 +122,16 @@ sys.stdout.write('Lighthouse on the north shore\\f\\fLighthouse by the southern 
     t=start(d,path,'PATH='+str(bin_dir)+os.pathsep+os.environ['PATH'])
     try:
         t.see('1 / 3')
-        t.keys('2'); t.see('Page 2 unavailable')
-        t.keys('1','/'); t.see('Find in text layer'); t.type('lighthouse'); t.keys('Enter')
+        t.keys('Space', 'l', '2'); t.see('Page 2 unavailable')
+        t.keys('Space', 'l', '1', 'Space', 'f'); t.see('Find in text layer'); t.type('lighthouse'); t.keys('Enter')
         t.see('2 matching pages'); t.keys('F5'); frame=t.see('Matching pages')
         assert 'north shore' in frame and 'southern bay' in frame
         t.click('southern bay',frame); t.see('3 / 3')
         t.keys('F4'); t.see('1 / 3'); t.keys('F3'); t.see('3 / 3')
-        t.keys('/'); t.see('Find in text layer'); t.keys('C-u'); t.type('north shore')
+        t.keys('Space', 'f'); t.see('Find in text layer'); t.keys('C-u'); t.type('north shore')
         t.keys('Enter'); t.see('1 matching page'); t.see('1 / 3')
         assert (bin_dir/'reads').read_text()=='x', 'A second query re-ran the document extractor'
-        t.keys('p');t.see('Go to page');t.keys('2','Enter');t.see('Page 2 unavailable')
+        t.keys('Space', 'r', 'p');t.see('Go to page');t.keys('2','Enter');t.see('Page 2 unavailable')
         t.keys('Right');t.see('3 / 3');stop(t)
         assert saved(d)['block']==2, 'The damaged page prevented saving the next readable page'
     finally: t.run('kill-server',required=False)
@@ -157,7 +157,7 @@ sys.stdout.buffer.write(b'P6\\n20 30\\n255\\n'+bytes([value])*1800)
     t=start(d,book,'PATH='+str(bins)+os.pathsep+os.environ['PATH'])
     try:
         t.see('::::::::')
-        t.keys('p');t.see('Go to page');t.keys('8','Enter')
+        t.keys('Space', 'r', 'p');t.see('Go to page');t.keys('8','Enter')
         t.wait('Visible sheet stays on screen until the destination arrives',
                lambda f: '→ 8' in f and '::::::::' in f and 'Rendering page' not in f)
         (bins/'release').touch()

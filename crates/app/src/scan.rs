@@ -8,6 +8,7 @@ mod menu;
 mod pages;
 mod paper;
 mod search;
+mod text;
 use crate::{
     AppTerminal, centered,
     cover::{Crop, graphics},
@@ -168,8 +169,14 @@ pub(super) fn read_pages(
     let mut menu = false;
     let mut focus: usize = 0;
     let mut dirty = false;
+    let mut text = text::Text::new(store.as_ref());
+    let mut leader = crate::leader::Leader::new();
+    let selectable = kind == FileKind::Pdf && plates.is_none();
 
     loop {
+        if selectable {
+            text.poll(path);
+        }
         if let Some(msg) = viewer.collect() {
             message = msg;
         }
@@ -348,7 +355,8 @@ pub(super) fn read_pages(
         let mut width_button = Rect::default();
         let mut go_button = Rect::default();
         let mut footer_buttons = crate::preferences::Buttons::default();
-        term.draw(|f| {
+        text.begin_frame();
+        let rendered = term.draw_frame(|f| {
             let screen = f.area();
             sidebar.draw(f, sidebar_area, shown, total.unwrap_or(0));
             let area = Rect {
@@ -357,26 +365,6 @@ pub(super) fn read_pages(
             };
             if !zen && screen.height > 0 {
                 let y = screen.bottom() - 1;
-                let mut right = area.right();
-                if !menu && area.width >= 45 && screen.height > 1 {
-                    right -= 23;
-                    footer_buttons.draw(f, Rect::new(right, y, 23, 1));
-                }
-                if !menu && area.width >= 74 && screen.height > 1 {
-                    let label = "[P Page…]";
-                    let w = label.chars().count() as u16;
-                    right -= w + 1;
-                    go_button = Rect::new(right, y, w, 1);
-                    f.render_widget(Paragraph::new(label).cyan(), go_button);
-                }
-                if !menu && area.width >= 56 {
-                    let label = format!("[W {}%]", crop.percent);
-                    let w = label.len() as u16;
-                    right -= w + 1;
-                    width_button = Rect::new(right, y, w, 1);
-                    f.render_widget(Paragraph::new(label).cyan(), width_button);
-                }
-                let space = right.saturating_sub(area.x);
                 let mut status =
                     format!(" {}   ·   {} / {}", kind.label(), shown, total.unwrap_or(0));
                 if shown != n {
@@ -390,7 +378,28 @@ pub(super) fn read_pages(
                         status.push_str(&format!(" · {}%", crop.percent));
                     }
                 }
-                let hints = "   ·   Z Zen   M Menu";
+                let mut right = area.right();
+                let reserved = status.chars().count() as u16 + 1;
+                if !menu && right.saturating_sub(area.x) >= reserved + 23 && screen.height > 1 {
+                    right -= 23;
+                    footer_buttons.draw(f, Rect::new(right, y, 23, 1));
+                }
+                if !menu && right.saturating_sub(area.x) >= reserved + 35 && screen.height > 1 {
+                    let label = "[Space r p Page…]";
+                    let w = label.chars().count() as u16;
+                    right -= w + 1;
+                    go_button = Rect::new(right, y, w, 1);
+                    f.render_widget(Paragraph::new(label).cyan(), go_button);
+                }
+                if !menu && right.saturating_sub(area.x) >= reserved + 17 {
+                    let label = format!("[Space l w {}%]", crop.percent);
+                    let w = label.len() as u16;
+                    right -= w + 1;
+                    width_button = Rect::new(right, y, w, 1);
+                    f.render_widget(Paragraph::new(label).cyan(), width_button);
+                }
+                let space = right.saturating_sub(area.x);
+                let hints = "   ·   Space z Zen   Space m Menu";
                 if status.chars().count() + hints.chars().count() <= usize::from(space) {
                     status.push_str(hints);
                 }
@@ -412,6 +421,25 @@ pub(super) fn read_pages(
             }
             if scrolling {
                 strip.draw(f, area, shown, shown_offset);
+                if selectable {
+                    for (number, skip, rows, y, take) in strip.parts(shown, shown_offset) {
+                        if let Some(picture) = pages.get(number) {
+                            text.strip(
+                                number,
+                                picture,
+                                Rect::new(
+                                    area.x + (area.width - view.width) / 2,
+                                    area.y + y,
+                                    view.width,
+                                    take,
+                                ),
+                                crop,
+                                (skip, rows),
+                                appearance.quarter_turns,
+                            );
+                        }
+                    }
+                }
             } else {
                 for i in 0..cols {
                     let page_number = shown.saturating_add(u32::from(i));
@@ -424,6 +452,15 @@ pub(super) fn read_pages(
                         Rect::new(area.x + (w + 2).saturating_mul(i), area.y, w, area.height);
                     if let Some(page) = pages.get(page_number) {
                         page.draw_region(f, crop.fit(slot, true), &picker, crop);
+                        if selectable {
+                            text.page(
+                                page_number,
+                                page,
+                                crop.fit(slot, true),
+                                crop,
+                                appearance.quarter_turns,
+                            );
+                        }
                     } else if let Some(error) = pages.error(page_number, side) {
                         pages::draw_error(f, slot, page_number, error);
                     }
@@ -433,6 +470,9 @@ pub(super) fn read_pages(
                 && paper.cell_background
             {
                 paper.clear_cells(f, area);
+            }
+            if selectable {
+                text.paint(f, &pages, &picker);
             }
             if pages.get(shown).is_none()
                 && pages.error(shown, side).is_none()
@@ -448,6 +488,9 @@ pub(super) fn read_pages(
                     Paragraph::new(message.as_str()).reversed(),
                     Rect::new(area.x, area.bottom() - 1, area.width, 1),
                 );
+            }
+            if selectable && !menu && dialog.is_none() {
+                text.footer(f, area);
             }
             if menu {
                 let panel = centered(area, 48, 20);
@@ -500,8 +543,10 @@ pub(super) fn read_pages(
                 );
             }
             crate::settings::paint_interface(f);
+            leader.draw(f, crate::leader::Context::Pdf);
         })?;
         let busy = viewer.busy()
+            || text.busy()
             || search.busy()
             || outline_job.is_some()
             || total.is_none()
@@ -515,6 +560,7 @@ pub(super) fn read_pages(
         };
         let timeout = timeout
             .into_iter()
+            .chain(leader.timeout())
             .chain(
                 live.as_ref()
                     .filter(|_| total.is_some() && base.is_some_and(|p| p.text.cfi.is_none()))
@@ -522,7 +568,7 @@ pub(super) fn read_pages(
             )
             .min();
         let event = crate::settings::read_scan_event(timeout, appearance.terminal_paper)?;
-        let Some(e) = event else {
+        let Some(mut e) = event else {
             continue;
         };
         if matches!(e, Event::FocusGained)
@@ -571,13 +617,43 @@ pub(super) fn read_pages(
             }
             continue;
         }
+        let mut leader_action = None;
+        let mut from_leader = false;
+        if menu && matches!(&e, Event::Key(k) if k.code == KeyCode::Char(' ')) {
+            menu = false;
+        }
+        if !menu && let Some(command) = leader.input(&e, crate::leader::Context::Pdf) {
+            let Some(c) = command else {
+                continue;
+            };
+            from_leader = true;
+            if c == crate::leader::Command::Key(KeyCode::Tab) {
+                zen = false;
+                sidebar.focus();
+                continue;
+            }
+            leader_action = text.leader_action(c);
+            if leader_action.is_none() {
+                if let Some(event) = c.event() {
+                    e = event;
+                } else {
+                    continue;
+                }
+            }
+        }
+        if !menu && !from_leader && !text.normal() && !crate::leader::reading_event(&e) {
+            continue;
+        }
         if !menu && let Some(result) = splitter.input(&e) {
             if let Err(error) = result {
                 message = error.to_string();
             }
             continue;
         }
-        if !menu && let Some(target) = sidebar.input(&e, total.unwrap_or(0)) {
+        if !menu
+            && !(text.normal() && matches!(e, Event::Key(k) if k.code == KeyCode::Tab))
+            && let Some(target) = sidebar.input(&e, total.unwrap_or(0))
+        {
             if let Some(target) = target
                 && let Some(count) = total
             {
@@ -597,17 +673,52 @@ pub(super) fn read_pages(
             }
             continue;
         }
+        if selectable
+            && !menu
+            && let Some(action) =
+                leader_action.or_else(|| if from_leader { None } else { text.input(&e) })
+        {
+            if let text::Action::Key(code) = action {
+                e = Event::Key(crossterm::event::KeyEvent::new(code, KeyModifiers::NONE));
+            } else {
+                let background = if matches!(
+                    action,
+                    text::Action::Comment | text::Action::Highlight | text::Action::Lookup(_)
+                ) {
+                    rendered.buffer.clone()
+                } else {
+                    ratatui::buffer::Buffer::empty(Rect::default())
+                };
+                if let Err(error) = text.run(action, term, store.as_ref(), &background) {
+                    text.message = error.to_string();
+                }
+                if let Some(region) = text.take_reveal() {
+                    let target = text::location(&region, crop, appearance.quarter_turns, scrolling);
+                    n = target.page;
+                    offset = target.offset;
+                    crop = target.crop;
+                    dirty = true;
+                }
+                continue;
+            }
+        }
+        // Clone only when opening the note list, never while scrolling or drawing.
+        let note_background = (menu
+            || matches!(&e, Event::Key(k) if matches!(k.code,KeyCode::Char('a'|'A'))))
+        .then(|| rendered.buffer.clone());
         let action = match e {
             Event::Key(k) if k.kind != KeyEventKind::Release => match k.code {
                 KeyCode::Char('c') if k.modifiers.contains(KeyModifiers::CONTROL) => 5,
-                KeyCode::Up | KeyCode::BackTab if menu => {
+                KeyCode::Up | KeyCode::BackTab | KeyCode::Char('k') if menu => {
                     focus = focus.saturating_sub(1);
                     continue;
                 }
-                KeyCode::Down | KeyCode::Tab if menu => {
+                KeyCode::Down | KeyCode::Tab | KeyCode::Char('j') if menu => {
                     focus = (focus + 1).min(menu::ITEMS.len() - 1);
                     continue;
                 }
+                KeyCode::Esc | KeyCode::Char('q' | 'Q') if menu => 0,
+                KeyCode::Char(_) if menu => continue,
                 KeyCode::Char('c' | 'C') => 44,
                 KeyCode::Enter if menu => menu::ITEMS[focus].2,
                 KeyCode::Char('u' | 'U') => 25,
@@ -629,7 +740,6 @@ pub(super) fn read_pages(
                 KeyCode::Char('z' | 'Z') => 14,
                 KeyCode::Char('f' | 'F') => 15,
                 KeyCode::Char('q' | 'Q') => 5,
-                KeyCode::Esc if !menu => 5,
                 KeyCode::F(2) => 26,
                 KeyCode::Char('?') | KeyCode::F(1) => 27,
                 KeyCode::Char('m' | 'M') | KeyCode::Esc | KeyCode::Enter => 0,
@@ -700,6 +810,7 @@ pub(super) fn read_pages(
                     match footer_buttons.hit(Position::new(m.column, m.row)) {
                         Some(crate::preferences::Open::Settings) => 26,
                         Some(crate::preferences::Open::Help) => 27,
+                        None if selectable => continue,
                         None => 0,
                     }
                 }
@@ -794,6 +905,36 @@ pub(super) fn read_pages(
             13 => crop.y = crop.y.saturating_add(64),
             18..=22 => {
                 if let Some(store) = store.as_ref() {
+                    if action == 21 && selectable {
+                        // A can also be selected from the reading menu.
+                        let background =
+                            note_background.unwrap_or_else(|| ratatui::buffer::Buffer::empty(body));
+                        match text.list(term, store, path, &background) {
+                            Ok(Some(region)) => {
+                                let previous = Location {
+                                    page: n,
+                                    offset,
+                                    crop,
+                                };
+                                let mut target = text::location(
+                                    &region,
+                                    crop,
+                                    appearance.quarter_turns,
+                                    scrolling,
+                                );
+                                target.page = target.page.min(total.unwrap_or(target.page)).max(1);
+                                history.record(previous, target);
+                                n = target.page;
+                                offset = target.offset;
+                                crop = target.crop;
+                                dirty = true;
+                            }
+                            Ok(None) => (),
+                            Err(e) => message = e.to_string(),
+                        }
+                        menu = false;
+                        continue;
+                    }
                     match annotations::open(term, action, store, path, &mut checkpoint) {
                         Ok((page, msg)) => {
                             if let Some(page) = page {
@@ -803,6 +944,7 @@ pub(super) fn read_pages(
                         }
                         Err(e) => message = e.to_string(),
                     }
+                    text.notes = store.notes().unwrap_or_default();
                 } else {
                     message = "Local reading state unavailable".into();
                 }

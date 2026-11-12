@@ -2,9 +2,23 @@
 
 ## Unreleased
 
+- Older TOML files gain missing dictionary/translation settings, Space hint delay, wheel step and OPDS list on startup, preserving existing values and comments.
+
+- Split dictionary settings into Word definitions and Translation, each with add/edit/test/delete, service-specific fields, visible default addresses, default selection and unsaved-change handling. Move Space menu delay to Reader settings.
+
+- Complete the Space migration in readers: legacy command letters no longer act outside Vim, `v/V` select only after `Space c`, and `Space t` changes PDF colors. Escape opens the reading menu consistently in EPUB and PDF. Return from Space submenus with `Q`, `Esc` or `Backspace`. Explicit EPUB/FB2 key overrides do not override Space or Vim.
+- Publish complete reading and Vim command tables in both READMEs and guides, checked against the command registry. Update help, footer hints, CLI help and the TOML example.
+
+- Reader popups for dictionaries, highlights and notes retain the reading palette. Vim j/k move by visible text rows; braces move between paragraphs.
+
+- Space opens a contextual command menu with a configurable short delay. Space c toggles an optional Vim cursor; Normal supports yank operators and counts, Visual selections, word/line motions, search and named marks. Escape clears a selection or pending command; another Escape hides the cursor and returns to reading. The cursor stays hidden during ordinary reading.
+- Separate dictionary and translation connections, source/target languages, local commands and configurable APIs. Results can be copied or saved as passage notes. Connections, API keys or key commands are editable in F2 and TOML; English definitions and Google web translation are available without extra local tools.
+- Named OPDS catalogs and credentials are configurable in `[[opds]]` and F2 → Library, alongside the existing BookOrbit and reader settings.
+
+- PDFs with embedded text support word selection with the mouse or keyboard, copying, colored highlights and multiline comments. The **Space a a** panel searches, edits, deletes and exports notes to Markdown. Saved highlights stay attached to the page through zoom, rotation and reopening. Text extraction runs on demand; image-only scans are not OCRed.
 - Saving a completely cleared comment deletes the annotation. Action buttons keep consistent brackets and spacing, wrap whole in narrow windows and support mouse clicks, including **Esc Clear**.
 - EPUB and FB2 support mouse and keyboard text selection, exact clipboard quotes, five highlight colors and multiline comments. Annotations keep their source ranges through resizing, survive a restart and can be searched, edited, deleted and exported to Markdown. Existing passage notes remain accessible.
-- Click the text to place a cursor, drag to select, double-click a word or triple-click a paragraph. **F7** enables normal mode; **v / V** select text or a paragraph, **w / b / e** move by words and **m a / ' a** save and return to named mark `a`. **M / Esc** retain the reading menu; text clicks no longer open it. **K** runs a configured dictionary command for the selection.
+- Click the text to place a cursor, drag to select, double-click a word or triple-click a paragraph. **Space c** enables Normal; **v / V** select text or a logical line, **w / b / e** move by words and **m a / ' a** save and return to named mark `a`. **Space m / Esc** retain the reading menu; text clicks no longer open it. **K** runs a configured dictionary command for the selection.
 - Continuous scrolling now moves one line per mouse-wheel tick in EPUB, FB2, PDF and DjVu. Change **F2 → Reader → Mouse wheel step** or `scroll_lines` to choose 1–12 lines. Arrow keys remain single-line and Page Up / Down remain screen-sized.
 
 - PDF and DjVu zoom keeps the current page visible while a sharper image renders in the background. Reducing or repeating a zoom level reuses the larger cached image, including in spreads and continuous scrolling. A failed refinement preserves the readable page.

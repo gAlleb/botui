@@ -24,26 +24,26 @@ with tempfile.TemporaryDirectory(prefix="botui-width-") as tmp:
     term = scroll.start(root, book)
     try:
         term.see("1 / 3")
-        term.keys("z", "%")
+        term.keys("Space", "z", "Space", "p")
         term.see("1 / 3  ·  33%")
         term.keys("Right")
         term.see("2 / 3  ·  67%")
-        term.keys("Left", "%", "z")
-        term.see("Z Zen")
-        term.keys("3")
+        term.keys("Left", "Space", "p", "Space", "z")
+        term.see("Space l w")
+        term.keys("Space", "l", "3")
         frame = term.wait("Paper fits pane", lambda f: "Fit width" in f and ":" * 60 in f)
         left, right = paper(frame)
-        term.keys("-")
+        term.keys("Space", "r", "-")
         frame = term.wait("Paper shrinks", lambda f: "90%" in f and ":" * 35 in f and paper(f)[0] > left)
         a, b = paper(frame)
         assert abs((right - left) * .9 - (b - a)) <= 2 and abs((a-left)-(right-b)) <= 1
-        term.click("[W 90%]", frame)
+        term.click("[Space l w 90%]", frame)
         term.click("[ − ]", term.see("Page width / zoom"))
         term.see("80%")
         term.click("[ Fit width ]", term.see("[ Fit width ]"))
         term.see("100%")
         term.click("[ Done ]", term.see("[ Done ]"))
-        term.keys("p")
+        term.keys("Space", "r", "p")
         frame = term.wait("Dialog over the rendered sheet",lambda f:"Go to page" in f and ":" * 40 in f and "Page 1" in f)
         line = next(line for line in frame.splitlines() if "Go to page" in line)
         x = line.index("Go to page") - 2
@@ -52,16 +52,16 @@ with tempfile.TemporaryDirectory(prefix="botui-width-") as tmp:
         term.see("Enter 1–3")
         term.keys("C-u", "2", "Enter")
         term.see("2 / 3")
-        term.keys("-")
+        term.keys("Space", "r", "-")
         term.see("90%")
         scroll.stop(term)
         term = scroll.start(root, book)
-        term.see("[W 90%]")
-        term.keys("0")
-        term.see("[W 100%]")
-        term.keys("r", "v")
+        term.see("[Space l w 90%]")
+        term.keys("Space", "r", "0")
+        term.see("[Space l w 100%]")
+        term.keys("Space", "r", "r", "Space", "t")
         term.see("90° · Inverted colors")
-        term.keys("b")
+        term.keys("Space", "b", "a")
         term.see("Page bookmarked")
         def checkpoint_saved():
             state = scroll.saved(root) or {}
@@ -74,11 +74,26 @@ with tempfile.TemporaryDirectory(prefix="botui-width-") as tmp:
         term.run("kill-server", required=False)
         term = scroll.start(root, book)
         term.see("2 / 3")
-        term.keys("R")
+        term.keys("Space", "r", "R")
         term.see("0° · Inverted colors")
-        term.keys("v")
+        term.keys("Space", "t")
         term.see("0° · Match background")
-        term.keys("v")
+        # Cursor feedback occupies the status line; verify the persisted color
+        # state as well as the ordinary reading notifications above and below.
+        term.keys("Space", "c")
+        for inverted, themed in [(False, False), (True, False), (False, True)]:
+            term.keys("Space", "t")
+            deadline = time.monotonic() + 5
+            while time.monotonic() < deadline:
+                appearance = (scroll.saved(root) or {}).get("scan_appearance", {})
+                if (appearance.get("inverted", False) == inverted
+                        and appearance.get("terminal_paper", False) == themed):
+                    break
+                time.sleep(.05)
+            else:
+                raise AssertionError((inverted, themed, appearance))
+        term.keys("Space", "c")
+        term.keys("Space", "t")
         term.see("0° · Original colors")
         scroll.stop(term)
     finally:
@@ -91,7 +106,7 @@ with tempfile.TemporaryDirectory(prefix="botui-small-sheets-") as tmp:
     term=scroll.start(root,slides)
     try:
         term.see("1 / 6")
-        term.keys("3", *["-"]*7)
+        term.keys("Space", "l", "3", *[key for _ in range(7) for key in ["Space", "r", "-"]])
         term.wait("Sixth sheet is rendered without scrolling",lambda f:"25%" in f and "%" * 12 in f and ":"*12 in f)
         scroll.stop(term)
     finally:
@@ -99,12 +114,12 @@ with tempfile.TemporaryDirectory(prefix="botui-small-sheets-") as tmp:
 def check_search(root, book, page_count):
     term = scroll.start(root, book)
     try:
-        term.keys("3")
+        term.keys("Space", "l", "3")
         pixels = re.compile(r"([.:%#*=+@-])\1{14,}")
         paper = term.wait("Rendered first sheet", lambda f:
                           f"1 / {page_count}" in f and pixels.search(f))
         rows = [line for line in paper.splitlines() if pixels.search(line)]
-        term.keys("/")
+        term.keys("Space", "f")
         overlay = term.wait("Search over visible paper and contents", lambda f:
                             "Find in text layer" in f and "Page 1" in f
                             and any(row in f for row in rows))
@@ -119,7 +134,7 @@ def check_search(root, book, page_count):
         term.wait("Search reaches the matching sheet", lambda f:
                   f"2 / {page_count}" in f and "1 matching page" in f)
 
-        term.keys("/")
+        term.keys("Space", "f")
         term.see("Lighthouse atlas▏")
         term.keys("C-u")
         term.type("discard this")

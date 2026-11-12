@@ -55,7 +55,7 @@ pub fn field(
                 f.render_widget(Paragraph::new(submit).cyan(), accept);
                 f.render_widget(Paragraph::new("[ Cancel ]"), cancel);
             }
-            crate::settings::paint_interface(f);
+            crate::settings::paint_dialog(f);
         })?;
         let event = crate::settings::read_event()?;
         match &event {
@@ -198,7 +198,7 @@ fn choose_rows(
                 );
                 f.render_widget(Paragraph::new("[Del Delete]").cyan(), delete);
             }
-            crate::settings::paint_interface(f);
+            crate::settings::paint_dialog(f);
         })?;
         let timeout = deadline.map(|at| at.saturating_duration_since(Instant::now()));
         let event = crate::settings::read_event_for(timeout)?;
@@ -330,7 +330,7 @@ fn document_panel(
                     f.render_widget(if danger { p.reversed() } else { p }, accept);
                 }
             }
-            crate::settings::paint_interface(f);
+            crate::settings::paint_dialog(f);
         })?;
         match crate::settings::read_event()? {
             Event::Key(k) if k.kind != KeyEventKind::Release => match k.code {

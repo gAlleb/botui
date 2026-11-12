@@ -69,9 +69,9 @@ sys.stdout.buffer.flush()
         for percent in (110, 125, 150, 175, 200):
             side = min(1920, base * percent // 100)
             start = time.monotonic()
-            term.keys("+")
+            term.keys('Space', 'r', '+')
             term.wait(f"{mode}: zoom {percent}% retains the readable page", lambda f:
-                f"[W {percent}%]" in f and "Rendering page" not in f
+                f"[Space l w {percent}%]" in f and "Rendering page" not in f
                 and re.search(r"[:*]{12,}", f))
             assert time.monotonic() - start < .5, "Zoom waited for the PDF worker"
             term.wait("Larger raster requested", lambda _: (1, side) in calls())
@@ -85,13 +85,13 @@ sys.stdout.buffer.flush()
         visible = 2 if mode == "spread" else 1
         visible_calls = lambda: [call for call in calls() if call[0] <= visible]
         rendered = visible_calls()
-        term.keys("-", "-", "-", "-", "-")
+        term.keys('Space', 'r', '-', 'Space', 'r', '-', 'Space', 'r', '-', 'Space', 'r', '-', 'Space', 'r', '-')
         term.wait("Smaller sizes reuse the best raster", lambda f:
-            "[W 100%]" in f and "########" in f and "Rendering page" not in f)
+            "[Space l w 100%]" in f and "########" in f and "Rendering page" not in f)
         assert visible_calls() == rendered, (mode, "Downscaling re-rendered PDF", rendered, calls())
         # Zooming in again uses the same higher-quality cache entry as well.
-        term.keys("+", "+", "+", "+", "+")
-        term.see("[W 200%]")
+        term.keys('Space', 'r', '+', 'Space', 'r', '+', 'Space', 'r', '+', 'Space', 'r', '+', 'Space', 'r', '+')
+        term.see("[Space l w 200%]")
         assert visible_calls() == rendered, (mode, "Repeated zoom re-rendered PDF", rendered, calls())
         print(f"{mode}: pending refinements remain visible; smaller and repeated zooms reuse rasters", flush=True)
     finally:

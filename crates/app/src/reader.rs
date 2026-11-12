@@ -1,7 +1,7 @@
 mod annotations;
 pub(crate) mod bookmarks;
-mod clipboard;
-mod controls;
+pub(crate) mod clipboard;
+pub(crate) mod controls;
 mod layout;
 mod links;
 mod mark_list;
@@ -122,6 +122,7 @@ struct VisibleFigure {
 
 struct Reader {
     study: study::Study,
+    leader: crate::leader::Leader,
     text_rect: Rect,
     scroll_lines: i8,
     zen: bool,
@@ -272,6 +273,7 @@ impl Reader {
         let sidebar = navigation::Navigation::new(Kind::Contents, &doc, pager.anchor());
         Self {
             study: study::Study::default(),
+            leader: crate::leader::Leader::new(),
             text_rect: Rect::default(),
             scroll_lines: settings.scroll_lines.unwrap_or(1).clamp(1, 12) as i8,
             zen: settings.zen,
@@ -477,13 +479,13 @@ impl Reader {
             );
             let mut right = foot.right();
             for (i, label) in [
-                " Z Zen ",
-                " O Contents ",
-                " M Menu ",
+                " Space z Zen ",
+                " Space o Contents ",
+                " Space m Menu ",
                 " F2 Settings ",
-                " ? Help ",
+                " F1 Help ",
                 if self.links.has_visible() {
-                    " F6 Links "
+                    " Space r f Links "
                 } else {
                     ""
                 },
@@ -536,6 +538,7 @@ impl Reader {
             self.links.controls(frame, footer, style);
         }
         self.study.controls(frame, style);
+        self.leader.draw(frame, crate::leader::Context::Text);
         if let Some(panel) = &mut self.layout_panel {
             panel.draw(
                 frame,
@@ -599,12 +602,12 @@ impl Reader {
                 Action::Resume => ("Resume".into(), "Esc"),
                 Action::Previous => ("Previous page".into(), "←"),
                 Action::Next => ("Next page".into(), "→"),
-                Action::Single => ("Single page".into(), "1"),
-                Action::Spread => ("Two-page spread".into(), "2"),
-                Action::Scroll => ("Continuous scroll".into(), "3"),
-                Action::Theme => (format!("Theme · {}", self.theme.name()).into(), "T"),
-                Action::Navigate(Kind::Contents) => ("Contents".into(), "O"),
-                Action::Navigate(Kind::Search) => ("Find in book".into(), "/"),
+                Action::Single => ("Single page".into(), "Space l 1"),
+                Action::Spread => ("Two-page spread".into(), "Space l 2"),
+                Action::Scroll => ("Continuous scroll".into(), "Space l 3"),
+                Action::Theme => (format!("Theme · {}", self.theme.name()).into(), "Space t"),
+                Action::Navigate(Kind::Contents) => ("Contents".into(), "Space o"),
+                Action::Navigate(Kind::Search) => ("Find in book".into(), "Space f"),
                 Action::SearchResults => ("Reopen search results".into(), "F5"),
                 Action::FindAgain(true) => ("Next search match".into(), "F3"),
                 Action::FindAgain(false) => ("Previous search match".into(), "F4"),
@@ -615,17 +618,17 @@ impl Reader {
                         "Add bookmark"
                     })
                     .into(),
-                    "B",
+                    "Space b a",
                 ),
-                Action::Bookmarks => ("Bookmarks".into(), "G"),
-                Action::Layout => ("Page width & column gap".into(), "W"),
+                Action::Bookmarks => ("Bookmarks".into(), "Space b l"),
+                Action::Layout => ("Page width & column gap".into(), "Space l w"),
                 Action::ZenProgress => (
                     format!(
                         "Zen progress · {}",
                         if self.zen_progress { "On" } else { "Off" }
                     )
                     .into(),
-                    "%",
+                    "Space p",
                 ),
                 Action::Zen => (
                     (if self.zen {
@@ -634,7 +637,7 @@ impl Reader {
                         "Enter zen mode"
                     })
                     .into(),
-                    "Z",
+                    "Space z",
                 ),
                 Action::Borders => (
                     format!(
@@ -642,7 +645,7 @@ impl Reader {
                         crate::appearance::BordersStyle::current().label()
                     )
                     .into(),
-                    "U",
+                    "Space l u",
                 ),
                 Action::Background => (
                     format!(
@@ -650,24 +653,28 @@ impl Reader {
                         if self.opaque { "Opaque" } else { "Transparent" }
                     )
                     .into(),
-                    "F",
+                    "Space l f",
                 ),
-                Action::Study(study::Command::Normal) => ("Text cursor / normal mode".into(), "F7"),
-                Action::Study(study::Command::Highlight) => ("Highlight selected text".into(), "H"),
-                Action::Note => ("Comment on selected text".into(), "N"),
-                Action::Navigate(Kind::Notes) => ("Highlights & notes".into(), "A"),
-                Action::Export => ("Export notes to Markdown".into(), "E"),
-                Action::Statistics => ("Reading statistics".into(), "S"),
+                Action::Study(study::Command::Normal) => {
+                    ("Text cursor / normal mode".into(), "Space c")
+                }
+                Action::Study(study::Command::Highlight) => {
+                    ("Highlight selected text".into(), "Space a h")
+                }
+                Action::Note => ("Comment on selected text".into(), "Space a n"),
+                Action::Navigate(Kind::Notes) => ("Highlights & notes".into(), "Space a a"),
+                Action::Export => ("Export notes to Markdown".into(), "Space a e"),
+                Action::Statistics => ("Reading statistics".into(), "Space r s"),
                 Action::Settings => ("Settings".into(), "F2"),
-                Action::Help => ("Keyboard shortcuts".into(), "?"),
-                Action::Cover => ("View cover".into(), "C"),
+                Action::Help => ("Keyboard shortcuts".into(), "F1"),
+                Action::Cover => ("View cover".into(), "Space r c"),
                 Action::Resources => (
                     format!("Links & illustrations ({})", self.doc.references.len()).into(),
-                    "I",
+                    "Space r i",
                 ),
-                Action::JumpBack => ("Jump back".into(), ","),
-                Action::JumpForward => ("Jump forward".into(), "."),
-                Action::Close => ("Close book".into(), "Q"),
+                Action::JumpBack => ("Jump back".into(), "Space r ["),
+                Action::JumpForward => ("Jump forward".into(), "Space r ]"),
+                Action::Close => ("Close book".into(), "Space q"),
                 _ => unreachable!("visible reader menu command"),
             };
             Row::new([
@@ -683,7 +690,7 @@ impl Reader {
                 [
                     Constraint::Length(2),
                     Constraint::Fill(1),
-                    Constraint::Length(4),
+                    Constraint::Length(9),
                 ],
             )
             .row_highlight_style(style.add_modifier(Modifier::REVERSED)),
@@ -699,6 +706,29 @@ impl Reader {
     }
 
     fn input(&self, event: Event) -> Option<Action> {
+        self.input_with_bindings(event, true)
+    }
+    fn input_with_bindings(&self, event: Event, custom: bool) -> Option<Action> {
+        if self.menu.is_some()
+            && let Event::Key(k) = &event
+        {
+            return match k.code {
+                KeyCode::Char('q' | 'Q') | KeyCode::Esc => Some(Action::Resume),
+                KeyCode::Up | KeyCode::BackTab | KeyCode::Char('k') => Some(Action::Up),
+                KeyCode::Down | KeyCode::Tab | KeyCode::Char('j') => Some(Action::Down),
+                KeyCode::Enter => self
+                    .menu
+                    .as_ref()?
+                    .selected()
+                    .and_then(|i| COMMANDS.get(i).copied()),
+                KeyCode::F(1) => Some(Action::Help),
+                KeyCode::F(2) => Some(Action::Settings),
+                KeyCode::Char('c') if k.modifiers.contains(KeyModifiers::CONTROL) => {
+                    Some(Action::Close)
+                }
+                _ => None,
+            };
+        }
         match event {
             Event::Resize(..) => Some(Action::Resize),
             Event::Key(k)
@@ -765,6 +795,7 @@ impl Reader {
                         && !k
                             .modifiers
                             .intersects(KeyModifiers::ALT | KeyModifiers::CONTROL)
+                        && custom
                         && self.bindings.contains_key(&c) =>
                 {
                     self.bindings.get(&c).copied()
@@ -899,6 +930,9 @@ impl Reader {
     }
 
     fn jump_to(&mut self, place: botui_core::Anchor) {
+        if self.study.normal {
+            self.study.cursor = Some(place);
+        }
         if place != self.pager.anchor() {
             self.history.push(self.pager.anchor());
             self.future.clear();
@@ -927,6 +961,9 @@ impl Reader {
                 if let Some(a) = from.pop() {
                     to.push(self.pager.anchor());
                     self.pager.seek(a);
+                    if self.study.normal {
+                        self.study.cursor = Some(a);
+                    }
                     self.dirty = true;
                 }
                 self.menu = None;
@@ -1291,6 +1328,7 @@ pub fn read_server(
     let mut save_after_draw = None;
     let result: io::Result<()> = (|| {
         loop {
+            let _dialog_theme = crate::settings::reader_dialogs(reader.theme);
             if let Some(message) = viewer.collect() {
                 crate::prompt::message(term, "View cover", &message)?;
             }
@@ -1351,6 +1389,7 @@ pub fn read_server(
                             .is_paginating()
                             .then_some(Duration::from_millis(55)),
                     )
+                    .chain(reader.leader.timeout())
                     .chain(images.then_some(Duration::from_millis(70)))
                     .chain((drag_direction != 0).then_some(
                         Duration::from_millis(80).saturating_sub(last_drag_scroll.elapsed()),
@@ -1365,7 +1404,11 @@ pub fn read_server(
                         last_drag_scroll = Instant::now();
                         break Action::Resize;
                     }
-                    if reader.pager.is_paginating() || images || (can_sync && live.is_some()) {
+                    if reader.leader.active()
+                        || reader.pager.is_paginating()
+                        || images
+                        || (can_sync && live.is_some())
+                    {
                         break Action::Resize;
                     }
                     continue;
@@ -1393,6 +1436,47 @@ pub fn read_server(
                 {
                     nav.paste(value);
                     break Action::Resize;
+                }
+                if reader.menu.is_some()
+                    && matches!(&e, Event::Key(k) if k.code == KeyCode::Char(' '))
+                {
+                    reader.menu = None;
+                }
+                if reader.menu.is_none()
+                    && reader.nav.is_none()
+                    && reader.palette.is_none()
+                    && reader.layout_panel.is_none()
+                    && let Some(command) = reader.leader.input(&e, crate::leader::Context::Text)
+                {
+                    use crate::leader::Command as L;
+                    let action = match command {
+                        Some(L::Dictionary) => Some(Action::Study(study::Command::Lookup)),
+                        Some(L::Translate) => Some(Action::Study(study::Command::Translate)),
+                        Some(L::Key(KeyCode::F(7))) => Some(Action::Study(study::Command::Normal)),
+                        Some(L::Key(KeyCode::F(8))) => {
+                            reader.study.show_notes = !reader.study.show_notes;
+                            Some(Action::Resize)
+                        }
+                        Some(L::Key(KeyCode::Char('H'))) => {
+                            Some(Action::Study(study::Command::Highlight))
+                        }
+                        Some(L::Key(KeyCode::Char('Y'))) => {
+                            Some(Action::Study(study::Command::Copy))
+                        }
+                        Some(c) => c.event().and_then(|e| reader.input_with_bindings(e, false)),
+                        None => None,
+                    };
+                    break action.unwrap_or(Action::Resize);
+                }
+                if reader.menu.is_none()
+                    && reader.nav.is_none()
+                    && reader.palette.is_none()
+                    && reader.layout_panel.is_none()
+                    && !reader.study.normal
+                    && !crate::leader::reading_event(&e)
+                    && !matches!(e, Event::Key(k) if k.modifiers.is_empty() && matches!(k.code, KeyCode::Char(c) if reader.bindings.contains_key(&c)))
+                {
+                    continue;
                 }
                 if let Some(action) = reader.study_input(&e) {
                     break action;

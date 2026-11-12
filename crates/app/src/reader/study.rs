@@ -18,6 +18,7 @@ pub(super) enum Command {
     List,
     Peek,
     Lookup,
+    Translate,
     Export,
     Normal,
     Clear,
@@ -44,7 +45,9 @@ pub(super) struct Study {
     dragged: bool,
     link: Option<super::Action>,
     clicks: Option<(Instant, Position, u8)>,
-    pending: Option<char>,
+    keys: crate::vim::Keys,
+    previous_selection: Option<TextRange>,
+    search_forward: bool,
     map: Vec<Cell>,
     buttons: Vec<(Rect, Command)>,
 }
@@ -56,8 +59,17 @@ impl Study {
         }
         let changed = self.cursor.take().is_some() | self.message.take().is_some();
         self.normal = false;
-        self.pending = None;
+        self.keys.reset();
         changed
+    }
+    pub fn escape(&mut self) {
+        if self.keys.pending() {
+            self.keys.reset();
+        } else if self.selection.is_some() || self.visual.is_some() {
+            self.copied();
+        } else {
+            self.clear();
+        }
     }
     pub fn toggle_normal(&mut self, start: Anchor) {
         self.normal = !self.normal;
@@ -65,7 +77,7 @@ impl Study {
         self.selection = None;
         self.visual = None;
         self.preferred_column = None;
-        self.pending = None;
+        self.keys.reset();
         self.message = None;
     }
     pub fn dragging(&self) -> bool {
@@ -159,7 +171,6 @@ impl Study {
         link: Option<super::Action>,
     ) -> Option<super::Action> {
         use super::Action;
-        let fallback = pager.anchor();
         let action = |cmd| Some(Action::Study(cmd));
         match event {
             Event::Mouse(m) => {
@@ -215,103 +226,235 @@ impl Study {
                 }
             }
             Event::Key(k) if k.kind != KeyEventKind::Release => {
-                if let Some(prefix) = self.pending.take() {
+                if self.normal {
+                    if k.code == KeyCode::Esc {
+                        self.escape();
+                        return Some(Action::Resize);
+                    }
+                    if k.code == KeyCode::Tab {
+                        return Some(Action::JumpForward);
+                    }
+                    if k.modifiers.contains(KeyModifiers::CONTROL) {
+                        return match k.code {
+                            KeyCode::Char('o') => Some(Action::JumpBack),
+                            KeyCode::Char('i') | KeyCode::Tab => Some(Action::JumpForward),
+                            KeyCode::Char('c') => action(Command::Copy),
+                            _ => None,
+                        };
+                    }
+                    if k.code == KeyCode::Char('y') && self.selection.is_some() {
+                        return action(Command::Copy);
+                    }
+                    if let Some(edit) = self.keys.input(k.code, self.visual.is_some()) {
+                        return self.vim(edit, doc, pager);
+                    }
+                    // Unbound letters must not execute conflicting legacy reader commands.
                     return match k.code {
-                        KeyCode::Char(c) if c.is_ascii_alphanumeric() => action(if prefix == 'm' {
-                            Command::Mark(c)
-                        } else {
-                            Command::Jump(c)
-                        }),
+                        KeyCode::F(1..=5) | KeyCode::PageUp | KeyCode::PageDown => None,
+                        KeyCode::Char('K') => action(Command::Lookup),
                         _ => Some(Action::Resize),
                     };
                 }
-                if k.code == KeyCode::Esc {
-                    return self.clear().then_some(Action::Resize);
-                }
-                if k.code == KeyCode::F(7) {
-                    return action(Command::Normal);
-                }
-                if k.code == KeyCode::Char('v') && k.modifiers.is_empty() {
-                    self.cursor.get_or_insert(fallback);
-                    self.normal = true;
-                    if self.visual.take().is_some() {
-                        self.selection = None
-                    } else {
-                        self.visual = doc.character_at(self.cursor.unwrap());
-                        self.selection = self.visual;
-                    }
-                    return Some(Action::Resize);
-                }
-                if k.code == KeyCode::Char('V') {
-                    self.cursor.get_or_insert(fallback);
-                    self.normal = true;
-                    self.selection = doc.paragraph_at(self.cursor.unwrap());
-                    self.visual = self.selection;
-                    return Some(Action::Resize);
-                }
-                if self.selection.is_some()
-                    && (matches!(k.code, KeyCode::Char('y' | 'Y'))
-                        || k.code == KeyCode::Char('c')
-                            && k.modifiers.contains(KeyModifiers::CONTROL))
-                {
-                    return action(Command::Copy);
-                }
                 match k.code {
-                    KeyCode::Char('H') => return action(Command::Highlight),
-                    KeyCode::Char('K') => return action(Command::Lookup),
+                    KeyCode::Esc => self.clear().then_some(Action::Resize),
+                    KeyCode::Char('y' | 'Y') if self.selection.is_some() => action(Command::Copy),
+                    KeyCode::Char('c') if k.modifiers.contains(KeyModifiers::CONTROL) => {
+                        action(Command::Copy)
+                    }
+                    KeyCode::Char('H') => action(Command::Highlight),
+                    KeyCode::Char('K') => action(Command::Lookup),
+                    KeyCode::Enter if self.active_note().is_some() => action(Command::Peek),
                     KeyCode::F(8) => {
                         self.show_notes = !self.show_notes;
-                        return Some(Action::Resize);
+                        Some(Action::Resize)
                     }
-                    KeyCode::Enter if self.active_note().is_some() => return action(Command::Peek),
-                    _ => (),
+                    _ => None,
                 }
-                if !self.normal {
-                    return None;
-                }
-                let at = self.cursor.unwrap_or(fallback);
-                if !matches!(
-                    k.code,
-                    KeyCode::Char('j' | 'k') | KeyCode::Up | KeyCode::Down
-                ) {
-                    self.preferred_column = None;
-                }
-                let to = match k.code {
-                    KeyCode::Char('m' | '\'') => {
-                        self.pending = Some(if k.code == KeyCode::Char('m') {
-                            'm'
-                        } else {
-                            '\''
-                        });
-                        return Some(Action::Resize);
-                    }
-                    KeyCode::Char('h') | KeyCode::Left => doc.move_text(at, false, false),
-                    KeyCode::Char('l') | KeyCode::Right => doc.move_text(at, true, false),
-                    KeyCode::Char('w') => doc.move_text(at, true, true),
-                    KeyCode::Char('b') => doc.move_text(at, false, true),
-                    KeyCode::Char('e') => doc.word_end(at),
-                    KeyCode::Char('0') | KeyCode::Home => Anchor { byte: 0, ..at },
-                    KeyCode::Char('$') | KeyCode::End => doc
-                        .paragraph_at(at)
-                        .map_or(at, |r| doc.move_text(r.end, false, false)),
-                    KeyCode::Char('j' | 'k') | KeyCode::Up | KeyCode::Down => {
-                        let down = matches!(k.code, KeyCode::Char('j') | KeyCode::Down);
-                        let (to, column) =
-                            pager.move_text_line(doc, at, down, self.preferred_column);
-                        self.preferred_column = Some(column);
-                        to
-                    }
-                    KeyCode::Char('y' | 'Y') => return action(Command::Copy),
-                    _ => return None,
-                };
-                self.cursor = Some(to);
-                if let Some(seed) = self.visual {
-                    self.selection = doc.character_at(to).map(|c| seed.union(c));
-                }
-                Some(Action::Resize)
             }
             _ => None,
         }
+    }
+    pub fn copied(&mut self) {
+        if self.normal {
+            self.previous_selection = self.selection.take().or(self.previous_selection);
+            self.visual = None;
+        }
+        self.keys.reset();
+    }
+    fn vim(
+        &mut self,
+        edit: crate::vim::Edit,
+        doc: &Document,
+        pager: &mut Pager,
+    ) -> Option<super::Action> {
+        use super::{Action, navigation::Kind};
+        use crate::vim::{Edit as V, Motion as M};
+        let at = self.cursor.unwrap_or(pager.anchor());
+        match edit {
+            V::Wait => (),
+            V::Cancel => {
+                self.previous_selection = self.selection.take().or(self.previous_selection);
+                self.visual = None;
+            }
+            V::Mark(c) => return Some(Action::Study(Command::Mark(c))),
+            V::Jump(c) => return Some(Action::Study(Command::Jump(c))),
+            V::Visual => {
+                if self.visual.take().is_some() {
+                    self.selection = None;
+                } else {
+                    self.visual = doc.character_at(at);
+                    self.selection = self.visual;
+                }
+            }
+            V::VisualLine => {
+                self.visual = doc.paragraph_at(at);
+                self.selection = self.visual;
+            }
+            V::Reselect => {
+                self.selection = self.previous_selection;
+                self.visual = self.selection;
+                if let Some(r) = self.selection {
+                    self.cursor = Some(r.end);
+                }
+            }
+            V::Search(forward) => {
+                self.search_forward = forward;
+                return Some(Action::Navigate(Kind::Search));
+            }
+            V::Next(forward) => {
+                return Some(Action::FindAgain(if forward {
+                    self.search_forward
+                } else {
+                    !self.search_forward
+                }));
+            }
+            V::Move(m, count) | V::Yank(m, count) => {
+                let yank = matches!(edit, V::Yank(..));
+                if !matches!(m, M::Down | M::Up | M::ScreenDown | M::ScreenUp) {
+                    self.preferred_column = None;
+                }
+                let mut to = at;
+                let mut object = None;
+                for _ in 0..count {
+                    to = match m {
+                        M::Left => doc.move_text(to, false, false),
+                        M::Right => doc.move_text(to, true, false),
+                        M::Word => {
+                            let next = doc.move_text(to, true, true);
+                            if yank && next == to {
+                                doc.paragraph_at(to).map_or(to, |r| r.end)
+                            } else {
+                                next
+                            }
+                        }
+                        M::BackWord => doc.move_text(to, false, true),
+                        M::EndWord => doc.word_end(to),
+                        M::Start => botui_core::Anchor { byte: 0, ..to },
+                        M::First => botui_core::Anchor {
+                            byte: doc.blocks[to.block].text.len()
+                                - doc.blocks[to.block].text.trim_start().len(),
+                            ..to
+                        },
+                        M::End => doc
+                            .paragraph_at(to)
+                            .map_or(to, |r| doc.move_text(r.end, false, false)),
+                        M::NextParagraph | M::PreviousParagraph => {
+                            let block = if m == M::NextParagraph {
+                                ((to.block + 1)..doc.blocks.len())
+                                    .find(|&i| !doc.blocks[i].text.is_empty())
+                            } else {
+                                (0..to.block)
+                                    .rev()
+                                    .find(|&i| !doc.blocks[i].text.is_empty())
+                            };
+                            block.map_or(to, |block| Anchor { block, byte: 0 })
+                        }
+                        M::Down | M::Up | M::ScreenDown | M::ScreenUp => {
+                            let (next, col) = pager.move_text_line(
+                                doc,
+                                to,
+                                matches!(m, M::Down | M::ScreenDown),
+                                self.preferred_column,
+                            );
+                            self.preferred_column = Some(col);
+                            next
+                        }
+                        M::ScreenStart | M::ScreenEnd => {
+                            pager.text_line_range(doc, to).map_or(to, |r| {
+                                if m == M::ScreenStart {
+                                    r.start
+                                } else {
+                                    doc.move_text(r.end, false, false)
+                                }
+                            })
+                        }
+                        M::Top => doc
+                            .blocks
+                            .iter()
+                            .position(|b| !b.text.is_empty())
+                            .map_or(at, |block| botui_core::Anchor { block, byte: 0 }),
+                        M::Bottom => doc
+                            .blocks
+                            .iter()
+                            .rposition(|b| !b.text.is_empty())
+                            .map_or(at, |block| botui_core::Anchor { block, byte: 0 }),
+                        M::InnerWord | M::AroundWord => {
+                            if let Some(mut r) = doc.word_at(to) {
+                                if m == M::AroundWord {
+                                    let text = &doc.blocks[to.block].text;
+                                    let tail = &text[r.end.byte..];
+                                    let spaces = tail.len() - tail.trim_start().len();
+                                    if spaces > 0 {
+                                        r.end.byte += spaces;
+                                    } else {
+                                        let head = &text[..r.start.byte];
+                                        r.start.byte = head.trim_end().len();
+                                    }
+                                }
+                                object = Some(object.map_or(r, |o: TextRange| o.union(r)));
+                                to = doc.move_text(r.end, false, false);
+                                doc.move_text(to, true, true)
+                            } else {
+                                to
+                            }
+                        }
+                        M::Paragraph | M::Line => {
+                            if let Some(r) = doc.paragraph_at(to) {
+                                object = Some(object.map_or(r, |o: TextRange| o.union(r)));
+                            }
+                            botui_core::Anchor {
+                                block: (to.block + 1).min(doc.blocks.len().saturating_sub(1)),
+                                byte: 0,
+                            }
+                        }
+                    };
+                }
+                if yank {
+                    let range = object.unwrap_or_else(|| {
+                        let inclusive = matches!(m, M::EndWord | M::End | M::ScreenEnd);
+                        let end = if inclusive {
+                            doc.character_at(to).map_or(to, |r| r.end)
+                        } else {
+                            to
+                        };
+                        TextRange::new(at, end)
+                    });
+                    self.selection = Some(range);
+                    return Some(Action::Study(Command::Copy));
+                }
+                if let Some(r) = object {
+                    self.selection = Some(r);
+                    self.visual = Some(r);
+                    self.cursor = Some(r.start);
+                } else {
+                    self.cursor = Some(to);
+                    if let Some(seed) = self.visual {
+                        self.selection = doc.character_at(to).map(|r| seed.union(r));
+                    }
+                }
+            }
+        }
+        Some(Action::Resize)
     }
     pub fn paint(&self, f: &mut Frame) {
         // Restrict the per-cell work to annotations on these visible pages.
@@ -358,10 +501,10 @@ impl Study {
             return;
         }
         let area = f.area();
-        let label = if self.pending == Some('m') {
-            "Mark: type a letter"
-        } else if self.pending.is_some() {
-            "Jump: type a letter"
+        let label = if self.keys.pending() {
+            "NORMAL · command…"
+        } else if self.visual.is_some() {
+            "VISUAL"
         } else if self.selection.is_some() {
             "SELECT"
         } else if self.normal {
@@ -371,12 +514,19 @@ impl Study {
         };
         let actions = [
             (label, None),
-            ("[Y Copy]", Some(Command::Copy)),
-            ("[H Highlight]", Some(Command::Highlight)),
-            ("[N Note]", Some(Command::Comment)),
-            ("[A Notes]", Some(Command::List)),
-            ("[K Lookup]", Some(Command::Lookup)),
-            ("[Esc Clear]", Some(Command::Clear)),
+            ("[Space a y Copy]", Some(Command::Copy)),
+            ("[Space a h Highlight]", Some(Command::Highlight)),
+            ("[Space a n Note]", Some(Command::Comment)),
+            ("[Space a a Notes]", Some(Command::List)),
+            ("[Space d d Dictionary]", Some(Command::Lookup)),
+            (
+                if self.selection.is_some() || self.keys.pending() {
+                    "[Esc Clear]"
+                } else {
+                    "[Esc Read]"
+                },
+                Some(Command::Clear),
+            ),
         ];
         let (rects, height) = super::controls::layout(area, &actions.map(|a| a.0));
         let foot = Rect::new(area.x, area.bottom() - height, area.width, height);
@@ -421,4 +571,89 @@ fn highlight(color: HighlightColor) -> Style {
         .fg(Color::Rgb(30, 30, 40))
         .bg(bg)
         .remove_modifier(Modifier::REVERSED | Modifier::DIM)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    fn quote(command: &str, at: Anchor) -> String {
+        let doc = Document {
+            blocks: vec![
+                botui_core::Block {
+                    text: "Alpha bravo charlie".into(),
+                    heading: false,
+                },
+                botui_core::Block {
+                    text: "Привет мир".into(),
+                    heading: false,
+                },
+            ],
+            ..Default::default()
+        };
+        let mut pager = Pager::new(&doc, 30, 10, botui_core::LayoutMode::Single);
+        let mut study = Study::default();
+        study.toggle_normal(at);
+        for c in command.chars() {
+            let edit = study.keys.input(KeyCode::Char(c), false).unwrap();
+            study.vim(edit, &doc, &mut pager);
+        }
+        doc.text_range(study.selection.unwrap())
+    }
+    #[test]
+    fn jk_follow_wrapped_rows_and_braces_follow_paragraphs() {
+        use crate::vim::{Edit, Motion};
+        let doc = Document {
+            blocks: vec![
+                botui_core::Block {
+                    text:
+                        "Alpha bravo charlie delta echo foxtrot golf hotel india juliet kilo lima."
+                            .into(),
+                    heading: false,
+                },
+                botui_core::Block {
+                    text: "Second paragraph".into(),
+                    heading: false,
+                },
+            ],
+            ..Default::default()
+        };
+        let mut pager = Pager::new(&doc, 24, 12, botui_core::LayoutMode::Single);
+        let start = Anchor { block: 0, byte: 0 };
+        let mut study = Study::default();
+        study.toggle_normal(start);
+        study.vim(Edit::Move(Motion::Down, 1), &doc, &mut pager);
+        let second = study.cursor.unwrap();
+        assert_eq!(second.block, 0);
+        assert!(second.byte > 0);
+        study.vim(Edit::Move(Motion::Up, 1), &doc, &mut pager);
+        assert_eq!(study.cursor, Some(start));
+        study.vim(Edit::Move(Motion::NextParagraph, 1), &doc, &mut pager);
+        assert_eq!(study.cursor, Some(Anchor { block: 1, byte: 0 }));
+        study.vim(Edit::Move(Motion::PreviousParagraph, 1), &doc, &mut pager);
+        assert_eq!(study.cursor, Some(start));
+    }
+    #[test]
+    fn yank_objects_counts_and_last_word() {
+        assert_eq!(quote("yiw", Anchor { block: 0, byte: 6 }), "bravo");
+        assert_eq!(quote("2yw", Anchor { block: 0, byte: 0 }), "Alpha bravo ");
+        assert_eq!(
+            quote("yy", Anchor { block: 0, byte: 6 }),
+            "Alpha bravo charlie"
+        );
+        assert_eq!(quote("y$", Anchor { block: 0, byte: 6 }), "bravo charlie");
+        assert_eq!(
+            quote(
+                "yw",
+                Anchor {
+                    block: 1,
+                    byte: "Привет ".len()
+                }
+            ),
+            "мир"
+        );
+        assert_eq!(
+            quote("y2ip", Anchor { block: 0, byte: 0 }),
+            "Alpha bravo charlie\n\nПривет мир"
+        );
+    }
 }

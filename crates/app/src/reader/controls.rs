@@ -1,7 +1,7 @@
 //! Keep action labels and their mouse targets whole, even in a narrow terminal.
 use ratatui::{layout::Rect, text::Line};
 
-pub(super) fn layout(area: Rect, labels: &[&str]) -> (Vec<Rect>, u16) {
+pub(crate) fn layout(area: Rect, labels: &[&str]) -> (Vec<Rect>, u16) {
     let mut rects = vec![Rect::default(); labels.len()];
     let (mut x, mut row) = (0, 0);
     let mut height = 0;

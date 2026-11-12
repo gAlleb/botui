@@ -38,7 +38,7 @@ impl Buttons {
     pub fn draw(&mut self, f: &mut Frame, area: Rect) {
         self.0 = [Rect::default(); 2];
         let mut x = area.x;
-        for (i, s) in ["[F2 Settings]", "[? Help]"].iter().enumerate() {
+        for (i, s) in ["[F2 Settings]", "[F1 Help]"].iter().enumerate() {
             let len = s.len() as u16;
             if area.height == 0 || x + len > area.right() {
                 break;
@@ -65,7 +65,7 @@ impl Buttons {
         }
     }
 }
-const TABS: [&str; 7] = [
+const TABS: [&str; 8] = [
     "Appearance",
     "Reader",
     "Library",
@@ -73,6 +73,7 @@ const TABS: [&str; 7] = [
     "Keys",
     "About",
     "Legal",
+    "Dictionaries",
 ];
 const PARAGRAPH_SPACING: [&str; 4] = [
     "From book",
@@ -143,7 +144,7 @@ fn rows(tab: usize, s: &Settings) -> Vec<SettingRow> {
             pair(
                 "Column gap",
                 &format!("{} cells", s.column_gap.unwrap_or(4)),
-                "Space between facing text pages. The W panel also lets you adjust this while reading.",
+                "Space between facing text pages. The Space l w panel also lets you adjust this while reading.",
             ),
             pair(
                 "Printed line breaks",
@@ -194,6 +195,11 @@ fn rows(tab: usize, s: &Settings) -> Vec<SettingRow> {
                 &format!("{} line(s)", s.scroll_lines.unwrap_or(1).clamp(1, 12)),
                 "Lines per wheel tick in continuous scroll, for text and PDF/DjVu. Arrow keys always move one line.",
             ),
+            pair(
+                "Space menu delay",
+                &format!("{} ms", s.leader_delay_ms.unwrap_or(150)),
+                "Delay before command hints appear. Space combinations always execute immediately. Set 0 for instant hints.",
+            ),
         ],
         2 => vec![
             pair(
@@ -227,6 +233,11 @@ fn rows(tab: usize, s: &Settings) -> Vec<SettingRow> {
                 &s.sidebar_width
                     .map_or_else(|| "Auto".into(), |n| format!("{n} cells")),
                 "Enter a width in cells, or drag the divider between the navigation sidebar and the bookshelf.",
+            ),
+            pair(
+                "OPDS catalogs",
+                "Manage…",
+                "Named catalogs, URLs and credentials saved in config.toml.",
             ),
         ],
         3 => vec![
@@ -272,6 +283,10 @@ fn rows(tab: usize, s: &Settings) -> Vec<SettingRow> {
                 "Open the BookOrbit shelf as a list or a grid of covers.",
             ),
         ],
+        7 => crate::lookup::settings::rows(&crate::lookup::Config::from_settings(s))
+            .into_iter()
+            .map(|(label, hint)| SettingRow { label, hint })
+            .collect(),
         _ => Vec::new(),
     }
 }
@@ -313,9 +328,12 @@ pub fn show(term: &mut AppTerminal, start: Open, ctx: Context) -> io::Result<()>
             let compact = inner.width < 63;
             let mut x = inner.x;
             let mut y = inner.y;
-            for (i, label) in TABS.iter().enumerate() {
+            for i in [0, 1, 2, 3, 7, 4, 5, 6] {
+                let label = TABS[i];
                 let s = if compact {
-                    ["Style", "Read", "Lib", "Orbit", "Keys", "About", "Legal"][i]
+                    [
+                        "Style", "Read", "Lib", "Orbit", "Keys", "About", "Legal", "Words",
+                    ][i]
                 } else {
                     label
                 };
@@ -394,7 +412,7 @@ pub fn show(term: &mut AppTerminal, start: Open, ctx: Context) -> io::Result<()>
             );
             f.render_widget(Paragraph::new(back_label).cyan(), back);
             f.render_widget(
-                Paragraph::new(if tab >= 5 {
+                Paragraph::new(if matches!(tab, 5 | 6) {
                     "  Tab Sections   ↑↓ Scroll"
                 } else if tab == 4 {
                     if inner.width >= 58 {
@@ -424,11 +442,13 @@ pub fn show(term: &mut AppTerminal, start: Open, ctx: Context) -> io::Result<()>
                     0
                 }
                 KeyCode::Tab | KeyCode::Right => {
-                    select = Some((tab + 1) % TABS.len());
+                    let order = [0, 1, 2, 3, 7, 4, 5, 6];
+                    select = Some(order[(order.iter().position(|&n| n == tab).unwrap() + 1) % 8]);
                     0
                 }
                 KeyCode::BackTab | KeyCode::Left => {
-                    select = Some((tab + TABS.len() - 1) % TABS.len());
+                    let order = [0, 1, 2, 3, 7, 4, 5, 6];
+                    select = Some(order[(order.iter().position(|&n| n == tab).unwrap() + 7) % 8]);
                     0
                 }
                 KeyCode::Char('[' | ']') if tab == 4 => {
@@ -462,7 +482,7 @@ pub fn show(term: &mut AppTerminal, start: Open, ctx: Context) -> io::Result<()>
                             continue;
                         }
                         select = tabs.iter().position(|r| r.contains(pos));
-                        if body.contains(pos) && tab < 4 {
+                        if body.contains(pos) && (tab < 4 || tab == 7) {
                             opened = Some(state.offset() + usize::from(m.row - body.y));
                         }
                         0
@@ -482,8 +502,8 @@ pub fn show(term: &mut AppTerminal, start: Open, ctx: Context) -> io::Result<()>
             status.clear();
             continue;
         }
-        if tab >= 4 {
-            if tab >= 5 {
+        if (4..=6).contains(&tab) {
+            if matches!(tab, 5 | 6) {
                 about_offset = about_offset.saturating_add_signed(delta).min(about_max);
             } else {
                 guide_view.scroll(delta);
@@ -492,7 +512,13 @@ pub fn show(term: &mut AppTerminal, start: Open, ctx: Context) -> io::Result<()>
         }
         if let Some(i) = opened.filter(|&i| i < labels.len() && tab != 4) {
             state.select(Some(i));
-            status = match edit::setting(term, tab, i, &prefs) {
+            status = match if tab == 7 {
+                crate::lookup::settings::open(term, i)
+            } else if tab == 2 && i == 5 {
+                crate::opds_settings::configure(term)
+            } else {
+                edit::setting(term, tab, i, &prefs)
+            } {
                 Ok(_) => String::new(),
                 Err(e) => e.to_string(),
             };

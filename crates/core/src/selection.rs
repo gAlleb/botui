@@ -38,6 +38,16 @@ pub struct TextCell {
 }
 
 impl Pager {
+    pub fn text_line_range(&mut self, doc: &Document, at: Anchor) -> Option<TextRange> {
+        self.finish_resize();
+        let row = Self::line_at(at, &self.lines, &self.source_lines);
+        self.lines
+            .get(row)?
+            .text_cells(doc)
+            .into_iter()
+            .map(|c| c.source)
+            .reduce(TextRange::union)
+    }
     /// Cursor motion follows laid-out text rows, across column and page breaks.
     /// A preferred column survives short lines; images and paragraph gaps are skipped.
     pub fn move_text_line(

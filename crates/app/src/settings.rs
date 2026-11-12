@@ -42,9 +42,12 @@ pub struct Settings {
     pub column_gap: Option<u16>,
     pub scroll_lines: Option<u8>,
     pub bookorbit: Connection,
+    pub opds: Vec<crate::opds_settings::Catalog>,
     pub keys: BTreeMap<char, String>,
     /// Executable and arguments; {text} is replaced without invoking a shell.
     pub lookup_command: Vec<String>,
+    pub lookup: crate::lookup::Config,
+    pub leader_delay_ms: Option<u16>,
 }
 thread_local! {
     static SHELL_THEME: std::cell::Cell<usize> = const {std::cell::Cell::new(0)};
@@ -232,6 +235,25 @@ fn apply(
     );
     Ok(())
 }
+// Materialize newly introduced defaults in older configs without replacing user tables.
+// In particular an explicit empty provider list must stay empty.
+fn extend_config(doc: &mut DocumentMut) -> io::Result<bool> {
+    let example = document(EXAMPLE)?;
+    let mut changed = false;
+    for name in ["leader_delay_ms", "scroll_lines", "lookup"] {
+        if !doc.contains_key(name) {
+            doc.insert(name, example[name].clone());
+            changed = true;
+        }
+    }
+    if !doc.contains_key("opds") {
+        let value = toml_edit::Value::Array(toml_edit::Array::new());
+        doc.insert("opds", toml_edit::Item::Value(value));
+        changed = true;
+    }
+    Ok(changed)
+}
+
 impl Settings {
     pub fn load() -> io::Result<Self> {
         decode(&read(&path()?)?)
@@ -240,7 +262,17 @@ impl Settings {
         let path = path()?;
         let _lock = lock_dir(&path)?;
         let settings = match read(&path) {
-            Ok(text) => decode(&text)?,
+            Ok(text) => {
+                // Validate before touching the user's document; do not print credentials on errors.
+                decode(&text)?;
+                let mut doc = document(&text)?;
+                let changed = extend_config(&mut doc)?;
+                let settings = decode(&doc.to_string())?;
+                if changed {
+                    save(&path, &doc)?;
+                }
+                settings
+            }
             Err(e) if e.kind() == io::ErrorKind::NotFound => {
                 let mut doc = document(EXAMPLE)?;
                 let mut settings = decode(EXAMPLE)?;
@@ -305,6 +337,26 @@ pub fn paint_book(frame: &mut Frame, theme: crate::theme::Theme) {
 pub(crate) fn interface_palette() -> crate::shell_theme::Palette {
     crate::shell_theme::ALL[SHELL_THEME.get()]
 }
+// Reader dialogs inherit book paper; settings and library screens keep their own palette.
+thread_local! {
+    static DIALOG_THEME: std::cell::Cell<Option<crate::theme::Theme>> = const { std::cell::Cell::new(None) };
+}
+pub struct DialogTheme(Option<crate::theme::Theme>);
+impl Drop for DialogTheme {
+    fn drop(&mut self) {
+        DIALOG_THEME.set(self.0);
+    }
+}
+pub fn reader_dialogs(theme: crate::theme::Theme) -> DialogTheme {
+    DialogTheme(DIALOG_THEME.replace(Some(theme)))
+}
+pub fn paint_dialog(frame: &mut Frame) {
+    if let Some(theme) = DIALOG_THEME.get() {
+        paint_book(frame, theme);
+    } else {
+        paint_interface(frame);
+    }
+}
 pub fn paint_interface(frame: &mut Frame) {
     paint_with(frame, SHELL_THEME.get());
 }
@@ -345,5 +397,95 @@ fn paint_with(frame: &mut Frame, index: usize) {
         } else if solid {
             cell.bg = term.solid(cell.bg);
         }
+    }
+}
+
+#[cfg(test)]
+mod dialog_tests {
+    use super::*;
+    use ratatui::{
+        Terminal,
+        backend::TestBackend,
+        widgets::{Clear, Paragraph},
+    };
+    #[test]
+    fn config_upgrade_preserves_custom_values_and_is_idempotent() {
+        let original = "# My paper\ninterface_theme = \"nord\"\nleader_delay_ms = 240\n[bookorbit]\npassword = \"test-only\" # keep comment\n[keys]\nx = \"next\"\n";
+        let mut doc = document(original).unwrap();
+        assert!(extend_config(&mut doc).unwrap());
+        let saved = doc.to_string();
+        assert!(saved.contains("# My paper"));
+        assert!(saved.contains("# keep comment"));
+        let settings = decode(&saved).unwrap();
+        assert_eq!(settings.leader_delay_ms, Some(240));
+        assert_eq!(settings.keys.get(&'x').unwrap(), "next");
+        assert_eq!(settings.interface_theme.as_deref(), Some("nord"));
+        assert_eq!(settings.lookup.profiles.len(), 2);
+        assert!(settings.opds.is_empty());
+        assert!(!extend_config(&mut doc).unwrap());
+        assert_eq!(saved, doc.to_string());
+        let mut disabled = document("[lookup]\nprofiles = []\n").unwrap();
+        extend_config(&mut disabled).unwrap();
+        assert!(
+            decode(&disabled.to_string())
+                .unwrap()
+                .lookup
+                .profiles
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn documented_configuration_matches_example() {
+        let settings = decode(EXAMPLE).unwrap();
+        assert_eq!(settings.leader_delay_ms, Some(150));
+        assert!(settings.keys.is_empty());
+        for doc in [
+            include_str!("../../../README.md"),
+            include_str!("../../../README.ru.md"),
+            include_str!("../../../docs/guide.md"),
+            include_str!("../../../docs/guide.ru.md"),
+        ] {
+            assert!(
+                doc.contains(EXAMPLE.trim()),
+                "Configuration reference is outdated"
+            );
+        }
+    }
+
+    #[test]
+    fn reader_popups_keep_paper_and_restore_shell_context() {
+        let mut term = Terminal::new(TestBackend::new(12, 4)).unwrap();
+        let theme = crate::theme::Theme::at(3, true);
+        let old = SHELL_THEME.replace(crate::shell_theme::index(Some("catppuccin-mocha")));
+        for solid in [false, true] {
+            OPAQUE.store(solid, Ordering::Relaxed);
+            {
+                let _scope = reader_dialogs(theme);
+                term.draw(|f| {
+                    f.render_widget(Clear, f.area());
+                    f.render_widget(Paragraph::new("Dictionary"), f.area());
+                    paint_dialog(f);
+                })
+                .unwrap();
+                let cell = &term.backend().buffer()[(0, 0)];
+                assert_eq!(cell.fg, theme.style().fg.unwrap());
+                assert_eq!(
+                    cell.bg,
+                    if solid {
+                        theme.style().bg.unwrap()
+                    } else {
+                        Color::Reset
+                    }
+                );
+                {
+                    let _nested = reader_dialogs(crate::theme::Theme::TERMINAL);
+                }
+                assert_eq!(DIALOG_THEME.get(), Some(theme));
+            }
+            assert_eq!(DIALOG_THEME.get(), None);
+        }
+        SHELL_THEME.set(old);
+        OPAQUE.store(false, Ordering::Relaxed);
     }
 }

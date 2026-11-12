@@ -30,7 +30,7 @@ def check_back(home, grid):
         term.keys("Enter"); term.see("Part/")
         term.keys("Enter"); term.wait("Book in nested folder", lambda f: book in f or "До первого парома" in f)
         term.keys("Enter"); term.see("Почта на пристани")
-        term.keys("q"); term.wait("Reader returns to its folder", lambda f: "Local library" in f and (book in f or "До первого парома" in f))
+        term.keys("Space", "q"); term.wait("Reader returns to its folder", lambda f: "Local library" in f and (book in f or "До первого парома" in f))
         term.keys("q"); term.see("Part/")
         term.keys("q"); term.see("Vol-39/")
         # The selected folder is still visible; Enter must reopen it without scrolling.
@@ -66,7 +66,7 @@ def check(home):
         term.see(name)
         term.keys("Enter")
         term.see("Почта на пристани")
-        term.keys("Right", "q")
+        term.keys("Right", "Space", "q")
         term.see(name)
         term.keys("a"); term.see("New collection…"); term.keys("Enter")
         term.see("New collection name"); term.type("Night shelf"); term.keys("Enter")
@@ -89,7 +89,7 @@ def check(home):
         term.wait("Original folder still contains book", lambda f: name in f and "Fiction/Amber" in f)
         term.keys("4"); assert "Night shelf" not in term.see("New collection…")
         term.keys("Escape"); term.see(name); term.keys("Enter"); term.see("Sections: 3")
-        term.keys("q"); term.see(name)
+        term.keys("Space", "q"); term.see(name)
         term.click("3 Recently added", term.see("3 Recently added"))
         term.wait("Recently added shelf", lambda s: "Recently added" in s and name in s)
 

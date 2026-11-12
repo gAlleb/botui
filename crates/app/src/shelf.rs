@@ -1929,6 +1929,7 @@ impl Shelf {
     }
 
     pub fn choose(&mut self, term: &mut AppTerminal) -> io::Result<Selection> {
+        let mut leader = crate::leader::Leader::new();
         self.rail.splitter.preferred = crate::settings::Settings::load()?.sidebar_width;
         loop {
             if let Some(choice) = self.collect_results() {
@@ -1949,7 +1950,8 @@ impl Shelf {
             }
             term.draw(|frame| {
                 self.draw(frame);
-                crate::settings::paint_interface(frame)
+                crate::settings::paint_interface(frame);
+                leader.draw(frame, crate::leader::Context::Shelf);
             })?;
             self.prefetch();
             let busy = self.pending.is_some()
@@ -1960,10 +1962,20 @@ impl Shelf {
                 || self.card.busy()
                 || self.card.viewer.busy();
             let timeout = busy.then(|| Duration::from_millis(80));
+            let timeout = timeout.into_iter().chain(leader.timeout()).min();
             let event = crate::settings::read_event_for(timeout)?;
-            let Some(e) = event else {
+            let Some(mut e) = event else {
                 continue;
             };
+            if self.login.is_none()
+                && self.info.is_none()
+                && let Some(command) = leader.input(&e, crate::leader::Context::Shelf)
+            {
+                let Some(event) = command.and_then(|c| c.event()) else {
+                    continue;
+                };
+                e = event;
+            }
             if let Some(result) = self.rail.splitter.input(&e) {
                 if let Err(err) = result {
                     self.notice = Some(err.to_string());

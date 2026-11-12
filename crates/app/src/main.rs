@@ -1,3 +1,4 @@
+mod annotation_editor;
 mod appearance;
 mod cache;
 mod catalog;
@@ -5,9 +6,12 @@ mod connection;
 mod cover;
 mod cover_viewer;
 mod diagnostic;
+mod leader;
 mod live_progress;
 mod live_search;
+mod lookup;
 mod offline;
+mod opds_settings;
 mod overlay;
 mod picker;
 mod preferences;
@@ -22,6 +26,7 @@ mod stats;
 mod terminal_frame;
 mod terminal_input;
 mod theme;
+mod vim;
 
 use std::env;
 
@@ -47,7 +52,7 @@ use ratatui::layout::Rect;
 use terminal_frame::AppTerminal;
 type Result<T> = std::result::Result<T, Box<dyn Error>>;
 
-const HELP: &str = "botui [FILE | DIRECTORY | --local [DIRECTORY] | --resume | --library DIRECTORY | --server URL | --opds URL]\n\nOpen a book or remember a local library folder. Use --resume for the last unfinished local book or offline download. With no arguments, choose a source. F2 settings and About, ? shortcuts, --license for license texts. Use --config-path to locate config.toml or --check-bookmarks TITLE to inspect server bookmarks without editing them.\nBookOrbit: 0 dashboard, 1 all books, 2 reading, 3 recent, 4 libraries, 5 collections, 6 authors, 7 series. / search, V grid/list, U borders.\nIn EPUB or FB2: 1/2/3 single/spread/scroll, arrows or wheel to read, W page layout, [/] width, {/} column gap, Z zen, O contents, T theme, F background, B/G bookmarks, M menu, Q close.\nPDF and DjVu: 1/2/3 single/spread/scroll, P go to page (Ctrl+G also works), / find text, N next match, W width, +/- zoom, 0 fit, Z zen, G bookmarks.\n";
+const HELP: &str = "botui [FILE | DIRECTORY | --local [DIRECTORY] | --resume | --library DIRECTORY | --server URL | --opds URL]\n\nWith no arguments, choose a source. --resume opens the last unfinished local book or download.\n--config-path: locate config.toml; --license: license texts; --check-bookmarks TITLE: inspect server bookmarks without editing them.\nF1: complete contextual keyboard help; F2: settings.\nBooks open without a cursor. Space opens the command menu (150 ms hint delay, immediate execution).\nSpace c: toggle Vim cursor; v/V select only in Vim. Normal supports yiw/yw/yy.\nSpace l 1/2/3: single/spread/scroll; Space l w: width/spacing; Space z: zen; Space p: progress.\nSpace f: search; F3/F4/F5: next/previous/results; Space b a/l: bookmark/list.\nSpace a: annotations/copy/export; Space d d/t: definitions/translation; Space t: theme or PDF colors.\nSpace r p: PDF page; Space r +/-: PDF zoom; Space r 0: fit. Space q: return to the book source.\nSpace submenu: q/Esc/Backspace returns one level. Esc closes the root.\nLibraries keep contextual shortcuts: / search, V grid/list, Q/Esc back.\nBookOrbit: 0 dashboard, 1 all books, 2 reading, 3 recent, 4 libraries, 5 collections, 6 authors, 7 series.\nF2 > Dictionaries > Word definitions / Translation: add, edit, test and delete connections.\nFull configuration example: config.example.toml; full controls: README.md and docs/guide.md.\n";
 
 struct Screen;
 
@@ -269,7 +274,21 @@ fn browse_picker(
 }
 
 fn opds_shelf(term: &mut AppTerminal, url: String, notices: &mut Vec<String>) -> Result<()> {
+    let catalogs = settings::Settings::load()?.opds;
+    let configured = if url.is_empty() && !catalogs.is_empty() {
+        let mut rows: Vec<_> = catalogs.iter().map(|c| c.name.clone()).collect();
+        rows.push("Other catalog…".into());
+        let Some(i) = prompt::choose(term, "Open OPDS catalog", &rows, 0)? else {
+            return Ok(());
+        };
+        catalogs.get(i).cloned()
+    } else {
+        catalogs.into_iter().find(|c| c.url == url)
+    };
     let mut shelf = shelf::Shelf::opds(url);
+    if let Some(c) = configured {
+        shelf.open_opds(c);
+    }
     loop {
         match shelf.choose(term)? {
             shelf::Selection::Quit => return Ok(()),

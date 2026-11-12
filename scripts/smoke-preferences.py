@@ -12,24 +12,22 @@ def check(tmp):
     t=s.Terminal(tmp,root/'target/debug/botui',args=[])
     def cfg():return tomllib.loads((tmp/'config/botui/config.toml').read_text())
     try:
-        t.click('[? Help]',t.see('[? Help]'));t.see('Keyboard shortcuts');guide=t.see('Open the selected item')
+        t.click('[F1 Help]',t.see('[F1 Help]'));t.see('Keyboard shortcuts');guide=t.see('Open the selected item')
         aligned=[next(row.index(label) for row in guide.splitlines() if label in row) for label in ('Open settings','Back / close a panel','Open the selected item')]
         assert len(set(aligned))==1,aligned
         assert 'series' in guide and 'Sections' in guide
         # Click the wide index and navigate back by section without losing the Keys tab.
         t.click('PDF & DjVu', guide)
-        pdf = t.see('Go directly to a page number')
+        pdf = t.see('Navigate pages; arrows pan')
         assert '▸ PDF & DjVu' in pdf
         t.keys('[')
-        t.see('Set page width and column gap')
+        t.see('Navigate; scroll mode')
         t.keys(']')
-        t.see('Go directly to a page number')
+        t.see('Navigate pages; arrows pan')
         t.run('resize-window','-t','shelf','-x','42','-y','14')
         t.keys('End')
-        tail=t.see('Book statistics')
-        lines=tail.splitlines()
-        last=next(i for i,row in enumerate(lines) if 'Book statistics' in row)
-        assert 'close book' in ' '.join(row.strip(' │') for row in lines[last:last+3]),tail
+        tail=t.see('column gap')
+        assert 'Page layout' in tail
         assert '▸ PDF & DjVu' not in tail
         t.keys('Home');t.see('Open settings')
         # Wheel over the body must advance physical rows, including wrapped descriptions.
@@ -40,9 +38,9 @@ def check(tmp):
         t.type('nonexistent-command')
         t.see('No matching shortcuts.')
         t.keys('C-u')
-        t.type('Ctrl+G')
+        t.type('Space r p')
         compact = t.see('1 match')
-        assert 'Go directly' in compact and 'to a page' in ' '.join(row.strip(' │') for row in compact.splitlines())
+        assert 'Go to page' in compact
         t.keys('Enter')
         t.see('[Esc Clear]')
         t.keys('Escape')
@@ -89,7 +87,7 @@ def check(tmp):
         t.wait('Book spacing restored', lambda f: 'First-line indent' in f and 'paragraph_spacing' not in cfg())
         t.click('Zen progress',t.see('Zen progress'))
         t.wait('Zen progress enabled',lambda _:cfg()['zen_progress'])
-        t.keys('Tab', 'End')
+        t.keys('Tab', 'End', 'Up')
         t.see('divider between the navigation sidebar')
         t.click('Reading statistics',t.see('Reading statistics'));t.see('Editions opened');t.keys('Escape')
         t.click('Download limit',t.see('4096 MiB'));t.keys('C-u');t.type('2048');t.keys('Enter');t.see('2048 MiB');assert cfg()['max_download_mib']==2048
@@ -128,13 +126,13 @@ def check(tmp):
     finally:t.run('kill-server',required=False)
     t=s.Terminal(tmp,root/'target/debug/botui',args=[str(root/'examples/first-light.fb2')])
     try:
-        t.see('Z Zen');t.keys('z')
+        t.see('Space z Zen');t.keys('Space','z')
         footer = re.compile(r'\d+ / \d+  ·  \d+%')
         t.wait('Zen footer in text reader', lambda f: footer.search(f.splitlines()[-1]))
-        t.keys('%')
+        t.keys('Space','p')
         t.wait('Zen footer hidden', lambda f: not footer.search(f) and not cfg()['zen_progress'])
         t.keys('F2');t.see('Nord')
-        t.keys('Escape','?');t.see('Keyboard shortcuts');t.see('EPUB & FB2');t.keys('Escape','q')
+        t.keys('Escape');t.wait('Returned to reading', lambda f:'Interface theme' not in f and 'Почта на пристани' in f);t.keys('F1');t.see('Keyboard shortcuts');t.see('EPUB & FB2');t.keys('Escape','Space','q')
     finally:t.run('kill-server',required=False)
 if __name__=='__main__':
     with tempfile.TemporaryDirectory(prefix='botui-settings-') as d:check(Path(d))

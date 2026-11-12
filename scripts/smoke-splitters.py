@@ -82,7 +82,7 @@ def exercise(directory, server):
     term = shelf.Terminal(directory, BINARY, args=[str(text)])
     try:
         at_width(term, 23)
-        term.keys("3", "PageDown")
+        term.keys("Space", "l", "3", "PageDown")
         frame = term.wait("Scrolled to another passage", lambda f: "Passage" in f and "Passage 000" not in f)
         anchor = re.search(r"Passage \d+", frame).group()
         change_width(term, directory, "contents_width", 23, 45)
@@ -93,7 +93,7 @@ def exercise(directory, server):
         at_width(term, 40)
         size(term, 115)
         at_width(term, 45)
-        term.keys("q")
+        term.keys("Space", "q")
         for _ in range(150):
             if term.run("has-session", "-t", "shelf", required=False).returncode:
                 break
@@ -116,7 +116,7 @@ def exercise(directory, server):
     try:
         at_width(term, 45)
         term.see("1 / 3")
-        term.keys("p")
+        term.keys("Space", "r", "p")
         term.see("Go to page")
         term.keys("2", "Enter")
         term.see("2 / 3")
@@ -124,7 +124,7 @@ def exercise(directory, server):
         frame = at_width(term, 20)
         assert "2 / 3" in frame
         assert config(directory)["sidebar_width"] == 75
-        term.keys("q")
+        term.keys("Space", "q")
         for _ in range(150):
             if term.run("has-session", "-t", "shelf", required=False).returncode:
                 break

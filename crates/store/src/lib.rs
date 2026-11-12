@@ -4,7 +4,7 @@ mod fingerprint;
 mod notes;
 mod stats;
 use botui_core::Anchor;
-pub use notes::{HighlightColor, Note};
+pub use notes::{HighlightColor, Note, PdfRegion};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 pub use stats::{LibraryStats, Stats};

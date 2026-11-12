@@ -92,7 +92,7 @@ def check(tmp):
         t.see(filename)
         t.keys("Enter")
         t.see("Почта на пристани")
-        t.keys("Right", "q")
+        t.keys("Right", "Space", "q")
         t.see(filename)
         t.keys("Escape"); t.wait("Back on shelf", lambda f: str(lib) in f and "Search local library" not in f)
         t.keys("2")
@@ -107,7 +107,7 @@ def check(tmp):
                 break
             time.sleep(.03)
         t = shelf.Terminal(tmp, binary, args=["--resume"])
-        t.see("Z Zen");t.keys("q")
+        t.see("Space z Zen");t.keys("Space", "q")
         t.run("kill-server",required=False)
         settings = tomllib.loads((tmp / "config/botui/config.toml").read_text())
         assert settings["library_root"] == str(lib), settings

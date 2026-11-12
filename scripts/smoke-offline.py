@@ -32,7 +32,7 @@ with tempfile.TemporaryDirectory() as name, shelf.Fixture(False) as server:
         shutil.rmtree(downloads / ".editions")
         term.keys("r")
         term.see(shelf.FB2_MARK)
-        term.keys("q")
+        term.keys("Space", "q")
         shelf.formats(term)
         assert sum(p.endswith("/302/serve") for _, p, _ in server.requests) == 1
         shelf.quit_shelf(term)
@@ -41,9 +41,9 @@ with tempfile.TemporaryDirectory() as name, shelf.Fixture(False) as server:
         term.click("BookOrbit offline downloads", term.see("BookOrbit offline downloads"))
         term.click(shelf.BOOK, term.see(shelf.BOOK))
         term.see(shelf.FB2_MARK)
-        term.keys("o")
+        term.keys("Space", "o")
         term.wait("Contents overlay", lambda f:"[ Back ]" in f and "Sections:" in f)
-        term.keys("End", "Enter", "q")
+        term.keys("End", "Enter", "Space", "q")
         term.see("BookOrbit offline downloads")
         term.keys("DC"); term.see("Remove from this device?"); term.keys("Down", "Enter")
         term.wait("Book removed, queued move kept", lambda f: not list(downloads.glob("*.fb2")) and "Remove from this device?" not in f)
@@ -93,7 +93,7 @@ def chapter_book(place="coast"):
 
 
 def jump(term, number):
-    term.keys("o")
+    term.keys("Space", "o")
     term.see("Sections:")
     term.click(f"Chapter {number}", term.see(f"Chapter {number}"))
     term.wait("Reader opens selected chapter", lambda f: f.strip().startswith(f"Chapter {number}"))
@@ -119,7 +119,7 @@ with tempfile.TemporaryDirectory() as name, shelf.Fixture(False) as server:
         term.wait("First Read opens EPUB", lambda f: f.strip().startswith("Chapter 1"))
         jump(term, 5)
         term.wait("Chapter five uploaded while reading", lambda f: "Chapter 5" in f and server.saved == [301])
-        term.keys("q")
+        term.keys("Space", "q")
         shelf.formats(term)
         shelf.quit_shelf(term)
         downloads = tmp / ".local/share/botui/downloads"
@@ -144,7 +144,7 @@ with tempfile.TemporaryDirectory() as name, shelf.Fixture(False) as server:
         term.click(shelf.BOOK, frame)
         term.wait("Offline resumes chapter five", lambda f: f.strip().startswith("Chapter 5"))
         jump(term, 7)
-        term.keys("q"); term.see("BookOrbit offline downloads")
+        term.keys("Space", "q"); term.see("BookOrbit offline downloads")
         term.keys("q"); term.wait("Back from offline Reading to downloads", lambda f: "BookOrbit offline downloads" in f and "Currently reading  ·" not in f)
         term.keys("q"); term.see("Choose a library")
         shelf.quit_shelf(term)
@@ -156,7 +156,7 @@ with tempfile.TemporaryDirectory() as name, shelf.Fixture(False) as server:
         term.keys("Enter")
         term.click("EPUB", shelf.formats(term))
         term.wait("BookOrbit resumes chapter seven", lambda f: f.strip().startswith("Chapter 7"))
-        term.keys("q"); shelf.formats(term)
+        term.keys("Space", "q"); shelf.formats(term)
         term.keys("d"); term.see("Saved in BookOrbit offline downloads")
         served = [code for _, p, code in server.requests if p.endswith("/301/serve")]
         assert served == [200, 304], served
@@ -174,7 +174,7 @@ with tempfile.TemporaryDirectory() as name, shelf.Fixture(False) as server:
         term.see("Choose a library"); term.keys("d"); term.click(shelf.BOOK, term.see(shelf.BOOK))
         term.wait("Saved EPUB opens during outage", lambda f: f.strip().startswith("Chapter 7"))
         jump(term, 8)
-        term.keys("q"); term.see("BookOrbit offline downloads")
+        term.keys("Space", "q"); term.see("BookOrbit offline downloads")
         term.keys("q"); term.see("Choose a library")
         end = time.monotonic() + 8
         while time.monotonic() < end and not any(code == 503 for _, _, code in server.requests): time.sleep(.05)
@@ -205,7 +205,7 @@ with tempfile.TemporaryDirectory() as name, shelf.Fixture(False) as server:
         term.wait("Reconciliation opens offline chapter seven", lambda f: f.strip().startswith("Chapter 7"))
         assert server.progress[301]["text"]["cfi"] == local_move["target"]["Text"]
         assert json.loads(meta.read_text())["pending"] is None and len(server.saved) == before + 1
-        term.keys("q"); shelf.formats(term)
+        term.keys("Space", "q"); shelf.formats(term)
         conflict = json.loads(meta.read_text())
         conflict["pending"] = local_move
         meta.write_text(json.dumps(conflict))
@@ -216,7 +216,7 @@ with tempfile.TemporaryDirectory() as name, shelf.Fixture(False) as server:
         term.click("Use BookOrbit position", term.see("Use BookOrbit position"))
         term.wait("Choosing BookOrbit opens chapter eight", lambda f: f.strip().startswith("Chapter 8"))
         assert len(server.saved) == before + 1 and json.loads(meta.read_text())["pending"] is None
-        term.keys("q"); shelf.formats(term)
+        term.keys("Space", "q"); shelf.formats(term)
         shelf.source_home(term)
 
         # A different revision of the same length must replace the cached edition.
@@ -250,7 +250,7 @@ with tempfile.TemporaryDirectory() as name, shelf.Fixture(False) as server:
         server.unavailable = False
         term.keys("Enter")
         term.wait("Resume latest web chapter", lambda f: f.strip().startswith("Chapter 7"))
-        term.keys("q"); shelf.formats(term)
+        term.keys("Space", "q"); shelf.formats(term)
         assert len(server.saved) == saves + 1
         index, = (downloads / ".editions").glob("*/301.json")
         assert (downloads / json.loads(index.read_text())["name"]).read_bytes() == updated

@@ -21,13 +21,13 @@ On the start screen, move the selection to see the description and controls for 
 
 Enter and a click also open the selection.
 
-Click the cover inside a book card, or press **C**, to open it with your system image viewer. On the shelf, clicking still opens the book card. In a local EPUB or FB2, **C** opens the embedded cover.
+Click the cover inside a book card, or press **C**, to open it with your system image viewer. On the shelf, clicking still opens the book card. In a local EPUB or FB2, **Space r c** opens the embedded cover.
 
-If a book or catalog has no cover image, BOTUI makes a [cloth jacket](images/generated-jacket.png) from the title and author. For PDF and DjVu, **C** shows the first page. BOTUI uses the desktop’s image association via `xdg-open`.
+If a book or catalog has no cover image, BOTUI makes a [cloth jacket](images/generated-jacket.png) from the title and author. For PDF and DjVu, **Space r c** shows the first page. BOTUI uses the desktop’s image association via `xdg-open`.
 
-**F2** opens Settings: Appearance, Reader, Library, BookOrbit, Keys, About and Legal. **?** or **F1** opens the shortcut guide for the current screen. Use **[ / ]** to switch groups or type **/** to find a key or command. The footer shortcuts are clickable.
+**F2** opens Settings: Appearance, Reader, Library, BookOrbit, Dictionaries, Keys, About and Legal. **F1** (or **?** on a shelf) opens the shortcut guide for the current screen. Use **[ / ]** to switch groups or type **/** to find a key or command. The footer shortcuts are clickable.
 
-**Q** goes back one step. In BookOrbit: reader → book card → the shelf, dashboard or search you opened it from. In the local library: reader → folder → parent folders → library root → source chooser. Selection and scroll position are kept when you return. On the source chooser, **Q** exits BOTUI. When launched with a single file path, closing that file ends the command.
+**Q** on shelves and **Space q** in a reader go back one step. In BookOrbit: reader → book card → the shelf, dashboard or search you opened it from. In the local library: reader → folder → parent folders → library root → source chooser. Selection and scroll position are kept when you return. On the source chooser, **Q** exits BOTUI. When launched with a single file path, closing that file ends the command.
 
 **Esc** also goes back on library screens; in a reader it opens the reading menu. In a search field, **Q** is typed into the query and **Esc** closes the search. Click **Home** on a BookOrbit shelf to go straight to the source chooser.
 
@@ -105,7 +105,7 @@ Reaching the end sends 100%; BookOrbit applies its own completion policy. Use `b
 
 See the [book details before reading](images/book-details.png) and [navigation with the libraries folded](images/navigation-folded.png).
 
-**L Reading log** opens sessions recorded by BookOrbit, with dates, devices, time and progress. **B Related books** opens the author or series. The local timer under **S** counts time in BOTUI on this device.
+**L Reading log** opens sessions recorded by BookOrbit, with dates, devices, time and progress. **B Related books** opens the author or series. The local timer under **Space r s** counts time in BOTUI on this device.
 
 ### OPDS catalogs
 
@@ -115,99 +115,150 @@ Positions and notes are local.
 
 ## Reading
 
-[Two text pages and the live page width and column gap controls](images/reader-layout.png)
+Books open without a cursor. **Space** opens commands; hints appear after **150 ms**, but the next key works immediately. Press keys in sequence, not together. `Space c` enables Vim. Only then do `v`/`V` select text. Legacy letters such as `t`, `b` and `v` have no action in ordinary reading. Explicit user `[keys]` overrides are an exception for EPUB/FB2; they do not override Vim or Space.
 
-| EPUB and FB2 action | Controls |
+In a Space submenu, `q`, `Esc` and `Backspace` return to the root; `Esc` closes the root menu. Shelves and editors have their own contextual keys, listed separately.
+
+| Keys | Action |
 | --- | --- |
-| Turn pages | Left / Right, Page Up / Page Down, mouse wheel |
-| Single page / facing spread / continuous scroll | **1 / 2 / 3**. In scroll mode ↑/↓ and the wheel move one line by default; PgUp/PgDn move a screen |
-| Open menu | **M** or Esc. Esc clears an active text selection first |
-| Adjust page width and column gap with a live preview | **W**, then click **− / +** on either row |
-| Adjust without opening the panel | **[** wider page, **]** narrower page. **{** smaller gap, **}** larger gap |
-| Zen mode / contents sidebar | **Z**. In the normal view, **Tab** changes focus |
-| Page number and percentage in zen mode | **%** toggles the dim footer. You can also use **F2 → Reader → Zen progress**. |
-| Contents / search / links and illustrations | **O / slash / I** |
-| Theme / opaque background / border style | **T / F / U** |
-| Toggle bookmark / open bookmarks | **B / G** |
-| Highlight / comment / list annotations / export Markdown | **H / N / A / E** |
-| Jump back / forward | **, / .** |
-| Book statistics / close | **S / Q** |
+| `Space c` | Toggle Vim cursor (Normal ↔ reading) |
+| `Space m` | Reading menu |
+| `Space o` | Contents |
+| `Space z` | Zen mode |
+| `Space p` | Dim progress footer in zen |
+| `Space f` | Find in book |
+| `Space b a` | Add/remove bookmark |
+| `Space b l` | Bookmark list |
+| `Space a y` | Copy selection; Normal: word under cursor |
+| `Space a h` | Color highlight |
+| `Space a n` | Comment on passage |
+| `Space a a` | Highlights and notes |
+| `Space a e` | Export annotations to Markdown |
+| `Space a v` | Show/hide note body (EPUB/FB2) |
+| `Space a p` | Page note (PDF/DjVu) |
+| `Space d d` | Word definition |
+| `Space d t` | Translate selected text |
+| `Space l 1` | Single page |
+| `Space l 2` | Two-page spread |
+| `Space l 3` | Continuous scroll |
+| `Space l w` | Page width / column gap; PDF zoom |
+| `Space l f` | Opaque/transparent background |
+| `Space l u` | Border style |
+| `Space t` | Reading theme; PDF: original / inverted / match background |
+| `Space s` | Settings |
+| `Space ?` | Help |
+| `Space q` | Close book and return to its source |
+| `Space r c` | Open cover in external viewer |
+| `Space r s` | Reading statistics |
+| `Space r [` | Jump back |
+| `Space r ]` | Jump forward |
+| `Space r i` | Links and illustrations (EPUB/FB2) |
+| `Space r f` | Follow visible links (EPUB/FB2) |
+| `Space r p` | Go to page (PDF/DjVu) |
+| `Space r +` | Zoom in (PDF/DjVu) |
+| `Space r -` | Zoom out (PDF/DjVu) |
+| `Space r 0` | Fit page / fit width in scroll (PDF/DjVu) |
+| `Space r r` | Rotate clockwise (PDF/DjVu) |
+| `Space r R` | Rotate counterclockwise (PDF/DjVu) |
 
-Press **O** to open the contents. Chapters appear under their book or part. Click a triangle or use **← / →** to fold or expand a group. Click a title or press **Enter** to open it. In the sidebar, **Tab** gives the outline keyboard focus.
+**Direct navigation in ordinary reading**
 
-Width and spacing are in terminal cells. Extra room sits outside the spread. A narrow window shows one page. Resize or adjust either value while reading to reflow both pages around the current text position. In scanned EPUB/FB2 text, botui can join printed line breaks and split words.
+| Keys | Action |
+| --- | --- |
+| `← → / PgUp PgDn` | Navigate pages; in PDF arrows also pan |
+| `↑ ↓ / j k` | Move through text; one line in continuous text scroll |
+| `h l` | Previous/next page or horizontal movement |
+| `Home End` | Start/end (PDF: document; Vim: line) |
+| `Tab` | Focus visible contents; arrows fold/expand, Enter opens |
+| `F1 / F2` | Help / settings |
+| `F3 / F4 / F5` | Next match / previous match / result list |
+| `Esc` | Back/close panel; reading menu |
+| `Ctrl+C` | Copy selected text |
 
-Set `preserve_printed_lines = true` for editions where those breaks are intentional.
+**Vim — after Space c**
 
-In EPUB and FB2, click an underlined reference or press **F6** to follow a link on the visible page. If several are visible, choose one.
+| Keys | Action |
+| --- | --- |
+| `Space c` | Enter Normal; repeat to return to reading from Normal or Visual |
+| `v / V` | Visual / logical line selection |
+| `Esc` | Cancel pending command or Visual; idle Normal → reading |
+| `h j k l` | Cursor left/down/up/right; j/k follow visible lines |
+| `w b e` | Next word / previous word / word end |
+| `0 ^ $` | Logical line start / first text / end |
+| `{ }` | Previous/next paragraph (PDF: text block) |
+| `gj gk / g0 g$` | Screen rows / screen row edges (EPUB/FB2) |
+| `gg / G` | Start/end of text (PDF: current page) |
+| `y` | Copy selection in Visual; begin copy operator in Normal |
+| `yw ye yy y$` | Copy to next word / word end / logical line / line end |
+| `yiw yaw yip yap` | Copy inner word / word with space / paragraph |
+| `3j / 3yw / y3w` | Repeat a motion or copy operation; counts can precede the operator or motion |
+| `viw / vaw / vip / vap / gv` | Select inner word / word with space / paragraph / restore previous selection |
+| `/ ? / n N` | Search forward/backward / next/previous match |
+| ``ma / 'a / `a`` | Set named mark a / return to it |
+| `Ctrl+O / Ctrl+I` | Jump back / forward |
+| `K` | Definition of word/selection |
 
-When you visit a note or glossary entry at the end of the book, **Esc** or **Back** restores your reading position; **Enter · Read here** makes an in-book destination your new reading position. Supplementary notes open over the current page. **I** still lists resources from the whole book.
+**Inside panels and editors**
+
+| Keys | Action |
+| --- | --- |
+| `↑ ↓ / Enter / click` | Choose and activate an item |
+| `Esc` | Close panel; editor offers to save/discard unsaved changes |
+| `Ctrl+S / Enter` | Note editor: save / new line; empty saved comment deletes annotation |
+| `Tab` | Note editor: change highlight color |
+| `[ ] / { }` | Page layout panel: narrow/widen page / decrease/increase column gap |
+| `/ / N / H / Y / Del / E` | Annotation list: filter / edit / color / copy / delete / export |
+| `P / L / S / Y / N` | Lookup result: provider / target language / source language / copy / save as note |
 
 ### Tables, equations and illustrations
 
-Open a technical EPUB as you would a novel. The reader applies styles packaged with the edition, including merged table cells, side-by-side columns, lists and preformatted code. Equations in presentation MathML and TeX explicitly marked as math appear in the passage. A fraction has its numerator above its denominator. Change the page width with **W** to give a wide table more room.
+Open a technical EPUB as you would a novel. The reader applies styles packaged with the edition, including merged table cells, side-by-side columns, lists and preformatted code. Equations in presentation MathML and TeX explicitly marked as math appear in the passage. A fraction has its numerator above its denominator. Change the page width with **Space l w** to give a wide table more room.
 
 The terminal supplies the typeface and cell size. Justified paragraphs keep natural spaces between words. Headings and right-aligned passages keep their alignment. The reader theme supplies the ink and paper colors.
 
 Search, footnotes, bookmarks and BookOrbit resume use the source text even when a table wraps differently.
 
-Embedded raster illustrations use the available page height. **I** opens an illustration separately. **F2 → Reader → Illustrations** switches to the separate viewer only.
+Embedded raster illustrations use the available page height. **Space r i** opens an illustration separately. **F2 → Reader → Illustrations** switches to the separate viewer only.
 
 FB2 also preserves italic, bold and struck-through text in ordinary paragraphs. These faces do not change the text used for search or saved positions.
 
-### Select, copy and annotate EPUB or FB2
+### Working with text
 
-Click a word to place the text cursor. Drag to select a passage, double-click for a word or triple-click for a paragraph. Drag above or below the reading area to extend the selection while scrolling. The bottom row offers the same actions with the mouse.
+Drag to select a passage, double-click a word, or triple-click a paragraph. For keyboard selection, enter `Space c`, then `v`. `Space a y` copies, `Space a h` highlights, and `Space a n` opens a comment. Normal also supports copy operators such as `yiw` and `yip`.
 
-| Action | Controls |
-| --- | --- |
-| Copy the exact quote | **Y**, or **Ctrl+C** while selected |
-| Highlight in one of five colors | **H**, choose a color, **Enter** to save |
-| Add or edit a comment | **N**; **Enter** inserts a line, **Ctrl+S** saves |
-| Open the comment at the cursor / show its body below the text | **Enter / F8** |
-| Find, edit or delete an annotation | **A**, then **/**, **N** or **Del** |
-| Export all annotations / just the filtered list | **E** in the reader / **E** in the annotation list |
-| Enable the text cursor / begin a selection / select a paragraph | **F7 / v / V** |
-| Move the cursor in normal or visual mode | **h j k l**, **w / b / e** for next word, previous word or word end |
-| Save named mark `a` / return to it | **m a / ' a** in normal mode |
+`Space a a` opens annotations: Del deletes, N edits, H changes color, Y copies the quote, / filters, and E exports. In the editor, Enter inserts a line and Ctrl+S saves; saving an empty comment deletes the annotation. Esc cancels editing.
 
-**Esc** clears the selection, then leaves text mode. **M** opens the reading menu. In normal mode lowercase **m** starts a named mark.
+Annotations are stored on this device. BookOrbit range-annotation sync is not implemented. PDF requires a text layer; no OCR is performed.
 
-Quotes use the original text, without the terminal’s line wrapping. Highlights and comments survive width changes and reopening the book. They are stored locally; BookOrbit annotation sync is not implemented. Existing passage notes remain in **A**. Markdown exports contain the quote, comment, color and source section.
+### Dictionaries, translation and saved catalogs
 
-To remove a comment, erase all its text and save with **Ctrl+S**; this also removes its highlight. **Esc** cancels editing and keeps the saved note. A highlight created with **H** can have no comment. Use **Del** in **A** to remove either kind of annotation directly.
+**F2 → Dictionaries** has two sections: **Word definitions** and **Translation**. Each has its own connection list and Add action. Select one to edit it, test it, use it by default or delete it. Each editor shows only the fields used by that service and displays its effective server address. Free Dictionary and Google web need no API key. Choose **Save changes & back** to keep edits; leaving with unsaved edits offers Save, Discard or Keep editing. Local programs and password-manager commands have separate program and argument fields — no JSON or shell quoting needed.
 
-**K** runs a dictionary or another command for the selection. Configure an argument array in `config.toml`, for example `lookup_command = ["sdcv", "-n", "{text}"]`. BOTUI substitutes the text as one argument, without a shell, and displays the result. **Esc** cancels the lookup.
+Source and output languages are below the connection list. The result window offers **P** to change connection, **L/S** to change target/source, **Y** to copy, **N** to save a passage note, and **Esc** to close. The **Space menu delay** setting is under **F2 → Reader**; it only delays the hints, never the commands.
 
-In continuous scrolling, the mouse wheel moves **one line per tick**. Set **F2 → Reader → Mouse wheel step** or `scroll_lines = 3` to choose a different step (1–12). This also applies to PDF and DjVu. Arrow keys still move one line and Page Up / Down move one screen.
+Available connections: English Free Dictionary; Google Translate's unofficial web endpoint; official Google Cloud Translation and DeepL APIs; LibreTranslate; OpenAI-compatible chat APIs; and local commands such as `sdcv`. Free Dictionary only returns English definitions. A local dictionary needs its program and dictionary data installed separately. API-backed definitions can be generated explanations, not curated dictionary entries.
+
+Requests run only when invoked, with a 20-second limit and a bounded in-memory result cache. An external service receives the chosen word/passage; no automatic background translation occurs. Closing the window dismisses the request; an HTTP request already sent may finish in the worker. No provider is silently substituted. API keys can come from a plain value or an argument-array command; the command takes precedence. Keys are masked in settings.
+
+Everything is in the same `config.toml`: `[lookup]`, `[[lookup.profiles]]`, `[[opds]]`, `[bookorbit]`, reader and appearance fields. [The example config](../config.example.toml) documents each provider and credential option. Changes made in settings preserve unrelated values and comments. Existing `lookup_command` remains compatible.
+
+**F2 → Library → OPDS catalogs** manages named catalogs, addresses and optional credentials. They appear when choosing OPDS on the home screen; `botui --opds URL` also uses a saved connection with the same URL. Public catalogs need no credentials.
 
 ### PDF and DjVu
 
-For **PDF and DjVu**, press **Enter** or click the edition to start reading. **1 / 2 / 3** select single page, spread or continuous scroll. At **100%**, a scrolling sheet fits the reading pane. Press **−** once for **90%**, again for **80%**, or **+** to enlarge it. **0** restores fit.
+`Space l 3` enables continuous scrolling. `Space l w` opens width/zoom controls; `Space r +` and `Space r -` adjust zoom, including below 100%. At 100% in scroll mode, the sheet fits the reading pane width. `Space r 0` restores fit and `Space r p` opens a compact page-number dialog.
 
-An EPUB made entirely of page scans opens in the same viewer. Use **P** to jump to a scan or **3** to scroll. BOTUI saves your place on this device.
+`Space t` cycles original colors, inversion and match background. `Space l f` changes opacity. `Space o` opens the contents tree; arrows fold/expand sections. Scroll mode separates sheets with a dim dotted line across the pane.
 
-The contents pane keeps the document’s nested sections. Press **Tab** to focus it, **← / →** to fold or expand a section, and **Enter** to go there. Clicking a triangle folds the section; clicking its title opens it. Depth uses theme colors as well as indentation. Continuous scrolling separates sheets with one muted dotted line across the reading pane; margins printed inside the PDF remain part of the page.
+PDF text layers support selection, copying and highlights. Selections snap to words and retain coordinates through zoom and rotation. Extraction order may differ from visual order in complex multi-column PDFs. `Space a p` creates a PDF/DjVu page note. `Space f` searches the text layer.
 
-**W** opens the same controls for the mouse; the chosen zoom is saved when you close the book. **Z** hides the contents and footer. **P** or **Ctrl+G** opens a small page-number dialog over the document.
-
-**/** searches the text layer; **F3 / F4 / F5** open the next match, previous match, or results. **B / G** manage bookmarks; **I / A / E** manage and export notes.
-
-Use **R / Shift+R** to rotate a scan clockwise or counterclockwise and **V** to cycle original colors → inverted → **Match background**. The sheet and its margins share the same background: the BOTUI theme on an opaque surface, the terminal background on a transparent surface.
-
-In Kitty, **F** toggles the solid fill: with it off, the window’s wallpaper shows through the page as well as through its margins. In the Terminal theme, an explicit opaque background is also respected. Ink adapts for contrast; saturated artwork keeps its color.
-
-BOTUI remembers the view for each edition and checkpoints your place while reading. Local resume remembers your position within a sheet; BookOrbit syncs the page number. Image-only scans have no searchable text without OCR. [PDF in Kitty](images/pdf-scroll.png).
-
-**S** displays book statistics. **F2 → Library → Reading statistics** shows totals on this device.
-
-Across all four formats, **F3 / F4** move to the next / previous search result; **F5** reopens the list. EPUB/FB2 highlight the selected phrase. For scans the list shows page numbers and text excerpts; **, / .** retrace jumps.
-
-In **G Bookmarks**, press **Delete** on the selection or click **[×]** beside an entry, then confirm.
+BOTUI saves position within a sheet locally; BookOrbit receives the page number. Image-only EPUBs open in the same viewer.
 
 ## Configuration
 
 Run `botui --config-path` to print the exact path. The default is `~/.config/botui/config.toml`. The same TOML file holds the library root, interface, reader bindings and BookOrbit account. The default UI language is English. See the [commented configuration](../config.example.toml).
+
+On startup, older configs gain missing dictionary/translation defaults, the Space hint delay, mouse-wheel step and an empty OPDS list. Existing values, connections and comments are preserved.
 
 On first launch the interface uses **Catppuccin Mocha**.
 
@@ -219,7 +270,7 @@ In an open book, drag the vertical border between the contents on the left and t
 
 [Keyboard help](images/help.png).
 
-**F2 → Appearance** sets the interface palette independently of the reading paper (**T**). Terminal uses the default foreground, background and ANSI slots, so changes to the emulator’s palette appear without restarting.
+**F2 → Appearance** sets the interface palette independently of the reading paper (**Space t**). Terminal uses the default foreground, background and ANSI slots, so changes to the emulator’s palette appear without restarting.
 
 Opaque paper follows the emulator’s OSC 11 response; if it cannot report RGB, botui uses ANSI black or your explicit `opaque_color`. Neither pywal nor matugen is required.
 
@@ -228,28 +279,145 @@ Built-in themes include Gruvbox, Catppuccin, Nord, Dracula, Tokyo Night, Solariz
 [Appearance settings in Catppuccin Mocha](images/settings.png)
 
 ```toml
-library_root = "/path/to/books"
-interface_theme = "catppuccin-mocha"
-theme = "terminal"
-reading_layout = "auto"    # auto, single, spread, scroll
-borders = "rounded"        # rounded, square, none
-opaque_background = false
-page_width = 78
-column_gap = 4
-paragraph_indent = 0
-# paragraph_spacing = 1    # omit to follow the book
+# Local library. Uncomment to use a specific folder.
+# library_root = "/path/to/books"
+local_grid = false
+# Width of the navigation sidebar on the bookshelf, in cells. Omit for Auto.
+# sidebar_width = 28
+# Width of the contents sidebar in an open book, in cells. Omit for Auto.
+# contents_width = 24
+# Per downloaded edition, in MiB (BookOrbit and OPDS). 0 removes the limit.
 max_download_mib = 4096
+
+# Reader defaults. Use "terminal" to follow your terminal's colors.
+theme = "terminal"
+interface_theme = "catppuccin-mocha"
+# Optional override. By default, solid Terminal paper follows the active terminal background.
+# opaque_color = "#1f2125"
+zen = false
+# Show a dim page count and percentage in zen mode. Toggle with Space p.
+zen_progress = false
+# PDF/DjVu zoom in percent. In scroll mode 100 fits the reading pane.
 scan_zoom = 100
+# Preferred width of one text page and the space between facing pages, in terminal cells.
+# page_width = 78
+column_gap = 4
+# First line of a prose paragraph in EPUB/FB2, in cells (0–8; 0 disables).
+paragraph_indent = 0
+# Blank lines between EPUB/FB2 paragraphs (0, 1 or 2). Omit to follow the book.
+# paragraph_spacing = 1
+# Default layout for books without a saved mode: auto, single, spread, scroll.
+reading_layout = "auto"
+opaque_background = false
+# Window frames, cover cards and jackets: "rounded", "square", or "none".
+borders = "rounded"
+preserve_printed_lines = false
+hide_inline_images = false
+# Lines per mouse-wheel tick in continuous scroll (EPUB/FB2/PDF/DjVu, 1–12).
+scroll_lines = 1
+# Delay before the Space command menu appears. Fast sequences execute immediately.
+leader_delay_ms = 150
+# Legacy lookup_command is still read; use lookup.profiles for new configurations.
 
 [bookorbit]
-server = "https://books.example.org"
-username = "reader"
-password_command = ["pass", "show", "bookorbit"]
+# Remember which navigation groups are folded on a wide screen.
+# libraries_collapsed = false
+# collections_collapsed = false
+server = ""
+username = ""
+list_view = false
+# Uncomment one way to sign in with this account.
+# password_command = ["pass", "show", "bookorbit"]
 # password = "your password"
 
+# Reader commands use Space; Space c toggles the optional Vim cursor.
+# Direct reader navigation and Vim mappings are documented in README and F1.
+# Optional explicit single-letter overrides for EPUB/FB2 reading only.
+# They never override Space commands or Vim motions. No overrides by default.
 [keys]
-n = "next"
-p = "previous"
+# x = "next"
+# Supported action names:
+# next, previous, menu, zen, zen-progress, background, borders, cover, resources,
+# statistics, note, notes, export-notes, jump-back, jump-forward, theme, contents,
+# search, search-results, next-match, previous-match, bookmark, bookmarks,
+# single, spread, scroll, page-layout, wider-gap, narrower-gap,
+# wider-margins (alias narrower-page), narrower-margins (alias wider-page), close
+
+# Multiple OPDS catalogs. Credentials are optional for public catalogs.
+# [[opds]]
+# name = "My catalog"
+# url = "https://books.example.org/opds"
+# username = "reader"
+# password_command = ["pass", "show", "books/opds"]
+# password = "plain-text alternative"
+
+# F2 → Dictionaries has two independent lists: Word definitions and Translation.
+# Add/edit/delete a profile in its list, then Save changes & back.
+# These names select the default connection in each list; names must be unique.
+[lookup]
+dictionary = "English dictionary"
+translation = "Google Translate"
+source_language = "auto"
+target_language = "en"
+
+# Defining profiles replaces the built-in profile list; keep the ones you use.
+# Remove a whole [[lookup.profiles]] block to delete a connection; update the default
+# name above if needed. To disable all providers, set profiles = [] under [lookup]
+# and remove all [[lookup.profiles]] blocks. purpose selects the UI group.
+# Use language codes (en, ru, de, …). "auto" is for source detection only.
+# Free Dictionary is English-only; target_language applies to translation and AI explanations.
+[[lookup.profiles]]
+name = "English dictionary"
+purpose = "dictionary"
+provider = "free-dictionary"
+endpoint = "https://api.dictionaryapi.dev/api/v2/entries/en"
+# This provider returns English definitions, regardless of target_language.
+
+[[lookup.profiles]]
+name = "Google Translate"
+purpose = "translation"
+provider = "google-web"
+endpoint = "https://translate.googleapis.com/translate_a/single"
+# Unofficial web endpoint, no key. Use Google Cloud for the official API.
+
+# Offline dictionary program (install it and its dictionaries separately).
+# [[lookup.profiles]]
+# name = "Local dictionary"
+# purpose = "dictionary"
+# provider = "command"
+# command = ["sdcv", "-n", "{text}"]
+# Arguments are passed without a shell. Also available: {source}, {target}.
+
+# [[lookup.profiles]]
+# name = "LibreTranslate"
+# purpose = "translation"
+# provider = "libre-translate"
+# endpoint = "http://localhost:5000/translate"
+# api_key = "optional key"
+
+# [[lookup.profiles]]
+# name = "DeepL"
+# purpose = "translation"
+# provider = "deepl"
+# endpoint = "https://api-free.deepl.com/v2/translate"
+# key_command = ["pass", "show", "translation/deepl"]
+# api_key = "plain-text alternative"
+# key_command takes precedence over api_key. Keep only the method you use.
+
+# [[lookup.profiles]]
+# name = "Google Cloud"
+# purpose = "translation"
+# provider = "google-cloud"
+# api_key = "your API key"
+
+# OpenAI-compatible chat completions, including a locally hosted server.
+# [[lookup.profiles]]
+# name = "Explanations"
+# purpose = "dictionary" # or "translation"
+# provider = "openai"
+# endpoint = "http://localhost:11434/v1/chat/completions"
+# model = "your-installed-model"
+# api_key = "optional key"
 ```
 
 To use a password manager, set `password_command` to an argument array as above. A string runs through `sh -c`. The command must exit successfully and return the password on the first output line. For a stored plaintext password, use `password`. Omit both to type the password at login.
@@ -258,7 +426,7 @@ A typed password takes precedence, followed by the command, then the stored pass
 
 The app creates its config with mode `0600`. On upgrade it imports the earlier JSON preferences, connection and reader bindings, preserving their originals under `$XDG_STATE_HOME/botui/config-backup`. UI changes preserve unrelated TOML values and comments.
 
-The interface can use the terminal palette or BookOrbit reader themes. **F** sets the background of terminal cells. Whole-window opacity is controlled by the terminal or compositor.
+The interface can use the terminal palette or BookOrbit reader themes. **Space l f** sets the background of terminal cells. Whole-window opacity is controlled by the terminal or compositor.
 
 | Data | Default location |
 | --- | --- |

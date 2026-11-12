@@ -27,7 +27,7 @@ with tempfile.TemporaryDirectory(prefix='botui-reader-audit-') as d:
             print(book.suffix, "italic and bold faces: PASS", flush=True)
             assert "\x1b[1m" in line or re.search(r"\x1b\[[0-9;]*1(?:;[0-9]+)*m",line)
             assert italic
-            t.keys('o'); toc=t.see('Sections: 4')
+            t.keys('Space', 'o'); toc=t.see('Sections: 4')
             rows=[l for l in toc.splitlines() if any(x in l for x in ('RootChapter','ChildSection','LeafSection','OtherChapter'))]
             positions=[next(l.index(label) for l in rows if label in l) for label in ('RootChapter','ChildSection','LeafSection')]
             assert positions[1]-positions[0]==positions[2]-positions[1]==2,rows

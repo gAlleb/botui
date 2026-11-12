@@ -6,6 +6,8 @@ The table records how each reading or navigation scenario was checked. See the [
 
 | Scenario | Verification |
 |---|---|
+| Space menu, Normal yank operators, dictionary result, translation language switch, saved passage note and named OPDS credentials. | smoke-space-lookup with isolated local HTTP server |
+| Select PDF words with mouse and keyboard, copy exact quotes, edit/delete comments, export, rotate/zoom and reopen. | smoke-pdf-text; normalized geometry and persistence tests |
 | Sign in to BookOrbit with no personal collections. Choose a library, book and edition, then navigate back. | smoke-shelf |
 | Find a book beyond the first batch of results. Check progress on the current shelf, recent additions and continuous navigation in list and grid views. | smoke-shelf |
 | Open a shelf from the dashboard. Find an author or series beyond the first batch. Check counts before opening the index and verify volume order. | smoke-shelf and a separate Kitty session |
@@ -110,3 +112,5 @@ The canvas regression compares grouped rendering with individual shaping cluster
 - Format tests: three reading layouts, source addresses around SVG, archive-local resources and size limits.
 - `cargo run -p botui --example inspect-svg -- BOOK.epub OUTPUT_DIRECTORY`: export SVGs through the reader’s decoder for visual checks without desktop windows.
 - Real editions: [Flatland, Standard Ebooks](https://github.com/standardebooks/edwin-a-abbott_flatland), with 13 SVGs, and *On the Nature of Mind*, with an SVG wrapper around an archive JPEG. Compare ordinary reading against the prior binary on the same books, without concurrent compilation.
+
+- Command reference: Rust tests require every Space command and the complete TOML example in both READMEs and guides. `smoke-lookup-settings.py` checks definition/translation profile editing, defaults, testing, deletion and preserved settings. `smoke-config.py` checks upgrades of existing TOML files.

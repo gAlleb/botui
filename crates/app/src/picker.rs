@@ -550,6 +550,7 @@ impl Picker {
     }
 
     pub fn choose(&mut self, term: &mut AppTerminal) -> io::Result<Option<PathBuf>> {
+        let mut leader = crate::leader::Leader::new();
         if self.view == LocalView::Reading {
             let previous = self
                 .list
@@ -573,16 +574,24 @@ impl Picker {
             self.collect();
             term.draw(|frame| {
                 self.draw(frame);
-                crate::settings::paint_interface(frame)
+                crate::settings::paint_interface(frame);
+                leader.draw(frame, crate::leader::Context::Shelf);
             })?;
             let busy =
                 self.covers.busy() || self.index.busy() || crate::shelf::gallery::binding::busy();
             let timeout = busy.then(|| std::time::Duration::from_millis(60));
+            let timeout = timeout.into_iter().chain(leader.timeout()).min();
             let event = crate::settings::read_event_for(timeout)?;
             self.covers.collect();
-            let Some(e) = event else {
+            let Some(mut e) = event else {
                 continue;
             };
+            if let Some(command) = leader.input(&e, crate::leader::Context::Shelf) {
+                let Some(event) = command.and_then(|c| c.event()) else {
+                    continue;
+                };
+                e = event;
+            }
             if let Some(result) = self.navigation.splitter.input(&e) {
                 if let Err(error) = result {
                     self.error = Some(error.to_string());

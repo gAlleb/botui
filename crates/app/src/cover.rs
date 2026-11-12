@@ -1,4 +1,5 @@
 //! Terminal image rendering shared by the shelf and fixed-page reader.
+mod text_overlay;
 use image::{DynamicImage, ImageReader, Limits};
 use ratatui::{
     Frame,
@@ -187,6 +188,7 @@ struct Rendition {
 }
 
 pub(crate) struct Picture {
+    pub(crate) identity: u64,
     epoch: Cell<u64>,
     cell_pixels: Cell<Size>,
     sliced: RefCell<Option<(CellStrip, SlicedProtocol)>>,
@@ -199,7 +201,9 @@ pub(crate) struct Picture {
 
 impl Picture {
     pub fn new(source: DynamicImage) -> Self {
+        static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
         Self {
+            identity: NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
             epoch: Cell::default(),
             cell_pixels: Cell::default(),
             sliced: Default::default(),

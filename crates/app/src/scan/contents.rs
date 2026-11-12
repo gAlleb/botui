@@ -158,6 +158,10 @@ impl Contents {
         }
     }
     /// Some(None) consumes a focus or selection movement without changing page.
+    pub fn focus(&mut self) {
+        self.focus = true;
+    }
+
     pub fn input(&mut self, e: &Event, total: u32) -> Option<Option<u32>> {
         if self.rows.is_empty() {
             return None;

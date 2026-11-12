@@ -242,6 +242,7 @@ dependencies = [
  "mimalloc",
  "ratatui",
  "ratatui-image",
+ "reqwest",
  "resvg",
  "serde",
  "serde_json",
@@ -284,6 +285,7 @@ dependencies = [
  "botui-formats",
  "image",
  "resvg",
+ "roxmltree 0.21.2",
  "tempfile",
 ]
 

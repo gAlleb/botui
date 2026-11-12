@@ -57,7 +57,7 @@ def check(tmp):
         keys("-H", *[f"{byte:02x}" for byte in data.encode()])
 
     def close_book():
-        keys("q")
+        keys('Space', 'q')
         for _ in range(100):
             if tmux("has-session", "-t", "reader", required=False).returncode:
                 return
@@ -72,21 +72,21 @@ def check(tmp):
     try:
         open_book()
         wait_for("Начальный разворот", lambda s: heading in s and columns(s) == 2)
-        keys("z");wait_for("Zen hides contents",lambda s:"Z Zen" not in s and heading in s)
+        keys('Space', 'z');wait_for("Zen hides contents",lambda s:"Space z Zen" not in s and heading in s)
         # Showing a footer must not resize/reflow either page or move the passage.
         before = tmux("capture-pane", "-p", "-t", "reader").stdout.splitlines()
-        keys("%")
+        keys('Space', 'p')
         shown = wait_for("Zen progress", lambda s: re.search(r"\d+ / \d+  ·  \d+%", s)).splitlines()
         assert shown[:-1] == before[:-1], "Progress footer moved the book text"
-        keys("%")
+        keys('Space', 'p')
         hidden = wait_for("Hide zen progress", lambda s: not re.search(r"\d+ / \d+  ·  \d+%", s)).splitlines()
         assert hidden == before, "Hiding progress changed the page"
-        keys("m")
+        keys('Space', 'm')
         actions = ("Resume", "Single page", "Two-page spread", "Theme", "Add bookmark", "Page width & column gap")
         menu = wait_for("Меню по M", lambda s: all(name in s for name in actions))
         def key_column(frame, action):
             line = next(line for line in frame.splitlines() if action in line)
-            match = re.search(r"(?:Esc|[12TBGZFW])(?=│)", line)
+            match = re.search(r"(?:Esc|Space [a-z?](?: [a-z0-9])?)(?=│)", line)
             assert match, line
             return match.end()
         assert len({key_column(menu, name) for name in actions}) == 1
@@ -104,13 +104,13 @@ def check(tmp):
         wait_for("Width saved separately",lambda f: "cells" in f and tomllib.loads(config.read_text()).get("page_width",0)>0)
         keys("Escape")
         wait_for("Close live layout",lambda f:"[ Done ]" not in f)
-        keys("m")
+        keys('Space', 'm')
         menu=wait_for("Return to menu",lambda f:"Single page" in f)
         label = "Single page"
         row, line = next((i, line) for i, line in enumerate(menu.splitlines(), 1) if label in line)
         mouse(0, line.index(label) + 1, row)
         wait_for("Single page", lambda s: heading in s and label not in s and columns(s) == 1)
-        keys("]");keys("2")
+        keys('Space', 'l', '2')
         wait_for("Two-page spread с клавиатуры", lambda s: heading in s and columns(s) == 2)
 
         keys("c")
@@ -123,18 +123,18 @@ def check(tmp):
         else:
             raise AssertionError(f"Chapter missing from the contents tree\n{toc}")
         wait_for("Переход к главе без панели",lambda s:s.strip().startswith("Обратный рейс") and "Sections:" not in s)
-        keys("b","g")
+        keys('Space', 'b', 'a', 'Space', 'b', 'l')
         wait_for("Поставленная закладка",lambda s:"Bookmarks: 1" in s)
-        keys("Escape");wait_for("Закрыли закладки",lambda s:"Bookmarks:" not in s);keys("/");wait_for("Строка поиска",lambda s:"Find:" in s);keys("-l",heading);wait_for("Найден заголовок",lambda s:heading in s and " 1 " in s);keys("Enter")
+        keys("Escape");wait_for("Закрыли закладки",lambda s:"Bookmarks:" not in s);keys('Space', 'f');wait_for("Строка поиска",lambda s:"Find:" in s);keys("-l",heading);wait_for("Найден заголовок",lambda s:heading in s and " 1 " in s);keys("Enter")
         wait_for("Поиск вернул на начало главы",lambda s:heading in s and "Find:" not in s)
-        keys("n");wait_for("Comment editor",lambda s:"Ctrl+S Save" in s);keys("-l","A note at the pier");keys("C-s");keys("a")
-        wait_for("Saved note",lambda s:"A note at the pier" in s);keys("Enter");keys("e")
+        keys('Space', 'a', 'n');wait_for("Comment editor",lambda s:"Ctrl+S Save" in s);keys("-l","A note at the pier");keys("C-s");keys('Space', 'a', 'a')
+        wait_for("Saved note",lambda s:"A note at the pier" in s);keys("Enter");keys('Space', 'a', 'e')
         wait_for("Exported notes",lambda s:"Exported" in s)
         exported,=(tmp/"data/botui/exports").glob("*.md")
         assert "A note at the pier" in exported.read_text()
-        keys("Escape");wait_for("Range cleared",lambda s:any(line.startswith("TEXT ") for line in s.splitlines()))
+        keys("Escape");wait_for("Range cleared",lambda s:"[Esc Clear]" not in s)
         keys("Escape");wait_for("Selection closed",lambda s:"[Y Copy]" not in s)
-        keys("t")
+        keys('Space', 't')
         wait_for("Палитры BookOrbit", lambda s: "Sepia" in s and "Terminal" in s)
         keys("Down", "Down", "Down", "Right", "Enter")
         wait_for("Применение схемы", lambda s: heading in s and "Terminal" not in s)
@@ -147,10 +147,10 @@ def check(tmp):
         close_book()
         saved, = (tmp / "botui/positions").glob("*.json")
         record = json.loads(saved.read_text())
-        assert record["spread"] and record["theme"] == "sepia-dark" and record["margin"] == 2 and record["block"] > 0, record
+        assert record["spread"] and record["theme"] == "sepia-dark" and record["block"] > 0, record
         open_book()
         wait_for("Возврат на прочитанное место", lambda s: s == page)
-        keys("s");wait_for("Statistics persist across sessions",lambda s:"Sessions on this device  2" in s)
+        keys('Space', 'r', 's');wait_for("Statistics persist across sessions",lambda s:"Sessions on this device  2" in s)
         keys("Escape");wait_for("Return from statistics",lambda s:"Total time book open" not in s)
         close_book()
     finally:

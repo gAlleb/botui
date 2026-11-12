@@ -20,9 +20,25 @@ pub(super) fn entries(ctx: Context, p: &Settings) -> Vec<Entry> {
     let mut rows = vec![
         Entry::Section("General".into()),
         key("F2", "Open settings"),
-        key("? / F1", "Keyboard shortcuts"),
+        key(
+            "F1 / Space ?",
+            "Keyboard shortcuts (? also works on shelves)",
+        ),
         key("Esc", "Back / close a panel"),
     ];
+    rows.push(Entry::Section(
+        "Space commands · short hint delay, immediate execution".into(),
+    ));
+    let context = match ctx {
+        Context::Text => crate::leader::Context::Text,
+        Context::Scan => crate::leader::Context::Pdf,
+        _ => crate::leader::Context::Shelf,
+    };
+    rows.extend(
+        crate::leader::help(context)
+            .into_iter()
+            .map(|(k, v)| key(&k, &v)),
+    );
     let mut groups = vec![ctx];
     for c in [Context::Shelf, Context::Local, Context::Text, Context::Scan] {
         if c != ctx {
@@ -94,112 +110,132 @@ pub(super) fn entries(ctx: Context, p: &Settings) -> Vec<Entry> {
                 ],
             ),
             Context::Text => (
-                "EPUB & FB2",
+                "EPUB & FB2 · reading without cursor",
                 &[
-                    ("M / Esc", "Reading menu"),
-                    ("C", "Open the embedded cover in your image viewer"),
-                    ("← / →", "Previous / next page (or scroll)"),
-                    ("1 / 2 / 3", "Single page / spread / continuous scroll"),
+                    ("← / → · PgUp / PgDn", "Previous / next page"),
                     (
-                        "Mouse wheel",
-                        "One line per tick in scroll; adjust F2 → Reader → Mouse wheel step",
+                        "h j k l / arrows",
+                        "Navigate; scroll mode moves through text",
                     ),
-                    ("%", "Show or hide page and progress in zen mode"),
-                    ("W", "Set page width and column gap"),
-                    ("[ / ]", "Widen / narrow each page"),
-                    ("{ / }", "Decrease / increase column gap"),
-                    ("O", "Contents"),
-                    ("/", "Find in book"),
-                    ("F3 / F4 / F5", "Next match / previous match / result list"),
-                    ("T / F / U", "Reader theme / background / borders"),
-                    ("B / G", "Toggle bookmark / open bookmarks"),
-                    ("Delete", "Remove the selected bookmark from its list"),
-                    ("E", "Export highlights, quotes and comments to Markdown"),
+                    ("Mouse wheel", "Scroll; F2 → Reader sets lines per tick"),
+                    ("F3 / F4 / F5", "Next / previous match / search results"),
                     (
                         "Mouse",
-                        "Click: cursor. Drag: select. Double / triple click: word / paragraph.",
+                        "Click: cursor; drag: select; double/triple click: word/paragraph",
+                    ),
+                    ("Ctrl+C", "Copy mouse selection"),
+                    ("Tab", "Focus contents when visible"),
+                    (
+                        "Esc / Enter",
+                        "Return from an in-book link / keep reading there",
                     ),
                     (
-                        "F7 / v / V",
-                        "Normal mode / visual selection / select paragraph",
+                        "Space",
+                        "Commands below; letters such as v or t have no reading action",
                     ),
-                    ("h j k l", "In normal or visual mode: move the text cursor"),
-                    (
-                        "w / b / e",
-                        "In normal or visual mode: next word / previous word / word end",
-                    ),
-                    (
-                        "Y / Ctrl+C",
-                        "Copy selected text (Ctrl+C copies when selected)",
-                    ),
-                    (
-                        "H / N / A",
-                        "Highlight / comment / searchable annotation list",
-                    ),
-                    (
-                        "Enter / F8",
-                        "Open comment at cursor / show its body beside the controls",
-                    ),
-                    ("K", "Run lookup_command for the selected text"),
-                    (
-                        "m a / ' a",
-                        "In normal mode: save named mark a / jump to mark a",
-                    ),
-                    (
-                        "Esc",
-                        "Clear selection, then leave text mode; M opens the reading menu",
-                    ),
-                    ("I / S", "Links and illustrations / reading statistics"),
-                    (
-                        "F6 / click",
-                        "Links on this page; click an underlined link or open the only link with F6",
-                    ),
-                    ("Esc", "Back from a note or glossary entry"),
-                    ("Enter", "Read here after following an in-book link"),
-                    (", / .", "Jump back / forward"),
-                    ("Q", "Close the book"),
                 ],
             ),
             Context::Scan => (
-                "PDF & DjVu",
+                "PDF & DjVu · reading without cursor",
                 &[
-                    ("C", "Open the first page in your image viewer"),
-                    ("M / Enter", "Reading menu (Esc closes the menu or book)"),
-                    ("1 / 2 / 3", "Single page / spread / continuous scroll"),
                     (
-                        "Mouse wheel",
-                        "One line per tick in scroll; adjust F2 → Reader → Mouse wheel step",
+                        "← / → · PgUp / PgDn",
+                        "Navigate pages; arrows pan a zoomed page",
                     ),
-                    ("%", "Show or hide page and progress in zen mode"),
-                    ("W / 0", "Page width controls / reset to fit"),
-                    ("+ / −", "Widen / narrow the page, including below 100%"),
-                    ("P / Ctrl+G", "Go directly to a page number"),
-                    (
-                        "r / Shift+R",
-                        "Rotate the document clockwise / counterclockwise",
-                    ),
-                    ("V", "Cycle original, inverted and match background"),
                     ("Home / End", "First / last page"),
+                    ("Mouse wheel", "Scroll; F2 → Reader sets lines per tick"),
                     ("Tab; ← / →", "Focus contents; fold / expand a section"),
-                    ("/", "Find in the text layer"),
+                    ("F3 / F4 / F5", "Next / previous matching page / results"),
                     (
-                        "F3 / F4 / F5",
-                        "Next matching page / previous page with a match / result list",
+                        "Mouse drag / Ctrl+C",
+                        "Select / copy PDF text (text layer required; no OCR)",
                     ),
-                    (", / .", "Jump back / forward"),
-                    ("B / G", "Toggle bookmark / open bookmarks"),
-                    ("Delete", "Remove the selected bookmark from its list"),
-                    ("I / A / E", "Edit page note / show notes / export Markdown"),
-                    ("S / Q", "Book statistics / close book"),
+                    ("Space t", "Original colors / inverted / match background"),
+                    ("Space", "Commands below; v/V select only in Vim mode"),
                 ],
             ),
         };
         rows.push(Entry::Section(name.into()));
         rows.extend(keys.iter().map(|(k, v)| key(k, v)));
-        if c == Context::Text && !p.keys.is_empty() {
-            rows.push(Entry::Section("Your EPUB / FB2 overrides".into()));
-            rows.extend(p.keys.iter().map(|(k, v)| key(&k.to_string(), v)));
+        if c != ctx && matches!(c, Context::Text | Context::Scan) {
+            let context = if c == Context::Text {
+                crate::leader::Context::Text
+            } else {
+                crate::leader::Context::Pdf
+            };
+            rows.extend(
+                crate::leader::help(context)
+                    .into_iter()
+                    .map(|(k, v)| key(&k, &v)),
+            );
         }
+    }
+    {
+        rows.push(Entry::Section("Vim · enable / disable with Space c".into()));
+        for (k, v) in [
+            ("v / V", "Visual selection / logical line"),
+            (
+                "y",
+                "Copy selection in Visual; begin copy operator in Normal",
+            ),
+            (
+                "Esc",
+                "Clear selection / pending command; in idle Normal return to reading",
+            ),
+            ("h j k l", "Move cursor; j/k follow visible text lines"),
+            ("{ / }", "Previous / next paragraph (PDF: text block)"),
+            ("w b e / 0 ^ $", "Words / logical line edges"),
+            (
+                "gj gk / g0 g$",
+                "Wrapped screen lines / their edges (EPUB & FB2)",
+            ),
+            ("gg / G", "Start / end (PDF: current page)"),
+            ("yiw / yaw / yip", "Copy word / word with space / paragraph"),
+            (
+                "yw / ye / yy / y$",
+                "Copy through a motion; yy copies a logical line",
+            ),
+            ("3yw / y3w", "Copy three words"),
+            (
+                "viw / vip / gv",
+                "Select word / paragraph / previous selection",
+            ),
+            (
+                "/ ? / n N",
+                "Search forward / backward; next / previous match",
+            ),
+            ("ma / 'a / `a", "Set named mark a / return to it"),
+            ("Ctrl+O / Ctrl+I", "Jump back / forward"),
+            ("K", "Dictionary for word or selection"),
+        ] {
+            rows.push(key(k, v));
+        }
+    }
+    rows.push(Entry::Section("Panels & editors".into()));
+    for (k, v) in [
+        (
+            "Esc",
+            "Close panel; editor offers save/discard for unsaved changes",
+        ),
+        (
+            "Ctrl+S / Enter / Tab",
+            "Note editor: save / new line / highlight color",
+        ),
+        (
+            "/ N H Y Del E",
+            "Annotation list: filter / edit / color / copy / delete / export",
+        ),
+        (
+            "P L S Y N",
+            "Lookup result: provider / target language / source language / copy / note",
+        ),
+        ("[ ] / { }", "Page layout panel: width / column gap"),
+    ] {
+        rows.push(key(k, v));
+    }
+    if !p.keys.is_empty() {
+        rows.push(Entry::Section("Your EPUB / FB2 overrides".into()));
+        rows.extend(p.keys.iter().map(|(k, action)| key(&k.to_string(), action)));
     }
     rows
 }
