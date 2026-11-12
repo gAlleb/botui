@@ -21,6 +21,8 @@ zen = false
 zen_progress = false
 # PDF/DjVu zoom in percent. In scroll mode 100 fits the reading pane.
 scan_zoom = 100
+# Space between PDF/DjVu/comic pages in a spread (0–32 terminal cells).
+scan_gap = 2
 # Preferred width of one text page and the space between facing pages, in terminal cells.
 # page_width = 78
 column_gap = 4

@@ -20,6 +20,7 @@ pub(super) enum Command {
     Go(u32),
     Zoom(bool),
     Fit,
+    Gap(bool),
 }
 pub(super) type Hits = Vec<(Rect, Command)>;
 impl Dialog {
@@ -35,16 +36,17 @@ impl Dialog {
         pane: Rect,
         total: u32,
         percent: u16,
-        scrolling: bool,
+        layout: (bool, u16),
         hits: &mut Hits,
     ) {
+        let (scrolling, gap) = layout;
         let fit = if scrolling { "Fit width" } else { "Fit page" };
         let width = match self {
             Self::Page { .. } => 34,
-            Self::Width => 40,
+            Self::Width => 44,
             Self::Search(_) => 54,
         };
-        let outer = crate::centered(pane, width, 5);
+        let outer = crate::centered(pane, width, if matches!(self, Self::Width) { 7 } else { 5 });
         let (title, line, buttons) = match self {
             Self::Search(input) => (
                 " Find in text layer ".into(),
@@ -94,6 +96,24 @@ impl Dialog {
                 Paragraph::new(line),
                 Rect::new(left, inner.y, inner.right() - left, 1),
             );
+            if matches!(self, Self::Width) {
+                let label = format!("Spread gap: {gap} cells");
+                f.render_widget(
+                    Paragraph::new(label),
+                    Rect::new(left, inner.y + 2, inner.width.saturating_sub(2), 1),
+                );
+                let mut x = left + 22;
+                for (label, action) in [
+                    ("[ < ]", Command::Gap(false)),
+                    ("[ > ]", Command::Gap(true)),
+                ] {
+                    let width = 7.min(inner.right().saturating_sub(x));
+                    let rect = Rect::new(x, inner.y + 2, width, 1);
+                    f.render_widget(Paragraph::new(label).cyan(), rect);
+                    hits.push((rect, action));
+                    x += 8;
+                }
+            }
             let mut x = left;
             for (label, command) in buttons {
                 let w = (label.chars().count() as u16).min(inner.right().saturating_sub(x));
@@ -126,6 +146,8 @@ impl Dialog {
                         KeyCode::Char('+' | '=') | KeyCode::Right => Command::Zoom(true),
                         KeyCode::Char('-' | '−') | KeyCode::Left => Command::Zoom(false),
                         KeyCode::Char('0') => Command::Fit,
+                        KeyCode::Char('[') => Command::Gap(false),
+                        KeyCode::Char(']') => Command::Gap(true),
                         KeyCode::Enter | KeyCode::Char('q' | 'Q' | 'w' | 'W') => Command::Close,
                         _ => Command::None,
                     },

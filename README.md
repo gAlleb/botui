@@ -155,7 +155,7 @@ In a Space submenu, `q`, `Esc` and `Backspace` return to the root; `Esc` closes 
 | `Space l 1` | Single page |
 | `Space l 2` | Two-page spread |
 | `Space l 3` | Continuous scroll |
-| `Space l w` | Page width / column gap; PDF zoom |
+| `Space l w` | Page width / column gap; PDF/comic zoom and spread gap |
 | `Space l f` | Opaque/transparent background |
 | `Space l u` | Border style |
 | `Space t` | Theme picker with live preview; PDF also has Original / Inverted |
@@ -322,6 +322,8 @@ zen = false
 zen_progress = false
 # PDF/DjVu zoom in percent. In scroll mode 100 fits the reading pane.
 scan_zoom = 100
+# Space between PDF/DjVu/comic pages in a spread (0–32 terminal cells).
+scan_gap = 2
 # Preferred width of one text page and the space between facing pages, in terminal cells.
 # page_width = 78
 column_gap = 4
@@ -525,3 +527,5 @@ CBZ (ZIP) and CBR (RAR) use built-in decoders; no external unpacker is required.
 BOTUI and its generated book jackets use [GPL-3.0-or-later](LICENSE). Covers supplied by books and catalogs retain their original rights.
 
 RAR decoder: [rars](https://github.com/bitplane/rars), [Apache-2.0](docs/licenses/rars-Apache-2.0.txt).
+
+PDF/DjVu and comics: **Space l w** opens zoom and spread spacing. Use **[ / ]** or the gap buttons to set **0–32 terminal cells**; zero joins the facing pages. `scan_gap` remembers the choice independently of text columns.

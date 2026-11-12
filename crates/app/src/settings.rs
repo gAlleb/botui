@@ -37,6 +37,7 @@ pub struct Settings {
     pub borders: crate::appearance::BordersStyle,
     pub page_width: Option<u16>,
     pub scan_zoom: Option<u16>,
+    pub scan_gap: Option<u16>,
     pub paragraph_indent: u8,
     pub paragraph_spacing: Option<u8>,
     pub sidebar_width: Option<u16>,
@@ -273,7 +274,13 @@ fn apply(
 fn extend_config(doc: &mut DocumentMut) -> io::Result<bool> {
     let example = document(EXAMPLE)?;
     let mut changed = false;
-    for name in ["leader_delay_ms", "scroll_lines", "lookup", "scan_theme"] {
+    for name in [
+        "leader_delay_ms",
+        "scroll_lines",
+        "lookup",
+        "scan_theme",
+        "scan_gap",
+    ] {
         if !doc.contains_key(name) {
             doc.insert(name, example[name].clone());
             changed = true;

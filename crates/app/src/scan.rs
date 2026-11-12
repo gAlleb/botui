@@ -102,6 +102,7 @@ pub(super) fn read_pages(
         ..Crop::default()
     };
     let initial_zoom = crop.percent;
+    let mut gap = prefs.scan_gap.unwrap_or(2).min(32);
     let mut dialog: Option<controls::Dialog> = None;
     let store = LocalState::for_file(path)
         .map_err(|e| notices.push(e.to_string()))
@@ -462,15 +463,27 @@ pub(super) fn read_pages(
                     }
                 }
             } else {
+                // Pack fitted sheets together: letterboxing belongs outside the spread.
+                let slot_width = area.width.saturating_sub(if cols == 2 { gap } else { 0 }) / cols;
+                let widths: Vec<u16> = (0..cols)
+                    .map(|i| {
+                        pages.get(shown + u32::from(i)).map_or(slot_width, |page| {
+                            let (w, h) = page.dimensions();
+                            let fitted =
+                                (u64::from(area.height) * u64::from(size.height) * u64::from(w)
+                                    / (u64::from(h.max(1)) * u64::from(size.width.max(1))))
+                                    as u16;
+                            fitted.max(1).min(slot_width)
+                        })
+                    })
+                    .collect();
+                let total_width = widths.iter().sum::<u16>() + if cols == 2 { gap } else { 0 };
+                let mut x = area.x + area.width.saturating_sub(total_width) / 2;
                 for i in 0..cols {
                     let page_number = shown.saturating_add(u32::from(i));
-                    let w = if cols == 2 {
-                        area.width.saturating_sub(2) / 2
-                    } else {
-                        area.width
-                    };
-                    let slot =
-                        Rect::new(area.x + (w + 2).saturating_mul(i), area.y, w, area.height);
+                    let w = widths[usize::from(i)];
+                    let slot = Rect::new(x, area.y, w, area.height);
+                    x += w + gap;
                     if let Some(page) = pages.get(page_number) {
                         page.draw_region(f, crop.fit(slot, true), &picker, crop);
                         if selectable {
@@ -571,7 +584,7 @@ pub(super) fn read_pages(
                     area,
                     total.unwrap_or(0),
                     crop.percent,
-                    scrolling,
+                    (scrolling, gap),
                     &mut dialog_hits,
                 );
             }
@@ -692,6 +705,16 @@ pub(super) fn read_pages(
                 }
                 controls::Command::Fit => crop = Crop::default(),
                 controls::Command::Zoom(more) => crop.step(more),
+                controls::Command::Gap(more) => {
+                    gap = if more {
+                        gap.saturating_add(1).min(32)
+                    } else {
+                        gap.saturating_sub(1)
+                    };
+                    if let Err(e) = crate::settings::Settings::update(|s| s.scan_gap = Some(gap)) {
+                        message = e.to_string();
+                    }
+                }
                 controls::Command::Go(page) => {
                     n = page;
                     offset = 0;

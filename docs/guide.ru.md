@@ -308,6 +308,8 @@ zen = false
 zen_progress = false
 # PDF/DjVu zoom in percent. In scroll mode 100 fits the reading pane.
 scan_zoom = 100
+# Space between PDF/DjVu/comic pages in a spread (0–32 terminal cells).
+scan_gap = 2
 # Preferred width of one text page and the space between facing pages, in terminal cells.
 # page_width = 78
 column_gap = 4
@@ -502,3 +504,5 @@ CBZ (ZIP) и CBR (RAR) открываются встроенными декод�
 ### Дополнительные палитры
 
 В **F2 → Appearance → Interface theme** доступны новые тёмные **Graphite**, **Midnight**, **Pine** и **Plum** (`graphite`, `midnight`, `pine`, `plum`). Для чтения добавлены **Parchment**, **Sage**, **Dusk** и **Slate**, каждая со светлым и тёмным вариантом: например `parchment-light`, `sage-dark`, `dusk-light`, `slate-dark`. Они доступны в выборе обычной темы чтения и **PDF / image theme**.
+
+PDF/DjVu и комиксы: **Space l w** открывает масштаб и зазор разворота. Клавиши **[ / ]** и кнопки зазора задают **0–32 ячейки**; ноль соединяет страницы. `scan_gap` сохраняет выбор независимо от текстовых колонок.
