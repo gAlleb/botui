@@ -1,59 +1,39 @@
 # Changelog
 
-## Unreleased
+## 0.1.8 — 2026-11-12
 
-- Add a saved 0–32-cell spread gap for PDF/DjVu/CBR/CBZ in Space l w. Pack facing sheets together at zero gap.
-- Zoom fixed pages into available margins and clip the entire spread at the reading pane; keep text hits, highlights and annotation jumps aligned.
-- Read Markdown with headings, lists, quotes, tables, code colors and local images. F9 / Space r v / footer buttons switch to the original source while retaining annotation addresses. Use the existing ebook layout engine with a small CommonMark parser and lexical code coloring.
+### Reading and formats
 
-
-- Add built-in CBZ/CBR reading with natural page order, covers, contents, zoom, spreads, scrolling and saved page annotations. RAR decoding is embedded with optional writer, encryption, recovery and Rayon features disabled; no external unpacker is used.
-- Add an explicit PDF / image theme setting shared by F2 and the Space picker. Persist Original, Inverted or a named palette in scan_theme, independently of EPUB/FB2 theme and old per-book color flags.
+- Read Markdown with styled headings, lists, quotes, tables, code highlighting and local images. Switch between formatted text and the original source with F9, Space r v or the footer while retaining highlight and note addresses. Reuse the ebook layout engine with a small CommonMark parser; no external renderer or syntax package is required.
+- Open CBZ and CBR comics with built-in ZIP/RAR decoding, natural page order, covers, contents, zoom, spreads, scrolling and saved page notes. No external unpacker is required.
+- Set a persistent 0–32-cell gap between PDF/DjVu/comic pages in Space l w. Zero joins facing pages. Zoom single pages and spreads into the available margins, clipping only at the reading pane; keep PDF text hits, highlights and annotation jumps aligned.
+- Keep PDF/DjVu pages visible while a sharper zoom renders. Reuse cached images when reducing or repeating a zoom level.
+- Select PDF/image colors through Space t with live preview: Original, Inverted or a reading palette. F2 → Reader → PDF / image theme edits the same saved scan_theme setting. Reading and interface palettes remain independent; cancel restores the previous appearance.
 - Add Graphite, Midnight, Pine and Plum dark interface themes, plus Parchment, Sage, Dusk and Slate reading palettes in light/dark variants.
 
-- Open saved EPUB/FB2 and PDF annotations by clicking their text. Attach comments to existing highlights without creating duplicates. Show book/section position and PDF page totals in annotation lists; make color choices explicit clickable buttons with a selection marker. Clearing a comment preserves its colored highlight.
+### Selection, highlights and notes
 
-- Replace the full-dialog text action chooser with a 15×8-cell context menu beside the right-clicked word/selection. Keep the book visible; support mouse selection, arrows/Enter, Escape and outside-click dismissal.
-- Space t in PDF/DjVu now opens the shared theme picker over the page, with live preview, light/dark palettes and additional Original/Inverted entries. Preview is temporary; Apply persists the choice and Cancel restores the previous appearance.
+- Select and copy text, create colored highlights and attach multiline comments in EPUB, FB2, Markdown and PDFs with embedded text. Source ranges survive reflow; PDF highlights follow page coordinates through zoom, rotation and reopening. Image-only scans are not OCRed.
+- Right-click a word or selection for a compact menu beside the text: Copy, Highlight, Search, Translate, Define and Add note. Clicking inside a selection preserves it; Escape or an outside click closes the menu.
+- Click a saved annotation to open it and attach a comment to an existing highlight. Choose colors with clickable buttons. Clearing a comment preserves its colored highlight.
+- Search, edit, recolor, delete, navigate to and export annotations from Space a a. Lists show book/section progress or PDF page/total; filtered PDF exports match the visible list.
+- Finish Visual selection after saving a note and restore it correctly with gv. Handle pasted searches and navigation keys consistently in annotation panels.
 
-- Remove service-specific dictionary/translation adapters. Keep Free Dictionary and Google Translate enabled as editable HTTP profiles in the default TOML, and migrate old named providers once using declarative conversion data. Language controls follow profile parameters instead of service names.
-- PDF/DjVu themed paper and ink now use the reading theme, independently of interface colors. Preserve original/inverted modes, saturated image colors and opacity controls; refresh the open page after changing the reading theme in F2.
-- Right-click a word or selection in EPUB/FB2 and text-layer PDF for Copy, Highlight, Search, Translate, Define and Add note. Preserve existing selections when clicking inside them; load PDF text lazily before showing the menu.
+### Navigation and controls
 
-- Finish EPUB/FB2 Visual selection after saving an annotation; restore `gv` with the cursor on the final selected character. PDF annotation lists accept pasted searches, uppercase action keys and Home/End/PageUp/PageDown, and export the filtered list consistently with EPUB/FB2.
-- Connection tests always contact the provider instead of reusing cached results. Local dictionary commands preserve literal placeholder text inside a selection. Choosing the same connection preserves the language selected in the lookup window.
-- Explain minimal and optional dictionary fields, legacy adapters and generic HTTP profiles in both READMEs. Keep all configuration examples identical and add a tested Merriam-Webster Collegiate short-definition template.
+- Space opens a contextual command menu with a configurable delay. Space c enables an optional Vim cursor with counts, motions, yank operators, Visual selection, search and named marks. The cursor stays hidden during ordinary reading; Escape clears a selection before returning to reading.
+- Q goes back one step through BookOrbit cards and their source shelf, or through local folders to the library root. Keep selection and scroll position when returning, and finish outstanding progress saves before leaving.
+- Restore direct q/Q reader navigation, PDF/DjVu +/=/- zoom and 1/2/3 page layouts in ordinary reading. Digits remain counts in Vim. Q, Escape and Backspace return one level within Space submenus.
+- Scroll text and scans by one line per mouse-wheel tick by default; configure 1–12 lines in F2 → Reader → Mouse wheel step. Vim j/k follow visible text rows, and braces move by paragraphs.
+- Keep settings on the interface palette and reader popups on the reading palette. Align dialog fields and clickable action buttons; show all supported formats on the source screen.
 
-- Restore direct `q` / `Q` back navigation in ordinary EPUB/FB2 and PDF/DjVu reading. Closing a book returns to its source; Space submenus still go back one level without closing the book. Q also closes page-width dialogs.
+### Dictionaries and configuration
 
-- Restore direct PDF/DjVu zoom with `+`, `=` and `-`. Keep `1 / 2 / 3` for single-page, spread and scroll in ordinary reading; digits remain command counts in Vim.
-
-- Dictionary and translation lists start empty. Add an HTTP API, OpenAI-compatible API or local command, with an editable name and optional description. Generic HTTP connections expose method, query, headers, JSON body and response extraction in F2 and TOML; existing service-specific profiles remain compatible.
-- F2 and its nested editors consistently use the interface palette, then restore the reading palette. Settings and dialogs share horizontal padding and aligned label/value columns, including connection counts.
-- Explanation language is configured on an OpenAI-compatible dictionary connection. Deleting the last connection keeps the list empty after restarting.
-
-- Older TOML files gain missing dictionary/translation settings, Space hint delay, wheel step and OPDS list on startup, preserving existing values and comments.
-
-- Split dictionary settings into Word definitions and Translation, each with add/edit/test/delete, service-specific fields, visible default addresses, default selection and unsaved-change handling. Move Space menu delay to Reader settings.
-
-- Complete the Space migration in readers: legacy command letters no longer act outside Vim, `v/V` select only after `Space c`, and `Space t` changes PDF colors. Escape opens the reading menu consistently in EPUB and PDF. Return from Space submenus with `Q`, `Esc` or `Backspace`. Explicit EPUB/FB2 key overrides do not override Space or Vim.
-- Publish complete reading and Vim command tables in both READMEs and guides, checked against the command registry. Update help, footer hints, CLI help and the TOML example.
-
-- Reader popups for dictionaries, highlights and notes retain the reading palette. Vim j/k move by visible text rows; braces move between paragraphs.
-
-- Space opens a contextual command menu with a configurable short delay. Space c toggles an optional Vim cursor; Normal supports yank operators and counts, Visual selections, word/line motions, search and named marks. Escape clears a selection or pending command; another Escape hides the cursor and returns to reading. The cursor stays hidden during ordinary reading.
-- Separate dictionary and translation connections, source/target languages, local commands and configurable APIs. Results can be copied or saved as passage notes. Connections, API keys or key commands are editable in F2 and TOML.
-- Named OPDS catalogs and credentials are configurable in `[[opds]]` and F2 → Library, alongside the existing BookOrbit and reader settings.
-
-- PDFs with embedded text support word selection with the mouse or keyboard, copying, colored highlights and multiline comments. The **Space a a** panel searches, edits, deletes and exports notes to Markdown. Saved highlights stay attached to the page through zoom, rotation and reopening. Text extraction runs on demand; image-only scans are not OCRed.
-- Saving a completely cleared comment deletes the annotation. Action buttons keep consistent brackets and spacing, wrap whole in narrow windows and support mouse clicks, including **Esc Clear**.
-- EPUB and FB2 support mouse and keyboard text selection, exact clipboard quotes, five highlight colors and multiline comments. Annotations keep their source ranges through resizing, survive a restart and can be searched, edited, deleted and exported to Markdown. Existing passage notes remain accessible.
-- Click the text to place a cursor, drag to select, double-click a word or triple-click a paragraph. **Space c** enables Normal; **v / V** select text or a logical line, **w / b / e** move by words and **m a / ' a** save and return to named mark `a`. **Space m / Esc** retain the reading menu; text clicks no longer open it. **K** runs a configured dictionary command for the selection.
-- Continuous scrolling now moves one line per mouse-wheel tick in EPUB, FB2, PDF and DjVu. Change **F2 → Reader → Mouse wheel step** or `scroll_lines` to choose 1–12 lines. Arrow keys remain single-line and Page Up / Down remain screen-sized.
-
-- PDF and DjVu zoom keeps the current page visible while a sharper image renders in the background. Reducing or repeating a zoom level reuses the larger cached image, including in spreads and continuous scrolling. A failed refinement preserves the readable page.
-
-- **Q** now goes back one step in BookOrbit and the local library. Closing a book returns through its card to the original shelf, dashboard or search; local folders go up to the library root before leaving. Returning keeps the selected item and scroll position, including after refreshing reading progress. Back waits for an outstanding progress save instead of cancelling it.
+- Configure separate word-definition and translation connections using generic HTTP, OpenAI-compatible APIs or local commands. Edit connections, defaults, language parameters, keys or key commands in F2 and TOML; copy results or save them as passage notes.
+- Remove hardcoded dictionary/translation adapters. Free Dictionary and Google Translate remain enabled as ordinary editable HTTP profiles in the default configuration and example. Migrate older named providers once; deleting the last connection keeps the list empty.
+- Connection tests contact the provider instead of using cached responses. Preserve literal placeholder text in local commands and the selected language when reselecting the same connection.
+- Configure named OPDS catalogs and credentials in [[opds]] and F2 → Library. Backfill missing configuration settings without overwriting existing values or comments.
+- Synchronize both READMEs, user guides, help and configuration examples. Explain required versus optional dictionary fields and include a Merriam-Webster Collegiate template.
 
 ## 0.1.7 — 2026-11-10
 
