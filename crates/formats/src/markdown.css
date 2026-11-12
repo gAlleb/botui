@@ -1,0 +1,26 @@
+/* Terminal Markdown uses hierarchy, color and cell-aligned panels, not book titles. */
+body { margin: 0; }
+p { margin: 0 0 16px; text-indent: 0 !important; }
+h1, h2, h3, h4, h5, h6 { text-align: left; margin: 16px 0; padding: 0 8px; font-weight: bold; }
+h1::before { content: "① "; }
+h2::before { content: "② "; }
+h3::before { content: "③ "; }
+h4::before { content: "④ "; }
+h5::before { content: "⑤ "; }
+h6::before { content: "⑥ "; }
+blockquote { border-left: 8px solid; padding: 0 16px; margin: 16px 0; }
+blockquote p:last-child { margin-bottom: 0; }
+.code-label { margin-top: 16px; padding: 0 16px; font-weight: bold; }
+pre { white-space: pre-wrap; padding: 16px; margin: 0 0 16px; tab-size: 4; }
+pre.source { padding: 0; margin: 0; }
+code { font-style: normal; }
+ul, ol { padding-left: 24px; margin: 0 0 16px; }
+li { list-style: none; position: relative; }
+li::before { content: attr(data-botui-marker); position: absolute; top: 0; right: 100%; padding-right: 8px; white-space: pre; width: max-content; }
+li p { margin-bottom: 0; }
+li > ul, li > ol { margin-bottom: 0; }
+.alert-title { font-weight: bold; margin: 0; }
+hr { border: 0; border-top: 16px solid; margin: 16px 0; }
+table { border-collapse: separate; border-spacing: 0; max-width: 100%; margin: 16px 0; }
+th, td { border: 0; border-bottom: 16px solid; padding: 0 8px; }
+img { max-width: 100%; max-height: 50vh; }

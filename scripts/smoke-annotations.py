@@ -56,7 +56,7 @@ with tempfile.TemporaryDirectory() as name:
         prose = "Alpha <em>bravo</em> charlie delta. Привет мир."
         paragraphs = "".join(f"<p>Paragraph {i:03} for navigation and stable reading.</p>" for i in range(90))
         if kind == "md":
-            path.write_text("Alpha *bravo* charlie delta. Привет мир.\n\n" + "\n\n".join(f"Paragraph {i:03} for navigation and stable reading." for i in range(90)))
+            path.write_text("# Annotation chapter\n\n> Alpha *bravo* charlie delta. Привет мир.\n\n" + "\n\n".join(f"Paragraph {i:03} for navigation and stable reading." for i in range(90)))
         elif kind == "fb2":
             path.write_text('<FictionBook><body><section><p>' + prose.replace("em>", "emphasis>") + '</p>' + paragraphs + '</section></body></FictionBook>')
         else:

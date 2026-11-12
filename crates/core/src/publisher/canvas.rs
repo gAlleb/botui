@@ -34,6 +34,12 @@ impl Paint {
                 syntax: el
                     .and_then(|e| super::marker(e, "data-botui-syntax"))
                     .unwrap_or(0) as u8,
+                role: std::iter::successors(doc.get_node(id), |n| {
+                    n.parent.and_then(|p| doc.get_node(p))
+                })
+                .filter_map(|n| n.element_data())
+                .find_map(|e| super::marker(e, "data-botui-role"))
+                .unwrap_or(0) as u8,
                 bold: s.clone_font_weight().value() >= 600.,
                 italic: s.clone_font_style() != FontStyle::NORMAL,
                 underline: decoration.contains(TextDecorationLine::UNDERLINE),
@@ -259,6 +265,7 @@ fn paint_lines<const GROUPED: bool>(
     images: &[Option<usize>],
 ) -> Vec<PageLine> {
     let mut figures = BTreeMap::<usize, Vec<crate::Figure>>::new();
+    let mut surfaces = BTreeMap::<usize, Vec<crate::Surface>>::new();
     let mut rows = Rows::new();
     let mut cursors: Vec<Cursor> = (0..sources.len()).map(|_| Cursor::default()).collect();
     let mut styles = HashMap::new();
@@ -306,13 +313,33 @@ fn paint_lines<const GROUPED: bool>(
             // The terminal image painter owns the contents of this box.
             continue;
         }
+        if let Some(role) = node
+            .element_data()
+            .and_then(|e| super::marker(e, "data-botui-surface"))
+            && visible()
+        {
+            let x = (pos.x / CELL).round().max(0.) as u16;
+            let right = (((pos.x + area.size.width) / CELL).round().max(0.) as u16).min(width);
+            let top = (pos.y / ROW).round().max(0.) as usize;
+            let bottom = ((pos.y + area.size.height) / ROW).round().max(0.) as usize;
+            if right > x {
+                for y in top..bottom.min(top.saturating_add(8192)) {
+                    rows.entry(y).or_default();
+                    surfaces.entry(y).or_default().push(crate::Surface {
+                        x,
+                        width: right - x,
+                        role: role as u8,
+                    });
+                }
+            }
+        }
         if (area.border.top > 0.
             || area.border.bottom > 0.
             || area.border.left > 0.
             || area.border.right > 0.)
             && visible()
         {
-            draw_border(node, width, &mut rows);
+            draw_border(node, width, &mut rows, Paint::for_node(doc, id).face);
         }
         draw_text::<GROUPED>(
             doc,
@@ -330,12 +357,12 @@ fn paint_lines<const GROUPED: bool>(
         .next()
         .map(|s| s.start)
         .unwrap_or_default();
-    compose_rows(rows, figures, width, anchor)
+    compose_rows(rows, figures, surfaces, width, anchor)
 }
 
 type Rows<'a> = BTreeMap<usize, Vec<Ink<'a>>>;
 
-fn draw_border(node: &Node, width: u16, rows: &mut Rows<'_>) {
+fn draw_border(node: &Node, width: u16, rows: &mut Rows<'_>, face: Face) {
     let area = node.final_layout();
     let pos = node.absolute_position(0., 0.);
     let left = (pos.x / CELL).round().max(0.) as usize;
@@ -348,7 +375,7 @@ fn draw_border(node: &Node, width: u16, rows: &mut Rows<'_>) {
                 x,
                 text: glyph,
                 source: None,
-                face: Face::default(),
+                face,
                 rule: true,
             })
         };
@@ -597,6 +624,7 @@ fn draw_text<'a, const GROUPED: bool>(
 fn compose_rows(
     rows: Rows<'_>,
     mut figures: BTreeMap<usize, Vec<crate::Figure>>,
+    mut surfaces: BTreeMap<usize, Vec<crate::Surface>>,
     width: u16,
     mut anchor: Anchor,
 ) -> Vec<PageLine> {
@@ -630,6 +658,7 @@ fn compose_rows(
         }
         let mut line = PageLine {
             figures: figures.remove(&y).unwrap_or_default(),
+            surfaces: surfaces.remove(&y).unwrap_or_default(),
             ..Default::default()
         };
         let mut band = 0;

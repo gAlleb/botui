@@ -78,6 +78,7 @@ pub(super) fn table(lines: &mut Vec<PageLine>, start: usize, row: &TableRow, wid
             heading: false,
             start: anchor,
             figures: Vec::new(),
+            surfaces: Vec::new(),
             table_header: row.header,
         });
     }

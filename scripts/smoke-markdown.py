@@ -18,6 +18,9 @@ Alpha **bravo** charlie. Привет мир.
 
 > Quoted wisdom
 
+3. Ordered item
+4. Next item
+
 - [x] Finished task
 
 | Name | Value |
@@ -28,14 +31,24 @@ Alpha **bravo** charlie. Привет мир.
 let answer = 42; // comment
 ```
 
+```markdown
+# Example heading
+**bold** and `code`
+```
+
+> [!TIP]
+> Read with structure.
+
 ![Local diagram](diagram.png)
 ''')
     t=s.Terminal(root,Path('/usr/bin/env'),args=['TERM=xterm','COLORTERM=',str(binary),str(book)])
     def ansi(): return t.run('capture-pane','-p','-e','-t','shelf').stdout
     try:
-        t.run('resize-window','-t','shelf','-x','115','-y','60')
+        t.run('resize-window','-t','shelf','-x','115','-y','90')
         frame=t.see('Alpha bravo charlie')
         for word in ['Quoted wisdom','Finished task','Answer','let answer','Local diagram']: t.see(word)
+        for label in ['① Markdown demo', '3. Ordered item', '4. Next item', '☑ Finished task', 'Tip', '# Example heading']: t.see(label)
+        t.wait('Code panel background',lambda _: '52;60;71' in ansi())
         t.wait('Syntax colors',lambda _: '140;185;255' in ansi() and '235;180;120' in ansi())
         t.wait('Local illustration',lambda _: '20;210;40' in ansi())
         t.click('F9 Source',t.see('F9 Source')); t.see('**bravo**'); t.see('```rust');t.see('| --- | --- |')

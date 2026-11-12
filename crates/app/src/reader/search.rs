@@ -1,7 +1,7 @@
 //! Keep book-wide text search available after its results dialog closes.
 use botui_core::{Anchor, Document, PageLine, Pager, SearchIndex, SearchMatch};
 use ratatui::{
-    style::{Color, Modifier, Style},
+    style::Modifier,
     text::{Line, Span},
 };
 use std::rc::Rc;
@@ -66,7 +66,7 @@ impl Search {
         };
         Some(self.hits[self.selected].anchor)
     }
-    pub fn line<'a>(&self, line: &'a PageLine, dark: bool) -> Line<'a> {
+    pub fn line<'a>(&self, line: &'a PageLine, theme: crate::theme::Theme) -> Line<'a> {
         let hit = self
             .hits
             .get(self.selected)
@@ -76,50 +76,37 @@ impl Search {
         }
         let mut styled = Vec::new();
         let mut byte = 0;
-        let mut push = |start: usize, end: usize, style: Modifier, syntax: u8| {
-            if start == end {
-                return;
-            }
-            let mut cuts = [start, start, end, end];
-            if let Some(hit) = &hit {
-                cuts[1] = hit.start.clamp(start, end);
-                cuts[2] = hit.end.clamp(start, end);
-            }
-            for (a, b) in cuts.iter().zip(cuts.iter().skip(1)).filter(|(a, b)| a < b) {
-                let modifier = if hit.as_ref().is_some_and(|h| h.contains(a)) {
-                    style | Modifier::REVERSED
-                } else {
-                    style
-                };
-                let color = match (syntax, dark) {
-                    (1, true) => Some(Color::Rgb(140, 185, 255)),
-                    (1, false) => Some(Color::Rgb(25, 70, 160)),
-                    (2, true) => Some(Color::Rgb(150, 210, 155)),
-                    (2, false) => Some(Color::Rgb(20, 105, 45)),
-                    (3, true) => Some(Color::Rgb(160, 165, 175)),
-                    (3, false) => Some(Color::Rgb(85, 90, 100)),
-                    (4, true) => Some(Color::Rgb(235, 180, 120)),
-                    (4, false) => Some(Color::Rgb(145, 65, 15)),
-                    _ => None,
-                };
-                let mut face = Style::new().add_modifier(modifier);
-                if let Some(color) = color {
-                    face = face.fg(color);
+        let mut push =
+            |start: usize, end: usize, style: Modifier, face: botui_core::publisher::Face| {
+                if start == end {
+                    return;
                 }
-                styled.push(Span::styled(&line.text[*a..*b], face));
-            }
-        };
+                let mut cuts = [start, start, end, end];
+                if let Some(hit) = &hit {
+                    cuts[1] = hit.start.clamp(start, end);
+                    cuts[2] = hit.end.clamp(start, end);
+                }
+                for (a, b) in cuts.iter().zip(cuts.iter().skip(1)).filter(|(a, b)| a < b) {
+                    let modifier = if hit.as_ref().is_some_and(|h| h.contains(a)) {
+                        style | Modifier::REVERSED
+                    } else {
+                        style
+                    };
+                    let face = super::markdown_style::face(face, theme).add_modifier(modifier);
+                    styled.push(Span::styled(&line.text[*a..*b], face));
+                }
+            };
         for s in &line.spans {
-            push(byte, s.bytes.start, Modifier::empty(), 0);
+            push(byte, s.bytes.start, Modifier::empty(), Default::default());
             let mut style = Modifier::empty();
             style.set(Modifier::BOLD, s.face.bold);
             style.set(Modifier::ITALIC, s.face.italic);
             style.set(Modifier::UNDERLINED, s.face.underline);
             style.set(Modifier::CROSSED_OUT, s.face.strike);
-            push(s.bytes.start, s.bytes.end, style, s.face.syntax);
+            push(s.bytes.start, s.bytes.end, style, s.face);
             byte = s.bytes.end;
         }
-        push(byte, line.text.len(), Modifier::empty(), 0);
+        push(byte, line.text.len(), Modifier::empty(), Default::default());
         Line::from(styled)
     }
 }

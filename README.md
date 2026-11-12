@@ -138,6 +138,8 @@ Offline copies are available through **D BookOrbit offline** and **O OPDS downlo
 
 PDF contents require Python 3, PyGObject and the Poppler GI bindings. Image-only EPUBs use the fixed-page reader. There is no OCR: scans and comic images do not provide word selection, definitions or translation.
 
+Formatted Markdown distinguishes heading levels with numbers and colors, preserves list numbering and nesting, and uses reading-theme panels for code, quotes and table headers. NOTE/TIP/IMPORTANT/WARNING/CAUTION blocks have their own labels and colors. **F9** opens the source with Markdown highlighting.
+
 Markdown reads local images within the document’s directory or its subdirectories; remote images are not downloaded. Raw HTML is shown as text, and MDX/Obsidian plugins are not executed. Notes keep their positions when switching views or resizing; external edits to the source file can shift them. Limits: 4 MiB of Markdown text and 16 MiB per image.
 
 Comic pages may be JPEG, PNG or WebP, up to 16 MiB each. Password-protected and multi-volume CBR archives are not supported. The extension must match the archive: `.cbz` for ZIP, `.cbr` for RAR.

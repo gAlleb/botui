@@ -5,6 +5,7 @@ pub(crate) mod controls;
 mod layout;
 mod links;
 mod mark_list;
+mod markdown_style;
 mod navigation;
 pub(crate) mod notes;
 mod resources;
@@ -357,11 +358,8 @@ impl Reader {
         let view = self.pager.viewport_rows();
         let pages = (!self.pager.is_paginating())
             .then(|| (self.pager.page_number(), self.pager.page_count()));
-        let mut style = self
-            .palette
-            .as_ref()
-            .map_or(self.theme, |p| p.preview())
-            .style();
+        let reading_theme = self.palette.as_ref().map_or(self.theme, |p| p.preview());
+        let mut style = reading_theme.style();
         if !crate::settings::opaque() {
             style.bg = Some(ratatui::style::Color::Reset);
         }
@@ -409,19 +407,29 @@ impl Reader {
                         });
                     }
                 }
-                let mut para = Paragraph::new(
-                    self.search
-                        .line(line, self.theme.dark() || self.theme.id() == "terminal"),
-                )
-                .style(if line.table_header {
-                    style.add_modifier(Modifier::BOLD)
-                } else {
-                    style
-                });
+                let mut para = Paragraph::new(self.search.line(line, reading_theme)).style(
+                    if line.table_header {
+                        style.add_modifier(Modifier::BOLD)
+                    } else {
+                        style
+                    },
+                );
                 if line.heading {
                     para = para.centered().style(style.add_modifier(Modifier::BOLD));
                 }
                 frame.render_widget(para, rect);
+                // Paint panel backgrounds after Paragraph, which sets the base paper
+                // color over its whole rectangle. Glyphs and source mappings stay intact.
+                for surface in &line.surfaces {
+                    let area =
+                        Rect::new(rect.x.saturating_add(surface.x), rect.y, surface.width, 1)
+                            .intersection(rect);
+                    frame.buffer_mut().set_style(
+                        area,
+                        ratatui::style::Style::new()
+                            .bg(markdown_style::background(surface.role, reading_theme)),
+                    );
+                }
                 self.links.mark_line(frame, &self.doc, line, rect);
                 if self.study.mapping() {
                     self.study.map_line(&self.doc, line, rect);

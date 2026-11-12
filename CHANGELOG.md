@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Give Markdown its own reading presentation: distinct heading levels, numbered and nested lists, theme-aware code/quote/table panels, horizontal rules and labeled GitHub-style alerts. Highlight Markdown examples and source view; retain source addresses for selections and annotations.
+
 ## 0.1.8 — 2026-11-12
 
 ### Reading and formats

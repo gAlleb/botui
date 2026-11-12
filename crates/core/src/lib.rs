@@ -122,11 +122,20 @@ pub struct Figure {
     pub height: u16,
 }
 
+/// A theme-colored Markdown block, independent of selectable source text.
+#[derive(Clone, Copy, Debug)]
+pub struct Surface {
+    pub x: u16,
+    pub width: u16,
+    pub role: u8,
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct PageLine {
     /// Leading cells on the first visual line of a prose paragraph.
     pub indent: u16,
     pub figures: Vec<Figure>,
+    pub surfaces: Vec<Surface>,
     pub table_header: bool,
     pub text: String,
     pub heading: bool,
@@ -536,6 +545,7 @@ fn wrap_block(lines: &mut Vec<PageLine>, block: &Block, index: usize, width: usi
             spans: Vec::new(),
             indent: std::mem::take(indent) as u16,
             figures: Vec::new(),
+            surfaces: Vec::new(),
             table_header: false,
             text: std::mem::take(row),
             heading: block.heading,

@@ -234,6 +234,8 @@ pub struct SourceText {
 pub struct Face {
     /// Lightweight code token: keyword, string, comment, number.
     pub syntax: u8,
+    /// Markdown presentation: headings 1–6, link 7, quote 8, table head 9, code 10, alerts 12–16.
+    pub role: u8,
     pub bold: bool,
     pub italic: bool,
     pub underline: bool,
