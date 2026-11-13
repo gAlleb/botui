@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.11 — 2026-11-13
+
+- Navigate and highlight individual PDF search occurrences, including multiple hits on the same page. Bring the matching word into view in single-page, spread and scrolling layouts, including zoom and rotation. Preserve the Vim cursor while the new page loads.
+- Show the current occurrence and total count, use F3/F4/F5 for next/previous/results, and keep search feedback visible in PDF text mode. Extract word coordinates through Poppler utilities or the existing Python/Poppler fallback without adding dependencies.
+- Fix the initial direction of Vim n/N in EPUB, FB2 and Markdown, and follow the current Vim cursor after manual movement rather than the old page anchor.
+- Update both READMEs and guides, and add regression coverage for occurrence navigation, highlighting and Vim across the supported text readers.
+
 ## 0.1.10 — 2026-11-12
 
 - Synchronize passage notes and highlights with BookOrbit in both directions, including comment/color edits and deletions. Keep local annotations independent of the server, reconcile offline edits when reopening the connected edition, and preserve conflicting copies and uncertain upload records. Expose sync status and retry through Space a s without opening text controls during background updates.
