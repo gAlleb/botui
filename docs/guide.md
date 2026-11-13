@@ -29,7 +29,7 @@ If a book or catalog has no cover image, BOTUI makes a [cloth jacket](images/gen
 
 **Q** on shelves and during ordinary reading go back one step. In BookOrbit: reader → book card → the shelf, dashboard or search you opened it from. In the local library: reader → folder → parent folders → library root → source chooser. Selection and scroll position are kept when you return. On the source chooser, **Q** exits BOTUI. When launched with a single file path, closing that file ends the command.
 
-**Esc** also goes back on library screens; in a reader it opens the reading menu. In a search field, **Q** is typed into the query and **Esc** closes the search. Click **Home** on a BookOrbit shelf to go straight to the source chooser.
+**Esc** also goes back on library screens; in ordinary reading it first hides an active search highlight, otherwise it opens the reading menu. In a search field, **Q** is typed into the query and **Esc** closes the search. Click **Home** on a BookOrbit shelf to go straight to the source chooser.
 
 ### Local library
 
@@ -194,8 +194,10 @@ Commands depend on the document: text actions need selectable text; page zoom, r
 | `Tab` | Focus visible contents; arrows fold/expand, Enter opens |
 | `F1 / F2` | Help / settings |
 | `n` / `F3` · `N` / `F4` · `F5` | Next match / previous match / result list |
-| `Esc` | Back/close panel; reading menu |
+| `Esc` | Back/close panel; hide search highlight; otherwise reading menu |
 | `Ctrl+C` | Copy selected text |
+
+In ordinary reading, **Esc** hides the search highlight without opening the menu. The query and results remain available: `n` / `N`, F3/F4, or choosing a result with F5 shows a match again. Open dialogs, text selections and Vim commands handle Esc first; saved notes and highlights are unchanged.
 
 PDF search highlights each occurrence and brings it into view, including multiple matches on one page. In Vim mode, `n` follows the search direction and `N` reverses it. Search requires an embedded text layer; image-only scans need OCR outside BOTUI.
 

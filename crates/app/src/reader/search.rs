@@ -13,6 +13,7 @@ pub(super) struct Search {
     hits: Vec<SearchMatch>,
     selected: usize,
     query: String,
+    hidden: bool,
 }
 
 impl Search {
@@ -24,9 +25,16 @@ impl Search {
             .clone()
     }
     pub fn select(&mut self, query: String, hits: Vec<SearchMatch>, selected: usize) {
+        self.hidden = false;
         self.query = query;
         self.hits = hits;
         self.selected = selected;
+    }
+    pub fn highlighted(&self) -> bool {
+        !self.hidden && !self.hits.is_empty()
+    }
+    pub fn hide(&mut self) {
+        self.hidden = true;
     }
     pub fn update(&mut self, pager: &Pager, doc: &Document) {
         if !doc.styled.is_empty() && self.geometry != (pager.column_width(), pager.viewport()) {
@@ -59,6 +67,7 @@ impl Search {
         if count == 0 {
             return None;
         }
+        self.hidden = false;
         self.selected = if forward {
             self.hits.partition_point(|h| h.anchor <= place) % count
         } else {
@@ -70,6 +79,7 @@ impl Search {
         let hit = self
             .hits
             .get(self.selected)
+            .filter(|_| !self.hidden)
             .and_then(|h| self.index.as_ref()?.visible_range(h, line));
         if hit.is_none() && line.spans.iter().all(|s| s.face == Default::default()) {
             return Line::raw(&line.text);

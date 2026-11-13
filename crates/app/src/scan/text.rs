@@ -145,6 +145,11 @@ impl Text {
         self.search_regions.clear();
         self.search_at = None;
     }
+    pub fn hide_search(&mut self) -> bool {
+        let visible = !self.search_regions.is_empty();
+        self.search_regions.clear();
+        visible
+    }
     pub fn show_search(
         &mut self,
         hit: &botui_fixed::PageMatch,

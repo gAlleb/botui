@@ -125,6 +125,10 @@ pub(super) fn entries(ctx: Context, p: &Settings) -> Vec<Entry> {
                     ),
                     ("n,F3 / N,F4 / F5", "Next / previous match / search results"),
                     (
+                        "Esc in reading",
+                        "Hide search highlight; otherwise open reading menu",
+                    ),
+                    (
                         "Mouse",
                         "Click: cursor; drag: select; double/triple click: word/paragraph",
                     ),
@@ -165,6 +169,10 @@ pub(super) fn entries(ctx: Context, p: &Settings) -> Vec<Entry> {
                     ),
                     ("Tab; ← / →", "Focus contents; fold / expand a section"),
                     ("n,F3 / N,F4 / F5", "Next / previous match / results"),
+                    (
+                        "Esc in reading",
+                        "Hide search highlight; otherwise open reading menu",
+                    ),
                     (
                         "Mouse drag / Ctrl+C",
                         "Select / copy PDF text (text layer required; no OCR)",

@@ -272,8 +272,10 @@ Commands depend on the document: text actions need selectable text; page zoom, r
 | `Tab` | Focus visible contents; arrows fold/expand, Enter opens |
 | `F1 / F2` | Help / settings |
 | `n` / `F3` · `N` / `F4` · `F5` | Next match / previous match / result list |
-| `Esc` | Back/close panel; reading menu |
+| `Esc` | Back/close panel; hide search highlight; otherwise reading menu |
 | `Ctrl+C` | Copy selected text |
+
+In ordinary reading, **Esc** hides the search highlight without opening the menu. The query and results remain available: `n` / `N`, F3/F4, or choosing a result with F5 shows a match again. Open dialogs, text selections and Vim commands handle Esc first; saved notes and highlights are unchanged.
 
 PDF search highlights each occurrence and brings it into view, including multiple matches on one page. In Vim mode, `n` follows the search direction and `N` reverses it. Search requires an embedded text layer; image-only scans need OCR outside BOTUI.
 

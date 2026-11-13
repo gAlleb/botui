@@ -68,6 +68,22 @@ def text_search(root, extension, mode):
         t.see('lighthouse alpha')
         t.keys('Space', 'f'); t.see('Find:'); t.type('lighthouse'); t.see('4 matches'); t.keys('Enter')
         selected(t, 'alpha')
+        # Closing a result dialog or Space menu must not dismiss the match.
+        t.keys('F5'); t.see('4 matches'); t.keys('Escape'); selected(t, 'alpha')
+        t.keys('Space', 'Escape'); selected(t, 'alpha')
+        def hidden():
+            def check(frame):
+                data = cells(t.run('capture-pane', '-p', '-e', '-t', 'shelf').stdout)
+                plain = ''.join(c for c, _ in data)
+                hits = list(re.finditer('lighthouse', plain))
+                return hits and all(not any(r for _, r in data[m.start():m.end()]) for m in hits) and ' Reading ' not in frame
+            t.wait('Search highlight dismissed without opening menu', check)
+        for key, word in [('n', 'bravo'), ('N', 'alpha'), ('F3', 'bravo'), ('F4', 'alpha')]:
+            t.keys('Escape'); hidden()
+            t.keys(key); selected(t, word)
+        t.keys('Escape'); hidden()
+        t.keys('Escape'); t.see(' Reading '); t.keys('Escape'); hidden()
+        t.keys('F5'); t.see('4 matches'); t.keys('Enter'); selected(t, 'alpha')
         for key, word in [('F3', 'bravo'), ('F3', 'charlie'), ('F3', 'delta'), ('F3', 'alpha'), ('F4', 'delta')]:
             t.keys(key); selected(t, word)
         t.keys('F3'); selected(t, 'alpha')
@@ -87,6 +103,12 @@ def text_search(root, extension, mode):
         t.keys('w', 'w', 'w', 'n'); selected(t, 'charlie')
         t.keys('N'); selected(t, 'bravo')
         t.keys('F5'); t.see('4 matches'); t.keys('End', 'Enter'); selected(t, 'delta')
+        # Esc still cancels Visual, then leaves Normal, before hiding search.
+        t.keys('v'); t.see('VISUAL')
+        t.keys('Escape'); t.see('NORMAL'); selected(t, 'delta')
+        t.keys('Escape'); selected(t, 'delta')
+        t.keys('Escape'); hidden()
+        t.keys('n'); selected(t, 'alpha')
         print('PASS', extension, mode, flush=True)
     finally:
         t.run('kill-server', required=False)

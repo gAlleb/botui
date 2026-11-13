@@ -45,7 +45,8 @@ def check(root, mode, fallback=False, zoom=100, rotate=False):
     path = str(helpers) + ('' if fallback else os.pathsep + os.environ['PATH'])
     t = s.Terminal(d, Path('/usr/bin/env'), args=['TERM=xterm', 'COLORTERM=', 'PATH=' + path, str(BINARY), str(book)])
     def raster():
-        return '\n'.join(row for row in t.run('capture-pane', '-p', '-e', '-t', 'shelf').stdout.splitlines() if '▀' in row or '▄' in row)
+        # The last two rows contain feedback/footer, even over the scroll canvas.
+        return '\n'.join(row for row in t.run('capture-pane', '-p', '-e', '-t', 'shelf').stdout.splitlines()[:-2] if '▀' in row or '▄' in row)
     def match(i):
         t.see(f'Match {i} / 4')
         t.wait('Rendered found word', lambda f: ('▀' in f or '▄' in f) and 'Rendering' not in f)
@@ -61,6 +62,16 @@ def check(root, mode, fallback=False, zoom=100, rotate=False):
             t.keys('Space', 'r', 'r')
         t.keys('Space', 'f'); t.see('Find in text layer'); t.type('lighthouse'); t.keys('Enter'); match(1)
         first = raster()
+        t.keys('F5'); t.see('Search results'); t.keys('Escape')
+        t.wait('Closing results keeps the highlight', lambda _: raster() == first)
+        t.keys('Space', 'Escape')
+        t.wait('Closing Space keeps the highlight', lambda _: raster() == first)
+        for key, hit in [('n', 2), ('N', 1), ('F3', 2), ('F4', 1)]:
+            highlighted = raster()
+            t.keys('Escape')
+            t.wait('Search dismissed without a menu', lambda f: 'Match ' not in f and 'Find in text layer' not in f and ('▀' in f or '▄' in f) and raster() != highlighted)
+            t.keys(key); match(hit)
+        assert raster() == first, 'Resuming search changed its original highlight or viewport'
         t.keys('F3'); match(2); second = raster()
         assert first != second, 'Same-page matches did not change the raster highlight'
         t.keys('F4'); match(1)
@@ -82,7 +93,13 @@ def check(root, mode, fallback=False, zoom=100, rotate=False):
         t.keys('b', 'n', 'n', 'w', 'y', 'i', 'w'); copied('charlie')
         # Manual movement past the middle hit changes the origin of the next search.
         t.keys('b', 'N', 'w', 'n', 'w', 'y', 'i', 'w'); copied('charlie')
-        t.keys('Escape'); t.keys('Space', 'f'); t.see('Find in text layer'); t.keys('C-u'); t.type('absent-token'); t.keys('Enter'); t.see('No matches')
+        # Leave Vim as before, then dismiss search in ordinary reading.
+        t.keys('Escape')
+        highlighted = raster()
+        t.keys('Escape')
+        t.wait('Search hidden after leaving Vim', lambda _: raster() != highlighted)
+        t.keys('n'); match(4)
+        t.keys('Space', 'f'); t.see('Find in text layer'); t.keys('C-u'); t.type('absent-token'); t.keys('Enter'); t.see('No matches')
         print('PASS PDF', mode, 'GI' if fallback else 'pdftotext', zoom, 'rotated' if rotate else '', flush=True)
     finally:
         t.run('kill-server', required=False)

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.13 — 2026-11-13
+
+- In ordinary reading, Esc hides the search highlight without opening the menu. Keep the query and results for n/N, F3/F4 and F5; preserve dialog, selection and Vim escape handling and saved annotations. Cover dismissing and resuming searches in PDF, EPUB, FB2 and Markdown terminal tests.
+
 ## 0.1.12 — 2026-11-13
 
 - Restore `n` / `N` as next / previous search occurrence in ordinary reading, without entering Vim mode, for PDF, DjVu, EPUB, FB2 and Markdown. Keep F3/F4 and Vim search behavior.

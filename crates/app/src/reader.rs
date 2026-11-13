@@ -47,6 +47,7 @@ enum Action {
     JumpForward,
     FindAgain(bool),
     SearchResults,
+    HideSearch,
     Note,
     Export,
     Statistics,
@@ -865,6 +866,7 @@ impl Reader {
                 KeyCode::Char('g' | 'G') => Some(Action::Bookmarks),
                 KeyCode::Char('b' | 'B') => Some(Action::Mark),
                 KeyCode::Char('q' | 'Q') => Some(Action::Close),
+                KeyCode::Esc if self.search.highlighted() => Some(Action::HideSearch),
                 KeyCode::Char('m' | 'M') | KeyCode::Esc => Some(Action::Menu),
                 KeyCode::Char('1') => Some(Action::Single),
                 KeyCode::Char('2') => Some(Action::Spread),
@@ -1058,6 +1060,7 @@ impl Reader {
                 }
                 self.nav = Some(nav);
             }
+            Action::HideSearch => self.search.hide(),
             Action::SearchResults => {
                 self.apply(Action::Navigate(Kind::Search));
                 if let Some(nav) = &mut self.nav {

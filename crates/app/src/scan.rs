@@ -998,6 +998,14 @@ pub(super) fn read_pages(
                 continue;
             }
         }
+        if !menu
+            && matches!(e, Event::Key(k) if k.kind != KeyEventKind::Release && k.code == KeyCode::Esc)
+            && text.hide_search()
+        {
+            message.clear();
+            text.message.clear();
+            continue;
+        }
         // Clone only when opening the note list, never while scrolling or drawing.
         let note_background = (menu
             || matches!(&e, Event::Key(k) if matches!(k.code,KeyCode::Char('a'|'A'))))
