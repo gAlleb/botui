@@ -104,7 +104,7 @@ impl Search {
             "No matches in the embedded text".into()
         } else {
             format!(
-                "Match {} / {} · F3 next · F4 previous · F5 results",
+                "Match {} / {} · n/F3 next · N/F4 previous · F5 results",
                 self.selected.map_or(0, |i| i + 1),
                 self.hits.len()
             )

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.12 — 2026-11-13
+
+- Restore `n` / `N` as next / previous search occurrence in ordinary reading, without entering Vim mode, for PDF, DjVu, EPUB, FB2 and Markdown. Keep F3/F4 and Vim search behavior.
+- Keep notes on `Space a n`, including PDF text selections; update key hints and both language guides. Exercise ordinary n/N, wrapping, visible highlights and note access in terminal regression tests.
+
 ## 0.1.11 — 2026-11-13
 
 - Navigate and highlight individual PDF search occurrences, including multiple hits on the same page. Bring the matching word into view in single-page, spread and scrolling layouts, including zoom and rotation. Preserve the Vim cursor while the new page loads.

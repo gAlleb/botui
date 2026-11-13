@@ -70,6 +70,9 @@ def check(root, mode, fallback=False, zoom=100, rotate=False):
         assert raster() != second
         t.keys('F3'); match(4); t.see('3 / 3')
         t.keys('F3'); match(1); t.see('1 / 3')
+        # Ordinary search keys must cross pages and wrap in both directions.
+        for key, hit in [('n', 2), ('n', 3), ('n', 4), ('n', 1), ('N', 4), ('n', 1)]:
+            t.keys(key); match(hit)
         t.keys('F5'); t.see('Search results'); t.keys('End', 'Enter'); match(4); t.see('3 / 3')
         t.keys('Space', 'c'); t.see('NORMAL')
         t.keys('n'); match(1)

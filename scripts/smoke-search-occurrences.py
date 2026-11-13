@@ -71,6 +71,14 @@ def text_search(root, extension, mode):
         for key, word in [('F3', 'bravo'), ('F3', 'charlie'), ('F3', 'delta'), ('F3', 'alpha'), ('F4', 'delta')]:
             t.keys(key); selected(t, word)
         t.keys('F3'); selected(t, 'alpha')
+        # Ordinary reading must accept n/N without enabling the Vim cursor.
+        for key, word in [('n', 'bravo'), ('n', 'charlie'), ('n', 'delta'), ('n', 'alpha'), ('N', 'delta'), ('n', 'alpha')]:
+            t.keys(key); selected(t, word)
+        # Use the numeric function-key encoding; CSI 1;2R is also a cursor report.
+        t.run('send-keys', '-t', 'shelf', '-H', '1b', '5b', '31', '33', '3b', '32', '7e')
+        selected(t, 'delta')
+        t.keys('F3'); selected(t, 'alpha')
+        t.keys('Space', 'a', 'n'); t.see('Comment'); t.keys('Escape')
         t.keys('Space', 'c'); t.see('NORMAL')
         t.keys('n'); selected(t, 'bravo')
         t.keys('N'); selected(t, 'alpha')

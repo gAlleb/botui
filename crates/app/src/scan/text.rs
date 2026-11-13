@@ -628,7 +628,6 @@ impl Text {
                     KeyCode::Char('c') if k.modifiers.contains(KeyModifiers::CONTROL) => {
                         Some(Action::Copy)
                     }
-                    KeyCode::Char('n' | 'N') => Some(Action::Comment),
                     KeyCode::Char('H') => Some(Action::Highlight),
                     KeyCode::Enter if self.active_note().is_some() => Some(Action::Comment),
                     _ => None,
@@ -1005,6 +1004,27 @@ impl Text {
 mod tests {
     use super::*;
     use botui_fixed::text::Word;
+    #[test]
+    fn ordinary_selection_keeps_search_keys_and_leader_note_separate() {
+        let mut text = Text::new(None);
+        text.enabled = true;
+        text.cache.insert(1, Ok(page("Alpha bravo charlie")));
+        text.start = Some(WordAt { page: 1, index: 0 });
+        text.cursor = Some(WordAt { page: 1, index: 1 });
+        for c in ['n', 'N'] {
+            let event = Event::Key(crossterm::event::KeyEvent::new(
+                KeyCode::Char(c),
+                KeyModifiers::NONE,
+            ));
+            assert!(text.input(&event).is_none());
+            assert_eq!(text.selection().unwrap().1, "Alpha bravo");
+            assert!(!text.normal);
+        }
+        assert!(matches!(
+            text.leader_action(crate::leader::Command::Key(KeyCode::Char('N'))),
+            Some(Action::Comment)
+        ));
+    }
     #[test]
     fn found_word_is_visible_without_enabling_text_mode_and_moves_the_vim_cursor() {
         let page = page("Alpha bravo charlie");

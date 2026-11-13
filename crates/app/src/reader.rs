@@ -836,7 +836,8 @@ impl Reader {
                 {
                     self.bindings.get(&c).copied()
                 }
-                KeyCode::Char('n' | 'N') => Some(Action::Note),
+                KeyCode::Char('n') => Some(Action::FindAgain(true)),
+                KeyCode::Char('N') => Some(Action::FindAgain(false)),
                 KeyCode::Char('c' | 'C')
                     if !k
                         .modifiers
@@ -1535,6 +1536,7 @@ pub fn read_server(
                     use crate::leader::Command as L;
                     let action = match command {
                         Some(L::Key(KeyCode::F(10))) => Some(Action::AnnotationSync),
+                        Some(L::Key(KeyCode::Char('N'))) => Some(Action::Note),
                         Some(L::Dictionary) => Some(Action::Study(study::Command::Lookup)),
                         Some(L::Translate) => Some(Action::Study(study::Command::Translate)),
                         Some(L::Key(KeyCode::F(7))) => Some(Action::Study(study::Command::Normal)),

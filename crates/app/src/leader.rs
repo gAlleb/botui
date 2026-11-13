@@ -84,7 +84,7 @@ pub fn reading_event(event: &Event) -> bool {
             | KeyCode::Esc
             | KeyCode::F(1..=5)
             | KeyCode::F(9)
-            | KeyCode::Char('h' | 'j' | 'k' | 'l' | 'q' | 'Q' | '1' | '2' | '3')
+            | KeyCode::Char('h' | 'j' | 'k' | 'l' | 'q' | 'Q' | 'n' | 'N' | '1' | '2' | '3')
     )
 }
 fn entries(context: Context, path: &str) -> Vec<Entry> {
@@ -384,7 +384,7 @@ mod tests {
     }
     #[test]
     fn reading_has_no_legacy_command_letters() {
-        for c in "vVtTbBgGnNaAsSzZ%[]{}/+ -".chars().filter(|c| *c != ' ') {
+        for c in "vVtTbBgGaAsSzZ%[]{}/+ -".chars().filter(|c| *c != ' ') {
             assert!(
                 !reading_event(&Event::Key(KeyEvent::new(
                     KeyCode::Char(c),
@@ -393,7 +393,7 @@ mod tests {
                 "{c}"
             );
         }
-        for c in "hjklqQ123".chars() {
+        for c in "hjklqQnN123".chars() {
             assert!(reading_event(&Event::Key(KeyEvent::new(
                 KeyCode::Char(c),
                 KeyModifiers::NONE

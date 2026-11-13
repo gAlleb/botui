@@ -123,7 +123,7 @@ pub(super) fn entries(ctx: Context, p: &Settings) -> Vec<Entry> {
                         "1 / 2 / 3",
                         "Single page / two-page spread / continuous scroll",
                     ),
-                    ("F3 / F4 / F5", "Next / previous match / search results"),
+                    ("n,F3 / N,F4 / F5", "Next / previous match / search results"),
                     (
                         "Mouse",
                         "Click: cursor; drag: select; double/triple click: word/paragraph",
@@ -164,7 +164,7 @@ pub(super) fn entries(ctx: Context, p: &Settings) -> Vec<Entry> {
                         "Single page / two-page spread / continuous scroll",
                     ),
                     ("Tab; ← / →", "Focus contents; fold / expand a section"),
-                    ("F3 / F4 / F5", "Next / previous match / results"),
+                    ("n,F3 / N,F4 / F5", "Next / previous match / results"),
                     (
                         "Mouse drag / Ctrl+C",
                         "Select / copy PDF text (text layer required; no OCR)",

@@ -271,7 +271,7 @@ Commands depend on the document: text actions need selectable text; page zoom, r
 | `Home End` | Start/end (fixed pages: document; Vim: line) |
 | `Tab` | Focus visible contents; arrows fold/expand, Enter opens |
 | `F1 / F2` | Help / settings |
-| `F3 / F4 / F5` | Next match / previous match / result list |
+| `n` / `F3` · `N` / `F4` · `F5` | Next match / previous match / result list |
 | `Esc` | Back/close panel; reading menu |
 | `Ctrl+C` | Copy selected text |
 
