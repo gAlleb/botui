@@ -242,7 +242,7 @@ pub(super) fn read_pages(
                 Err(TryRecvError::Empty) => (),
             }
         }
-        if let Some(result) = search.poll(n) {
+        if let Some(result) = search.poll(n, text.search_origin(), text.search_forward()) {
             match result {
                 Ok(page) => {
                     if let Some(page) = page {
@@ -255,6 +255,17 @@ pub(super) fn read_pages(
                         offset = 0;
                         crop.x = 128;
                         crop.y = 0;
+                        if let Some(region) = search.reveal(&mut text) {
+                            let target = text::location(
+                                &region,
+                                crop,
+                                checkpoint.scan_appearance.quarter_turns,
+                                scrolling,
+                            );
+                            crop = target.crop;
+                            offset = target.offset;
+                            reveal = (!scrolling).then_some(region);
+                        }
                         history.record(
                             previous,
                             Location {
@@ -269,6 +280,9 @@ pub(super) fn read_pages(
                 }
                 Err(e) => message = e.to_string(),
             }
+            // The text-mode footer occupies the feedback row; keep search
+            // results/errors visible there too, rather than behind its controls.
+            text.message.clone_from(&message);
         }
         let screen = term.size()?;
         let show_progress = zen && zen_progress && screen.height > 1;
@@ -731,6 +745,7 @@ pub(super) fn read_pages(
             let background = rendered.buffer.clone();
             match text.context_menu(at, term, store.as_ref(), &background) {
                 Ok(Some(query)) => {
+                    text.clear_search();
                     search.start(&worker, path, kind, query);
                 }
                 Ok(None) => (),
@@ -843,10 +858,12 @@ pub(super) fn read_pages(
                 controls::Command::Close => dialog = None,
                 controls::Command::Find => {
                     if let Some(controls::Dialog::Search(input)) = dialog.take() {
-                        let text = input.finish(false);
-                        if !text.is_empty() {
-                            search.start(&worker, path, kind, text);
+                        let query = input.finish(false);
+                        if !query.is_empty() {
+                            text.clear_search();
+                            search.start(&worker, path, kind, query);
                             message = "Searching…".into();
+                            text.message.clone_from(&message);
                         }
                     }
                 }
@@ -1099,6 +1116,7 @@ pub(super) fn read_pages(
         };
         message.clear();
         let old = (n, spread, scrolling, offset);
+        let mut found = false;
         match action {
             16 | 17 | 37 | 38 if image_only => {
                 message = "Image-only book has no text layer".into();
@@ -1289,16 +1307,21 @@ pub(super) fn read_pages(
                 )))
             }
             17 | 37 => {
-                if let Some(page) = search.step(n, action == 17) {
+                if let Some(page) = search.step(n, text.search_origin(), action == 17) {
+                    found = true;
                     n = page;
                     offset = 0;
                     message = search.status();
+                    text.message.clone_from(&message);
                 }
             }
             38 => {
                 if let Some(page) = search.choose(term, n)? {
+                    found = true;
                     n = page;
                     offset = 0;
+                    message = search.status();
+                    text.message.clone_from(&message);
                 }
             }
             35 | 36 => {
@@ -1337,6 +1360,12 @@ pub(super) fn read_pages(
             crop.x = 128;
             crop.y = 0;
             offset = 0;
+        }
+        if found && let Some(region) = search.reveal(&mut text) {
+            let target = text::location(&region, crop, appearance.quarter_turns, scrolling);
+            crop = target.crop;
+            offset = target.offset;
+            reveal = (!scrolling).then_some(region);
         }
         menu = false;
         if action == 7 && scrolling {

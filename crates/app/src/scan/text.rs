@@ -92,6 +92,9 @@ pub(super) struct Text {
     pending_visual: bool,
     context_pending: Option<Position>,
     search_forward: bool,
+    search_regions: Vec<PdfRegion>,
+    search_at: Option<(WordAt, usize)>,
+    search_cursor_pending: bool,
     reveal: Option<PdfRegion>,
     worker: Worker,
     job: Option<(u32, Ticket<io::Result<PageText>>)>,
@@ -123,6 +126,9 @@ impl Text {
             pending_visual: false,
             context_pending: None,
             search_forward: true,
+            search_regions: vec![],
+            search_at: None,
+            search_cursor_pending: false,
             reveal: None,
             worker: Worker::new(),
             job: None,
@@ -134,6 +140,54 @@ impl Text {
             message: String::new(),
             buttons: vec![],
         }
+    }
+    pub fn clear_search(&mut self) {
+        self.search_regions.clear();
+        self.search_at = None;
+    }
+    pub fn show_search(
+        &mut self,
+        hit: &botui_fixed::PageMatch,
+        page: &PageText,
+    ) -> Option<PdfRegion> {
+        self.search_regions = page
+            .words
+            .iter()
+            .filter(|w| w.bytes.start < hit.bytes.end && hit.bytes.start < w.bytes.end)
+            .map(|w| PdfRegion {
+                page: hit.page,
+                bounds: w.bounds,
+            })
+            .collect();
+        if self.normal {
+            self.cursor = page
+                .words
+                .iter()
+                .position(|w| w.bytes.end > hit.bytes.start)
+                .map(|index| WordAt {
+                    page: hit.page,
+                    index,
+                });
+            self.search_at = self.cursor.map(|at| (at, hit.bytes.start));
+            self.search_cursor_pending = true;
+            self.start = None;
+            self.pending = None;
+            self.pending_visual = false;
+            self.cache.insert(hit.page, Ok(page.clone()));
+            self.reveal = None;
+        }
+        self.search_regions.first().cloned()
+    }
+    pub fn search_origin(&self) -> Option<(u32, usize)> {
+        let at = self.cursor.filter(|_| self.normal)?;
+        let byte = self.search_at.filter(|(word, _)| *word == at).map_or_else(
+            || self.word(at).map(|w| w.bytes.start),
+            |(_, byte)| Some(byte),
+        )?;
+        Some((at.page, byte))
+    }
+    pub fn search_forward(&self) -> bool {
+        self.search_forward
     }
     pub fn normal(&self) -> bool {
         self.normal
@@ -162,9 +216,24 @@ impl Text {
         if !self.enabled {
             return;
         }
+        // A search jump changes the logical page before the next raster frame.
+        // Do not replace its cursor with a word from the old viewport meanwhile.
+        if self.search_cursor_pending
+            && self
+                .cursor
+                .and_then(|at| self.word(at).map(|w| (at, w)))
+                .is_some_and(|(at, w)| {
+                    self.views
+                        .iter()
+                        .any(|v| v.page == at.page && v.rect(w.bounds).is_some())
+                })
+        {
+            self.search_cursor_pending = false;
+        }
         // Manual page turns/scrolling should not strand the keyboard cursor on
         // a word that is no longer on screen. An active range keeps its anchor.
         if self.start.is_none()
+            && !self.search_cursor_pending
             && self.reveal.is_none()
             && self.cursor.is_some_and(|at| {
                 self.cache
@@ -395,6 +464,7 @@ impl Text {
         self.note_pending = false;
         self.context_pending = None;
         self.enabled = false;
+        self.search_cursor_pending = false;
         self.normal = false;
         self.keys.reset();
         self.cursor = None;
@@ -829,6 +899,12 @@ impl Text {
                     ));
                 }
             }
+            marks.extend(
+                self.search_regions
+                    .iter()
+                    .filter(|r| r.page == view.page)
+                    .map(|r| (rotate(r.bounds, view.turns), [250, 204, 21])),
+            );
             if self.enabled {
                 marks.extend(
                     selected
@@ -929,6 +1005,38 @@ impl Text {
 mod tests {
     use super::*;
     use botui_fixed::text::Word;
+    #[test]
+    fn found_word_is_visible_without_enabling_text_mode_and_moves_the_vim_cursor() {
+        let page = page("Alpha bravo charlie");
+        let hit = botui_fixed::PageMatch {
+            page: 3,
+            bytes: 7..10,
+            excerpt: "rav".into(),
+        };
+        let mut text = Text::new(None);
+        let region = text.show_search(&hit, &page).unwrap();
+        assert_eq!(region.bounds, page.words[1].bounds);
+        assert_eq!(region.page, 3);
+        assert!(!text.enabled);
+        assert!(text.cursor.is_none());
+        text.activate();
+        text.show_search(&hit, &page);
+        assert_eq!(text.cursor, Some(WordAt { page: 3, index: 1 }));
+        assert_eq!(text.search_origin(), Some((3, 7)));
+        assert!(text.start.is_none());
+        assert_eq!(text.selection().unwrap().1, "bravo");
+        text.page(1, Rect::new(0, 0, 80, 24), [0., 0., 1., 1.], 0);
+        text.poll(Path::new("/nonexistent-search-test.pdf"));
+        assert_eq!(text.cursor, Some(WordAt { page: 3, index: 1 }));
+        assert!(
+            text.search_cursor_pending,
+            "old raster must not steal the search cursor"
+        );
+        text.begin_frame();
+        text.page(3, Rect::new(0, 0, 80, 24), [0., 0., 1., 1.], 0);
+        text.poll(Path::new("/nonexistent-search-test.pdf"));
+        assert!(!text.search_cursor_pending);
+    }
     #[test]
     fn selection_crossing_saved_pdf_highlight_creates_a_new_annotation() {
         let mut text = Text::new(None);

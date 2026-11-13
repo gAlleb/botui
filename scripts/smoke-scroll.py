@@ -116,7 +116,13 @@ sys.stdout.buffer.write(b'P6\\n20 30\\n255\\n'+bytes([76])*1800)
 import sys
 from pathlib import Path
 with (Path(__file__).parent / 'reads').open('a') as log: log.write('x')
-sys.stdout.write('Lighthouse on the north shore\\f\\fLighthouse by the southern bay\\f')
+print('<doc>')
+for text in ['Lighthouse on the north shore', '', 'Lighthouse by the southern bay']:
+    print('<page width="120" height="175"><flow><block><line>')
+    for i, word in enumerate(text.split()):
+        print(f'<word xMin="{i*20}" yMin="20" xMax="{i*20+18}" yMax="30">{word}</word>')
+    print('</line></block></flow></page>')
+print('</doc>')
 """)
     program.chmod(0o755)
     t=start(d,path,'PATH='+str(bin_dir)+os.pathsep+os.environ['PATH'])
@@ -124,12 +130,12 @@ sys.stdout.write('Lighthouse on the north shore\\f\\fLighthouse by the southern 
         t.see('1 / 3')
         t.keys('Space', 'l', '2'); t.see('Page 2 unavailable')
         t.keys('Space', 'l', '1', 'Space', 'f'); t.see('Find in text layer'); t.type('lighthouse'); t.keys('Enter')
-        t.see('2 matching pages'); t.keys('F5'); frame=t.see('Matching pages')
+        t.see('Match 1 / 2'); t.keys('F5'); frame=t.see('Search results')
         assert 'north shore' in frame and 'southern bay' in frame
         t.click('southern bay',frame); t.see('3 / 3')
         t.keys('F4'); t.see('1 / 3'); t.keys('F3'); t.see('3 / 3')
         t.keys('Space', 'f'); t.see('Find in text layer'); t.keys('C-u'); t.type('north shore')
-        t.keys('Enter'); t.see('1 matching page'); t.see('1 / 3')
+        t.keys('Enter'); t.see('Match 1 / 1'); t.see('1 / 3')
         assert (bin_dir/'reads').read_text()=='x', 'A second query re-ran the document extractor'
         t.keys('Space', 'r', 'p');t.see('Go to page');t.keys('2','Enter');t.see('Page 2 unavailable')
         t.keys('Right');t.see('3 / 3');stop(t)

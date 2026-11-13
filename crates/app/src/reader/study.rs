@@ -48,7 +48,7 @@ pub(super) struct Study {
     clicks: Option<(Instant, Position, u8)>,
     keys: crate::vim::Keys,
     previous_selection: Option<TextRange>,
-    search_forward: bool,
+    search_backward: bool,
     map: Vec<Cell>,
     buttons: Vec<(Rect, Command)>,
 }
@@ -346,14 +346,14 @@ impl Study {
                 }
             }
             V::Search(forward) => {
-                self.search_forward = forward;
+                self.search_backward = !forward;
                 return Some(Action::Navigate(Kind::Search));
             }
             V::Next(forward) => {
                 return Some(Action::FindAgain(if forward {
-                    self.search_forward
+                    !self.search_backward
                 } else {
-                    !self.search_forward
+                    self.search_backward
                 }));
             }
             V::Move(m, count) | V::Yank(m, count) => {

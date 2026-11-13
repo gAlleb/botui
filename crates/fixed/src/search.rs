@@ -1,19 +1,22 @@
-use super::output;
+use super::{output, text::PageText};
 use botui_formats::FileKind;
 use std::{
     io,
+    ops::Range,
     path::Path,
     process::Command,
     sync::atomic::{AtomicBool, Ordering},
 };
 
 pub struct TextLayer {
-    pages: Vec<String>,
+    pages: Vec<PageText>,
 }
 
+#[derive(Clone, Debug)]
 pub struct PageMatch {
     pub page: u32,
     pub excerpt: String,
+    pub bytes: Range<usize>,
 }
 
 fn normalize(text: &str) -> String {
@@ -30,44 +33,69 @@ fn normalize(text: &str) -> String {
     result
 }
 
+// Collapse whitespace and case while retaining original UTF-8 boundaries. PDF
+// phrases may cross a printed line; Unicode lowercasing can change byte lengths.
+type ByteMap = Vec<(Range<usize>, Range<usize>)>;
+fn folded(text: &str) -> (String, ByteMap) {
+    let mut value = String::new();
+    let mut mapping = Vec::new();
+    for (byte, c) in text.char_indices() {
+        let space = c.is_whitespace() || c.is_control();
+        if space && (value.is_empty() || value.ends_with(' ')) {
+            continue;
+        }
+        let start = value.len();
+        if space {
+            value.push(' ');
+        } else {
+            value.extend(c.to_lowercase());
+        }
+        mapping.push((start..value.len(), byte..byte + c.len_utf8()));
+    }
+    (value, mapping)
+}
+
 impl TextLayer {
+    pub fn page(&self, page: u32) -> Option<&PageText> {
+        self.pages.get(page.checked_sub(1)? as usize)
+    }
     pub fn find(&self, query: &str, cancel: &AtomicBool) -> Vec<PageMatch> {
         let query = normalize(query).to_lowercase();
         if query.is_empty() {
             return vec![];
         }
-        self.pages
-            .iter()
-            .enumerate()
-            .take_while(|_| !cancel.load(Ordering::Relaxed))
-            .filter_map(|(i, page)| {
-                let byte = page.to_lowercase().find(&query)?;
-                let mut folded_byte = 0;
-                let index = page.char_indices().find_map(|(index, c)| {
-                    folded_byte += c.to_lowercase().map(char::len_utf8).sum::<usize>();
-                    (folded_byte > byte).then_some(index)
-                })?;
-                let start = page[..index]
+        let mut hits = Vec::new();
+        for (i, page) in self.pages.iter().enumerate() {
+            if cancel.load(Ordering::Relaxed) {
+                break;
+            }
+            let (value, mapping) = folded(&page.text);
+            for (byte, matched) in value.match_indices(&query) {
+                let first = mapping.partition_point(|(r, _)| r.end <= byte);
+                let last = mapping.partition_point(|(r, _)| r.start < byte + matched.len()) - 1;
+                let bytes = mapping[first].1.start..mapping[last].1.end;
+                let start = page.text[..bytes.start]
                     .char_indices()
                     .rev()
                     .nth(17)
                     .map_or(0, |(i, _)| i);
-                let end = page[index..]
+                let end = page.text[bytes.end..]
                     .char_indices()
                     .nth(42)
-                    .map_or(page.len(), |(i, _)| index + i);
-                let excerpt = format!(
-                    "{}{}{}",
-                    if start > 0 { "…" } else { "" },
-                    &page[start..end],
-                    if end < page.len() { "…" } else { "" }
-                );
-                Some(PageMatch {
+                    .map_or(page.text.len(), |(i, _)| bytes.end + i);
+                hits.push(PageMatch {
                     page: i as u32 + 1,
-                    excerpt,
-                })
-            })
-            .collect()
+                    excerpt: format!(
+                        "{}{}{}",
+                        if start > 0 { "…" } else { "" },
+                        normalize(&page.text[start..end]),
+                        if end < page.text.len() { "…" } else { "" }
+                    ),
+                    bytes,
+                });
+            }
+        }
+        hits
     }
 }
 
@@ -77,7 +105,9 @@ pub fn text_layer(path: &Path, kind: FileKind, cancel: &AtomicBool) -> io::Resul
     let mut cmd = match kind {
         FileKind::Pdf => {
             let mut c = Command::new("pdftotext");
-            c.args(["-enc", "UTF-8"]).arg(&path).arg("-");
+            c.args(["-bbox-layout", "-enc", "UTF-8"])
+                .arg(&path)
+                .arg("-");
             c
         }
         FileKind::Djvu => {
@@ -93,7 +123,7 @@ pub fn text_layer(path: &Path, kind: FileKind, cancel: &AtomicBool) -> io::Resul
             cmd = Command::new("python3");
             cmd.args(["-I", "-c", include_str!("poppler.py")])
                 .arg(&path)
-                .arg("text");
+                .arg("text-boxes");
             output(cmd, cancel, limit)?
         }
         r => r?,
@@ -101,7 +131,7 @@ pub fn text_layer(path: &Path, kind: FileKind, cancel: &AtomicBool) -> io::Resul
     let text = String::from_utf8_lossy(&bytes);
     let mut pages = Vec::new();
     if kind == FileKind::Pdf {
-        pages.extend(text.split_terminator('\x0c').map(normalize));
+        pages = super::text::parse_pages(&text)?;
     } else {
         // miniexp prints one root expression per physical page. Quoted strings
         // can span lines and contain escaped quotes and parentheses.
@@ -132,7 +162,10 @@ pub fn text_layer(path: &Path, kind: FileKind, cancel: &AtomicBool) -> io::Resul
                     ')' => {
                         depth = depth.saturating_sub(1);
                         if depth == 0 {
-                            pages.push(normalize(&value));
+                            pages.push(PageText {
+                                text: normalize(&value),
+                                ..Default::default()
+                            });
                             value.clear();
                         }
                     }
@@ -141,7 +174,7 @@ pub fn text_layer(path: &Path, kind: FileKind, cancel: &AtomicBool) -> io::Resul
             }
         }
     }
-    if pages.iter().all(String::is_empty) {
+    if pages.iter().all(|p| p.text.is_empty()) {
         return Err(io::Error::other("This scan has no searchable text layer."));
     }
     Ok(TextLayer { pages })
@@ -152,10 +185,52 @@ mod tests {
     use super::*;
 
     #[test]
+    fn every_occurrence_keeps_its_page_bytes_and_word_boxes() {
+        let pages = super::super::text::parse_pages(
+            r#"<doc>
+          <page width="200" height="400"><flow><block>
+            <line><word xMin="10" yMin="10" xMax="20" yMax="20">İ</word>
+            <word xMin="30" yMin="10" xMax="70" yMax="20">Маяк</word></line>
+            <line><word xMin="10" yMin="50" xMax="20" yMax="60">у</word>
+            <word xMin="30" yMin="50" xMax="70" yMax="60">моря</word></line>
+            <line><word xMin="10" yMin="90" xMax="50" yMax="100">МАЯК</word></line>
+          </block></flow></page><page width="200" height="400"/>
+          <page width="200" height="400"><flow><block><line>
+            <word xMin="10" yMin="200" xMax="50" yMax="210">маяк</word>
+          </line></block></flow></page></doc>"#,
+        )
+        .unwrap();
+        let layer = TextLayer { pages };
+        let hits = layer.find("маяк", &AtomicBool::new(false));
+        assert_eq!(hits.iter().map(|h| h.page).collect::<Vec<_>>(), [1, 1, 3]);
+        for hit in &hits {
+            let page = layer.page(hit.page).unwrap();
+            assert_eq!(page.text[hit.bytes.clone()].to_lowercase(), "маяк");
+            assert_eq!(
+                page.words.iter().filter(|w| w.bytes == hit.bytes).count(),
+                1
+            );
+        }
+        let phrase = layer.find("МАЯК   у\tморя", &AtomicBool::new(false));
+        assert_eq!(phrase.len(), 1);
+        assert_eq!(
+            &layer.page(1).unwrap().text[phrase[0].bytes.clone()],
+            "Маяк\nу моря"
+        );
+        assert!(layer.find("маяк", &AtomicBool::new(true)).is_empty());
+    }
+
+    #[test]
     fn unicode_excerpt_uses_original_text_after_a_length_changing_case_fold() {
         let prefix = "İ".repeat(64);
         let layer = TextLayer {
-            pages: vec![String::new(), normalize(&format!("{prefix} Маяк\nу моря"))],
+            pages: vec![
+                PageText::default(),
+                PageText {
+                    text: format!("{prefix} Маяк\nу моря"),
+                    ..Default::default()
+                },
+            ],
         };
         let hits = layer.find("маяк у", &AtomicBool::new(false));
         assert_eq!(hits.len(), 1);

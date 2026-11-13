@@ -1065,7 +1065,12 @@ impl Reader {
             }
             Action::FindAgain(forward) => {
                 self.menu = None;
-                if let Some(place) = self.search.advance(self.pager.anchor(), forward) {
+                let origin = self
+                    .study
+                    .cursor
+                    .filter(|_| self.study.normal)
+                    .unwrap_or(self.pager.anchor());
+                if let Some(place) = self.search.advance(origin, forward) {
                     self.jump_to(place);
                     self.dirty = true;
                 } else {

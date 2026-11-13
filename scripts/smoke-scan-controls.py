@@ -143,7 +143,7 @@ def check_search(root, book, page_count):
         term.keys("Home", *["Right"] * 5, "h", "Home", "Delete", "L", "End", "x", "BSpace")
         term.click("[ Search ↵ ]", term.see("Lighthouse atlas▏"))
         term.wait("Search reaches the matching sheet", lambda f:
-                  f"2 / {page_count}" in f and "1 matching page" in f)
+                  f"2 / {page_count}" in f and "Match 1 / 1" in f)
 
         term.keys("Space", "f")
         term.see("Lighthouse atlas▏")

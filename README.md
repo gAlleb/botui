@@ -154,7 +154,7 @@ Offline copies are available through **D BookOrbit offline** and **O OPDS downlo
 | --- | --- | --- |
 | EPUB / FB2 | Reflowing text, contents, illustrations, search and passage annotations. EPUB also renders styled tables, MathML/marked TeX and static SVG. | Built in |
 | Markdown (`.md`, `.markdown`) | Headings, lists, quotes, task lists, tables, code highlighting and local images. **F9** switches formatted/source views; selection and notes work in both. | Built in |
-| PDF | Fixed pages, contents, zoom, rotation and page notes. A text layer enables search; `pdftotext` also enables word selection and highlights. | Poppler utilities (`pdfinfo`, `pdftoppm`, `pdftotext`), or Python 3 with Poppler GI and Cairo for rendering |
+| PDF | Fixed pages, contents, zoom, rotation and page notes. A text layer enables occurrence search, word selection and highlights. | Poppler utilities (`pdfinfo`, `pdftoppm`, `pdftotext`), or Python 3 with Poppler GI and Cairo |
 | DjVu | Fixed pages, contents, zoom, rotation and page notes; search when a text layer is available. | DjVuLibre (`djvused`, `ddjvu`, `djvutxt`) |
 | CBZ / CBR | Image pages in natural filename order, contents, zoom, rotation, bookmarks and page notes. | Built-in ZIP/RAR decoders; no external unpacker |
 
@@ -274,6 +274,8 @@ Commands depend on the document: text actions need selectable text; page zoom, r
 | `F3 / F4 / F5` | Next match / previous match / result list |
 | `Esc` | Back/close panel; reading menu |
 | `Ctrl+C` | Copy selected text |
+
+PDF search highlights each occurrence and brings it into view, including multiple matches on one page. In Vim mode, `n` follows the search direction and `N` reverses it. Search requires an embedded text layer; image-only scans need OCR outside BOTUI.
 
 **Vim — after Space c**
 

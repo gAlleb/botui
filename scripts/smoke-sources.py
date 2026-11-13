@@ -113,7 +113,7 @@ def scan(tmp,path):
         t.wait('Возврат из меню в разворот',lambda s:'Two-page spread' not in s and ('▀' in s or '▄' in s))
         t.keys('Space', 'l', '3');t.see('Scroll');t.keys('Space', 'r', 'p');t.see('Go to page');t.keys('C-u');t.type('3');t.keys('Enter');t.see('3 / 3')
         t.keys('Space', 'r', 'p');t.see('Go to page');t.keys('C-u');t.type('1');t.keys('Enter');t.see('1 / 3')
-        t.keys('Home', 'Space', 'f');t.see('Find in text layer');t.type('lighthouse');t.keys('Enter');t.see('1 matching page')
+        t.keys('Home', 'Space', 'f');t.see('Find in text layer');t.type('lighthouse');t.keys('Enter');t.see('Match 1 / 1')
         t.keys('Space', 'b', 'a');t.see('Page bookmarked');t.keys('Space', 'a', 'p');t.see('Page note');t.type('Watch the lighthouse');t.keys('Enter')
         t.keys('Home', 'Space', 'b', 'l');t.see('Page bookmarks');t.see('Page 2');t.keys('Enter')
         t.keys('Space', 'a', 'a');t.see('Watch the lighthouse');t.keys('Enter', 'Space', 'a', 'e');t.see('Saved ')

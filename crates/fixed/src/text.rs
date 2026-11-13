@@ -35,11 +35,29 @@ pub fn page_text(path: &Path, page: u32, cancel: &AtomicBool) -> io::Result<Page
     ])
     .arg(path.canonicalize()?)
     .arg("-");
-    let output = super::output(cmd, cancel, 8 << 20)?;
+    let output = match super::output(cmd, cancel, 8 << 20) {
+        Err(e) if e.kind() == io::ErrorKind::NotFound => {
+            let mut fallback = Command::new("python3");
+            fallback
+                .args(["-I", "-c", include_str!("poppler.py")])
+                .arg(path.canonicalize()?)
+                .arg("text-boxes")
+                .arg(page.to_string());
+            super::output(fallback, cancel, 8 << 20)?
+        }
+        result => result?,
+    };
     parse(&String::from_utf8_lossy(&output))
 }
 
 fn parse(xml: &str) -> io::Result<PageText> {
+    parse_pages(xml)?
+        .into_iter()
+        .next()
+        .ok_or_else(|| io::Error::other("PDF text page is missing"))
+}
+
+pub(crate) fn parse_pages(xml: &str) -> io::Result<Vec<PageText>> {
     let doc = roxmltree::Document::parse_with_options(
         xml,
         roxmltree::ParsingOptions {
@@ -48,10 +66,13 @@ fn parse(xml: &str) -> io::Result<PageText> {
         },
     )
     .map_err(io::Error::other)?;
-    let page = doc
-        .descendants()
-        .find(|n| n.has_tag_name("page"))
-        .ok_or_else(|| io::Error::other("PDF text page is missing"))?;
+    doc.descendants()
+        .filter(|n| n.has_tag_name("page"))
+        .map(parse_page)
+        .collect()
+}
+
+fn parse_page(page: roxmltree::Node<'_, '_>) -> io::Result<PageText> {
     let number = |node: roxmltree::Node<'_, '_>, name| -> io::Result<f32> {
         node.attribute(name)
             .and_then(|v| v.parse::<f32>().ok())
