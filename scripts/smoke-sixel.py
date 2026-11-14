@@ -30,12 +30,12 @@ def check(binary, comic):
                 if select.select([terminal],[],[],.01)[0]:
                     chunk=os.read(terminal,262144);data.extend(chunk);last=time.monotonic()
                     query=tail+chunk
-                    if b'\x1b]11;?' in query:
-                        os.write(terminal,b'\x1b]10;rgb:dddd/dddd/dddd\x07\x1b]11;rgb:2222/2222/2222\x07')
+                    if b'\x1b]10;?' in query: os.write(terminal,b'\x1b]10;rgb:dddd/dddd/dddd\x07')
+                    if b'\x1b]11;?' in query: os.write(terminal,b'\x1b]11;rgb:2222/2222/2222\x07')
                     if b'\x1b[c' in query: os.write(terminal,b'\x1b[?62;4c')
                     if b'\x1b[5n' in query: os.write(terminal,b'\x1b[6;20;10t\x1b[0n')
                     tail=query[-5:]
-                elif data.endswith(b'\x1b[?2026l') and time.monotonic()-last > .25 and (not image or SIXEL.search(data)):
+                elif data.rfind(b'\x1b[?2026l') > data.rfind(b'\x1b[?2026h') and time.monotonic()-last > .25 and (not image or SIXEL.search(data)):
                     return bytes(data)
             raise AssertionError('Sixel frame did not finish')
         def send(keys, image=False): os.write(terminal,keys);return collect(image=image)
@@ -55,7 +55,7 @@ def check(binary, comic):
             send(b' r0')
             title=b'Comic background' if comic else b'Page theme'
             assert title in send(b' t')
-            for keys in (b'\x1b[B',b'\x1b[B'):
+            for keys in ((b'\x1b[B', b'\x1b[B') if comic else (b']', b']')):
                 preview=send(keys, image=not comic)
                 assert title in preview and b'Cancel' in preview, 'Incomplete popup repaint'
                 if comic: assert not SIXEL.search(preview), 'Background resent unchanged comic pixels'

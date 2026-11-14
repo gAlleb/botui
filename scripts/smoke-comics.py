@@ -59,7 +59,7 @@ def run(ext, fixture=None, archive=None):
             t.keys('Escape');t.wait('Cancelled background',lambda f:'Comic background' not in f)
             t.keys('Space','t','Home','Down','Down','Down','Left','Enter')
             t.wait('Saved comic background',lambda _:tomllib.loads(config.read_text())['comic_background']=='sepia-light')
-            assert tomllib.loads(config.read_text())['scan_theme']=='inverted'
+            assert tomllib.loads(config.read_text())['scan_page_colors']=='inverted'
             t.wait('Original pixels with saved background',lambda _: '20;40;220' in ansi())
             t.keys('q')
         finally:t.run('kill-server',required=False)

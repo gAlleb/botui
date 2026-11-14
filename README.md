@@ -184,7 +184,7 @@ In Foot/Sixel, fast wheel and touchpad gestures advance through bounded intermed
 
 **F2 → Appearance → Interface theme** controls shelves, settings and other interface screens. **Space t** changes the reading palette over the open page: ↑/↓ preview a palette, ←/→ choose light/dark, Enter or a click applies, and Escape cancels. The interface starts in Catppuccin Mocha; **Terminal** follows your terminal’s colors.
 
-For PDF, DjVu and image-only EPUB, the picker also offers **Original** and **Inverted**. Reading palettes recolor neutral paper and ink while retaining saturated illustration colors. The choice is saved in `scan_theme`, also editable through **F2 → Reader → PDF / image theme**. Text reading uses its own `theme` setting.
+For PDF, DjVu and image-only EPUB, the reading theme sets the palette for margins and dialogs. Choose page colors separately. **As in document** keeps the original colors, **Invert original** inverts them, and **Use reading theme** applies the selected palette to paper and ink. In **Space t**, press `[` or `]` or click a mode to preview it. **Enter** saves both choices and **Esc** cancels. **F2 → Reader** exposes **PDF reading theme** and **PDF page colors** separately.
 
 **CBZ/CBR artwork always keeps its original colors.** In comics, **Space t** previews only the surrounding background; **F2 → Reader → Comic background** edits the same `comic_background` setting. PDF inversion and recoloring do not affect comics.
 
@@ -242,7 +242,7 @@ Commands depend on the document: text actions need selectable text; page zoom, r
 | `Space l w` | Text width / column gap; fixed-page zoom / spread gap |
 | `Space l f` | Opaque/transparent background |
 | `Space l u` | Border style |
-| `Space t` | Theme picker with live preview; fixed pages also have Original / Inverted |
+| `Space t` | Preview reading theme and fixed-page colors |
 | `Space s` | Settings |
 | `Space ?` | Help |
 | `q` / `Q` / `Space q` | Close book and return to its source |
@@ -397,9 +397,10 @@ max_download_mib = 4096
 
 # Reader defaults. Use "terminal" to follow your terminal's colors.
 theme = "terminal"
-# PDF/DjVu and image-only EPUB: original, inverted, terminal, or a reading
-# palette ID such as sepia-light or ember-dark. F2 and Space t save the same choice.
-scan_theme = "original"
+# Reading palette for PDF, DjVu and image-only EPUB.
+scan_theme = "terminal"
+# Page colors independently use the original pixels, their inverse, or the reading palette.
+scan_page_colors = "original" # original | inverted | theme
 # CBZ/CBR background only; artwork always retains its original colors.
 # Use terminal or a reading palette ID. F2 and Space t save the same choice.
 comic_background = "terminal"

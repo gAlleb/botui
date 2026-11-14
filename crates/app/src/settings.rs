@@ -4,6 +4,7 @@ mod lookup_migration;
 mod scan_theme;
 use crate::connection::Connection;
 use ratatui::{Frame, style::Color};
+pub use scan_theme::PageColors;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::BTreeMap,
@@ -32,6 +33,7 @@ pub struct Settings {
     pub opaque_background: bool,
     pub theme: Option<String>,
     pub scan_theme: Option<String>,
+    pub scan_page_colors: Option<PageColors>,
     pub comic_background: Option<String>,
     pub interface_theme: Option<String>,
     pub opaque_color: Option<String>,
@@ -283,6 +285,20 @@ fn apply(
 fn extend_config(doc: &mut DocumentMut) -> io::Result<bool> {
     let example = document(EXAMPLE)?;
     let mut changed = false;
+    // Older files used scan_theme for both the palette and the page transformation.
+    let mut settings = decode(&doc.to_string())?;
+    if settings.scan_page_colors.is_none()
+        || matches!(
+            settings.scan_theme.as_deref(),
+            Some("original" | "inverted")
+        )
+    {
+        apply(doc, &mut settings, |s| {
+            s.scan_page_colors = Some(s.page_colors());
+            s.scan_theme = Some(s.page_theme().id());
+        })?;
+        changed = true;
+    }
     for name in [
         "leader_delay_ms",
         "scroll_lines",

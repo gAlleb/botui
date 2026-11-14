@@ -1,58 +1,78 @@
 #!/usr/bin/env python3
-"""PDF theme popup: real preview, cancel, apply, original/inverted and reopen."""
-import importlib.util, os, tempfile, tomllib
+"""Preview and save independent PDF colors and palette in the reader and F2."""
+import importlib.util
+import os
+import tempfile
+import tomllib
 from pathlib import Path
-spec=importlib.util.spec_from_file_location('sources',Path(__file__).with_name('smoke-sources.py'))
-s=importlib.util.module_from_spec(spec);spec.loader.exec_module(s)
-binary=Path(os.environ.get('BOTUI_BINARY',s.shelf.ROOT/'target/debug/botui')).resolve()
-with tempfile.TemporaryDirectory(prefix='botui-scan-theme-') as tmp:
-    root=Path(tmp); book=root/'paper.pdf';book.write_bytes(s.pdf(True))
-    config=root/'config/botui/config.toml';config.parent.mkdir(parents=True)
-    config.write_text('theme = "sepia-dark"\ninterface_theme = "catppuccin-mocha"\nopaque_background = true\n')
-    t=s.shelf.Terminal(root,binary,args=[str(book)])
-    def ansi(): return t.run('capture-pane','-p','-e','-t','shelf').stdout
-    def open_picker():
-        t.keys('Space','t');f=t.see('Page theme')
-        assert 'Original' in f and 'Inverted' in f and 'Sepia' in f
-        assert '1 / 3' in f, 'Theme dialog hid the reader'
+
+spec = importlib.util.spec_from_file_location("sources", Path(__file__).with_name("smoke-sources.py"))
+s = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(s)
+binary = Path(os.environ.get("BOTUI_BINARY", s.ROOT / "target/debug/botui")).resolve()
+
+with tempfile.TemporaryDirectory(prefix="botui-scan-theme-") as tmp:
+    root = Path(tmp)
+    book = root / "paper.pdf"
+    book.write_bytes(s.pdf(True, shades=(0, 1, 0.5)))
+    config = root / "config/botui/config.toml"
+    config.parent.mkdir(parents=True)
+    config.write_text('scan_theme = "mist-dark"\ntheme = "sepia-dark"\nopaque_background = true\n')
+
+    def saved():
+        settings = tomllib.loads(config.read_text())
+        assert settings["theme"] == "sepia-dark"
+        return settings["scan_theme"], settings["scan_page_colors"]
+
+    def pixels(color):
+        ansi = t.run("capture-pane", "-p", "-e", "-t", "shelf").stdout
+        return color in ansi
+
+    def picker():
+        t.keys("Space", "t")
+        return t.see("Page colors")
+
+    t = s.shelf.Terminal(root, binary, args=[str(book)])
     try:
-        t.see('1 / 3');open_picker()
-        t.keys('Home','Down','Down','Down','Down','Down','Left')
-        t.wait('Light paper live preview',lambda _: '48;2;241;232;208' in ansi())
-        assert tomllib.loads(config.read_text())['scan_theme']=='original', 'Preview was persisted'
-        t.keys('Escape');t.wait('Cancelled theme picker',lambda f:'Page theme' not in f)
-        assert tomllib.loads(config.read_text())['theme']=='sepia-dark'
-        open_picker();t.keys('Home','Down','Down','Down','Down','Down','Left','Enter')
-        t.see('Reading theme');assert tomllib.loads(config.read_text())['scan_theme']=='sepia-light'
-        assert tomllib.loads(config.read_text())['theme']=='sepia-dark', 'PDF changed EPUB theme'
-        t.keys('F2');t.see('Appearance');assert '48;2;30;30;46' in ansi()
-        t.keys('Right');t.see('Reading theme');t.keys('End','Up');t.see('PDF / image theme')
-        t.keys('Enter');t.see('PDF / image theme');t.keys('Home','Down','Enter')
-        t.wait('F2 choice saved',lambda _:tomllib.loads(config.read_text())['scan_theme']=='inverted')
-        t.keys('Escape');t.wait('Reader restored',lambda f:'Appearance' not in f)
-        open_picker();t.click('Inverted',t.see('Page theme'));t.see('Inverted colors')
-        open_picker();t.click('Original',t.see('Page theme'));t.see('Original colors')
-        open_picker();t.keys('Home','Down','Down','Down','Down','Down','Right','Enter');t.see('Reading theme')
-        assert tomllib.loads(config.read_text())['scan_theme']=='sepia-dark'
-        assert tomllib.loads(config.read_text())['theme']=='sepia-dark'
-        t.keys('q')
-    finally:t.run('kill-server',required=False)
-    other=root/'new-paper.pdf';other.write_bytes(book.read_bytes()+b'\n')
-    t=s.shelf.Terminal(root,binary,args=[str(other)])
+        t.see("1 / 3")
+        assert saved() == ("mist-dark", "theme")
+        frame = picker()
+        assert "● Use reading theme" in frame
+        t.click("Invert original", frame)
+        t.see("● Invert original")
+        t.wait("white inverted page with Mist margins", lambda _: pixels("255;255;255") and pixels("58;49;80"))
+        t.keys("Escape")
+        t.wait("cancel restores theme", lambda f: "Page colors" not in f and pixels("199;182;221") and not pixels("255;255;255"))
+        assert saved() == ("mist-dark", "theme")
+        picker()
+        t.keys("[", "Enter")
+        t.wait("mode saved independently", lambda _: saved() == ("mist-dark", "inverted"))
+        picker()
+        t.keys("Home", "Down", "Down", "Down", "Left", "Enter")
+        t.wait("palette saved independently", lambda _: saved() == ("sepia-light", "inverted"))
+        t.wait("white page with Sepia margins", lambda _: pixels("255;255;255") and pixels("241;232;208"))
+        t.keys("F2")
+        t.see("Appearance")
+        t.keys("Right", "End", "Up", "Enter")
+        frame = t.see("As in document")
+        t.click("As in document", frame)
+        t.wait("F2 changed mode only", lambda _: saved() == ("sepia-light", "original"))
+        t.keys("Up", "Enter")
+        t.see("PDF reading theme")
+        t.keys("Home", "Down", "Down", "Right", "Enter")
+        t.wait("F2 changed palette only", lambda _: saved() == ("gray-dark", "original"))
+        t.keys("Escape")
+        t.wait("PDF restored", lambda f: "1 / 3" in f and pixels("68;68;68") and not pixels("255;255;255"))
+    finally:
+        t.run("kill-server", required=False)
+    t = s.shelf.Terminal(root, binary, args=[str(book)])
     try:
-        t.see('1 / 3');t.wait('Saved dark paper',lambda _: '48;2;52;46;37' in ansi())
-        open_picker();t.keys('Home','Down','Escape');t.wait('Cancel restores saved theme',lambda f:'Page theme' not in f)
-        assert '48;2;52;46;37' in ansi()
-        t.run('resize-window','-t','shelf','-x','54','-y','16')
-        t.wait('Resized reader',lambda f:len(f.splitlines())<=16 and '1 / 3' in f)
-        open_picker();t.keys('End');t.see('AMOLED');t.keys('Home');t.see('Original')
-        t.click('Inverted',t.see('Original'));t.see('Inverted colors')
-        open_picker();t.keys('End','Up','Right');t.see('Slate');t.keys('Enter');t.see('Reading theme')
-        assert tomllib.loads(config.read_text())['scan_theme']=='slate-dark'
-        t.keys('F2');t.click('Interface theme',t.see('Interface theme'))
-        t.see('Interface theme · preview');t.keys('End');t.see('Plum');t.keys('Enter')
-        t.wait('New interface palette saved',lambda _:tomllib.loads(config.read_text())['interface_theme']=='plum')
-        t.keys('Escape');t.wait('PDF retains independent palette',lambda _: '48;2;28;37;48' in ansi())
-        t.keys('q')
-    finally:t.run('kill-server',required=False)
-print('PASS Space PDF theme picker: preview without save, cancel, light/dark, mouse, Original/Inverted and reopen')
+        t.see("1 / 3")
+        t.run("resize-window", "-t", "shelf", "-x", "54", "-y", "16")
+        t.wait("resized original page", lambda f: len(f.splitlines()) == 16 and pixels("0;0;0"))
+        assert "● As in document" in picker()
+        t.keys("]", "]", "Enter")
+        t.wait("restored palette used by themed page", lambda _: saved() == ("gray-dark", "theme") and pixels("198;198;198"))
+    finally:
+        t.run("kill-server", required=False)
+print("PASS independent PDF page pixels and margins, live preview, cancel, F2, resize and reopen")

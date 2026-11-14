@@ -64,8 +64,13 @@ def check(home, kind):
         term.keys('q')
         term.wait('Width panel closed', lambda f: '[-]' not in f and '[ Done ]' not in f and 'Local library' not in f)
         if kind == 'pdf':
-            for row,label in [(1,'Inverted colors'),(2,'Reading theme'),(0,'Original colors')]:
-                term.keys('Space','t');term.see('Page theme');term.keys('Home',*(['Down']*row),'Enter');term.see(label)
+            for label in ('Invert original', 'Use reading theme', 'As in document'):
+                term.keys('Space', 't')
+                term.see('Page colors')
+                term.keys(']')
+                term.see(f'● {label}')
+                term.keys('Enter')
+                term.see(f'Page colors · {label}')
             term.keys('Space', 'r', 'p'); term.see('Go to page')
             term.keys('Escape'); term.wait('Page dialog closed', lambda f: '[ Go ↵ ]' not in f)
         else:

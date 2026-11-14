@@ -2,6 +2,31 @@ use super::Settings;
 use crate::theme::Theme;
 use botui_store::ScanAppearance;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum PageColors {
+    Original,
+    Inverted,
+    Theme,
+}
+
+impl PageColors {
+    pub const ALL: [Self; 3] = [Self::Original, Self::Inverted, Self::Theme];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Original => "As in document",
+            Self::Inverted => "Invert original",
+            Self::Theme => "Use reading theme",
+        }
+    }
+
+    pub fn apply(self, appearance: &mut ScanAppearance) {
+        appearance.inverted = self == Self::Inverted;
+        appearance.terminal_paper = self == Self::Theme;
+    }
+}
+
 impl Settings {
     pub fn comic_theme(&self) -> Theme {
         Theme::from_id(self.comic_background.as_deref().unwrap_or("terminal"))
@@ -23,25 +48,41 @@ impl Settings {
         }
     }
     pub fn page_theme(&self) -> Theme {
-        Theme::from_id(self.scan_theme.as_deref().unwrap_or("original"))
+        Theme::from_id(self.scan_theme.as_deref().unwrap_or("terminal"))
     }
-    pub fn page_theme_label(&self) -> String {
-        match self.scan_theme.as_deref().unwrap_or("original") {
-            "original" => "Original".into(),
-            "inverted" => "Inverted".into(),
-            _ => self.page_theme().name(),
-        }
+    pub fn page_colors(&self) -> PageColors {
+        self.scan_page_colors
+            .unwrap_or(match self.scan_theme.as_deref() {
+                Some("inverted") => PageColors::Inverted,
+                None | Some("original") => PageColors::Original,
+                Some(_) => PageColors::Theme,
+            })
     }
     pub fn apply_page_theme(&self, appearance: &mut ScanAppearance) {
-        let id = self.scan_theme.as_deref().unwrap_or("original");
-        appearance.inverted = id == "inverted";
-        appearance.terminal_paper = !matches!(id, "original" | "inverted");
+        self.page_colors().apply(appearance);
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn old_page_colors_survive_config_upgrade() {
+        for (old, palette, mode) in [
+            ("original", "terminal", PageColors::Original),
+            ("inverted", "terminal", PageColors::Inverted),
+            ("terminal", "terminal", PageColors::Theme),
+            ("mist-dark", "mist-dark", PageColors::Theme),
+        ] {
+            let mut doc = super::super::document(&format!("scan_theme = '{old}' # keep")).unwrap();
+            assert!(super::super::extend_config(&mut doc).unwrap());
+            let settings = super::super::decode(&doc.to_string()).unwrap();
+            assert!(doc.to_string().contains("# keep"));
+            assert_eq!(settings.scan_page_colors, Some(mode));
+            assert_eq!(settings.scan_theme.as_deref(), Some(palette));
+            assert!(!super::super::extend_config(&mut doc).unwrap());
+        }
+    }
     #[test]
     fn comic_background_never_recolors_artwork_or_changes_pdf_preference() {
         for pdf in ["inverted", "terminal", "sepia-dark"] {

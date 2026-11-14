@@ -31,29 +31,15 @@ pub(super) fn setting(
     p: &Settings,
 ) -> io::Result<()> {
     match (tab, i) {
-        (1, 13) => {
-            use crate::reader::theme_picker::{Edit, Picker};
-            let mut appearance = botui_store::ScanAppearance::default();
-            p.apply_page_theme(&mut appearance);
-            let mut picker = Picker::for_scan(p.page_theme(), appearance);
-            loop {
-                term.draw(|f| picker.draw_named(f, " PDF / image theme "))?;
-                if let Some(e) = picker.input(crate::settings::read_event()?) {
-                    let id = match e {
-                        Edit::Cancel => break,
-                        Edit::Original => Some("original".into()),
-                        Edit::Inverted => Some("inverted".into()),
-                        Edit::Accept(t) => Some(t.id()),
-                        _ => {
-                            picker.edit(e);
-                            None
-                        }
-                    };
-                    if let Some(id) = id {
-                        Settings::update(|s| s.scan_theme = Some(id))?;
-                        break;
-                    }
-                }
+        (1, 14) => {
+            let modes = settings::PageColors::ALL;
+            if let Some(i) = choose(
+                term,
+                "PDF page colors",
+                &modes.map(|mode| mode.label()),
+                p.page_colors() as usize,
+            )? {
+                Settings::update(|s| s.scan_page_colors = Some(modes[i]))?;
             }
         }
         (1, 12) => {
@@ -108,11 +94,13 @@ pub(super) fn setting(
                 Settings::update(|s| s.opaque_color = (!v.is_empty()).then_some(v))?;
             }
         }
-        (1, 0) | (1, 14) => {
+        (1, 0) | (1, 13) | (1, 15) => {
             use crate::reader::theme_picker::{Edit, Picker};
-            let comic = i == 14;
+            let comic = i == 15;
             let mut picker = Picker::new(if comic {
                 p.comic_theme()
+            } else if i == 13 {
+                p.page_theme()
             } else {
                 Theme::from_id(p.theme.as_deref().unwrap_or("terminal"))
             });
@@ -122,6 +110,8 @@ pub(super) fn setting(
                         f,
                         if comic {
                             " Comic background "
+                        } else if i == 13 {
+                            " PDF reading theme "
                         } else {
                             " Reading theme "
                         },
@@ -134,6 +124,9 @@ pub(super) fn setting(
                             Settings::update(|s| {
                                 if comic {
                                     s.comic_background = Some(t.id());
+                                } else if i == 13 {
+                                    s.scan_page_colors = Some(s.page_colors());
+                                    s.scan_theme = Some(t.id());
                                 } else {
                                     s.theme = Some(t.id());
                                 }

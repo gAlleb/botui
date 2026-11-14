@@ -70,6 +70,7 @@ pub(super) fn read_pages(
     let prefs = crate::settings::Settings::load()?;
     let comic = matches!(kind, FileKind::Cbz | FileKind::Cbr);
     let mut reading_theme = prefs.fixed_theme(comic);
+    let mut page_colors = prefs.page_colors();
     let mut zen = prefs.zen;
     let mut zen_progress = prefs.zen_progress;
     let mut sidebar = contents::Contents::default();
@@ -206,10 +207,7 @@ pub(super) fn read_pages(
             // Keep background sync status in Space a s, without replacing reader feedback.
             text.notes = store.notes()?;
         }
-        let preview_theme = palette
-            .as_ref()
-            .filter(|p| comic || p.scan_mode().1)
-            .map_or(reading_theme, |p| p.preview());
+        let preview_theme = palette.as_ref().map_or(reading_theme, |p| p.preview());
         let _reading_dialogs = crate::settings::reader_dialogs(preview_theme);
         if selectable {
             text.poll(path);
@@ -307,10 +305,8 @@ pub(super) fn read_pages(
             .clamp(240, 1600);
         let side = (u32::from(side) * u32::from(crop.percent.max(100)) / 100).min(1920) as u16;
         let mut appearance = checkpoint.scan_appearance;
-        if let Some(p) = &palette
-            && !comic
-        {
-            (appearance.inverted, appearance.terminal_paper) = p.scan_mode();
+        if let Some(mode) = palette.as_ref().and_then(|p| p.colors) {
+            mode.apply(&mut appearance);
         }
         let paper = appearance
             .terminal_paper
@@ -636,13 +632,7 @@ pub(super) fn read_pages(
                         };
                         let key_width = r.width.min(10);
                         let label = if *action == 43 {
-                            let current = if comic || appearance.terminal_paper {
-                                reading_theme.name()
-                            } else if appearance.inverted {
-                                "Inverted".into()
-                            } else {
-                                "Original".into()
-                            };
+                            let current = reading_theme.name();
                             format!(
                                 "{} · {current}",
                                 if comic {
@@ -797,41 +787,25 @@ pub(super) fn read_pages(
                             if comic {
                                 s.comic_background = Some(theme.id());
                             } else {
+                                s.scan_page_colors = p.colors;
                                 s.scan_theme = Some(theme.id());
                             }
                         }) {
-                            Ok(_) => {
-                                reading_theme = theme;
-                                checkpoint.scan_appearance.inverted = false;
-                                checkpoint.scan_appearance.terminal_paper = !comic;
-                                dirty = true;
-                                palette = None;
-                                message = format!(
-                                    "{} · {}",
-                                    if comic {
-                                        "Comic background"
-                                    } else {
-                                        "Reading theme"
-                                    },
-                                    theme.name()
-                                );
-                            }
-                            Err(e) => message = e.to_string(),
-                        }
-                    }
-                    Edit::Original | Edit::Inverted => {
-                        let id = if edit == Edit::Original {
-                            "original"
-                        } else {
-                            "inverted"
-                        };
-                        match crate::settings::Settings::update(|s| s.scan_theme = Some(id.into()))
-                        {
                             Ok(updated) => {
+                                reading_theme = theme;
+                                page_colors = updated.page_colors();
                                 updated.apply_fixed_theme(&mut checkpoint.scan_appearance, comic);
-                                message = format!("{} colors", updated.page_theme_label());
                                 dirty = true;
                                 palette = None;
+                                message = if comic {
+                                    format!("Comic background · {}", theme.name())
+                                } else {
+                                    format!(
+                                        "Page colors · {} · {}",
+                                        page_colors.label(),
+                                        theme.name()
+                                    )
+                                };
                             }
                             Err(e) => message = e.to_string(),
                         }
@@ -1190,7 +1164,7 @@ pub(super) fn read_pages(
                     palette = Some(if comic {
                         crate::reader::theme_picker::Picker::new(reading_theme)
                     } else {
-                        crate::reader::theme_picker::Picker::for_scan(reading_theme, *appearance)
+                        crate::reader::theme_picker::Picker::for_scan(reading_theme, page_colors)
                     });
                     menu = false;
                     message.clear();
@@ -1287,6 +1261,7 @@ pub(super) fn read_pages(
                 )?;
                 let updated = crate::settings::Settings::load()?;
                 reading_theme = updated.fixed_theme(comic);
+                page_colors = updated.page_colors();
                 updated.apply_fixed_theme(&mut checkpoint.scan_appearance, comic);
                 scroll_lines = i32::from(updated.scroll_lines.unwrap_or(1).clamp(1, 12));
                 zen = updated.zen;

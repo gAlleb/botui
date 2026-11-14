@@ -17,6 +17,13 @@ def paper(frame):
     spans = [m.span() for line in frame.splitlines() for m in re.finditer(r":{25,}", line)]
     return max(spans, key=lambda p: p[1] - p[0])
 
+def apply_colors(term, label):
+    term.keys("Space", "t")
+    term.click(label, term.see("Page colors"))
+    term.see(f"● {label}")
+    term.keys("Enter")
+
+
 with tempfile.TemporaryDirectory(prefix="botui-width-") as tmp:
     root = Path(tmp)
     book = root / "sheets.pdf"
@@ -70,8 +77,9 @@ with tempfile.TemporaryDirectory(prefix="botui-width-") as tmp:
         term.see("[Space l w 90%]")
         term.keys("Space", "r", "0")
         term.see("[Space l w 100%]")
-        term.keys("Space", "r", "r", "Space", "t");term.see("Page theme");term.keys("Home","Down","Enter")
-        term.see("Inverted colors")
+        term.keys("Space", "r", "r")
+        apply_colors(term, "Invert original")
+        term.see("Page colors · Invert original")
         term.keys("Space", "b", "a")
         term.see("Page bookmarked")
         def checkpoint_saved():
@@ -87,13 +95,13 @@ with tempfile.TemporaryDirectory(prefix="botui-width-") as tmp:
         term.see("2 / 3")
         term.keys("Space", "r", "R")
         term.see("0° · Inverted colors")
-        term.keys("Space", "t");term.see("Page theme");term.keys("Home","Down","Down","Enter")
-        term.see("Reading theme")
+        apply_colors(term, "Use reading theme")
+        term.see("Page colors · Use reading theme")
         # Cursor feedback occupies the status line; verify the persisted color
         # state as well as the ordinary reading notifications above and below.
         term.keys("Space", "c")
-        for inverted, themed in [(False, False), (True, False), (False, True)]:
-            term.keys("Space", "t");term.see("Page theme");term.keys("Home",*(["Down"]*(2 if themed else int(inverted))),"Enter")
+        for label, inverted, themed in [("As in document", False, False), ("Invert original", True, False), ("Use reading theme", False, True)]:
+            apply_colors(term, label)
             deadline = time.monotonic() + 5
             while time.monotonic() < deadline:
                 appearance = (scroll.saved(root) or {}).get("scan_appearance", {})
@@ -104,8 +112,8 @@ with tempfile.TemporaryDirectory(prefix="botui-width-") as tmp:
             else:
                 raise AssertionError((inverted, themed, appearance))
         term.keys("Space", "c")
-        term.keys("Space", "t");term.see("Page theme");term.keys("Home","Enter")
-        term.see("Original colors")
+        apply_colors(term, "As in document")
+        term.see("Page colors · As in document")
         scroll.stop(term)
     finally:
         term.run("kill-server", required=False)

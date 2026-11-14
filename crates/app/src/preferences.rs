@@ -201,9 +201,14 @@ fn rows(tab: usize, s: &Settings) -> Vec<SettingRow> {
                 "Delay before command hints appear. Space combinations always execute immediately. Set 0 for instant hints.",
             ),
             pair(
-                "PDF / image theme",
-                &s.page_theme_label(),
-                "Original, Inverted or a named palette for PDF, DjVu and image-only EPUB. Space t previews and saves the same setting.",
+                "PDF reading theme",
+                &s.page_theme().name(),
+                "Palette for PDF, DjVu and image-only EPUB margins and dialogs.",
+            ),
+            pair(
+                "PDF page colors",
+                s.page_colors().label(),
+                "Keep document colors, invert the original page, or apply the reading theme to paper and ink.",
             ),
             pair(
                 "Comic background",
