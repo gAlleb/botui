@@ -88,7 +88,8 @@ def web_passage(tmp, server):
     ]
     t = open_book(tmp, server)
     try:
-        t.see("Верхнее окно — Внизу у воды")
+        frame = t.see("Верхнее окно — Внизу у воды")
+        assert "% · BookOrbit · Верхнее окно" in frame, frame
         t.keys("Enter")
         t.wait("Jump to the marked passage",
                lambda frame: "Bookmarks:" not in frame and "Внизу у воды" in frame)

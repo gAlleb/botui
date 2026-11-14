@@ -8,6 +8,7 @@ pub(super) fn open(
     store: &LocalState,
     path: &Path,
     reading: &mut Saved,
+    page_count: Option<u32>,
 ) -> io::Result<(Option<u32>, String)> {
     let at = reading.anchor;
     let choices: Vec<(Anchor, String)> = match which {
@@ -28,7 +29,16 @@ pub(super) fn open(
             let marks = &reading.marks;
             let labels: Vec<_> = marks
                 .iter()
-                .map(|a| format!(" Page {}", a.block + 1))
+                .map(|a| {
+                    let page = a.block.saturating_add(1);
+                    match page_count.filter(|&count| page <= count as usize) {
+                        Some(count) => format!(
+                            " {:.0}% · Page {page}",
+                            100.0 * page as f64 / f64::from(count)
+                        ),
+                        None => format!(" Page {page}"),
+                    }
+                })
                 .collect();
             let initial = marks.partition_point(|mark| *mark < at);
             let choice = crate::prompt::choose_removable(term, "Page bookmarks", &labels, initial)?;

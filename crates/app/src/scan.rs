@@ -1224,7 +1224,7 @@ pub(super) fn read_pages(
                         menu = false;
                         continue;
                     }
-                    match annotations::open(term, action, store, path, &mut checkpoint) {
+                    match annotations::open(term, action, store, path, &mut checkpoint, total) {
                         Ok((page, msg)) => {
                             if let Some(page) = page {
                                 n = page.min(total.unwrap_or(page)).max(1);

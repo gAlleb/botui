@@ -63,7 +63,9 @@ with tempfile.TemporaryDirectory() as name:
         t.keys('Space', 'b', 'a', 'F3')
         highlighted("088")
         t.keys('Space', 'b', 'a', 'Space', 'b', 'l')
-        t.see("Bookmarks: 2"); t.keys("Home", "DC"); t.see("Delete bookmark?")
+        frame = t.see("Bookmarks: 2")
+        assert frame.count("% · Local ·") == 2, frame
+        t.keys("Home", "DC"); t.see("Delete bookmark?")
         t.keys("Escape"); t.see("Bookmarks: 2")
         t.click("[×]", t.see("[×]")); t.click("[ Delete bookmark ]", t.see("Delete bookmark?"))
         remaining = t.see("Bookmarks: 1")

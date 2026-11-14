@@ -115,7 +115,7 @@ def scan(tmp,path):
         t.keys('Space', 'r', 'p');t.see('Go to page');t.keys('C-u');t.type('1');t.keys('Enter');t.see('1 / 3')
         t.keys('Home', 'Space', 'f');t.see('Find in text layer');t.type('lighthouse');t.keys('Enter');t.see('Match 1 / 1')
         t.keys('Space', 'b', 'a');t.see('Page bookmarked');t.keys('Space', 'a', 'p');t.see('Page note');t.type('Watch the lighthouse');t.keys('Enter')
-        t.keys('Home', 'Space', 'b', 'l');t.see('Page bookmarks');t.see('Page 2');t.keys('Enter')
+        t.keys('Home', 'Space', 'b', 'l');t.see('Page bookmarks');t.see('67% · Page 2');t.keys('Enter')
         t.keys('Space', 'a', 'a');t.see('Watch the lighthouse');t.keys('Enter', 'Space', 'a', 'e');t.see('Saved ')
         exports=tmp/'.local/share/botui/exports';assert any('## Page 2' in p.read_text() and 'Watch the lighthouse' in p.read_text() for p in exports.glob('*.md'))
         t.keys('Space', 'r', 's');t.see('Total time book open');t.keys('Escape');t.wait('Statistics closed',lambda s:'Total time book open' not in s)
@@ -126,7 +126,7 @@ def scan(tmp,path):
             time.sleep(.025)
     finally:t.run('kill-server',required=False)
     t=Term(tmp,path)
-    try:t.wait('Восстановление скана',lambda s:'▀' in s or '▄' in s);t.keys('Space', 'b', 'l');t.see('Page bookmarks');t.see('Page 2');t.keys('Enter');t.keys('Space', 'r', 's');frame=t.see('Sessions on this device');assert 'Sessions on this device  2' in frame,frame
+    try:t.wait('Восстановление скана',lambda s:'▀' in s or '▄' in s);t.keys('Space', 'b', 'l');t.see('Page bookmarks');t.see('67% · Page 2');t.keys('Enter');t.keys('Space', 'r', 's');frame=t.see('Sessions on this device');assert 'Sessions on this device  2' in frame,frame
     finally:t.run('kill-server',required=False)
 
 if __name__=='__main__':

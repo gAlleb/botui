@@ -111,10 +111,10 @@ impl Reader {
             let labels: Vec<_> = rows
                 .iter()
                 .map(|r| {
-                    if r.at.is_none() {
-                        format!("{} · unavailable in this file", r.label)
+                    if let Some(at) = r.at {
+                        format!("{:.0}% · {}", self.doc.text_percentage(at), r.label)
                     } else {
-                        r.label.clone()
+                        format!("{} · unavailable in this file", r.label)
                     }
                 })
                 .collect();
