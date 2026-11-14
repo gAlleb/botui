@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.14 — 2026-11-14
+
+- Theme footnote and illustration windows and add `o` to open illustrations externally.
+- Choose PDF page colors independently of the reading theme.
+- Show each bookmark’s position as a percentage of the book.
+
 ## 0.1.13 — 2026-11-13
 
 - In ordinary reading, Esc hides the search highlight without opening the menu. Keep the query and results for n/N, F3/F4 and F5; preserve dialog, selection and Vim escape handling and saved annotations. Cover dismissing and resuming searches in PDF, EPUB, FB2 and Markdown terminal tests.
