@@ -2,6 +2,7 @@
 """Follow an EPUB link, view its image and supplementary note; read an FB2 note and illustration."""
 from base64 import b64encode
 import importlib.util
+import os
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import time
@@ -27,17 +28,39 @@ def check(tmp):
         z.writestr("chap.xhtml", '<html><body><h1>Harbour</h1><p>See <a href="#end">Next chapter</a>, <a id="source-note" href="notes.xhtml#memo">Source note</a> and <a href="https://example.org/map">Publisher website</a>.</p><p><img src="map.jpg" alt="Map plate"/></p><table><tr><th>Port</th><th>Tide</th></tr><tr><td>Whitby</td><td>High</td></tr></table>' + '<p>Walking along the bay.</p>' * 100 + '<h1 id="end">Observatory</h1><p>Last passage.</p></body></html>')
         z.writestr("notes.xhtml", '<html><body><aside id="memo"><p>In 1812 the harbour moved.</p></aside><p><a href="chap.xhtml#source-note" role="doc-backlink">Return to citation</a></p><aside id="other">Content of adjacent note</aside></body></html>')
         z.writestr("map.jpg", pic)
-    t = shelf.Terminal(tmp, BINARY, args=[str(epub)])
+    config = tmp / "config/botui/config.toml"
+    config.parent.mkdir(parents=True)
+    config.write_text('theme = "mist-dark"\nopaque_background = true\n')
+    opener = tmp / "xdg-open"
+    opener.write_text('#!/bin/sh\necho "$1" >> "$HOME/opened"\n')
+    opener.chmod(0o755)
+    t = shelf.Terminal(tmp, Path("/usr/bin/env"), args=[f"PATH={tmp}:{os.environ['PATH']}", str(BINARY), str(epub)])
+    def check_accent(label):
+        ansi = t.run("capture-pane", "-p", "-e", "-t", "shelf").stdout
+        line = next(line for line in ansi.splitlines() if label in line)
+        assert "38;2;179;157;219" in line, line
+
     try:
         page=t.wait("inline illustration in reading flow",lambda f:"Harbour" in f and ("▀" in f or "▄" in f) and "Whitby" in f)
         assert any("Whitby" in line and "│" in line and "High" in line for line in page.splitlines()),page
         select(t, "Source note")
         note=t.see("In 1812 the harbour moved.")
+        check_accent("[ Back · Esc ]")
+        assert "Open externally" not in note
         assert "Content of adjacent note" not in note
         t.click("[ Return to citation ]",t.see("[ Return to citation ]"))
         t.wait("closed note", lambda f: "In 1812" not in f)
         select(t,"Map plate")
         t.wait("rendered embedded JPEG",lambda f:"[ Back · Esc ]" in f and ("▀" in f or "▄" in f))
+        button = "[ Open externally · o ]"
+        check_accent(button)
+        log = tmp / "opened"
+        t.keys("o")
+        t.wait("opened by keyboard", lambda frame: button in frame and log.exists() and log.stat().st_size)
+        t.click(button, t.see(button))
+        t.wait("opened by mouse", lambda frame: button in frame and len(log.read_text().splitlines()) == 2)
+        paths = log.read_text().splitlines()
+        assert paths[0] == paths[1] and Path(paths[0]).read_bytes() == pic
         t.keys("Escape")
         t.wait("closed illustration", lambda f:"[ Back · Esc ]" not in f)
         select(t,"Publisher website")

@@ -90,8 +90,15 @@ pub(super) fn open_target(
         Target::Image(member) => {
             let bytes = botui_formats::illustration(path, member)?;
             let picture =
-                Picture::illustration(bytes).ok_or("Cannot display this image format or size")?;
-            view(term, label, None, Some(&picture), None, &mut background)?;
+                Picture::illustration(&bytes).ok_or("Cannot display this image format or size")?;
+            view(
+                term,
+                label,
+                None,
+                Some((&picture, bytes.as_slice())),
+                None,
+                &mut background,
+            )?;
         }
         Target::Web(url) => {
             let labels = vec![format!(" Open in browser: {url}"), " Cancel".to_owned()];
@@ -115,16 +122,21 @@ fn view(
     term: &mut AppTerminal,
     label: &str,
     text: Option<&str>,
-    picture: Option<&Picture>,
+    picture: Option<(&Picture, &[u8])>,
     backlink: Option<&str>,
     background: &mut impl FnMut(&mut ratatui::Frame),
 ) -> io::Result<()> {
     let mut scroll = 0u16;
     let graphics = graphics();
+    let mut viewer = crate::cover_viewer::Viewer::default();
     loop {
         let mut page = 1;
         let mut limit = 0;
         let mut back = Rect::default();
+        let mut external = Rect::default();
+        if let Some(error) = viewer.collect() {
+            crate::prompt::message(term, "Open illustration", &error)?;
+        }
         term.draw(|f| {
             background(f);
             let screen = f.area();
@@ -138,6 +150,7 @@ fn view(
                 screen.height.saturating_sub(2),
             );
             let block = crate::appearance::block()
+                .title_style(ratatui::style::Style::new().cyan().not_dim())
                 .title(format!(" {} ", label.replace(char::is_control, " ")));
             let inner = block.inner(area);
             f.render_widget(Clear, area);
@@ -147,7 +160,7 @@ fn view(
                 ..inner
             };
             page = body.height.max(1);
-            if let Some(picture) = picture {
+            if let Some((picture, _)) = picture {
                 picture.draw(f, body, &graphics);
             }
             if let Some(text) = text {
@@ -170,9 +183,46 @@ fn view(
                 inner.height.min(1),
             );
             f.render_widget(Paragraph::new(label).cyan(), back);
-            crate::settings::paint(f)
+            if picture.is_some() {
+                let button = "[ Open externally · o ]";
+                external = Rect::new(
+                    back.right().saturating_add(2),
+                    back.y,
+                    ratatui::text::Line::raw(button).width() as u16,
+                    back.height,
+                )
+                .intersection(inner);
+                f.render_widget(Paragraph::new(button).cyan(), external);
+            }
+            crate::settings::paint_dialog(f)
         })?;
-        match crate::settings::read_event()? {
+        let timeout = viewer.busy().then(|| std::time::Duration::from_millis(100));
+        let Some(event) = crate::settings::read_event_for(timeout)? else {
+            continue;
+        };
+        let open = match event {
+            Event::Key(k) => k.kind != KeyEventKind::Release && k.code == KeyCode::Char('o'),
+            Event::Mouse(m) => {
+                m.kind == MouseEventKind::Down(MouseButton::Left)
+                    && external.contains((m.column, m.row).into())
+            }
+            _ => false,
+        };
+        if open && let Some((image, bytes)) = picture {
+            // SVGs use the reader's self-contained rendering, including embedded resources.
+            let result = if image::guess_format(bytes).is_ok() {
+                viewer.illustration(bytes)
+            } else {
+                image
+                    .illustration_png()
+                    .and_then(|png| viewer.illustration(&png))
+            };
+            if let Err(e) = result {
+                crate::prompt::message(term, "Open illustration", &e.to_string())?;
+            }
+            continue;
+        }
+        match event {
             Event::Key(k) if k.kind != KeyEventKind::Release => match k.code {
                 KeyCode::Esc | KeyCode::Enter | KeyCode::Char('q' | ',') => return Ok(()),
                 KeyCode::Down => scroll = scroll.saturating_add(1).min(limit),

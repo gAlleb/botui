@@ -14,7 +14,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-pub(crate) fn png(image: image::DynamicImage) -> Result<Vec<u8>> {
+pub(crate) fn png(image: &image::DynamicImage) -> Result<Vec<u8>> {
     let mut out = Cursor::new(Vec::new());
     image.write_to(&mut out, ImageFormat::Png)?;
     Ok(out.into_inner())
@@ -37,7 +37,7 @@ impl Viewer {
         use botui_formats::FileKind::*;
         let path = path.to_owned();
         self.start(move |cancel| match kind {
-            Pdf | Djvu => png(botui_fixed::page(&path, kind, 1, 1440, cancel)?),
+            Pdf | Djvu => png(&botui_fixed::page(&path, kind, 1, 1440, cancel)?),
             _ => {
                 if let Some(bytes) = botui_formats::cover(&path).map_err(|e| e.to_string())? {
                     return Ok(bytes);
@@ -60,30 +60,12 @@ impl Viewer {
         }
         self.pending = Some(Worker::new().start(move |cancel| {
             let data = get(cancel)?;
-            let ext = match image::guess_format(&data)? {
-                ImageFormat::Jpeg => "jpg",
-                ImageFormat::Png => "png",
-                ImageFormat::WebP => "webp",
-                ImageFormat::Gif => "gif",
-                ImageFormat::Tiff => "tiff",
-                ImageFormat::Bmp => "bmp",
-                ImageFormat::Avif => "avif",
-                _ => return Err("Unsupported cover image format.".into()),
-            };
-            let dir = crate::cache::cache_dir()?.join("covers");
-            std::fs::create_dir_all(&dir)?;
-            let path = dir.join(format!("{:x}.{ext}", Sha256::digest(&data)));
-            if !path.exists() {
-                let mut file = tempfile::NamedTempFile::new_in(&dir)?;
-                file.write_all(&data)?;
-                if let Err(e) = file.persist_noclobber(&path)
-                    && e.error.kind() != io::ErrorKind::AlreadyExists
-                {
-                    return Err(e.error.into());
-                }
-            }
-            Ok(path)
+            cache_image(&data, "covers")
         }));
+    }
+    pub fn illustration(&mut self, data: &[u8]) -> Result<()> {
+        let path = cache_image(data, "illustrations")?;
+        Ok(self.launch(&path)?)
     }
     fn launch(&mut self, path: &Path) -> io::Result<()> {
         let mut child = Command::new("xdg-open")
@@ -125,7 +107,28 @@ impl Viewer {
         if matches!(result, Ok(Ok(status)) if status.success()) {
             None
         } else {
-            Some("The system image viewer could not open this cover.".into())
+            Some("The system image viewer could not open the image.".into())
         }
     }
+}
+
+fn cache_image(data: &[u8], folder: &str) -> Result<PathBuf> {
+    let format = image::guess_format(data)?;
+    let ext = format
+        .extensions_str()
+        .first()
+        .ok_or("Unknown image extension")?;
+    let dir = crate::cache::cache_dir()?.join(folder);
+    std::fs::create_dir_all(&dir)?;
+    let path = dir.join(format!("{:x}.{ext}", Sha256::digest(data)));
+    if !path.exists() {
+        let mut file = tempfile::NamedTempFile::new_in(&dir)?;
+        file.write_all(data)?;
+        if let Err(e) = file.persist_noclobber(&path)
+            && e.error.kind() != io::ErrorKind::AlreadyExists
+        {
+            return Err(e.error.into());
+        }
+    }
+    Ok(path)
 }

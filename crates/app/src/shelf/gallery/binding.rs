@@ -145,7 +145,7 @@ impl Binding {
     }
 
     pub(crate) fn png(&self) -> botui_bookorbit::Result<Vec<u8>> {
-        crate::cover_viewer::png(self.render(3)?)
+        crate::cover_viewer::png(&self.render(3)?)
     }
 
     pub(super) fn draw_or_wait(

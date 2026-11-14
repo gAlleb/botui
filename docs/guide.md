@@ -244,7 +244,7 @@ The terminal supplies the typeface and cell size. Justified paragraphs keep natu
 
 Search, footnotes, bookmarks and BookOrbit resume use the source text even when a table wraps differently.
 
-Embedded raster illustrations use the available page height. **Space r i** opens an illustration separately. **F2 → Reader → Illustrations** switches to the separate viewer only.
+Embedded raster illustrations use the available page height. **Space r i** opens an illustration separately. Press **o** or click **Open externally** to open it in the system image viewer. **F2 → Reader → Illustrations** switches to the separate viewer only.
 
 FB2 also preserves italic, bold and struck-through text in ordinary paragraphs. These faces do not change the text used for search or saved positions.
 

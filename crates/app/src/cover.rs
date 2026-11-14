@@ -235,23 +235,22 @@ impl Picture {
     }
 
     pub fn cover(bytes: Vec<u8>) -> Option<Self> {
-        let mut picture = Self::decode(bytes, 240, 360)?;
+        let mut picture = Self::decode(&bytes, 240, 360)?;
         picture.is_cover = true;
         Some(picture)
     }
     pub fn inline(bytes: Vec<u8>) -> Option<Self> {
-        Self::decode(bytes, 720, 540)
+        Self::decode(&bytes, 720, 540)
     }
-    pub fn illustration(bytes: Vec<u8>) -> Option<Self> {
+    pub fn illustration(bytes: &[u8]) -> Option<Self> {
         Self::decode(bytes, 2048, 2048)
     }
-    fn decode(bytes: Vec<u8>, width: u32, height: u32) -> Option<Self> {
+    fn decode(bytes: &[u8], width: u32, height: u32) -> Option<Self> {
         let mut decoder = ImageReader::new(Cursor::new(bytes))
             .with_guessed_format()
             .ok()?;
         if decoder.format().is_none() {
-            return botui_fixed::svg::render(decoder.into_inner().get_ref(), width, height)
-                .map(Self::new);
+            return botui_fixed::svg::render(bytes, width, height).map(Self::new);
         }
         let mut limits = Limits::default();
         limits.max_image_width = Some(4096);
@@ -259,6 +258,10 @@ impl Picture {
         limits.max_alloc = Some(32 << 20);
         decoder.limits(limits);
         Some(Self::new(decoder.decode().ok()?.thumbnail(width, height)))
+    }
+
+    pub fn illustration_png(&self) -> botui_bookorbit::Result<Vec<u8>> {
+        crate::cover_viewer::png(&self.source)
     }
 
     pub fn dimensions(&self) -> (u32, u32) {
