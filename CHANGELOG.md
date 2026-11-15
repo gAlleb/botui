@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.1.18 — 2026-11-16
+
 - Restore the same illustrated spread after reopening a book or turning back and forward.
 
 ## 0.1.17 — 2026-11-15
