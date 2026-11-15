@@ -55,7 +55,7 @@ pub(super) fn open(
     path: &Path,
     book: &Document,
     r: &botui_core::Reference,
-    background: impl FnMut(&mut ratatui::Frame),
+    background: impl FnMut(&mut ratatui::Frame) -> bool,
 ) -> crate::Result<Option<Anchor>> {
     open_target(term, path, book, &r.label, &r.target, background)
 }
@@ -65,7 +65,7 @@ pub(super) fn open_target(
     book: &Document,
     label: &str,
     target: &Target,
-    mut background: impl FnMut(&mut ratatui::Frame),
+    mut background: impl FnMut(&mut ratatui::Frame) -> bool,
 ) -> crate::Result<Option<Anchor>> {
     match target {
         Target::Passage(a) => return Ok(Some(*a)),
@@ -131,7 +131,7 @@ fn view(
     label: &str,
     content: Content<'_>,
     backlink: Option<&str>,
-    background: &mut impl FnMut(&mut ratatui::Frame),
+    background: &mut impl FnMut(&mut ratatui::Frame) -> bool,
 ) -> io::Result<Option<Anchor>> {
     let mut note_page = None;
     let mut scroll = 0u16;
@@ -145,8 +145,9 @@ fn view(
         if let Some(error) = viewer.collect() {
             crate::prompt::message(term, "Open illustration", &error)?;
         }
+        let mut loading = false;
         term.draw(|f| {
-            background(f);
+            loading = background(f);
             let screen = f.area();
             let area = centered(
                 screen,
@@ -157,67 +158,69 @@ fn view(
                 },
                 screen.height.saturating_sub(2),
             );
-            let block = crate::appearance::block()
-                .title_style(ratatui::style::Style::new().cyan().not_dim())
-                .title(format!(" {} ", label.replace(char::is_control, " ")));
-            let inner = block.inner(area);
-            f.render_widget(Clear, area);
-            f.render_widget(block, area);
-            let body = Rect {
-                height: inner.height.saturating_sub(1),
-                ..inner
-            };
-            page = body.height.max(1);
-            if let Content::Picture(picture, _) = content {
-                picture.draw(f, body, &graphics);
-            }
-            if let Content::Note(doc) = content {
-                note_page
-                    .get_or_insert_with(|| note::NotePage::new(doc, body))
-                    .draw(f, body);
-            }
-            if let Content::Text(text) = content {
-                let p = Paragraph::new(text).wrap(Wrap { trim: false });
-                limit = p
-                    .line_count(body.width.max(1))
-                    .saturating_sub(body.height as usize)
-                    .min(u16::MAX as usize) as u16;
-                scroll = scroll.min(limit);
-                f.render_widget(p.scroll((scroll, 0)), body);
-            }
-            let label = backlink
-                .map(|s| format!("[ Back · Esc ]  [ {s} ]"))
-                .unwrap_or_else(|| "[ Back · Esc ]".into());
-            let width = ratatui::text::Line::raw(&label).width() as u16;
-            back = Rect::new(
-                inner.x,
-                inner.bottom().saturating_sub(1),
-                inner.width.min(width),
-                inner.height.min(1),
-            );
-            f.render_widget(Paragraph::new(label).cyan(), back);
-            if matches!(content, Content::Note(doc) if !doc.references.is_empty()) {
-                let x = back.right().saturating_add(2);
-                let hint = Rect::new(x, back.y, inner.right().saturating_sub(x), back.height);
-                f.render_widget(
-                    Paragraph::new("Tab / Shift+Tab · Select link   Enter · Follow").cyan(),
-                    hint,
+            crate::overlay::paint(f, area, |f| {
+                let block = crate::appearance::block()
+                    .title_style(ratatui::style::Style::new().cyan().not_dim())
+                    .title(format!(" {} ", label.replace(char::is_control, " ")));
+                let inner = block.inner(area);
+                f.render_widget(Clear, area);
+                f.render_widget(block, area);
+                let body = Rect {
+                    height: inner.height.saturating_sub(1),
+                    ..inner
+                };
+                page = body.height.max(1);
+                if let Content::Picture(picture, _) = content {
+                    picture.draw(f, body, &graphics);
+                }
+                if let Content::Note(doc) = content {
+                    note_page
+                        .get_or_insert_with(|| note::NotePage::new(doc, body))
+                        .draw(f, body);
+                }
+                if let Content::Text(text) = content {
+                    let p = Paragraph::new(text).wrap(Wrap { trim: false });
+                    limit = p
+                        .line_count(body.width.max(1))
+                        .saturating_sub(body.height as usize)
+                        .min(u16::MAX as usize) as u16;
+                    scroll = scroll.min(limit);
+                    f.render_widget(p.scroll((scroll, 0)), body);
+                }
+                let label = backlink
+                    .map(|s| format!("[ Back · Esc ]  [ {s} ]"))
+                    .unwrap_or_else(|| "[ Back · Esc ]".into());
+                let width = ratatui::text::Line::raw(&label).width() as u16;
+                back = Rect::new(
+                    inner.x,
+                    inner.bottom().saturating_sub(1),
+                    inner.width.min(width),
+                    inner.height.min(1),
                 );
-            }
-            if matches!(content, Content::Picture(..)) {
-                let button = "[ Open externally · o ]";
-                external = Rect::new(
-                    back.right().saturating_add(2),
-                    back.y,
-                    ratatui::text::Line::raw(button).width() as u16,
-                    back.height,
-                )
-                .intersection(inner);
-                f.render_widget(Paragraph::new(button).cyan(), external);
-            }
+                f.render_widget(Paragraph::new(label).cyan(), back);
+                if matches!(content, Content::Note(doc) if !doc.references.is_empty()) {
+                    let x = back.right().saturating_add(2);
+                    let hint = Rect::new(x, back.y, inner.right().saturating_sub(x), back.height);
+                    f.render_widget(
+                        Paragraph::new("Tab / Shift+Tab · Select link   Enter · Follow").cyan(),
+                        hint,
+                    );
+                }
+                if matches!(content, Content::Picture(..)) {
+                    let button = "[ Open externally · o ]";
+                    external = Rect::new(
+                        back.right().saturating_add(2),
+                        back.y,
+                        ratatui::text::Line::raw(button).width() as u16,
+                        back.height,
+                    )
+                    .intersection(inner);
+                    f.render_widget(Paragraph::new(button).cyan(), external);
+                }
+            });
             crate::settings::paint_dialog(f)
         })?;
-        let timeout = viewer.busy().then(|| std::time::Duration::from_millis(100));
+        let timeout = (loading || viewer.busy()).then(|| std::time::Duration::from_millis(70));
         let Some(event) = crate::settings::read_event_for(timeout)? else {
             continue;
         };

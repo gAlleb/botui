@@ -340,6 +340,12 @@ impl Reader {
         }
     }
 
+    fn draw_resource_background(&mut self, frame: &mut Frame) -> bool {
+        self.draw(frame, None);
+        self.pager.start_pagination();
+        self.pager.is_paginating() || self.illustrations.as_ref().is_some_and(|p| p.busy())
+    }
+
     fn draw(&mut self, frame: &mut Frame, notice: Option<&str>) {
         let screen = frame.area();
         self.links.clear();
@@ -1605,7 +1611,7 @@ pub fn read_server(
             if let Some(entry) = supplement.cloned() {
                 let doc = reader.doc.clone();
                 match resources::open_target(term, path, &doc, &entry.title, &entry.target, |f| {
-                    reader.draw(f, None)
+                    reader.draw_resource_background(f)
                 }) {
                     Ok(Some(at)) => {
                         reader.nav = None;
@@ -1732,7 +1738,9 @@ pub fn read_server(
                 if let Some(i) = selected {
                     let reference = reader.doc.references[i].clone();
                     let doc = reader.doc.clone();
-                    match resources::open(term, path, &doc, &reference, |f| reader.draw(f, None)) {
+                    match resources::open(term, path, &doc, &reference, |f| {
+                        reader.draw_resource_background(f)
+                    }) {
                         Ok(Some(a)) => {
                             let dest =
                                 reader

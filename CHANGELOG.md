@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Keep illustrations visible around open footnotes.
+
 ## 0.1.15 — 2026-11-15
 
 - Press `q` in a directly opened book to return to its folder with the file selected.
