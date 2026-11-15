@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.1.16 — 2026-11-15
+
 - Keep illustrations visible around open footnotes.
 - Preload the two nearest illustrations in each reading direction.
 - Leave one blank line above and below standalone illustrations.
