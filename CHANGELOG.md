@@ -2,10 +2,11 @@
 
 ## Unreleased
 
+## 0.1.15 — 2026-11-15
+
 - Press `q` in a directly opened book to return to its folder with the file selected.
-- Keep raised EPUB footnotes from adding a blank line inside a paragraph.
-- Follow EPUB note backlinks by click or with Tab and Enter.
-- Keep pages before a search hit or saved position full and footnote links intact.
+- Fix split EPUB footnote markers, blank lines after them, and half-empty pages before search hits or saved positions.
+- Return from EPUB notes to the cited passage with a click or with `Tab` and `Enter`.
 
 ## 0.1.14 — 2026-11-14
 
