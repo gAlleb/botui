@@ -38,6 +38,36 @@ pub struct TextCell {
 }
 
 impl Pager {
+    /// Follow an off-screen text cursor without making every cursor row a new page.
+    pub fn reveal_cursor(&mut self, at: Anchor) {
+        self.finish_resize();
+        if self.lines.is_empty() || self.layout.height == 0 {
+            return;
+        }
+        if self.layout.scrolling {
+            self.seek(at);
+            return;
+        }
+        let row = Self::line_at(at, &self.lines, &self.source_lines);
+        if row < self.first {
+            self.previous();
+        } else if row >= self.complete_view().end() {
+            self.next();
+        }
+        // A counted motion or a jump can cross more than one spread.
+        if !(self.first..self.complete_view().end()).contains(&row) {
+            let first = if self.page_starts.is_empty() {
+                let height = self.viewport() * self.layout.columns;
+                row / height * height
+            } else {
+                let column = self.page_starts.partition_point(|&start| start <= row) - 1;
+                self.page_starts[column / self.layout.columns * self.layout.columns]
+            };
+            self.positioned_pages.clear();
+            self.move_to(first);
+        }
+    }
+
     pub fn text_line_range(&mut self, doc: &Document, at: Anchor) -> Option<TextRange> {
         self.finish_resize();
         let row = Self::line_at(at, &self.lines, &self.source_lines);
@@ -506,6 +536,51 @@ mod tests {
                 .map(|r| d.text_range(r)),
             Some("мир".into())
         );
+    }
+
+    #[test]
+    fn following_the_cursor_uses_the_same_spreads_as_page_turns() {
+        let d = Document {
+            blocks: (0..60)
+                .map(|n| Block {
+                    text: format!("Passage {n}"),
+                    heading: n == 16,
+                })
+                .collect(),
+            chapter_starts: [16].into(),
+            ..Default::default()
+        };
+        let at = |block| Anchor { block, byte: 0 };
+        for mode in [LayoutMode::Single, LayoutMode::Spread] {
+            let mut p = Pager::new(&d, 80, 8, mode);
+            p.seek(at(16));
+            p.previous();
+            let previous = p.anchor();
+            assert!(previous.block < 14);
+            p.next();
+            let next = p.anchor();
+            assert_eq!(next, at(16));
+
+            p.reveal_cursor(at(15));
+            assert_eq!(p.anchor(), previous);
+            p.reveal_cursor(at(14));
+            assert_eq!(p.anchor(), previous);
+            p.reveal_cursor(at(16));
+            assert_eq!(p.anchor(), next);
+
+            let far = at(53);
+            p.reveal_cursor(far);
+            let spread = p.anchor();
+            assert!(spread <= far);
+            assert!((0..p.columns()).any(|col| p.lines(col).iter().any(|row| row.anchor() == far)));
+            p.previous();
+            p.next();
+            assert_eq!(p.anchor(), spread);
+        }
+        let mut p = Pager::new(&d, 80, 6, LayoutMode::Scroll);
+        p.seek(at(16));
+        p.reveal_cursor(at(15));
+        assert_eq!(p.anchor(), at(15));
     }
 
     #[test]

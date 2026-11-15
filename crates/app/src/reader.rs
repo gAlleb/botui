@@ -227,7 +227,7 @@ impl Reader {
             && let Some(at) = self.study.cursor
             && !self.study.visible(at)
         {
-            self.pager.seek(at);
+            self.pager.reveal_cursor(at);
             self.dirty = true;
         }
         action
