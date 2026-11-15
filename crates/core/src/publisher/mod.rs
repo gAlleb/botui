@@ -367,7 +367,7 @@ impl Chapter {
         if std::iter::successors(Some(el), |n| n.parent.and_then(|p| doc.get_node(p)))
             .filter_map(|n| n.element_data())
             .any(|e| {
-                matches!(&*e.name.local, "table" | "math" | "pre")
+                matches!(&*e.name.local, "table" | "math" | "pre" | "a")
                     || marker(e, "data-botui-equation").is_some()
             })
         {

@@ -386,6 +386,69 @@ fn styled_fixture(body: &str, css: &str) -> botui_core::Document {
 }
 
 #[test]
+fn paging_back_from_a_citation_fills_prose_and_keeps_the_marker_whole() {
+    use botui_core::{Anchor, LayoutMode, Pager, ReflowOptions};
+    let paragraphs = (0..60)
+        .map(|n| format!("<p>Passage {n}.</p>"))
+        .collect::<String>();
+    let doc = styled_fixture(
+        &format!(
+            "<p><img src='fig.png'/></p>{paragraphs}<p>A marker<a href='#notes'>[21]</a> inside the passage.</p>{paragraphs}<p id='notes'>Notes</p>"
+        ),
+        "p { margin: 0 }",
+    );
+    let marker = doc.references.iter().find(|r| r.label == "[21]").unwrap();
+    let start = marker.bytes.as_ref().unwrap().start;
+    for mode in [LayoutMode::Single, LayoutMode::Spread] {
+        for resume in [
+            None,
+            Some(Anchor {
+                block: marker.source,
+                byte: start + 1,
+            }),
+        ] {
+            let at = resume.unwrap_or(Anchor {
+                block: marker.source,
+                byte: start,
+            });
+            let mut pager = Pager::with_start(
+                &doc,
+                100,
+                9,
+                mode,
+                ReflowOptions {
+                    repair_printed: true,
+                    inline_images: true,
+                    paragraph_indent: 0,
+                    paragraph_spacing: Some(0),
+                },
+                resume,
+            );
+            pager.seek(at);
+            let hit = pager.lines(0)[0].text.clone();
+            assert!(
+                hit.contains("marker[21] inside"),
+                "{mode:?} {resume:?}: {hit:?}"
+            );
+            pager.previous();
+            for col in 0..pager.columns() {
+                assert_eq!(
+                    pager.lines(col).len(),
+                    9,
+                    "{mode:?} {resume:?}: column {col}"
+                );
+            }
+            assert_eq!(
+                pager.lines(pager.columns() - 1).last().unwrap().text,
+                "Passage 59."
+            );
+            pager.next();
+            assert_eq!(pager.lines(0)[0].text, hit);
+        }
+    }
+}
+
+#[test]
 fn raised_footnotes_keep_wrapped_prose_on_consecutive_rows() {
     use botui_core::{LayoutMode, Pager, ReflowOptions};
     for marker in [

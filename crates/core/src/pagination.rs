@@ -222,6 +222,31 @@ impl BookLayout {
 }
 
 impl Layout {
+    /// Fill the column immediately before an exact reading position. If its
+    /// first row would cut a picture, leave the whole picture on the earlier page.
+    fn page_start(self, rows: &[PageLine], end: usize) -> usize {
+        let limit = end.saturating_sub(self.height);
+        let mut start = limit;
+        while start < end {
+            let mut after = start;
+            for figure in &rows[start].figures {
+                if figure.row > 0 && usize::from(figure.height) <= self.height {
+                    let bottom = start + usize::from(figure.height - figure.row);
+                    if bottom >= end {
+                        // The reading position is in the image or in an overlapping float.
+                        return limit;
+                    }
+                    after = after.max(bottom);
+                }
+            }
+            if after == start {
+                break;
+            }
+            start = after;
+        }
+        start
+    }
+
     /// Find a column break without cutting an illustration that fits on a fresh page.
     fn page_end(self, rows: &[PageLine], first: usize) -> usize {
         let limit = (first + self.height).min(rows.len());
@@ -308,17 +333,19 @@ impl Pager {
         if self.layout.scrolling || !self.book.has_figures || self.layout.height == 0 {
             return;
         }
-        // A search, bookmark, or synced position can start a page at an exact word.
-        // Index both sides of that break so turning back retraces the same columns.
-        let mut start = 0;
+        // A search or restored position can start a page at an exact word.
+        // Fill the preceding columns backwards from it; clipping a forward
+        // page at the hit can leave almost its entire column empty.
+        let mut start = self.first;
+        while start > 0 {
+            start = self.layout.page_start(&self.lines, start);
+            self.page_starts.push(start);
+        }
+        self.page_starts.reverse();
+        start = self.first;
         while start < self.lines.len() {
             self.page_starts.push(start);
-            let end = self.layout.page_end(&self.lines, start);
-            start = if start < self.first {
-                end.min(self.first)
-            } else {
-                end
-            };
+            start = self.layout.page_end(&self.lines, start);
         }
     }
 
