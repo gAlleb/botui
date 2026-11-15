@@ -81,10 +81,15 @@ impl BookLayout {
             reflow: publisher::Reflow::new(doc),
         }
     }
-    pub(super) fn size(&self, layout: Layout) -> (u16, usize) {
+    pub(super) fn size(&self, layout: Layout) -> super::reflow_cache::Geometry {
         (
             layout.width,
             if self.uses_height { layout.height } else { 0 },
+            if self.has_figures {
+                layout.image_cell
+            } else {
+                (1, 2)
+            },
         )
     }
 
@@ -99,7 +104,7 @@ impl BookLayout {
             .layout(doc, layout, self, |start| range.contains(&start));
         let mut lines = Vec::new();
         self.append(&mut lines, doc, layout, range, &mut styled);
-        lines
+        media::space_figures(lines, doc, layout.image_cell)
     }
 
     // Ranges start and end at chapter boundaries, so printed paragraphs and tables stay intact.
@@ -450,7 +455,10 @@ impl Pager {
         mode: LayoutMode,
         gap: u16,
     ) {
-        let layout = Layout::new(width, height, mode, gap);
+        let layout = Layout {
+            image_cell: self.image_cell,
+            ..Layout::new(width, height, mode, gap)
+        };
         if let Some(p) = &self.pending {
             if p.layout == layout {
                 if p.task.as_ref().unwrap().is_finished() {
@@ -488,6 +496,9 @@ impl Pager {
         let mut first = 0;
         for next in boundaries {
             rows.extend(self.book.lines(doc, layout, end..next));
+            if end != start {
+                rows = media::space_figures(rows, doc, layout.image_cell);
+            }
             end = next;
             let index = Self::source_index(doc, &rows);
             // A hidden chapter opening can resolve to the last visible word of its predecessor.
@@ -530,6 +541,7 @@ impl Pager {
                 if stop.load(Ordering::Relaxed) {
                     return None;
                 }
+                let lines = media::space_figures(lines, &doc, layout.image_cell);
                 Some(Snapshot {
                     size: book.size(layout),
                     sources: Self::source_index(&doc, &lines),

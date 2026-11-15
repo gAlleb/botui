@@ -286,6 +286,24 @@ pub(super) fn parse(bytes: &[u8], fallback: &str) -> Result<Document> {
         inline,
         styled: Default::default(),
         image_pages: vec![],
+        image_sizes: root
+            .children()
+            .filter(|n| n.has_tag_name("binary"))
+            .filter_map(|n| {
+                use base64::{Engine, engine::general_purpose::STANDARD};
+                let id = n.attribute("id")?;
+                // Only read the header, even when the embedded binary is several MiB.
+                let prefix: Vec<_> = n
+                    .text()?
+                    .bytes()
+                    .filter(|b| !b.is_ascii_whitespace())
+                    .take(32768)
+                    .collect();
+                let header = STANDARD.decode(prefix).ok()?;
+                let size = imagesize::blob_size(&header).ok()?;
+                Some((id.to_owned(), (size.width, size.height)))
+            })
+            .collect(),
         tables,
         references,
         epub_anchors: Default::default(),

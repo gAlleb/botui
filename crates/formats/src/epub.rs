@@ -127,8 +127,12 @@ pub(super) fn read_book(reader: impl Read + Seek, fallback: &str) -> Result<Docu
                 .filter(|(_, l)| l.image)
                 .map(|(i, l)| {
                     let size = if l.href.starts_with(super::svg::INLINE) {
-                        scraper::ElementRef::wrap(dom.tree.get(l.node).unwrap())
-                            .and_then(|e| super::svg::size(|key| e.attr(key)))
+                        let size = scraper::ElementRef::wrap(dom.tree.get(l.node).unwrap())
+                            .and_then(|e| super::svg::size(|key| e.attr(key)));
+                        if let Ok(key) = super::svg::locator(&member, &l.href) {
+                            image_sizes.insert(key, size);
+                        }
+                        size
                     } else {
                         member_path(&member, &l.href).ok().and_then(|member| {
                             *image_sizes.entry(member.clone()).or_insert_with(|| {
@@ -310,6 +314,10 @@ pub(super) fn read_book(reader: impl Read + Seek, fallback: &str) -> Result<Docu
         fixed_breaks: Default::default(),
         inline: Default::default(),
         image_pages,
+        image_sizes: image_sizes
+            .into_iter()
+            .filter_map(|(k, size)| Some((k, size?)))
+            .collect(),
         styled,
         tables,
         references,

@@ -83,3 +83,87 @@ pub(super) fn table(lines: &mut Vec<PageLine>, start: usize, row: &TableRow, wid
         });
     }
 }
+
+/// Replace the vertical margins around a standalone picture before paginating.
+/// Images alongside text, table cells or other artwork retain their CSS layout.
+pub(super) fn space_figures(
+    lines: Vec<PageLine>,
+    doc: &super::Document,
+    cell: (u16, u16),
+) -> Vec<PageLine> {
+    if !lines.iter().any(|line| !line.figures.is_empty()) {
+        return lines;
+    }
+    let mut result = Vec::with_capacity(lines.len());
+    let mut rows = lines.into_iter();
+    let mut after_image = false;
+    while let Some(line) = rows.next() {
+        let Some(figure) = standalone_figure(&line, rows.as_slice()) else {
+            if after_image {
+                if line.figures.is_empty() && bare(&line) {
+                    continue;
+                }
+                result.push(PageLine {
+                    start: result.last().map_or(line.start, PageLine::anchor),
+                    ..Default::default()
+                });
+            }
+            after_image = false;
+            result.push(line);
+            continue;
+        };
+        while result
+            .last()
+            .is_some_and(|l| l.figures.is_empty() && bare(l))
+        {
+            result.pop();
+        }
+        if let Some(prev) = result.last() {
+            result.push(PageLine {
+                start: prev.start,
+                ..Default::default()
+            });
+        }
+        let mut height = figure.height;
+        if let super::Target::Image(member) = &doc.references[figure.reference].target
+            && let Some(&(w, h)) = doc.image_sizes.get(member)
+            && w > 0
+            && h > 0
+        {
+            let fitted = f64::from(figure.width) * f64::from(cell.0) * h as f64
+                / (f64::from(cell.1) * w as f64);
+            height = height.min((fitted.round() as u16).max(1));
+        }
+        for mut row in
+            std::iter::once(line).chain(rows.by_ref().take(usize::from(figure.height - 1)))
+        {
+            if row.figures[0].row < height {
+                row.figures[0].height = height;
+                result.push(row);
+            }
+        }
+        after_image = true;
+    }
+    result
+}
+
+fn bare(line: &PageLine) -> bool {
+    line.text.trim().is_empty()
+        && line.surfaces.is_empty()
+        && !line.table_header
+        && line.spans.iter().all(|s| s.source.is_none())
+}
+
+fn standalone_figure(first: &PageLine, following: &[PageLine]) -> Option<super::Figure> {
+    let [figure] = first.figures.as_slice() else {
+        return None;
+    };
+    if figure.row != 0 || !bare(first) {
+        return None;
+    }
+    let rest = following.get(..usize::from(figure.height.checked_sub(1)?))?;
+    let complete = rest.iter().enumerate().all(|(index, line)| {
+        bare(line) && matches!(line.figures.as_slice(), [part] if part.reference == figure.reference && usize::from(part.row) == index + 1)
+    });
+    complete.then_some(*figure)
+}

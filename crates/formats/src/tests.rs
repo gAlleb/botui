@@ -805,6 +805,28 @@ fn illustrations_fit_the_viewport_and_hidden_figures_take_no_space() {
 }
 
 #[test]
+fn standalone_illustrations_use_one_blank_row_at_the_actual_cell_shape() {
+    use botui_core::{LayoutMode, Pager};
+    let mut doc = styled_fixture(
+        r#"<p>Before</p><figure><img src="fig.png"/></figure><p>After</p>"#,
+        "figure{margin:3.25em 0 0} img{display:block;width:160px;height:160px}",
+    );
+    doc.image_sizes.insert("fig.png".into(), (400, 200));
+    let mut pager = Pager::new(&doc, 64, 32, LayoutMode::Single);
+    for (cell, height) in [((8, 16), 5), ((8, 26), 3), ((8, 16), 5)] {
+        pager.set_image_cell(cell.0, cell.1);
+        pager.relayout(&doc, 64, 32, LayoutMode::Single);
+        let rows = pager.lines(0);
+        let before = rows.iter().position(|l| l.text.contains("Before")).unwrap();
+        let first = rows.iter().position(|l| !l.figures.is_empty()).unwrap();
+        let after = rows.iter().position(|l| l.text.contains("After")).unwrap();
+        assert_eq!(first, before + 2);
+        assert_eq!(rows[first].figures[0].height, height);
+        assert_eq!(after, first + usize::from(height) + 1);
+    }
+}
+
+#[test]
 fn publisher_figures_move_whole_across_page_breaks() {
     use botui_core::{LayoutMode, Pager};
     let doc = styled_fixture(

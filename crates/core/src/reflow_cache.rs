@@ -2,8 +2,10 @@
 use crate::{Anchor, PageLine};
 use std::collections::VecDeque;
 
+pub(crate) type Geometry = (u16, usize, (u16, u16));
+
 pub(crate) struct Snapshot {
-    pub size: (u16, usize),
+    pub size: Geometry,
     pub lines: Vec<PageLine>,
     pub sources: Vec<(Anchor, usize)>,
 }
@@ -29,7 +31,7 @@ pub(crate) struct Cache {
     bytes: usize,
 }
 impl Cache {
-    pub fn take(&mut self, size: (u16, usize)) -> Option<Snapshot> {
+    pub fn take(&mut self, size: Geometry) -> Option<Snapshot> {
         let i = self.entries.iter().position(|(s, _)| s.size == size)?;
         let (snapshot, bytes) = self.entries.remove(i)?;
         self.bytes -= bytes;

@@ -30,6 +30,8 @@ pub struct Document {
     pub inline: std::collections::BTreeMap<usize, Vec<publisher::TextSpan>>,
     /// Ordered archive members when the entire reading order consists of raster plates.
     pub image_pages: Vec<String>,
+    /// Intrinsic dimensions from embedded image headers, keyed by archive member.
+    pub image_sizes: std::collections::HashMap<String, (usize, usize)>,
     pub styled: std::collections::BTreeMap<usize, publisher::Chapter>,
     pub tables: std::collections::BTreeMap<usize, TableRow>,
     pub references: Vec<Reference>,
@@ -202,6 +204,7 @@ struct Layout {
     height: usize,
     gutter: u16,
     scrolling: bool,
+    image_cell: (u16, u16),
 }
 
 impl Layout {
@@ -218,6 +221,7 @@ impl Layout {
             height: height.into(),
             gutter,
             scrolling: mode == LayoutMode::Scroll,
+            image_cell: (1, 2),
         }
     }
 }
@@ -232,6 +236,7 @@ pub struct ReflowOptions {
 }
 
 pub struct Pager {
+    image_cell: (u16, u16),
     book: Arc<BookLayout>,
     reflow_cache: reflow_cache::Cache,
     pending: Option<pagination::Pending>,
@@ -311,10 +316,26 @@ impl Pager {
         options: ReflowOptions,
         resume: Option<Anchor>,
     ) -> Self {
-        let layout = Layout::new(width, height, mode, gap);
+        Self::for_display(doc, (width, height), mode, gap, options, resume, (1, 2))
+    }
+
+    pub fn for_display(
+        doc: &Document,
+        (width, height): (u16, u16),
+        mode: LayoutMode,
+        gap: u16,
+        options: ReflowOptions,
+        resume: Option<Anchor>,
+        image_cell: (u16, u16),
+    ) -> Self {
+        let layout = Layout {
+            image_cell,
+            ..Layout::new(width, height, mode, gap)
+        };
         let book = Arc::new(BookLayout::new(doc, options, resume));
         let lines = book.lines(doc, layout, 0..doc.blocks.len());
         let mut pager = Self {
+            image_cell: layout.image_cell,
             book,
             reflow_cache: reflow_cache::Cache::default(),
             pending: None,
@@ -350,8 +371,20 @@ impl Pager {
         options: ReflowOptions,
     ) {
         let focus = self.focus;
-        *self = Self::with_start_and_gap(doc, width, height, mode, gap, options, self.book.resume);
+        *self = Self::for_display(
+            doc,
+            (width, height),
+            mode,
+            gap,
+            options,
+            self.book.resume,
+            self.image_cell,
+        );
         self.seek(focus);
+    }
+
+    pub fn set_image_cell(&mut self, width: u16, height: u16) {
+        self.image_cell = (width.max(1), height.max(1));
     }
 
     pub fn relayout_with_gap(
@@ -362,7 +395,10 @@ impl Pager {
         mode: LayoutMode,
         gap: u16,
     ) {
-        let layout = Layout::new(width, height, mode, gap);
+        let layout = Layout {
+            image_cell: self.image_cell,
+            ..Layout::new(width, height, mode, gap)
+        };
         self.pending = None;
         if !self.use_cached_layout(layout) {
             let lines = self.book.lines(doc, layout, 0..doc.blocks.len());
@@ -619,6 +655,7 @@ mod tests {
             fixed_breaks: Default::default(),
             inline: Default::default(),
             image_pages: vec![],
+            image_sizes: Default::default(),
             styled: Default::default(),
             tables: Default::default(),
             title: "Книга".into(),
@@ -720,7 +757,8 @@ mod tests {
         assert_eq!(pager.lines(0).len(), 4);
         assert!(strip(pager.lines(0)).is_empty());
         assert_eq!(strip(pager.lines(1)), full);
-        assert_eq!(pager.lines(1)[4].text, "Caption");
+        assert!(pager.lines(1)[4].text.is_empty());
+        assert_eq!(pager.lines(1)[5].text, "Caption");
         assert_eq!(pager.page_count(), 3);
         assert_eq!(pager.nearby_illustrations().count(), 0);
         pager.next();
@@ -732,7 +770,7 @@ mod tests {
                 .collect::<Vec<_>>(),
             [0]
         );
-        assert_eq!(pager.lines(0)[0].text, "Four");
+        assert_eq!(pager.lines(0)[1].text, "Four");
         assert!(pager.at_end());
         pager.previous();
         assert_eq!(pager.page_number(), 1);

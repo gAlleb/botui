@@ -264,10 +264,15 @@ impl Reader {
         let (_, page) = layout::panes(area, &mut splitter, settings.zen);
         let (text, mode_for_size, actual_gap) =
             layout::geometry(page, mode, page_width, gap, settings.zen);
-        let pager = Pager::with_start_and_gap(
+        let image_cell = if doc.image_sizes.is_empty() {
+            (1, 2)
+        } else {
+            let cell = crate::cover::graphics().font_size();
+            (cell.width, cell.height)
+        };
+        let pager = Pager::for_display(
             &doc,
-            text.width,
-            text.height,
+            (text.width, text.height),
             mode_for_size,
             actual_gap,
             ReflowOptions {
@@ -277,6 +282,7 @@ impl Reader {
                 paragraph_spacing: settings.paragraph_spacing,
             },
             remote.or_else(|| saved.as_ref().map(|s| s.anchor)),
+            image_cell,
         );
         let marks = saved.as_ref().map(|s| s.marks.clone()).unwrap_or_default();
         let theme = settings
@@ -360,6 +366,10 @@ impl Reader {
             layout::geometry(page, self.mode, self.page_width, self.gap, self.zen);
         self.text_rect = text;
         self.study.begin_frame();
+        if !self.doc.image_sizes.is_empty() {
+            let cell = crate::cover::graphics().font_size();
+            self.pager.set_image_cell(cell.width, cell.height);
+        }
         self.pager
             .resize_for_display(&self.doc, text.width, text.height, actual, gap);
         self.search.update(&self.pager, &self.doc);
