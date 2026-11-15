@@ -715,6 +715,7 @@ mod tests {
         assert_eq!(strip(pager.lines(1)), full);
         assert_eq!(pager.lines(1)[4].text, "Caption");
         assert_eq!(pager.page_count(), 3);
+        assert!(pager.next_illustrations().next().is_none());
         pager.next();
         assert_eq!(pager.page_number(), 3);
         assert_eq!(pager.lines(0)[0].text, "Four");
@@ -724,6 +725,11 @@ mod tests {
         assert_eq!(strip(pager.lines(1)), full);
 
         pager.relayout(&doc, 80, 6, LayoutMode::Single);
+        let upcoming = pager
+            .next_illustrations()
+            .map(|f| (f.row, f.height))
+            .collect::<Vec<_>>();
+        assert_eq!(upcoming, full);
         pager.next();
         assert_eq!(strip(pager.lines(0)), full);
         pager.previous();

@@ -42,20 +42,51 @@ impl AppTerminal {
         &mut self,
         render: impl FnOnce(&mut Frame),
     ) -> io::Result<ratatui::CompletedFrame<'_>> {
+        self.publish(render, &mut None)
+    }
+
+    /// Sixel stores pixels directly on the terminal. If a pending background
+    /// image arrives underneath the dialog, publish its raster before the dialog
+    /// masks the image's first cell. Both passes share one synchronized update.
+    pub fn draw_layered(
+        &mut self,
+        refresh_background: bool,
+        mut background: impl FnMut(&mut Frame),
+        overlay: impl FnOnce(&mut Frame),
+    ) -> io::Result<()> {
         let mut update = None;
+        if refresh_background && crate::cover::sixel_active() {
+            self.publish(&mut background, &mut update)?;
+        }
+        self.publish(
+            |frame| {
+                background(frame);
+                overlay(frame);
+            },
+            &mut update,
+        )?;
+        Ok(())
+    }
+
+    fn publish(
+        &mut self,
+        render: impl FnOnce(&mut Frame),
+        update: &mut Option<Update>,
+    ) -> io::Result<ratatui::CompletedFrame<'_>> {
         let sixel = &mut self.1;
-        let frame = self.0.try_draw(|frame| {
+        self.0.try_draw(|frame| -> io::Result<()> {
             // Capability queries and image preparation happen before holding
             // the display. Only publishing the finished frame is synchronized.
             render(frame);
             if crate::cover::sixel_active() {
                 stabilize_sixel(frame.buffer_mut(), sixel);
             }
-            update = Some(Update);
-            execute!(io::stdout(), BeginSynchronizedUpdate)
-        })?;
-        drop(update);
-        Ok(frame)
+            if update.is_none() {
+                *update = Some(Update);
+                execute!(io::stdout(), BeginSynchronizedUpdate)?;
+            }
+            Ok(())
+        })
     }
 }
 

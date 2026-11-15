@@ -25,7 +25,7 @@ use botui_store::{LocalState, Saved};
 use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind};
 use ratatui::{
     Frame,
-    layout::{Position, Rect},
+    layout::{Position, Rect, Size},
     style::Modifier,
     widgets::{Block, Clear, Paragraph, Row, Table, TableState},
 };
@@ -444,11 +444,39 @@ impl Reader {
                 }
             }
         }
-        if !figures.is_empty() {
+        // Queue visible artwork first. Use idle workers to decode the next spread
+        // while the current text is being read, without waiting on a page turn.
+        let mut upcoming = Vec::new();
+        for figure in self.pager.next_illustrations() {
+            let artwork = (figure.reference, Size::new(figure.width, figure.height));
+            if !upcoming.contains(&artwork) && !figures.iter().any(|f| f.id == figure.reference) {
+                upcoming.push(artwork);
+                if upcoming.len() == 2 {
+                    break;
+                }
+            }
+        }
+        if !figures.is_empty() || !upcoming.is_empty() {
             let pictures = self
                 .illustrations
                 .get_or_insert_with(|| crate::shelf::covers::Covers::with_capacity(8));
-            pictures.fit_visible(figures.len());
+            pictures.fit_visible(figures.len() + upcoming.len());
+            let graphics = crate::cover::graphics();
+            let visible = figures
+                .iter()
+                .map(|f| (f.id, Size::new(f.area.width, f.height)));
+            for (id, bounds) in visible.chain(upcoming) {
+                if let botui_core::Target::Image(member) = &self.doc.references[id].target {
+                    let member = member.clone();
+                    let path = self.source.clone();
+                    let picker = graphics.clone();
+                    pictures.request_with(
+                        id as u64,
+                        move || Ok(botui_formats::illustration(&path, &member).ok()),
+                        move |bytes| crate::cover::Picture::inline(bytes, &picker, bounds),
+                    );
+                }
+            }
             for VisibleFigure {
                 id,
                 area,
@@ -457,37 +485,24 @@ impl Reader {
             } in figures
             {
                 let entry = &self.doc.references[id];
-                if let botui_core::Target::Image(member) = &entry.target {
-                    let member = member.clone();
-                    let path = self.source.clone();
-                    pictures.request_with(
-                        id as u64,
-                        move || Ok(botui_formats::illustration(&path, &member).ok()),
-                        crate::cover::Picture::inline,
-                    );
-                    if let Some(picture) = pictures.image(id as u64) {
-                        if let Some(hit) = picture.draw_inline(
-                            frame,
-                            area,
-                            &crate::cover::graphics(),
-                            first_row,
-                            height,
-                        ) {
-                            self.links.image(hit, id);
-                        }
-                    } else {
-                        self.links.image(area, id);
-                        frame.render_widget(
-                            Paragraph::new(format!("Illustration · {}", entry.label))
-                                .centered()
-                                .style(style.add_modifier(Modifier::DIM)),
-                            Rect {
-                                y: area.y + area.height / 2,
-                                height: 1,
-                                ..area
-                            },
-                        );
+                if let Some(picture) = pictures.image(id as u64) {
+                    if let Some(hit) =
+                        picture.draw_inline(frame, area, &graphics, first_row, height)
+                    {
+                        self.links.image(hit, id);
                     }
+                } else {
+                    self.links.image(area, id);
+                    frame.render_widget(
+                        Paragraph::new(format!("Illustration · {}", entry.label))
+                            .centered()
+                            .style(style.add_modifier(Modifier::DIM)),
+                        Rect {
+                            y: area.y + area.height / 2,
+                            height: 1,
+                            ..area
+                        },
+                    );
                 }
             }
         }

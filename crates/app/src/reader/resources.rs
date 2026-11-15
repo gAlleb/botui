@@ -137,6 +137,7 @@ fn view(
     let mut scroll = 0u16;
     let graphics = graphics();
     let mut viewer = crate::cover_viewer::Viewer::default();
+    let mut refresh_background = true;
     loop {
         let mut page = 1;
         let mut limit = 0;
@@ -146,8 +147,7 @@ fn view(
             crate::prompt::message(term, "Open illustration", &error)?;
         }
         let mut loading = false;
-        term.draw(|f| {
-            loading = background(f);
+        let draw_dialog = |f: &mut ratatui::Frame| {
             let screen = f.area();
             let area = centered(
                 screen,
@@ -219,11 +219,18 @@ fn view(
                 }
             });
             crate::settings::paint_dialog(f)
-        })?;
+        };
+        term.draw_layered(
+            refresh_background,
+            |f| loading |= background(f),
+            draw_dialog,
+        )?;
+        refresh_background = loading;
         let timeout = (loading || viewer.busy()).then(|| std::time::Duration::from_millis(70));
         let Some(event) = crate::settings::read_event_for(timeout)? else {
             continue;
         };
+        refresh_background |= matches!(event, Event::Resize(..));
         let open = match event {
             Event::Key(k) => k.kind != KeyEventKind::Release && k.code == KeyCode::Char('o'),
             Event::Mouse(m) => {

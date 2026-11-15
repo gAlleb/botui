@@ -110,7 +110,7 @@ impl Covers {
         &mut self,
         id: u64,
         fetch: impl FnOnce() -> botui_bookorbit::Result<Option<Vec<u8>>> + Send + 'static,
-        decode: fn(Vec<u8>) -> Option<Picture>,
+        decode: impl FnOnce(Vec<u8>) -> Option<Picture> + Send + 'static,
     ) {
         if self
             .images

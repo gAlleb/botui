@@ -239,8 +239,15 @@ impl Picture {
         picture.is_cover = true;
         Some(picture)
     }
-    pub fn inline(bytes: Vec<u8>) -> Option<Self> {
-        Self::decode(&bytes, 720, 540)
+    pub fn inline(bytes: Vec<u8>, picker: &Picker, bounds: Size) -> Option<Self> {
+        let picture = Self::decode(&bytes, 720, 540)?;
+        if !monochrome() {
+            picture.refresh_resolution(picker);
+            if let (_, Some(key)) = picture.inline_geometry(picker, bounds) {
+                picture.prepare_sliced(picker, key);
+            }
+        }
+        Some(picture)
     }
     pub fn illustration(bytes: &[u8]) -> Option<Self> {
         Self::decode(bytes, 2048, 2048)
@@ -292,27 +299,9 @@ impl Picture {
             return draw_mono(frame, &self.source, area, first, height);
         }
         self.refresh_resolution(picker);
-        let font = picker.font_size();
-        let size = Resize::Scale(None).size_for(&self.source, font, Size::new(area.width, height));
+        let (size, key) = self.inline_geometry(picker, Size::new(area.width, height));
         let (visible, skip) = visible_figure(area, first, height, size)?;
-        let crop = Crop::default();
-        let key = CellStrip {
-            scan: false,
-            width: area.width,
-            rows: height.into(),
-            x: crop.x,
-            zoom: crop.percent,
-        };
-        // Bound native uploads and Kitty placeholder coordinates. Larger images and
-        // iTerm2 use the same source-region fallback as the continuous PDF reader.
-        if size.width <= 280
-            && size.height <= 280
-            && u64::from(size.width)
-                * u64::from(font.width)
-                * u64::from(size.height)
-                * u64::from(font.height)
-                <= 4_000_000
-            && picker.protocol_type() != ProtocolType::Iterm2
+        if let Some(key) = key
             && self.draw_sliced(frame, visible, picker, key, skip)
         {
             return Some(visible);
@@ -321,11 +310,33 @@ impl Picture {
             frame,
             visible,
             picker,
-            crop,
+            Crop::default(),
             skip.into(),
             size.height.into(),
         );
         Some(visible)
+    }
+
+    fn inline_geometry(&self, picker: &Picker, bounds: Size) -> (Size, Option<CellStrip>) {
+        let font = picker.font_size();
+        let size = Resize::Scale(None).size_for(&self.source, font, bounds);
+        // Larger images and iTerm2 use the source-region fallback in draw_inline.
+        let pixels = u64::from(size.width)
+            * u64::from(font.width)
+            * u64::from(size.height)
+            * u64::from(font.height);
+        let key = (size.width <= 280
+            && size.height <= 280
+            && pixels <= 4_000_000
+            && picker.protocol_type() != ProtocolType::Iterm2)
+            .then_some(CellStrip {
+                scan: false,
+                width: bounds.width,
+                rows: bounds.height.into(),
+                x: Crop::default().x,
+                zoom: Crop::default().percent,
+            });
+        (size, key)
     }
 
     fn draw_sliced(

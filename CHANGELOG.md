@@ -3,6 +3,7 @@
 ## Unreleased
 
 - Keep illustrations visible around open footnotes.
+- Preload upcoming illustrations while reading.
 
 ## 0.1.15 — 2026-11-15
 

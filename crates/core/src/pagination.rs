@@ -349,16 +349,24 @@ impl Pager {
         }
     }
 
+    fn view_at(&self, first: usize) -> Viewport<'_> {
+        let next = self.page_starts.partition_point(|&start| start <= first);
+        Viewport::new(self.layout, &self.lines, first, &self.page_starts[next..])
+    }
+
     pub(super) fn complete_view(&self) -> Viewport<'_> {
-        let next = self
-            .page_starts
-            .partition_point(|&start| start <= self.first);
-        Viewport::new(
-            self.layout,
-            &self.lines,
-            self.first,
-            &self.page_starts[next..],
-        )
+        self.view_at(self.first)
+    }
+
+    /// Illustrations on the next page or spread, in reading order.
+    pub fn next_illustrations(&self) -> impl Iterator<Item = &Figure> {
+        let rows = if self.book.has_figures && self.pending.is_none() {
+            let first = self.complete_view().end();
+            &self.lines[first..self.view_at(first).end()]
+        } else {
+            &[]
+        };
+        rows.iter().flat_map(|line| &line.figures)
     }
 
     pub fn viewport_rows(&self) -> Viewport<'_> {

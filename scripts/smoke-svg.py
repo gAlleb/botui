@@ -4,6 +4,7 @@ No desktop windows, server accounts or personal reading state are touched.
 """
 import base64, fcntl, json, os, pty, re, select, signal, struct, sys, tempfile, termios, time, zipfile, zlib
 from pathlib import Path
+from unicodedata import combining
 ROOT=Path(__file__).resolve().parents[1]
 
 def book(path, album=False):
@@ -16,10 +17,31 @@ def book(path, album=False):
         z.writestr('book.opf','<package><manifest><item id="c" href="c.xhtml" media-type="application/xhtml+xml"/><item id="s" href="diagram.svg" media-type="image/svg+xml"/></manifest><spine><itemref idref="c"/></spine></package>')
         z.writestr('c.xhtml',html);z.writestr('diagram.svg',svg)
 
-def check(binary, folder, album=False):
+def illustrated_page_turn(path):
+    # A page and a half of short paragraphs put the wide image on page two.
+    with zipfile.ZipFile(path, 'w') as archive:
+        archive.writestr('META-INF/container.xml', '<container><rootfile full-path="book.opf"/></container>')
+        archive.writestr('book.opf', '<package><manifest><item id="c" href="c.xhtml" media-type="application/xhtml+xml"/>'
+                         '<item id="n" href="notes.xhtml" media-type="application/xhtml+xml"/>'
+                         '<item id="fig" href="banner.svg" media-type="image/svg+xml"/></manifest>'
+                         '<spine><itemref idref="c"/></spine></package>')
+        archive.writestr('banner.svg', '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 120">'
+                         '<rect width="960" height="120" fill="red"/></svg>')
+        archive.writestr('c.xhtml', '<html><body>' + '<p>Approaching the illustration.</p>' * 27
+                         + '<p>Passage <a href="notes.xhtml#n">[1]</a></p>'
+                         '<img src="banner.svg" style="width:100%"/><p>After the figure.</p></body></html>')
+        archive.writestr('notes.xhtml', '<html><body><aside id="n"><p>Explanation of the passage.</p></aside></body></html>')
+
+
+def check(binary, folder, album=False, page_turn=False):
     (folder/'botui').mkdir()
     (folder/'botui/config.toml').write_text('reading_layout="scroll"\nzen=true\nzen_progress=true\n')
-    source=folder/'svg.epub';book(source,album)
+    source=folder/'svg.epub'
+    if page_turn:
+        (folder/'botui/config.toml').write_text('reading_layout="single"\nzen=true\npage_width=112\nparagraph_spacing=1\n')
+        illustrated_page_turn(source)
+    else:
+        book(source,album)
     env=dict(os.environ,XDG_CONFIG_HOME=str(folder),XDG_STATE_HOME=str(folder),XDG_CACHE_HOME=str(folder),TERM='xterm-kitty')
     for k in ('TMUX','STY','NO_COLOR','TERM_PROGRAM','KITTY_WINDOW_ID'):env.pop(k,None)
     pid,fd=pty.fork()
@@ -49,6 +71,28 @@ def check(binary, folder, album=False):
             del pending[:consumed]
     try:
         collect(3)
+        if page_turn:
+            assert not images and b'Approaching' in stream
+            stream.clear()
+            os.write(fd, b'\x1b[C')
+            collect(1)
+            first_frame = stream.split(b'\x1b[?2026l', 1)[0]
+            pixel = '\U0010eeee'
+            assert b'Passage' in first_frame and pixel.encode() in first_frame, 'First frame lacks the prefetched illustration'
+            os.write(fd, b' rf')
+            collect(.4)
+            stream.clear()
+            os.write(fd, b'\r')
+            collect(.5)
+            assert b'Explanation' in stream and b'passage.' in stream, 'Footnote did not open'
+            # A Kitty row normally starts at column zero (U+0305). Its first
+            # uncovered cell after the note must explicitly resume farther right.
+            painted = stream.decode('utf-8', errors='replace')
+            cells = painted.split(pixel)[1:]
+            assert any(len(cell) >= 3 and all(combining(c) for c in cell[:3])
+                       and cell[1] != '\u0305' for cell in cells), 'Missing image coordinates after the note'
+            print('PASS illustration on first page-turn frame and visible beyond the footnote', flush=True)
+            return
         assert images,'SVG did not reach the terminal'
         p,pixels=images[0];assert p.get(b'f')==b'32',p
         red=sum(1 for r,g,b,a in struct.iter_unpack('BBBB',pixels) if r>200 and g<50 and b<50 and a>128)
@@ -73,3 +117,5 @@ if __name__=='__main__':
     for binary in sys.argv[1:] or [str(ROOT/'target/debug/botui')]:
         for album in [False,True]:
             with tempfile.TemporaryDirectory(prefix='botui-svg-') as temp:check(Path(binary).resolve(),Path(temp),album)
+        with tempfile.TemporaryDirectory(prefix='botui-svg-turn-') as temp:
+            check(Path(binary).resolve(), Path(temp), page_turn=True)
