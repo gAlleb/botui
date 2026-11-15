@@ -134,6 +134,25 @@ botui --resume                 # Продолжить последнюю нез�
 
 Нажмите **Enter/L** для локальной библиотеки, **B** для BookOrbit или **P** для OPDS. Выбирайте стрелками и **Enter** либо щелчком мыши. **F1** показывает управление текущим экраном, **F2** открывает настройки. Названия пунктов интерфейса — на английском.
 
+### Создание desktop файла и настройка шрифтов
+
+Если хотите desktop файл - можете создать его с более точной настройкой шрифтов, например с `Iosevka Term Slab`:
+
+```sh
+[Desktop Entry]
+Name=botui
+Exec=kitty --class=botui -o 'font_family=family="Iosevka Term Slab" style="Extended Italic"' -o 'bold_font=family="Iosevka Term Slab" style="Bold Extended"'   -o 'italic_font=family="Iosevka Term Slab" style="Extended Italic"' -o 'bold_italic_font=family="Iosevka Term Slab" style="Bold Extended Italic"' -o font_size=18 -o window_margin_width=0 --title=botui -e bash -i -c "botui %F"
+Type=Application
+Comment=botui
+Terminal=false
+Icon=books
+Categories=Books;
+Keywords=books;reader;
+```
+<p align="center">
+  <img src="docs/images/kitty-fonts.png" width="50%" alt="fonts in kitty terminal">
+</p>
+
 ## Библиотеки
 
 Для всех источников используются одни и те же ридеры поддерживаемых форматов. BookOrbit и OPDS должны предоставлять доступное для скачивания издание в одном из этих форматов.
