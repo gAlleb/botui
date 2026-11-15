@@ -4,7 +4,7 @@ mod contents;
 mod controls;
 mod flow;
 mod history;
-mod layout;
+pub(crate) mod layout;
 mod menu;
 mod pages;
 mod paper;

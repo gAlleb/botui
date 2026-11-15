@@ -61,6 +61,25 @@ def check(tmp):
         t.wait("opened by mouse", lambda frame: button in frame and len(log.read_text().splitlines()) == 2)
         paths = log.read_text().splitlines()
         assert paths[0] == paths[1] and Path(paths[0]).read_bytes() == pic
+        # The toolbar wraps on a narrow terminal. Each mouse target must still
+        # address the same action as its printed key.
+        t.run("resize-window", "-t", "shelf", "-x", "36", "-y", "25")
+        t.click("[+]", t.see("[→]"))
+        t.see("110%")
+        t.keys("+", "+", "+", "+")
+        t.see("200%")
+        def colors():
+            return t.run("capture-pane", "-p", "-e", "-t", "shelf").stdout
+        center = colors()
+        t.keys("Up")
+        t.wait("pan up", lambda _: colors() != center)
+        t.click("[↓]", t.see("[↓]"))
+        t.wait("pan back down", lambda _: colors() == center)
+        t.keys("-")
+        t.see("175%")
+        t.click("[−]", t.see("[−]"))
+        t.see("150%")
+        t.run("resize-window", "-t", "shelf", "-x", "115", "-y", "30")
         t.keys("Escape")
         t.wait("closed illustration", lambda f:"[ Back · Esc ]" not in f)
         select(t,"Publisher website")

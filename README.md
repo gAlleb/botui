@@ -271,6 +271,7 @@ Commands depend on the document: text actions need selectable text; page zoom, r
 | `Space r [` | Jump back |
 | `Space r ]` | Jump forward |
 | `Space r i` | Links and illustrations (text reader) |
+| `+` / `-`, arrows | Zoom and pan an open illustration, or click its controls. |
 | `Space r f` | Follow visible links (text reader) |
 | `Space r p` | Go to page (PDF/DjVu/comics) |
 | `Space r +` | Zoom in (PDF/DjVu/comics) |

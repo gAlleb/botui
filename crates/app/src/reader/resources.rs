@@ -1,3 +1,4 @@
+mod illustration;
 mod note;
 use crate::{
     AppTerminal, centered,
@@ -135,14 +136,13 @@ fn view(
 ) -> io::Result<Option<Anchor>> {
     let mut note_page = None;
     let mut scroll = 0u16;
-    let graphics = graphics();
+    let mut illustration = illustration::Illustration::default();
     let mut viewer = crate::cover_viewer::Viewer::default();
     let mut refresh_background = true;
     loop {
         let mut page = 1;
         let mut limit = 0;
         let mut back = Rect::default();
-        let mut external = Rect::default();
         if let Some(error) = viewer.collect() {
             crate::prompt::message(term, "Open illustration", &error)?;
         }
@@ -165,14 +165,15 @@ fn view(
                 let inner = block.inner(area);
                 f.render_widget(Clear, area);
                 f.render_widget(block, area);
+                if let Content::Picture(picture, _) = content {
+                    illustration.draw(f, inner, picture, &graphics());
+                    return;
+                }
                 let body = Rect {
                     height: inner.height.saturating_sub(1),
                     ..inner
                 };
                 page = body.height.max(1);
-                if let Content::Picture(picture, _) = content {
-                    picture.draw(f, body, &graphics);
-                }
                 if let Content::Note(doc) = content {
                     note_page
                         .get_or_insert_with(|| note::NotePage::new(doc, body))
@@ -206,17 +207,6 @@ fn view(
                         hint,
                     );
                 }
-                if matches!(content, Content::Picture(..)) {
-                    let button = "[ Open externally · o ]";
-                    external = Rect::new(
-                        back.right().saturating_add(2),
-                        back.y,
-                        ratatui::text::Line::raw(button).width() as u16,
-                        back.height,
-                    )
-                    .intersection(inner);
-                    f.render_widget(Paragraph::new(button).cyan(), external);
-                }
             });
             crate::settings::paint_dialog(f)
         };
@@ -231,15 +221,16 @@ fn view(
             continue;
         };
         refresh_background |= matches!(event, Event::Resize(..));
-        let open = match event {
-            Event::Key(k) => k.kind != KeyEventKind::Release && k.code == KeyCode::Char('o'),
-            Event::Mouse(m) => {
-                m.kind == MouseEventKind::Down(MouseButton::Left)
-                    && external.contains((m.column, m.row).into())
+        if let Content::Picture(image, bytes) = content {
+            match illustration.key(&event) {
+                Some(KeyCode::Esc | KeyCode::Enter | KeyCode::Char('q' | ',')) => return Ok(None),
+                Some(KeyCode::Char('o')) => (),
+                Some(key) => {
+                    illustration.adjust(key);
+                    continue;
+                }
+                None => continue,
             }
-            _ => false,
-        };
-        if open && let Content::Picture(image, bytes) = content {
             // SVGs use the reader's self-contained rendering, including embedded resources.
             let result = if image::guess_format(bytes).is_ok() {
                 viewer.illustration(bytes)

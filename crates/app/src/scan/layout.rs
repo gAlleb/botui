@@ -3,12 +3,12 @@ use crate::cover::Crop;
 use ratatui::layout::{Rect, Size};
 
 #[derive(Clone, Copy, Debug)]
-pub(super) struct Placement {
+pub(crate) struct Placement {
     pub screen: Rect,
     pub window: [f32; 4],
 }
 
-pub(super) fn pages(
+pub(crate) fn pages(
     area: Rect,
     cell: Size,
     dimensions: &[(u32, u32)],

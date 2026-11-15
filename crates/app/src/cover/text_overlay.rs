@@ -16,7 +16,7 @@ impl Picture {
         let font = picker.font_size();
         let width = u32::from(size.width) * u32::from(font.width.max(1));
         let height = u32::from(size.height) * u32::from(font.height.max(1));
-        let mut image = self
+        let image = self
             .source
             .crop_imm(
                 x.min(w - 1),
@@ -28,8 +28,11 @@ impl Picture {
                 width.max(1),
                 height.max(1),
                 image::imageops::FilterType::Triangle,
-            )
-            .into_rgb8();
+            );
+        if marks.is_empty() {
+            return Self::new(image);
+        }
+        let mut image = image.into_rgb8();
         for (bounds, color) in marks {
             let px = |v: f32| {
                 ((v - window[0]) / (window[2] - window[0]) * width as f32).clamp(0., width as f32)
