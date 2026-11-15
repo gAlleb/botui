@@ -449,6 +449,48 @@ fn paging_back_from_a_citation_fills_prose_and_keeps_the_marker_whole() {
 }
 
 #[test]
+fn exact_epub_positions_after_chapter_titles_and_pictures_do_not_clip_the_previous_view() {
+    use botui_core::{Anchor, LayoutMode, Pager, ReflowOptions};
+    let passages = |label| {
+        (0..32)
+            .map(|n| format!("<p>{label} {n}.</p>"))
+            .collect::<String>()
+    };
+    let body = format!(
+        "<h1>First chapter</h1>{}<h1>Second chapter</h1>{}<img src='fig.png'/>{}",
+        passages("Beginning"),
+        passages("Chapter line"),
+        passages("After picture"),
+    );
+    let doc = styled_fixture(
+        &body,
+        "p,h1{margin:0} img{display:block;width:80px;height:96px}",
+    );
+    let options = ReflowOptions {
+        repair_printed: true,
+        inline_images: true,
+        paragraph_indent: 0,
+        paragraph_spacing: Some(0),
+    };
+    for mode in [LayoutMode::Single, LayoutMode::Spread] {
+        for label in ["Chapter line", "After picture"] {
+            for n in 1..8 {
+                let query = format!("{label} {n}.");
+                let block = doc.blocks.iter().position(|b| b.text == query).unwrap();
+                let at = Anchor { block, byte: 0 };
+                let cfi = doc.cfi(at).unwrap();
+                let mut pager = Pager::with_start(&doc, 90, 12, mode, options, Some(at));
+                assert_eq!(doc.cfi(pager.anchor()), Some(cfi));
+                assert!(pager.lines(0)[0].text.contains(&query));
+                pager.previous();
+                let final_column = pager.lines(pager.columns() - 1);
+                assert_eq!(final_column.len(), 12, "{mode:?} before {query}");
+            }
+        }
+    }
+}
+
+#[test]
 fn raised_footnotes_keep_wrapped_prose_on_consecutive_rows() {
     use botui_core::{LayoutMode, Pager, ReflowOptions};
     for marker in [
@@ -842,6 +884,47 @@ fn chapter_boundaries_survive_resize_page_turns_and_scroll_mode() {
     assert!(rows[heading - 2..heading].iter().all(|l| l.text.is_empty()));
     assert!(rows[heading + 1].text.is_empty());
     assert!(rows[heading + 2].text.contains("Next line."));
+}
+
+#[test]
+fn reopening_before_the_last_picture_keeps_the_next_chapter_title_at_the_top() {
+    use botui_core::{Anchor, LayoutMode, Pager, ReflowOptions};
+    let doc = read_book(archive(&[
+        ("META-INF/container.xml", "<container><rootfile full-path='p'/></container>"),
+        ("p", "<package><manifest><item id='a' href='a' media-type='application/xhtml+xml'/><item id='b' href='b' media-type='application/xhtml+xml'/><item id='i' href='i.png' media-type='image/png'/></manifest><spine><itemref idref='a'/><itemref idref='b'/></spine></package>"),
+        ("a", "<html><body><h2>Ten</h2><p>Ending of the chapter</p><figure><img src='i.png' style='width:100px;height:96px'/></figure></body></html>"),
+        ("b", "<html><body><h2>Eleven</h2><p>First words of a new chapter.</p></body></html>"),
+        ("i.png", "image"),
+    ]), "Illustrated chapters").unwrap();
+    let start = Anchor { block: 1, byte: 7 };
+    let options = ReflowOptions {
+        repair_printed: true,
+        inline_images: true,
+        paragraph_indent: 0,
+        paragraph_spacing: Some(1),
+    };
+    for height in [6, 12, 24] {
+        let mut pager =
+            Pager::with_start(&doc, 100, height, LayoutMode::Spread, options, Some(start));
+        let mut pictures = 0;
+        let mut titles = 0;
+        loop {
+            for column in 0..pager.columns() {
+                for (row, line) in pager.lines(column).iter().enumerate() {
+                    pictures += line.figures.iter().filter(|f| f.row == 0).count();
+                    if line.text.trim() == "Eleven" {
+                        assert_eq!((pictures, row), (1, 0), "height {height}");
+                        titles += 1;
+                    }
+                }
+            }
+            if pager.at_end() {
+                break;
+            }
+            pager.next();
+        }
+        assert_eq!(titles, 1);
+    }
 }
 
 #[test]

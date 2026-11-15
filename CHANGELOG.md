@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fill pages when turning back past chapter headings and illustrations.
+
 ## 0.1.16 — 2026-11-15
 
 - Keep illustrations visible around open footnotes.

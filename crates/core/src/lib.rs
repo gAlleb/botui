@@ -246,7 +246,10 @@ pub struct Pager {
     layout: Layout,
     lines: Vec<PageLine>,
     source_lines: Vec<(Anchor, usize)>,
+    /// Column starts, paginated forward from the start of the book.
     page_starts: Vec<usize>,
+    /// A continuous run of full columns passing through an exact search or resume position.
+    positioned_pages: Vec<usize>,
     figure_starts: Vec<(usize, Figure)>,
     first: usize,
     focus: Anchor,
@@ -347,13 +350,13 @@ impl Pager {
             figure_starts: Self::index_figures(&lines),
             lines,
             page_starts: Vec::new(),
+            positioned_pages: Vec::new(),
             first: 0,
             focus: Anchor::default(),
         };
+        pager.index_pages();
         if let Some(at) = resume {
             pager.seek(at);
-        } else {
-            pager.index_pages();
         }
         pager
     }
@@ -423,6 +426,7 @@ impl Pager {
         let size = self.book.size(layout);
         if size == self.book.size(self.layout) {
             self.layout = layout;
+            self.index_pages();
             self.seek(self.focus);
             return true;
         }
@@ -442,6 +446,7 @@ impl Pager {
         self.figure_starts = Self::index_figures(&self.lines);
         self.reflow_cache.put(previous);
         self.layout = layout;
+        self.index_pages();
         self.seek(self.focus);
     }
 
@@ -478,7 +483,7 @@ impl Pager {
         self.finish_resize();
         self.focus = anchor;
         self.first = Self::line_at(anchor, &self.lines, &self.source_lines);
-        self.index_pages();
+        self.index_position();
     }
 
     fn line_at(anchor: Anchor, lines: &[PageLine], sources: &[(Anchor, usize)]) -> usize {
@@ -531,12 +536,23 @@ impl Pager {
         }
     }
 
-    fn previous_start(&self) -> usize {
+    fn previous_start(&mut self) -> usize {
         if self.page_starts.is_empty() {
             self.first
                 .saturating_sub(self.layout.columns * self.layout.height)
         } else {
-            self.page_starts[(self.page_number() - 1).saturating_sub(self.layout.columns)]
+            let columns = self.layout.columns;
+            let before = self
+                .positioned_pages
+                .partition_point(|&row| row < self.first);
+            if before >= columns {
+                return self.positioned_pages[before - columns];
+            }
+            // No full preceding spread ends exactly at this position. Pick the
+            // regular spread containing its preceding row, then continue on that grid.
+            self.positioned_pages.clear();
+            let before = self.page_starts.partition_point(|&row| row < self.first);
+            self.page_starts[before.saturating_sub(columns)]
         }
     }
 
@@ -546,9 +562,7 @@ impl Pager {
         let first = self.first.saturating_add_signed(lines).min(max);
         if !self.lines.is_empty() && first != self.first {
             self.move_to(first);
-            if !self.page_starts.is_empty() {
-                self.index_pages();
-            }
+            self.index_position();
         }
     }
     pub fn viewport(&self) -> usize {

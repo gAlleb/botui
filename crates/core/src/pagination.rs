@@ -1,5 +1,7 @@
 //! Render the visible EPUB chapters first, then finish the exact book-wide page index.
 mod chapters;
+#[cfg(test)]
+mod tests;
 use super::{
     Anchor, Document, Figure, Layout, LayoutMode, PageLine, Pager, ReflowOptions, Target, media,
     printed, publisher, reflow_cache::Snapshot,
@@ -312,13 +314,10 @@ pub struct Viewport<'a> {
     bounds: [usize; 3],
 }
 impl<'a> Viewport<'a> {
-    fn new(layout: Layout, rows: &'a [PageLine], first: usize, following: &[usize]) -> Self {
+    fn new(layout: Layout, rows: &'a [PageLine], first: usize) -> Self {
         let mut bounds = [first; 3];
         for column in 0..layout.columns {
-            bounds[column + 1] = following
-                .get(column)
-                .copied()
-                .unwrap_or_else(|| layout.page_end(rows, bounds[column]));
+            bounds[column + 1] = layout.page_end(rows, bounds[column]);
         }
         Self {
             layout,
@@ -368,25 +367,51 @@ impl Pager {
         {
             return;
         }
-        // A search or restored position can start a page at an exact word.
-        // Fill the preceding columns backwards from it; clipping a forward
-        // page at the hit can leave almost its entire column empty.
-        let mut start = self.first;
-        while start > 0 {
-            start = self.layout.page_start(&self.lines, start);
-            self.page_starts.push(start);
-        }
-        self.page_starts.reverse();
-        start = self.first;
+        let mut start = 0;
         while start < self.lines.len() {
             self.page_starts.push(start);
             start = self.layout.page_end(&self.lines, start);
         }
     }
 
+    pub(super) fn index_position(&mut self) {
+        self.positioned_pages.clear();
+        if self.page_starts.is_empty() || self.page_starts.binary_search(&self.first).is_ok() {
+            return;
+        }
+
+        // An exact word can start a view between two regular page starts.
+        // Walk back only while forward pagination gives exactly the same break.
+        let mut end = self.first;
+        while end > 0 {
+            let start = self.layout.page_start(&self.lines, end);
+            if self.layout.page_end(&self.lines, start) != end {
+                break;
+            }
+            self.positioned_pages.push(start);
+            end = start;
+            if let Ok(index) = self.page_starts.binary_search(&start) {
+                self.positioned_pages
+                    .extend(self.page_starts[..index].iter().rev());
+                break;
+            }
+        }
+        self.positioned_pages.reverse();
+
+        let mut start = self.first;
+        while start < self.lines.len() {
+            if let Ok(index) = self.page_starts.binary_search(&start) {
+                self.positioned_pages
+                    .extend_from_slice(&self.page_starts[index..]);
+                break;
+            }
+            self.positioned_pages.push(start);
+            start = self.layout.page_end(&self.lines, start);
+        }
+    }
+
     fn view_at(&self, first: usize) -> Viewport<'_> {
-        let next = self.page_starts.partition_point(|&start| start <= first);
-        Viewport::new(self.layout, &self.lines, first, &self.page_starts[next..])
+        Viewport::new(self.layout, &self.lines, first)
     }
 
     pub(super) fn complete_view(&self) -> Viewport<'_> {
@@ -444,7 +469,7 @@ impl Pager {
 
     pub fn viewport_rows(&self) -> Viewport<'_> {
         match &self.pending {
-            Some(pending) => Viewport::new(pending.layout, &pending.visible, 0, &[]),
+            Some(pending) => Viewport::new(pending.layout, &pending.visible, 0),
             None => self.complete_view(),
         }
     }
