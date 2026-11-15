@@ -1,5 +1,5 @@
 //! Hit regions follow the rendered byte span of each link through reflow.
-use botui_core::{Anchor, Document, PageLine, Reference};
+use botui_core::{Anchor, Document, PageLine, Reference, ViewPosition};
 use ratatui::{
     Frame,
     layout::{Position, Rect},
@@ -9,7 +9,7 @@ use ratatui::{
 use std::collections::BTreeMap;
 
 struct Return {
-    top: Anchor,
+    top: ViewPosition,
     from: Anchor,
 }
 pub(super) struct Links {
@@ -107,10 +107,10 @@ impl Links {
     pub fn visiting(&self) -> bool {
         !self.returns.is_empty()
     }
-    pub fn origin(&self, current: Anchor) -> Anchor {
+    pub fn origin(&self, current: ViewPosition) -> ViewPosition {
         self.returns.first().map_or(current, |r| r.top)
     }
-    pub fn destination(&mut self, top: Anchor, link: &Reference, to: Anchor) -> Anchor {
+    pub fn destination(&mut self, top: ViewPosition, link: &Reference, to: Anchor) -> ViewPosition {
         if let Some(i) = self.returns.iter().rposition(|r| {
             r.from == to || (link.backlink && r.from.block == to.block && to.byte == 0)
         }) {
@@ -125,9 +125,12 @@ impl Links {
                 byte: link.bytes.as_ref().map_or(0, |r| r.start),
             },
         });
-        to
+        ViewPosition {
+            anchor: to,
+            illustration: None,
+        }
     }
-    pub fn back(&mut self) -> Option<Anchor> {
+    pub fn back(&mut self) -> Option<ViewPosition> {
         self.returns.pop().map(|r| r.top)
     }
     pub fn keep(&mut self) {

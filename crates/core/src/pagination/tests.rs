@@ -39,7 +39,7 @@ fn check_direction_changes(pager: &mut Pager, breaks: &[usize]) {
 }
 
 #[test]
-fn reversing_after_an_exact_jump_rejoins_the_forward_pages_without_skipping_rows() {
+fn reversing_after_an_exact_jump_restores_the_same_spread_without_skipping_rows() {
     let doc = Document {
         blocks: (0..72)
             .map(|i| Block {
@@ -61,32 +61,27 @@ fn reversing_after_an_exact_jump_rejoins_the_forward_pages_without_skipping_rows
         for height in [6, 11, 17] {
             let mut pager = Pager::new(&doc, 96, height, mode);
             let breaks = forward_breaks(&mut pager);
-            let mut rejoined = false;
-            for block in 23..doc.blocks.len() {
+            pager.seek(Anchor::default());
+            check_direction_changes(&mut pager, &breaks);
+            let mut crossed_overlap = false;
+            for block in 0..doc.blocks.len() {
                 pager.seek(Anchor { block, byte: 0 });
-                while pager.first > breaks[pager.columns()] {
-                    let original = pager.first;
+                while pager.first > 0 {
+                    let original = pager.complete_view().bounds;
                     pager.previous();
-                    assert!(pager.first < original);
+                    let previous = pager.complete_view().bounds;
+                    assert!(pager.first < original[0]);
                     let end = pager.complete_view().end();
-                    assert!(end >= original, "lost rows {end}..{original}");
-                    if end > original {
-                        // The regular page includes the row before the jump, as well
-                        // as part of the exact view. All subsequent turns agree
-                        // with the breaks recorded during uninterrupted reading.
-                        check_direction_changes(&mut pager, &breaks);
-                        rejoined = true;
-                        break;
-                    }
-                    let previous = pager.first;
+                    assert!(end >= original[0], "lost rows after {end}");
+                    crossed_overlap |= end > original[0];
                     pager.next();
-                    assert_eq!(pager.first, original);
+                    assert_eq!(pager.complete_view().bounds, original);
                     pager.previous();
-                    assert_eq!(pager.first, previous);
+                    assert_eq!(pager.complete_view().bounds, previous);
                 }
             }
             assert!(
-                rejoined,
+                crossed_overlap,
                 "no interior transition exercised at {mode:?}/{height}"
             );
         }

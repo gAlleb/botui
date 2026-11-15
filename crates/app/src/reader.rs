@@ -20,7 +20,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use botui_core::{Document, LayoutMode, Pager, ReflowOptions};
+use botui_core::{Document, LayoutMode, Pager, ReflowOptions, ViewPosition};
 use botui_store::{LocalState, Saved};
 use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind};
 use ratatui::{
@@ -139,8 +139,8 @@ struct Reader {
     remote_marked: bool,
     sidebar_focus: bool,
     links: links::Links,
-    history: Vec<botui_core::Anchor>,
-    future: Vec<botui_core::Anchor>,
+    history: Vec<ViewPosition>,
+    future: Vec<ViewPosition>,
     source: std::path::PathBuf,
     illustrations: Option<crate::shelf::covers::Covers>,
     doc: std::sync::Arc<Document>,
@@ -270,7 +270,16 @@ impl Reader {
             let cell = crate::cover::graphics().font_size();
             (cell.width, cell.height)
         };
-        let pager = Pager::for_display(
+        let resume = remote
+            .or_else(|| saved.as_ref().map(|s| s.anchor))
+            .map(|anchor| ViewPosition {
+                anchor,
+                illustration: saved
+                    .as_ref()
+                    .filter(|s| s.anchor == anchor)
+                    .and_then(|s| s.illustration),
+            });
+        let pager = Pager::for_display_position(
             &doc,
             (text.width, text.height),
             mode_for_size,
@@ -281,7 +290,7 @@ impl Reader {
                 paragraph_indent: settings.paragraph_indent,
                 paragraph_spacing: settings.paragraph_spacing,
             },
-            remote.or_else(|| saved.as_ref().map(|s| s.anchor)),
+            resume,
             image_cell,
         );
         let marks = saved.as_ref().map(|s| s.marks.clone()).unwrap_or_default();
@@ -999,8 +1008,9 @@ impl Reader {
         if self.study.normal {
             self.study.cursor = Some(place);
         }
-        if place != self.pager.anchor() {
-            self.history.push(self.pager.anchor());
+        let current = self.pager.position();
+        if place != current.anchor || current.illustration.is_some() {
+            self.history.push(current);
             self.future.clear();
             self.pager.seek(place);
         }
@@ -1028,12 +1038,12 @@ impl Reader {
                 }
             }
             Action::ReturnLink => {
-                if let Some(a) = self.links.back() {
-                    self.pager.seek(a);
+                if let Some(position) = self.links.back() {
+                    self.pager.restore_position(position);
                 }
             }
             Action::KeepLink => {
-                self.history.push(self.links.origin(self.pager.anchor()));
+                self.history.push(self.links.origin(self.pager.position()));
                 self.future.clear();
                 self.links.keep();
                 self.dirty = true;
@@ -1044,11 +1054,11 @@ impl Reader {
                 } else {
                     (&mut self.future, &mut self.history)
                 };
-                if let Some(a) = from.pop() {
-                    to.push(self.pager.anchor());
-                    self.pager.seek(a);
+                if let Some(position) = from.pop() {
+                    to.push(self.pager.position());
+                    self.pager.restore_position(position);
                     if self.study.normal {
-                        self.study.cursor = Some(a);
+                        self.study.cursor = Some(position.anchor);
                     }
                     self.dirty = true;
                 }
@@ -1171,7 +1181,7 @@ impl Reader {
             }
             Action::Previous | Action::Next | Action::Lines(_) => {
                 self.pager.finish_resize();
-                let old = self.pager.anchor();
+                let old = self.pager.position();
                 let forward = match action {
                     Action::Lines(n) => {
                         self.pager.scroll(isize::from(n));
@@ -1194,7 +1204,7 @@ impl Reader {
                         false
                     }
                 };
-                self.dirty |= old != self.pager.anchor();
+                self.dirty |= old != self.pager.position();
                 if forward && !self.links.visiting() && self.pager.at_end() && !self.finished {
                     self.finished = true;
                     self.dirty = true;
@@ -1247,8 +1257,10 @@ impl Reader {
     }
 
     fn snapshot(&self) -> Saved {
+        let position = self.links.origin(self.pager.position());
         Saved {
-            anchor: self.links.origin(self.pager.anchor()),
+            anchor: position.anchor,
+            illustration: position.illustration,
             spread: self.mode == LayoutMode::Spread,
             scrolling: self.mode == LayoutMode::Scroll,
             scan_offset: 0,
@@ -1387,6 +1399,7 @@ pub fn read_server(
         && let Some(local) = &mut saved
     {
         local.anchor = botui_core::Anchor::default();
+        local.illustration = None;
         local.finished = false;
     }
     let mut resume_anchor = None;
@@ -1466,7 +1479,7 @@ pub fn read_server(
             }
             frame_result?;
             if can_sync && let Some(sync) = live.as_deref_mut() {
-                let anchor = reader.links.origin(reader.pager.anchor());
+                let anchor = reader.links.origin(reader.pager.position()).anchor;
                 if observed != (anchor, reader.finished) {
                     observed = (anchor, reader.finished);
                     sync.moved(
@@ -1765,8 +1778,8 @@ pub fn read_server(
                             let dest =
                                 reader
                                     .links
-                                    .destination(reader.pager.anchor(), &reference, a);
-                            reader.pager.seek(dest);
+                                    .destination(reader.pager.position(), &reference, a);
+                            reader.pager.restore_position(dest);
                         }
                         Ok(None) => (),
                         Err(e) => {
@@ -1833,8 +1846,12 @@ pub fn read_server(
         }
         Ok(())
     })();
-    let origin = reader.links.origin(reader.pager.anchor());
-    reader.pager.seek(origin);
+    reader.pager.finish_resize();
+    if reader.links.visiting() {
+        reader
+            .pager
+            .restore_position(reader.links.origin(reader.pager.position()));
+    }
     reader.flush(&mut state, notices);
     crate::stats::finish(state.as_ref(), opened, notices);
     if let Some(sync) = annotation_sync.as_mut() {

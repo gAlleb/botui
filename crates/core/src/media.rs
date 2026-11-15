@@ -148,7 +148,7 @@ pub(super) fn space_figures(
     result
 }
 
-fn bare(line: &PageLine) -> bool {
+pub(super) fn bare(line: &PageLine) -> bool {
     line.text.trim().is_empty()
         && line.surfaces.is_empty()
         && !line.table_header

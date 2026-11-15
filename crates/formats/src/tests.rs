@@ -928,6 +928,66 @@ fn reopening_before_the_last_picture_keeps_the_next_chapter_title_at_the_top() {
 }
 
 #[test]
+fn reopening_an_illustrated_spread_distinguishes_the_picture_from_its_text_cfi() {
+    use botui_core::{LayoutMode, Pager, ReflowOptions};
+    let ending: String = (0..13).map(|n| format!("<p>Line {n}</p>")).collect();
+    let doc = styled_fixture(
+        &format!(
+            "{ending}<figure><img src='fig.png'/></figure><h1>Next chapter</h1><p>Opening words.</p>"
+        ),
+        "p,h1,figure{margin:0} img{display:block;width:160px;height:96px}",
+    );
+    let options = ReflowOptions {
+        repair_printed: false,
+        inline_images: true,
+        paragraph_indent: 0,
+        paragraph_spacing: Some(0),
+    };
+    let open = |at| Pager::with_start(&doc, 100, 8, LayoutMode::Spread, options, at);
+    let mut reading = open(None);
+    reading.next();
+    let picture = reading.position();
+    assert!(picture.illustration.is_some());
+    let cfi = doc.cfi(picture.anchor).unwrap();
+    let rows = |pager: &Pager| {
+        (0..pager.columns())
+            .map(|col| {
+                pager
+                    .lines(col)
+                    .iter()
+                    .map(|line| {
+                        (
+                            line.text.clone(),
+                            line.figures
+                                .iter()
+                                .map(|f| (f.reference, f.row, f.height))
+                                .collect::<Vec<_>>(),
+                        )
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .collect::<Vec<_>>()
+    };
+    let expected = rows(&reading);
+    let text = open(doc.reading_anchor(&cfi));
+    assert!(text.lines(0)[0].text.contains("Line 12"));
+    let mut reopened = Pager::for_display_position(
+        &doc,
+        (100, 8),
+        LayoutMode::Spread,
+        4,
+        options,
+        Some(picture),
+        (1, 2),
+    );
+    assert_eq!(rows(&reopened), expected);
+    reopened.previous();
+    reopened.next();
+    assert_eq!(rows(&reopened), expected);
+    assert_eq!(doc.cfi(reopened.anchor()), Some(cfi));
+}
+
+#[test]
 fn standalone_illustrations_use_one_blank_row_at_the_actual_cell_shape() {
     use botui_core::{LayoutMode, Pager};
     let mut doc = styled_fixture(

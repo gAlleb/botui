@@ -63,7 +63,7 @@ impl Pager {
                 let column = self.page_starts.partition_point(|&start| start <= row) - 1;
                 self.page_starts[column / self.layout.columns * self.layout.columns]
             };
-            self.positioned_pages.clear();
+            self.positioned_spreads.clear();
             self.move_to(first);
         }
     }

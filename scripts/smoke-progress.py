@@ -1,10 +1,14 @@
 #!/usr/bin/env python3
 """A second device writes in the middle of a real TUI session. Its marker must survive."""
+import hashlib
 import importlib.util
+import io
+import json
 from pathlib import Path
 import tempfile
 import threading
 import time
+import zipfile
 spec=importlib.util.spec_from_file_location("shelf",Path(__file__).with_name("smoke-shelf.py"))
 s=importlib.util.module_from_spec(spec);spec.loader.exec_module(s)
 def run(name,f):
@@ -87,9 +91,7 @@ def change_edition_during_save(tmp, server):
 
 def publisher_progress(tmp, server):
     """The HTTP double and the TUI independently resolve words in a merged cell."""
-    import io
     import re
-    import zipfile
     words = " ".join(f"marker{i:03}" for i in range(500))
     cell_path = "/6/2!/4/4/2/2/4/1"
     markup = (
@@ -153,8 +155,67 @@ def publisher_progress(tmp, server):
     finally:
         t.run("kill-server", required=False)
 
+def illustration_progress(tmp, server):
+    """A device-local picture refines only its matching BookOrbit text position."""
+    markup = """<html xmlns="http://www.w3.org/1999/xhtml"><head><title>Picture resume</title></head>
+      <body><h1>Opening chapter</h1><p>Local text before the plate.</p>
+      <figure><img src="plate.png" style="width:120px;height:120px"/></figure>
+      <p>Text after illustration.</p><p>Other device starts here.</p><p>Text on later pages.</p>
+      </body></html>"""
+    data = io.BytesIO()
+    with zipfile.ZipFile(io.BytesIO(s.epub())) as source, zipfile.ZipFile(data, "w") as out:
+        for name in source.namelist():
+            content = source.read(name)
+            if name == "book.opf":
+                content = content.replace(
+                    b"</manifest>", b'<item id="plate" href="plate.png" media-type="image/png"/></manifest>',
+                )
+            out.writestr(name, markup if name == "c.xhtml" else content)
+        out.writestr("plate.png", s.ORIGINAL_COVER)
+    book = data.getvalue()
+    server.files[301] = ("epub", "application/epub+zip", book)
+    root = Path(tmp)
+    record = root / "state/botui/positions" / (hashlib.sha256(book).hexdigest() + ".json")
+    record.parent.mkdir(parents=True)
+    config = root / "config/botui/config.toml"
+    config.parent.mkdir(parents=True)
+    config.write_text('zen = true\nreading_layout = "single"\n')
+    url = f"http://127.0.0.1:{server.server_port}/reader"
+    # In monochrome, a picture has a text label we can assert through tmux.
+    args = ["NO_COLOR=1", str(s.ROOT / "target/debug/botui"), "--server", url]
+    t = s.Terminal(root, Path("/usr/bin/env"), args=args)
+    try:
+        s.login(t, url)
+        t.keys("Enter")
+        for node, hint, expected in [
+            ("4/1", [0, 0], "Illustration"),
+            ("10/1", [0, 0], "Other device starts here."),
+            ("4/1", None, "Local text before the plate."),
+        ]:
+            local = {"version": 1, "block": 1, "byte": 0, "spread": False, "theme": "terminal"}
+            if hint is not None:
+                local["illustration"] = hint
+            record.write_text(json.dumps(local))
+            server.progress[301] = {
+                "fileId": 301, "percentage": 20, "updatedAt": "2026-11-08T10:00:00.000Z",
+                "text": {"cfi": f"epubcfi(/6/2!/4/{node}:0)"},
+            }
+            t.click("EPUB", s.formats(t))
+            t.wait(expected, lambda f: "Text on later pages." in f and f.lstrip().startswith(expected))
+            t.keys("Space", "q")
+            s.formats(t)
+            assert not server.saved, server.saved
+            persisted = json.loads(record.read_text()).get("illustration")
+            assert persisted == (hint if node == "4/1" else None), persisted
+    finally:
+        t.run("kill-server", required=False)
+
 
 if __name__=='__main__':
+    with tempfile.TemporaryDirectory() as tmp, s.Fixture(False) as server:
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        try: illustration_progress(tmp, server)
+        finally: server.shutdown()
     with tempfile.TemporaryDirectory() as tmp, s.Fixture(False) as server:
         threading.Thread(target=server.serve_forever, daemon=True).start()
         try: change_edition_during_save(tmp, server)

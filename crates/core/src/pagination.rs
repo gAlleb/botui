@@ -375,38 +375,51 @@ impl Pager {
     }
 
     pub(super) fn index_position(&mut self) {
-        self.positioned_pages.clear();
-        if self.page_starts.is_empty() || self.page_starts.binary_search(&self.first).is_ok() {
+        self.positioned_spreads.clear();
+        let columns = self.layout.columns;
+        if self.page_starts.is_empty()
+            || self
+                .page_starts
+                .binary_search(&self.first)
+                .is_ok_and(|i| i % columns == 0)
+        {
             return;
         }
 
         // An exact word can start a view between two regular page starts.
         // Walk back only while forward pagination gives exactly the same break.
         let mut end = self.first;
-        while end > 0 {
+        let mut preceding = Vec::new();
+        while end > 0 && self.page_starts.binary_search(&end).is_err() {
             let start = self.layout.page_start(&self.lines, end);
             if self.layout.page_end(&self.lines, start) != end {
                 break;
             }
-            self.positioned_pages.push(start);
+            preceding.push(start);
             end = start;
-            if let Ok(index) = self.page_starts.binary_search(&start) {
-                self.positioned_pages
-                    .extend(self.page_starts[..index].iter().rev());
-                break;
-            }
         }
-        self.positioned_pages.reverse();
+        // A preceding ordinary page may overlap the first exact page. Keep both
+        // starts so that turning forward again returns to the same spread.
+        let before = self.page_starts.partition_point(|&row| row < end);
+        let earlier_columns = preceding
+            .into_iter()
+            .chain(self.page_starts[..before].iter().rev().copied());
+        self.positioned_spreads
+            .extend(earlier_columns.skip(columns - 1).step_by(columns));
+        if self.positioned_spreads.last() != Some(&0) {
+            self.positioned_spreads.push(0);
+        }
+        self.positioned_spreads.reverse();
 
         let mut start = self.first;
         while start < self.lines.len() {
             if let Ok(index) = self.page_starts.binary_search(&start) {
-                self.positioned_pages
-                    .extend_from_slice(&self.page_starts[index..]);
+                self.positioned_spreads
+                    .extend(self.page_starts[index..].iter().step_by(columns));
                 break;
             }
-            self.positioned_pages.push(start);
-            start = self.layout.page_end(&self.lines, start);
+            self.positioned_spreads.push(start);
+            start = self.view_at(start).end();
         }
     }
 
@@ -549,6 +562,7 @@ impl Pager {
         let mut rows = Vec::new();
         let count = layout.height * layout.columns;
         let mut first = 0;
+        let position = self.position();
         for next in boundaries {
             rows.extend(self.book.lines(doc, layout, end..next));
             if end != start {
@@ -560,7 +574,17 @@ impl Pager {
             if start > 0 && index.first().is_none_or(|(at, _)| *at > self.focus) {
                 return false;
             }
-            first = Self::line_at(self.focus, &rows, &index);
+            first = match position.illustration {
+                Some(hint) => {
+                    let Some(row) = hint.resolve(&rows, &Self::index_figures(&rows)) else {
+                        // The partial chapter layout cannot resolve this picture.
+                        // Use the full layout, including the text fallback if it is hidden.
+                        return false;
+                    };
+                    row
+                }
+                None => Self::line_at(self.focus, &rows, &index),
+            };
             if end == doc.blocks.len() || first + count <= rows.len() {
                 break;
             }

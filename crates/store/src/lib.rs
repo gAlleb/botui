@@ -3,7 +3,7 @@
 mod fingerprint;
 mod notes;
 mod stats;
-use botui_core::Anchor;
+use botui_core::{Anchor, IllustrationPosition};
 pub use notes::{HighlightColor, Note, PdfRegion};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -25,6 +25,7 @@ pub struct ScanAppearance {
 #[derive(Clone, Default)]
 pub struct Saved {
     pub anchor: Anchor,
+    pub illustration: Option<IllustrationPosition>,
     pub spread: bool,
     pub scrolling: bool,
     pub scan_offset: u16,
@@ -40,6 +41,8 @@ struct Record {
     version: u8,
     block: usize,
     byte: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    illustration: Option<(usize, i32)>,
     spread: bool,
     #[serde(default)]
     scrolling: bool,
@@ -59,6 +62,7 @@ struct Record {
 #[derive(Default, Clone, Copy, PartialEq, Eq)]
 struct ReadingPoint {
     anchor: Anchor,
+    illustration: Option<IllustrationPosition>,
     scan_offset: u16,
     finished: bool,
 }
@@ -66,6 +70,7 @@ impl From<&Saved> for ReadingPoint {
     fn from(s: &Saved) -> Self {
         Self {
             anchor: s.anchor,
+            illustration: s.illustration,
             scan_offset: s.scan_offset,
             finished: s.finished,
         }
@@ -221,6 +226,9 @@ impl LocalState {
                 block: record.block,
                 byte: record.byte,
             },
+            illustration: record
+                .illustration
+                .map(|(reference, row)| IllustrationPosition { reference, row }),
             spread: record.spread,
             scrolling: record.scrolling,
             scan_offset: record.scan_offset,
@@ -261,6 +269,7 @@ impl LocalState {
             // A theme/width change in a stale window must not rewind the book.
             merged = saved.clone();
             merged.anchor = disk.anchor;
+            merged.illustration = disk.illustration;
             merged.scan_offset = disk.scan_offset;
             merged.finished = disk.finished;
             &merged
@@ -306,6 +315,7 @@ impl LocalState {
                 version: 1,
                 block: saved.anchor.block,
                 byte: saved.anchor.byte,
+                illustration: saved.illustration.map(|p| (p.reference, p.row)),
                 spread: saved.spread,
                 scrolling: saved.scrolling,
                 scan_offset: saved.scan_offset,
@@ -350,6 +360,16 @@ mod tests {
         assert_eq!(actual.anchor, first.anchor);
         assert_eq!(actual.scan_offset, 3400);
         assert_eq!(actual.theme, "sepia");
+        // An illustration and the preceding text can have the same text anchor.
+        second = b.load()?.unwrap();
+        first.illustration = Some(IllustrationPosition {
+            reference: 7,
+            row: -1,
+        });
+        a.save_position(&first)?;
+        second.margin += 1;
+        b.save_position(&second)?;
+        assert_eq!(window().load()?.unwrap().illustration, first.illustration);
         // Deliberately reading backwards still updates other windows.
         second.anchor = Anchor { block: 3, byte: 5 };
         b.save_position(&second)?;
@@ -369,6 +389,7 @@ mod tests {
             r#"{"version":1,"block":0,"byte":0,"spread":false,"theme":"sepia","marks":[[1,9]]}"#,
         )?;
         let old = state.load()?.unwrap();
+        assert_eq!(old.illustration, None);
         let a = Anchor { block: 1, byte: 9 };
         let b = Anchor { block: 3, byte: 1 };
         let c = Anchor { block: 5, byte: 2 };
@@ -388,8 +409,13 @@ mod tests {
         let dir = tmp.path().join("state");
         fs::write(&path, b"first edition")?;
         let first = LocalState::in_directory(&path, &dir, None)?;
+        let illustration = Some(IllustrationPosition {
+            reference: 7,
+            row: 3,
+        });
         first.save_position(&Saved {
             anchor: Anchor { block: 5, byte: 14 },
+            illustration,
             spread: true,
             scrolling: false,
             scan_offset: 0,
@@ -408,6 +434,7 @@ mod tests {
             (after.anchor.block, after.anchor.byte, after.spread),
             (5, 14, true)
         );
+        assert_eq!(after.illustration, illustration);
         fs::write(&path, b"revised edition")?;
         assert!(
             LocalState::in_directory(&path, &dir, None)?

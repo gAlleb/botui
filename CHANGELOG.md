@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Restore the same illustrated spread after reopening a book or turning back and forward.
+
 ## 0.1.17 — 2026-11-15
 
 - Fill pages when turning back past chapter headings and illustrations.

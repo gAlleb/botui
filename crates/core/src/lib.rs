@@ -111,6 +111,65 @@ pub struct Anchor {
     pub byte: usize,
 }
 
+/// A local reading position. An illustration can share its text anchor with
+/// the preceding line or with another illustration in the same document.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct ViewPosition {
+    pub anchor: Anchor,
+    pub illustration: Option<IllustrationPosition>,
+}
+
+/// An occurrence in this document, including the first visible row relative
+/// to its top. A negative row includes a leading layout spacer.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct IllustrationPosition {
+    pub reference: usize,
+    pub row: i32,
+}
+
+impl IllustrationPosition {
+    fn at(rows: &[PageLine]) -> Option<Self> {
+        let blank = rows.iter().take_while(|row| row.is_spacer()).count();
+        let line = rows.get(blank)?;
+        if line.chapter_start || !media::bare(line) {
+            return None;
+        }
+        let part = line.figures.first()?;
+        Some(Self {
+            reference: part.reference,
+            row: i32::from(part.row) - i32::try_from(blank).ok()?,
+        })
+    }
+
+    fn resolve(self, lines: &[PageLine], starts: &[(usize, Figure)]) -> Option<usize> {
+        let &(top, figure) = starts.iter().find(|(_, f)| f.reference == self.reference)?;
+        if self.row < 0 {
+            let blank = lines[..top]
+                .iter()
+                .rev()
+                .take(self.row.unsigned_abs() as usize)
+                .take_while(|row| row.is_spacer())
+                .count();
+            return Some(top - blank);
+        }
+        // Responsive CSS can shrink the image or reflow text alongside it.
+        // Stay inside this occurrence, even if the old offset is out of range.
+        let limit = (self.row as usize).min(usize::from(figure.height.saturating_sub(1)));
+        let offset = lines[top + 1..]
+            .iter()
+            .take(limit)
+            .enumerate()
+            .take_while(|(i, line)| {
+                !line.chapter_start
+                    && line.figures.iter().any(|part| {
+                        part.reference == self.reference && usize::from(part.row) == i + 1
+                    })
+            })
+            .count();
+        Some(top + offset)
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LayoutMode {
     Scroll,
@@ -151,6 +210,10 @@ pub struct PageLine {
 }
 
 impl PageLine {
+    fn is_spacer(&self) -> bool {
+        self.figures.is_empty() && !self.chapter_start && media::bare(self)
+    }
+
     pub fn anchor(&self) -> Anchor {
         self.start
     }
@@ -248,8 +311,8 @@ pub struct Pager {
     source_lines: Vec<(Anchor, usize)>,
     /// Column starts, paginated forward from the start of the book.
     page_starts: Vec<usize>,
-    /// A continuous run of full columns passing through an exact search or resume position.
-    positioned_pages: Vec<usize>,
+    /// Spread starts for paging in either direction from an exact search or resume position.
+    positioned_spreads: Vec<usize>,
     figure_starts: Vec<(usize, Figure)>,
     first: usize,
     focus: Anchor,
@@ -327,20 +390,83 @@ impl Pager {
 
     pub fn for_display(
         doc: &Document,
-        (width, height): (u16, u16),
+        size: (u16, u16),
         mode: LayoutMode,
         gap: u16,
         options: ReflowOptions,
         resume: Option<Anchor>,
         image_cell: (u16, u16),
     ) -> Self {
+        Self::for_display_position(
+            doc,
+            size,
+            mode,
+            gap,
+            options,
+            resume.map(|anchor| ViewPosition {
+                anchor,
+                illustration: None,
+            }),
+            image_cell,
+        )
+    }
+
+    pub fn for_display_position(
+        doc: &Document,
+        (width, height): (u16, u16),
+        mode: LayoutMode,
+        gap: u16,
+        options: ReflowOptions,
+        resume: Option<ViewPosition>,
+        image_cell: (u16, u16),
+    ) -> Self {
         let layout = Layout {
             image_cell,
             ..Layout::new(width, height, mode, gap)
         };
-        let book = Arc::new(BookLayout::new(doc, options, resume));
+        let anchor = resume.map(|pos| pos.anchor);
+        let picture = resume.and_then(|pos| pos.illustration).filter(|hint| {
+            options.inline_images
+                && doc
+                    .references
+                    .get(hint.reference)
+                    .is_some_and(|r| matches!(r.target, Target::Image(_)))
+        });
+        let mut pager = if let Some(hint) = picture {
+            // The address of a picture may point into the preceding paragraph.
+            // Keep that paragraph's natural wrapping when resuming at the picture.
+            let natural = Self::layout_document(doc, layout, options, None);
+            if natural
+                .figure_starts
+                .iter()
+                .any(|(_, f)| f.reference == hint.reference)
+            {
+                natural
+            } else {
+                // A stylesheet can hide the picture at this width. In that case
+                // restore the original word, with its usual opening line break.
+                drop(natural);
+                Self::layout_document(doc, layout, options, anchor)
+            }
+        } else {
+            Self::layout_document(doc, layout, options, anchor)
+        };
+        pager.index_pages();
+        if let Some(position) = resume {
+            pager.restore_position(position);
+        }
+        pager
+    }
+
+    fn layout_document(
+        doc: &Document,
+        layout: Layout,
+        options: ReflowOptions,
+        split_at: Option<Anchor>,
+    ) -> Self {
+        let book = Arc::new(BookLayout::new(doc, options, split_at));
         let lines = book.lines(doc, layout, 0..doc.blocks.len());
-        let mut pager = Self {
+        Self {
             image_cell: layout.image_cell,
             book,
             reflow_cache: reflow_cache::Cache::default(),
@@ -350,15 +476,10 @@ impl Pager {
             figure_starts: Self::index_figures(&lines),
             lines,
             page_starts: Vec::new(),
-            positioned_pages: Vec::new(),
+            positioned_spreads: Vec::new(),
             first: 0,
             focus: Anchor::default(),
-        };
-        pager.index_pages();
-        if let Some(at) = resume {
-            pager.seek(at);
         }
-        pager
     }
 
     /// Reflow the same document. Keep the line containing the saved word at the top.
@@ -376,7 +497,7 @@ impl Pager {
         gap: u16,
         options: ReflowOptions,
     ) {
-        let focus = self.focus;
+        let position = self.position();
         *self = Self::for_display(
             doc,
             (width, height),
@@ -386,7 +507,7 @@ impl Pager {
             self.book.resume,
             self.image_cell,
         );
-        self.seek(focus);
+        self.restore_position(position);
     }
 
     pub fn set_image_cell(&mut self, width: u16, height: u16) {
@@ -425,9 +546,10 @@ impl Pager {
         }
         let size = self.book.size(layout);
         if size == self.book.size(self.layout) {
+            let position = self.position();
             self.layout = layout;
             self.index_pages();
-            self.seek(self.focus);
+            self.restore_position(position);
             return true;
         }
         let Some(snapshot) = self.reflow_cache.take(size) else {
@@ -438,6 +560,7 @@ impl Pager {
     }
 
     fn install(&mut self, snapshot: reflow_cache::Snapshot, layout: Layout) {
+        let position = self.position();
         let previous = reflow_cache::Snapshot {
             size: self.book.size(self.layout),
             lines: std::mem::replace(&mut self.lines, snapshot.lines),
@@ -447,7 +570,7 @@ impl Pager {
         self.reflow_cache.put(previous);
         self.layout = layout;
         self.index_pages();
-        self.seek(self.focus);
+        self.restore_position(position);
     }
 
     pub fn columns(&self) -> usize {
@@ -461,6 +584,19 @@ impl Pager {
     }
     pub fn anchor(&self) -> Anchor {
         self.focus
+    }
+
+    pub fn position(&self) -> ViewPosition {
+        let illustration = if self.figure_starts.is_empty() {
+            None
+        } else {
+            let end = (self.first + self.layout.height).min(self.lines.len());
+            IllustrationPosition::at(&self.lines[self.first..end])
+        };
+        ViewPosition {
+            anchor: self.focus,
+            illustration,
+        }
     }
 
     fn source_index(doc: &Document, lines: &[PageLine]) -> Vec<(Anchor, usize)> {
@@ -480,9 +616,19 @@ impl Pager {
     }
 
     pub fn seek(&mut self, anchor: Anchor) {
+        self.restore_position(ViewPosition {
+            anchor,
+            illustration: None,
+        });
+    }
+
+    pub fn restore_position(&mut self, position: ViewPosition) {
         self.finish_resize();
-        self.focus = anchor;
-        self.first = Self::line_at(anchor, &self.lines, &self.source_lines);
+        self.focus = position.anchor;
+        self.first = position
+            .illustration
+            .and_then(|hint| hint.resolve(&self.lines, &self.figure_starts))
+            .unwrap_or_else(|| Self::line_at(self.focus, &self.lines, &self.source_lines));
         self.index_position();
     }
 
@@ -522,8 +668,18 @@ impl Pager {
 
     pub fn next(&mut self) {
         self.finish_resize();
-        let first = self.complete_view().end();
-        if first != self.first && first < self.lines.len() {
+        let first = if self.positioned_spreads.is_empty() {
+            self.complete_view().end()
+        } else {
+            let i = self
+                .positioned_spreads
+                .partition_point(|&row| row <= self.first);
+            let Some(&first) = self.positioned_spreads.get(i) else {
+                return;
+            };
+            first
+        };
+        if first > self.first && first < self.lines.len() {
             self.move_to(first);
         }
     }
@@ -536,23 +692,18 @@ impl Pager {
         }
     }
 
-    fn previous_start(&mut self) -> usize {
-        if self.page_starts.is_empty() {
+    fn previous_start(&self) -> usize {
+        if !self.positioned_spreads.is_empty() {
+            let before = self
+                .positioned_spreads
+                .partition_point(|&row| row < self.first);
+            self.positioned_spreads[before.saturating_sub(1)]
+        } else if self.page_starts.is_empty() {
             self.first
                 .saturating_sub(self.layout.columns * self.layout.height)
         } else {
-            let columns = self.layout.columns;
-            let before = self
-                .positioned_pages
-                .partition_point(|&row| row < self.first);
-            if before >= columns {
-                return self.positioned_pages[before - columns];
-            }
-            // No full preceding spread ends exactly at this position. Pick the
-            // regular spread containing its preceding row, then continue on that grid.
-            self.positioned_pages.clear();
             let before = self.page_starts.partition_point(|&row| row < self.first);
-            self.page_starts[before.saturating_sub(columns)]
+            self.page_starts[before.saturating_sub(self.layout.columns)]
         }
     }
 
@@ -811,6 +962,76 @@ mod tests {
         assert_eq!(strip(pager.lines(0)), &full[1..]);
         pager.scroll(-1);
         assert_eq!(strip(pager.lines(0)), full);
+    }
+
+    #[test]
+    fn adjacent_illustrations_with_one_text_anchor_restore_independently() {
+        let mut doc = document(&["One", "Two", "Caption", "Four", "Five"]);
+        for _ in 0..2 {
+            doc.references.push(Reference {
+                source: 2,
+                bytes: None,
+                backlink: false,
+                label: "Picture".into(),
+                target: Target::Image("same.png".into()),
+            });
+        }
+        let mut pager = Pager::new(&doc, 80, 6, LayoutMode::Single);
+        pager.next();
+        let first = pager.position();
+        pager.next();
+        let second = pager.position();
+        assert_eq!(first.anchor, second.anchor);
+        let at = |reference, row| Some(IllustrationPosition { reference, row });
+        assert_eq!(
+            (first.illustration, second.illustration),
+            (at(0, 0), at(1, 0))
+        );
+
+        for pos in [second, first] {
+            pager.restore_position(pos);
+            pager.relayout(&doc, 70, 8, LayoutMode::Single);
+            assert_eq!(pager.position(), pos);
+            assert_eq!(
+                at(pager.lines(0)[0].figures[0].reference, 0),
+                pos.illustration
+            );
+            pager.relayout(&doc, 80, 6, LayoutMode::Single);
+            assert_eq!(pager.position(), pos);
+        }
+        let mut hidden = Pager::with_media(&doc, 80, 6, LayoutMode::Single, true, false);
+        hidden.restore_position(second);
+        assert_eq!(hidden.anchor(), second.anchor);
+        assert_eq!(hidden.position().illustration, None);
+    }
+
+    #[test]
+    fn illustration_offsets_stop_at_the_actual_extent_of_the_picture_and_its_margin() {
+        let mut doc = document(&["One", "Two", "Caption", "Four", "Five"]);
+        doc.references.push(Reference {
+            source: 2,
+            bytes: None,
+            backlink: false,
+            label: "Picture".into(),
+            target: Target::Image("plate.png".into()),
+        });
+        let mut pager = Pager::new(&doc, 80, 6, LayoutMode::Scroll);
+        for (saved_row, expected_row) in [(i32::MIN, -1), (-1, -1), (2, 2), (i32::MAX, 3)] {
+            let illustration = Some(IllustrationPosition {
+                reference: 0,
+                row: saved_row,
+            });
+            pager.restore_position(ViewPosition {
+                anchor: Anchor::default(),
+                illustration,
+            });
+            assert_eq!(pager.position().illustration.unwrap().row, expected_row);
+            let edge = pager.first;
+            pager.restore_position(pager.position());
+            assert_eq!(pager.first, edge);
+        }
+        pager.relayout(&doc, 80, 3, LayoutMode::Scroll);
+        assert_eq!(pager.position().illustration.unwrap().row, 1);
     }
 
     #[test]
