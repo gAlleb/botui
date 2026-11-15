@@ -444,18 +444,12 @@ impl Reader {
                 }
             }
         }
-        // Queue visible artwork first. Use idle workers to decode the next spread
-        // while the current text is being read, without waiting on a page turn.
-        let mut upcoming = Vec::new();
-        for figure in self.pager.next_illustrations() {
-            let artwork = (figure.reference, Size::new(figure.width, figure.height));
-            if !upcoming.contains(&artwork) && !figures.iter().any(|f| f.id == figure.reference) {
-                upcoming.push(artwork);
-                if upcoming.len() == 2 {
-                    break;
-                }
-            }
-        }
+        let upcoming: Vec<_> = self
+            .pager
+            .nearby_illustrations()
+            .take(8usize.saturating_sub(figures.len()))
+            .map(|f| (f.reference, Size::new(f.width, f.height), true))
+            .collect();
         if !figures.is_empty() || !upcoming.is_empty() {
             let pictures = self
                 .illustrations
@@ -464,14 +458,15 @@ impl Reader {
             let graphics = crate::cover::graphics();
             let visible = figures
                 .iter()
-                .map(|f| (f.id, Size::new(f.area.width, f.height)));
-            for (id, bounds) in visible.chain(upcoming) {
+                .map(|f| (f.id, Size::new(f.area.width, f.height), false));
+            for (id, bounds, prefetch) in visible.chain(upcoming) {
                 if let botui_core::Target::Image(member) = &self.doc.references[id].target {
                     let member = member.clone();
                     let path = self.source.clone();
                     let picker = graphics.clone();
                     pictures.request_with(
                         id as u64,
+                        prefetch,
                         move || Ok(botui_formats::illustration(&path, &member).ok()),
                         move |bytes| crate::cover::Picture::inline(bytes, &picker, bounds),
                     );

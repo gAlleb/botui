@@ -104,11 +104,12 @@ impl Covers {
         id: u64,
         fetch: impl FnOnce() -> botui_bookorbit::Result<Option<Vec<u8>>> + Send + 'static,
     ) {
-        self.request_with(id, fetch, Picture::cover)
+        self.request_with(id, false, fetch, Picture::cover)
     }
     pub fn request_with(
         &mut self,
         id: u64,
+        prefetch: bool,
         fetch: impl FnOnce() -> botui_bookorbit::Result<Option<Vec<u8>>> + Send + 'static,
         decode: impl FnOnce(Vec<u8>) -> Option<Picture> + Send + 'static,
     ) {
@@ -120,7 +121,11 @@ impl Covers {
             return;
         }
         self.visible.insert(id);
-        if self.pending.contains_key(&id) || self.pending.len() >= self.images.cap().get() + 2 {
+        // Decode speculative artwork one image at a time, after visible work.
+        if self.pending.contains_key(&id)
+            || (prefetch && !self.pending.is_empty())
+            || self.pending.len() >= self.images.cap().get() + 2
+        {
             return;
         }
         let (sender, receiver) = mpsc::channel();

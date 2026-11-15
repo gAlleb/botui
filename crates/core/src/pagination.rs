@@ -358,6 +358,44 @@ impl Pager {
         self.view_at(self.first)
     }
 
+    pub(super) fn index_figures(lines: &[PageLine]) -> Vec<(usize, Figure)> {
+        lines
+            .iter()
+            .enumerate()
+            .flat_map(|(row, line)| {
+                line.figures
+                    .iter()
+                    .filter(|f| f.row == 0)
+                    .map(move |f| (row, *f))
+            })
+            .collect()
+    }
+
+    /// The closest two illustrations beyond each edge of the current spread.
+    pub fn nearby_illustrations(&self) -> impl Iterator<Item = &Figure> {
+        let index = if self.pending.is_none() {
+            self.figure_starts.as_slice()
+        } else {
+            &[]
+        };
+        let before = index.partition_point(|(row, _)| *row < self.first);
+        let after = if index.is_empty() {
+            0
+        } else {
+            let end = self.complete_view().end();
+            index.partition_point(|(row, _)| *row < end)
+        };
+        let previous = index[..before]
+            .iter()
+            .rev()
+            .filter(|(row, f)| row + usize::from(f.height) <= self.first);
+        index[after..]
+            .iter()
+            .take(2)
+            .chain(previous.take(2))
+            .map(|(_, f)| f)
+    }
+
     /// Illustrations on the next page or spread, in reading order.
     pub fn next_illustrations(&self) -> impl Iterator<Item = &Figure> {
         let rows = if self.book.has_figures && self.pending.is_none() {

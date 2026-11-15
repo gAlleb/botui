@@ -239,6 +239,7 @@ pub struct Pager {
     lines: Vec<PageLine>,
     source_lines: Vec<(Anchor, usize)>,
     page_starts: Vec<usize>,
+    figure_starts: Vec<(usize, Figure)>,
     first: usize,
     focus: Anchor,
 }
@@ -319,6 +320,7 @@ impl Pager {
             pending: None,
             layout,
             source_lines: Self::source_index(doc, &lines),
+            figure_starts: Self::index_figures(&lines),
             lines,
             page_starts: Vec::new(),
             first: 0,
@@ -398,6 +400,7 @@ impl Pager {
             lines: std::mem::replace(&mut self.lines, snapshot.lines),
             sources: std::mem::replace(&mut self.source_lines, snapshot.sources),
         };
+        self.figure_starts = Self::index_figures(&self.lines);
         self.reflow_cache.put(previous);
         self.layout = layout;
         self.seek(self.focus);
@@ -483,14 +486,18 @@ impl Pager {
 
     pub fn previous(&mut self) {
         self.finish_resize();
-        let first = if self.page_starts.is_empty() {
+        let first = self.previous_start();
+        if first != self.first {
+            self.move_to(first);
+        }
+    }
+
+    fn previous_start(&self) -> usize {
+        if self.page_starts.is_empty() {
             self.first
                 .saturating_sub(self.layout.columns * self.layout.height)
         } else {
             self.page_starts[(self.page_number() - 1).saturating_sub(self.layout.columns)]
-        };
-        if first != self.first {
-            self.move_to(first);
         }
     }
 
@@ -715,9 +722,16 @@ mod tests {
         assert_eq!(strip(pager.lines(1)), full);
         assert_eq!(pager.lines(1)[4].text, "Caption");
         assert_eq!(pager.page_count(), 3);
-        assert!(pager.next_illustrations().next().is_none());
+        assert_eq!(pager.nearby_illustrations().count(), 0);
         pager.next();
         assert_eq!(pager.page_number(), 3);
+        assert_eq!(
+            pager
+                .nearby_illustrations()
+                .map(|f| f.reference)
+                .collect::<Vec<_>>(),
+            [0]
+        );
         assert_eq!(pager.lines(0)[0].text, "Four");
         assert!(pager.at_end());
         pager.previous();
@@ -740,6 +754,28 @@ mod tests {
         assert_eq!(strip(pager.lines(0)), &full[1..]);
         pager.scroll(-1);
         assert_eq!(strip(pager.lines(0)), full);
+    }
+
+    #[test]
+    fn preload_finds_two_figures_on_each_side_across_text_only_spreads() {
+        let mut doc = document(&["Short paragraph."; 120]);
+        for source in (10..120).step_by(15) {
+            doc.references.push(Reference {
+                source,
+                bytes: None,
+                backlink: false,
+                label: "Picture".into(),
+                target: Target::Image(format!("art-{source}")),
+            });
+        }
+        let mut pager = Pager::new(&doc, 80, 5, LayoutMode::Spread);
+        pager.seek(Anchor { block: 60, byte: 0 });
+        assert!(pager.next_illustrations().next().is_none());
+        let neighbours: Vec<_> = pager
+            .nearby_illustrations()
+            .map(|f| doc.references[f.reference].source)
+            .collect();
+        assert_eq!(neighbours, [70, 85, 55, 40]);
     }
 
     #[test]
