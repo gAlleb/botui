@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.1.17 — 2026-11-15
+
 - Fill pages when turning back past chapter headings and illustrations.
 - Keep book spreads steady while extending a Vim selection across pages.
 
