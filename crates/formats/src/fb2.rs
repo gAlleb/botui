@@ -288,6 +288,7 @@ pub(super) fn parse(bytes: &[u8], fallback: &str) -> Result<Document> {
         image_pages: vec![],
         tables,
         references,
+        epub_anchors: Default::default(),
         contents,
         title,
         blocks,

@@ -1603,12 +1603,20 @@ pub fn read_server(
                 _ => None,
             };
             if let Some(entry) = supplement.cloned() {
-                if let Err(e) =
-                    resources::open_target(term, path, &entry.title, &entry.target, |f| {
-                        reader.draw(f, None)
-                    })
-                {
-                    notices.push(e.to_string());
+                let doc = reader.doc.clone();
+                match resources::open_target(term, path, &doc, &entry.title, &entry.target, |f| {
+                    reader.draw(f, None)
+                }) {
+                    Ok(Some(at)) => {
+                        reader.nav = None;
+                        reader.sidebar_focus = false;
+                        reader.jump_to(at);
+                        reader.dirty = true;
+                    }
+                    Ok(None) => (),
+                    Err(e) => {
+                        notices.push(e.to_string());
+                    }
                 }
                 continue;
             }
@@ -1723,7 +1731,8 @@ pub fn read_server(
                 };
                 if let Some(i) = selected {
                     let reference = reader.doc.references[i].clone();
-                    match resources::open(term, path, &reference, |f| reader.draw(f, None)) {
+                    let doc = reader.doc.clone();
+                    match resources::open(term, path, &doc, &reference, |f| reader.draw(f, None)) {
                         Ok(Some(a)) => {
                             let dest =
                                 reader

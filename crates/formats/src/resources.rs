@@ -66,6 +66,19 @@ pub fn illustration(path: &Path, member: &str) -> Result<Vec<u8>> {
         _ => Err(invalid("Unknown image source").into()),
     }
 }
+fn is_footnote(el: scraper::ElementRef<'_>) -> bool {
+    el.value().name() == "aside"
+        || ["epub:type", "role"]
+            .iter()
+            .filter_map(|attr| el.attr(attr))
+            .flat_map(str::split_ascii_whitespace)
+            .any(|t| matches!(t, "footnote" | "endnote" | "doc-footnote" | "doc-endnote"))
+}
+
+fn return_arrow(label: &str) -> bool {
+    matches!(label, "↩" | "↵" | "↩︎" | "⏎")
+}
+
 pub struct Supplement {
     pub text: String,
     pub backlink: Option<String>,
@@ -79,6 +92,27 @@ pub fn supplementary_note(
     fragment: &str,
     origin: Option<(&str, &str)>,
 ) -> Result<Supplement> {
+    let (note, backlink) =
+        supplementary_document(path, member, fragment, origin, &Default::default())?;
+    Ok(Supplement {
+        text: note
+            .blocks
+            .iter()
+            .map(|b| b.text.as_str())
+            .collect::<Vec<_>>()
+            .join("\n\n"),
+        backlink,
+    })
+}
+
+/// Read the selected note or notes section. Its passages point into the original book.
+pub fn supplementary_document(
+    path: &Path,
+    member: &str,
+    fragment: &str,
+    origin: Option<(&str, &str)>,
+    book: &botui_core::Document,
+) -> Result<(botui_core::Document, Option<String>)> {
     let mut zip = zip::ZipArchive::new(BufReader::new(File::open(path)?))?;
     let html = epub::read_member(&mut zip, member, &mut (4 << 20))?;
     let dom = xhtml::parse_document(&html);
@@ -98,14 +132,7 @@ pub fn supplementary_note(
     // footnote. In a glossary the definition follows the term as its sibling.
     let target = std::iter::once(node)
         .chain(node.ancestors().filter_map(scraper::ElementRef::wrap))
-        .find(|e| {
-            matches!(e.value().name(), "aside" | "li" | "dt" | "dd")
-                || ["epub:type", "role"]
-                    .iter()
-                    .filter_map(|attr| e.attr(attr))
-                    .flat_map(str::split_ascii_whitespace)
-                    .any(|t| matches!(t, "footnote" | "endnote" | "doc-footnote" | "doc-endnote"))
-        })
+        .find(|e| is_footnote(*e) || matches!(e.value().name(), "li" | "dt" | "dd"))
         .unwrap_or_else(|| {
             if matches!(node.value().name(), "a" | "span" | "sup") {
                 node.ancestors()
@@ -125,66 +152,84 @@ pub fn supplementary_note(
                 .take_while(|e| e.value().name() == "dd"),
         );
     }
-    let mut parts = vec![];
     let links = scraper::Selector::parse("a[href]").unwrap();
-    let back_label = |anchor: scraper::ElementRef<'_>| {
-        let label = xhtml::clean(&anchor.text().collect::<String>());
-        let marked = ["epub:type", "role"]
-            .iter()
-            .filter_map(|attr| anchor.attr(attr))
-            .flat_map(str::split_ascii_whitespace)
-            .any(|v| matches!(v, "backlink" | "doc-backlink"))
-            || matches!(label.as_str(), "↩" | "↵" | "↩︎" | "⏎");
-        (marked && !label.is_empty()).then_some(label)
-    };
-    // Some editions put the return arrow in its own paragraph immediately after
-    // the aside. Only adopt an adjacent link pointing back to this particular citation.
-    let mut backlink = origin.and_then(|(source, id)| {
-        let next = target.next_siblings().find_map(scraper::ElementRef::wrap)?;
-        if next.attr("id").is_some() || !matches!(next.value().name(), "p" | "a" | "span") {
-            return None;
-        }
-        std::iter::once(next)
-            .chain(next.select(&links))
-            .find_map(|link| {
-                let (href, fragment) = link.attr("href")?.split_once('#')?;
-                let dest = if href.is_empty() {
-                    member.to_owned()
-                } else {
-                    epub::member_path(member, href).ok()?
-                };
-                let fragment = percent_encoding::percent_decode_str(fragment)
-                    .decode_utf8()
-                    .ok()?;
-                if dest != source || fragment != id {
-                    return None;
+    let mut footer = None;
+    // Some publishers put the return link in the paragraph just after the note.
+    if let Some(next) = target.next_siblings().find_map(scraper::ElementRef::wrap)
+        && next.attr("id").is_none()
+        && matches!(next.value().name(), "p" | "a" | "span")
+    {
+        let next_links = std::iter::once(next).chain(next.select(&links));
+        for link in next_links {
+            let Some((file, id)) = link
+                .attr("href")
+                .and_then(|href| epub::link_address(member, href))
+            else {
+                continue;
+            };
+            let label = xhtml::clean(&link.text().collect::<String>());
+            let marked = ["epub:type", "role"]
+                .iter()
+                .filter_map(|attr| link.attr(attr))
+                .flat_map(str::split_ascii_whitespace)
+                .any(|v| matches!(v, "backlink" | "doc-backlink"))
+                || return_arrow(&label);
+            if marked && !label.is_empty() {
+                if origin == Some((&file, &id)) {
+                    footer = Some(label);
+                    break;
                 }
-                back_label(link)
-            })
-    });
-    for part in elements {
-        backlink = backlink.or_else(|| part.select(&links).find_map(back_label));
-        let selector = scraper::Selector::parse("p,h1,h2,h3,h4,dt,dd").unwrap();
-        let paragraphs: Vec<_> = part
-            .select(&selector)
-            .filter(|e| e.select(&selector).next().is_none())
-            .map(|e| xhtml::clean(&e.text().collect::<String>()))
-            .filter(|s| !s.is_empty())
-            .collect();
-        if paragraphs.is_empty() {
-            parts.push(xhtml::clean(&part.text().collect::<String>()));
-        } else {
-            parts.extend(paragraphs);
+                if origin.is_none() && is_footnote(target) {
+                    elements.push(next);
+                    break;
+                }
+            }
         }
     }
-    parts.retain(|t| !t.is_empty());
-    if parts.is_empty() {
+
+    let mut note = botui_core::Document::default();
+    let mut raw = Vec::new();
+    for part in elements {
+        xhtml::extract_element(
+            part,
+            &mut note.blocks,
+            &mut raw,
+            &mut Default::default(),
+            None,
+        );
+    }
+    for link in raw.into_iter().filter(|link| !link.image) {
+        let Some(key) = epub::link_address(member, &link.href) else {
+            continue;
+        };
+        if !link.label.is_empty()
+            && (origin == Some((&key.0, &key.1))
+                || (origin.is_none() && (link.backlink || return_arrow(&link.label))))
+        {
+            footer.get_or_insert_with(|| link.label.clone());
+        }
+        let Some(&anchor) = book
+            .epub_anchors
+            .get(&key)
+            .filter(|a| a.block < book.blocks.len())
+        else {
+            continue;
+        };
+        let Some(bytes) = link.text_range(&note.blocks) else {
+            continue;
+        };
+        note.references.push(botui_core::Reference {
+            source: link.block,
+            bytes: Some(bytes),
+            label: link.label,
+            target: botui_core::Target::Passage(anchor),
+            backlink: true,
+        });
+    }
+    if note.blocks.is_empty() {
         return Err(invalid("No readable text at this link").into());
     }
-    Ok(Supplement {
-        text: parts.join("\n\n"),
-        backlink,
-    })
+    Ok((note, footer))
 }
 
 pub(super) fn raster(mime: &str) -> bool {

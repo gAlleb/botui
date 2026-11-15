@@ -11,7 +11,9 @@ mod fb2;
 mod locations;
 mod resources;
 mod svg;
-pub use resources::{Supplement, illustration, supplement, supplementary_note};
+pub use resources::{
+    Supplement, illustration, supplement, supplementary_document, supplementary_note,
+};
 mod publisher;
 #[cfg(test)]
 mod tests;

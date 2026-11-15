@@ -33,6 +33,8 @@ pub struct Document {
     pub styled: std::collections::BTreeMap<usize, publisher::Chapter>,
     pub tables: std::collections::BTreeMap<usize, TableRow>,
     pub references: Vec<Reference>,
+    /// Named destinations in the reading order, including links from lazily opened EPUB notes.
+    pub epub_anchors: std::collections::HashMap<(String, String), Anchor>,
     pub contents: Vec<ContentsEntry>,
     pub locations: Locations,
     pub title: String,
@@ -614,6 +616,7 @@ mod tests {
             tables: Default::default(),
             title: "Книга".into(),
             references: vec![],
+            epub_anchors: Default::default(),
             contents: vec![],
             locations: Locations::default(),
             blocks: paragraphs

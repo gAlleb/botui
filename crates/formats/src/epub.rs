@@ -234,11 +234,15 @@ pub(super) fn read_book(reader: impl Read + Seek, fallback: &str) -> Result<Docu
         }
     }
     use botui_core::{Anchor, Reference, Target};
+    for (member, block) in starts {
+        ids.insert((member, String::new()), Anchor { block, byte: 0 });
+    }
     let mut by_raw = vec![None; raw.len()];
     let references: Vec<Reference> = raw
         .into_iter()
         .enumerate()
         .filter_map(|(index, (base, link))| {
+            let bytes = link.text_range(&blocks);
             let label = if link.label.trim().is_empty() {
                 link.href
                     .rsplit('/')
@@ -253,13 +257,7 @@ pub(super) fn read_book(reader: impl Read + Seek, fallback: &str) -> Result<Docu
             } else if super::resources::web(&link.href) && !link.image {
                 Target::Web(link.href)
             } else {
-                let (part, id) = link.href.split_once('#').unwrap_or((&link.href, ""));
-                let member = if part.is_empty() {
-                    base.to_string()
-                } else {
-                    member_path(&base, part).ok()?
-                };
-                let id = percent_decode_str(id).decode_utf8().ok()?.into_owned();
+                let (member, id) = link_address(&base, &link.href)?;
                 let mime = resources.get(&member)?;
                 if link.image || mime.starts_with("image/") {
                     if !mime.starts_with("image/") {
@@ -268,15 +266,9 @@ pub(super) fn read_book(reader: impl Read + Seek, fallback: &str) -> Result<Docu
                     Target::Image(member)
                 } else if !matches!(*mime, "application/xhtml+xml" | "text/html") {
                     return None;
-                } else if let Some(anchor) = if id.is_empty() {
-                    starts.get(&member).map(|block| Anchor {
-                        block: *block,
-                        byte: 0,
-                    })
-                } else {
-                    ids.get(&(member.clone(), id.clone())).copied()
-                }
-                .filter(|a| a.block < blocks.len())
+                } else if let Some(&anchor) = ids
+                    .get(&(member.clone(), id.clone()))
+                    .filter(|a| a.block < blocks.len())
                 {
                     Target::Passage(anchor)
                 } else {
@@ -287,18 +279,6 @@ pub(super) fn read_book(reader: impl Read + Seek, fallback: &str) -> Result<Docu
                     }
                 }
             };
-            let bytes = (!link.image)
-                .then(|| {
-                    let tail = blocks.get(link.block)?.text.get(link.byte..)?;
-                    // Leading whitespace in an anchor is collapsed into the surrounding prose.
-                    let start = link.byte + tail.len() - tail.trim_start().len();
-                    blocks[link.block]
-                        .text
-                        .get(start..)?
-                        .starts_with(&label)
-                        .then_some(start..start + label.len())
-                })
-                .flatten();
             Some((
                 index,
                 Reference {
@@ -333,6 +313,7 @@ pub(super) fn read_book(reader: impl Read + Seek, fallback: &str) -> Result<Docu
         styled,
         tables,
         references,
+        epub_anchors: ids,
         contents,
         title,
         blocks,
@@ -342,6 +323,19 @@ pub(super) fn read_book(reader: impl Read + Seek, fallback: &str) -> Result<Docu
 
 fn tag(node: Node<'_, '_>, name: &str) -> bool {
     node.is_element() && node.tag_name().name() == name
+}
+
+pub(super) fn link_address(base: &str, href: &str) -> Option<(String, String)> {
+    let (path, id) = href.split_once('#').unwrap_or((href, ""));
+    let member = if path.is_empty() {
+        base.to_owned()
+    } else {
+        member_path(base, path).ok()?
+    };
+    Some((
+        member,
+        percent_decode_str(id).decode_utf8().ok()?.into_owned(),
+    ))
 }
 
 // Resolve the ZIP member relative to the referring document, including legitimate "../".

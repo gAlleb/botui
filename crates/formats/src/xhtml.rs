@@ -125,6 +125,19 @@ pub(super) struct RawLink {
     pub label: String,
     pub href: String,
 }
+impl RawLink {
+    pub fn text_range(&self, blocks: &[Block]) -> Option<std::ops::Range<usize>> {
+        if self.image || self.label.is_empty() {
+            return None;
+        }
+        let tail = blocks.get(self.block)?.text.get(self.byte..)?;
+        let trimmed = tail.trim_start();
+        let start = self.byte + tail.len() - trimmed.len();
+        trimmed
+            .starts_with(&self.label)
+            .then_some(start..start + self.label.len())
+    }
+}
 pub(super) type TextOrigins =
     std::collections::HashMap<ego_tree::NodeId, (botui_core::Anchor, usize)>;
 
@@ -142,7 +155,7 @@ pub(super) fn extract(
     blocks: &mut Vec<Block>,
     links: &mut Vec<RawLink>,
     tables: &mut std::collections::BTreeMap<usize, botui_core::TableRow>,
-    mut origins: Option<&mut TextOrigins>,
+    origins: Option<&mut TextOrigins>,
 ) -> Vec<(String, botui_core::Anchor)> {
     let Some(body) = dom
         .root_element()
@@ -151,6 +164,16 @@ pub(super) fn extract(
     else {
         return vec![];
     };
+    extract_element(body, blocks, links, tables, origins)
+}
+
+pub(super) fn extract_element(
+    body: scraper::ElementRef<'_>,
+    blocks: &mut Vec<Block>,
+    links: &mut Vec<RawLink>,
+    tables: &mut std::collections::BTreeMap<usize, botui_core::TableRow>,
+    mut origins: Option<&mut TextOrigins>,
+) -> Vec<(String, botui_core::Anchor)> {
     let mut ids = Vec::new();
     let mut buffer = String::new();
     let mut is_heading = false;

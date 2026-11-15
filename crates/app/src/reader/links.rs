@@ -72,6 +72,14 @@ impl Links {
             }
         }
     }
+    pub fn highlight(&self, f: &mut Frame, selected: usize) {
+        for &(rect, id) in &self.hits {
+            if id == selected {
+                f.buffer_mut()
+                    .set_style(rect, Style::new().add_modifier(Modifier::REVERSED));
+            }
+        }
+    }
     pub fn image(&mut self, rect: Rect, id: usize) {
         self.hits.push((rect, id));
     }

@@ -143,6 +143,47 @@ def check_reference_return(tmp):
         t.run("kill-server",required=False)
 
 
+def check_notes_contents(tmp):
+    book = tmp / "Endnotes.epub"
+    with ZipFile(book, "w") as z:
+        z.writestr("META-INF/container.xml", '<container><rootfile full-path="book.opf"/></container>')
+        z.writestr("book.opf", '<package><manifest><item id="text" href="chapter.xhtml" media-type="application/xhtml+xml"/>'
+                   '<item id="notes" href="Notes/list.xhtml" media-type="application/xhtml+xml"/>'
+                   '<item id="toc" href="toc.xhtml" properties="nav" media-type="application/xhtml+xml"/>'
+                   '</manifest><spine><itemref idref="text"/><itemref idref="notes" linear="no"/></spine></package>')
+        z.writestr("toc.xhtml", '<nav role="doc-toc"><ol><li><a href="chapter.xhtml">Chapter</a></li>'
+                   '<li><a href="Notes/list.xhtml">Endnotes</a></li></ol></nav>')
+        paragraphs = []
+        notes = []
+        for n in range(1, 13):
+            paragraphs.append('<p>Between citations.</p>' * 35)
+            paragraphs.append(f'<p>Passage {n} <a id="ref-{n}" href="Notes/list.xhtml#n{n}">[{n}]</a>.</p>')
+            notes.append(f'<aside id="n{n}"><p>Note {n}</p></aside>'
+                         f'<p>引用 {n} <a href="../chapter.xhtml#ref%2D{n}" role="doc-backlink">↩</a></p>')
+        z.writestr("chapter.xhtml", '<html><body>' + ''.join(paragraphs) + '</body></html>')
+        z.writestr("Notes/list.xhtml", '<html><body>' + ''.join(notes) + '</body></html>')
+    t = shelf.Terminal(tmp, BINARY, args=[str(book)])
+    try:
+        t.click("Endnotes", t.see("Endnotes"))
+        popup = t.see("Select link")
+        # Two double-width characters precede the second arrow, identical to all the others.
+        row, line = next((i, s) for i, s in enumerate(popup.splitlines()) if "引用 2 ↩" in s)
+        click_frame = "\n" * row + line.replace("引用", "    ")
+        t.click("↩", click_frame)
+        t.wait("mouse follows the second note", lambda f: "[2]" in f and "Select link" not in f)
+        t.keys("Space", "o")
+        t.see("[ Back ]")
+        t.keys("End", "Enter")
+        t.see("Select link")
+        t.keys(*(["Tab"] * 12), "BTab")
+        t.run("resize-window", "-t", "shelf", "-x", "85", "-y", "16")
+        t.see("引用 11 ↩")
+        t.keys("Enter")
+        t.wait("keyboard follows the selected note after reflow", lambda f: "[11]" in f and "[ Back ]" not in f and "Select link" not in f)
+    finally:
+        t.run("kill-server", required=False)
+
+
 def check_scanned_epub(tmp):
     book = tmp / "Scans.epub"
     with ZipFile(book, "w") as z:
@@ -173,6 +214,8 @@ def check_scanned_epub(tmp):
 
 
 if __name__ == "__main__":
+    with TemporaryDirectory(prefix="botui-notes-contents-") as folder:
+        check_notes_contents(Path(folder))
     with TemporaryDirectory(prefix="botui-scans-") as folder:
         check_scanned_epub(Path(folder))
     with TemporaryDirectory(prefix="botui-resources-") as folder:

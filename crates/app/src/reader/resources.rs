@@ -1,3 +1,4 @@
+mod note;
 use crate::{
     AppTerminal, centered,
     cover::{Picture, graphics},
@@ -52,40 +53,42 @@ pub(super) fn choose(
 pub(super) fn open(
     term: &mut AppTerminal,
     path: &Path,
+    book: &Document,
     r: &botui_core::Reference,
     background: impl FnMut(&mut ratatui::Frame),
 ) -> crate::Result<Option<Anchor>> {
-    open_target(term, path, &r.label, &r.target, background)
+    open_target(term, path, book, &r.label, &r.target, background)
 }
 pub(super) fn open_target(
     term: &mut AppTerminal,
     path: &Path,
+    book: &Document,
     label: &str,
     target: &Target,
     mut background: impl FnMut(&mut ratatui::Frame),
 ) -> crate::Result<Option<Anchor>> {
     match target {
         Target::Passage(a) => return Ok(Some(*a)),
-        Target::Note(t) => view(term, label, Some(t), None, None, &mut background)?,
+        Target::Note(t) => return Ok(view(term, label, Content::Text(t), None, &mut background)?),
         Target::Supplement {
             member,
             fragment,
             origin,
         } => {
-            let note = botui_formats::supplementary_note(
-                path,
-                member,
-                fragment,
-                origin.as_ref().map(|(m, id)| (m.as_ref(), id.as_str())),
-            )?;
-            view(
+            let origin = origin.as_ref().map(|(m, id)| (m.as_ref(), id.as_str()));
+            let (note, footer) =
+                botui_formats::supplementary_document(path, member, fragment, origin, book)?;
+            let dest = view(
                 term,
                 label,
-                Some(&note.text),
-                None,
-                note.backlink.as_deref(),
+                Content::Note(&note),
+                footer.as_deref().filter(|_| origin.is_some()),
                 &mut background,
             )?;
+            // Returning to the citation which opened this popup restores its exact viewport.
+            let source = origin
+                .and_then(|(file, id)| book.epub_anchors.get(&(file.to_owned(), id.to_owned())));
+            return Ok(dest.filter(|a| Some(a) != source));
         }
         Target::Image(member) => {
             let bytes = botui_formats::illustration(path, member)?;
@@ -94,8 +97,7 @@ pub(super) fn open_target(
             view(
                 term,
                 label,
-                None,
-                Some((&picture, bytes.as_slice())),
+                Content::Picture(&picture, &bytes),
                 None,
                 &mut background,
             )?;
@@ -118,14 +120,20 @@ pub(super) fn open_target(
     }
     Ok(None)
 }
+enum Content<'a> {
+    Text(&'a str),
+    Note(&'a Document),
+    Picture(&'a Picture, &'a [u8]),
+}
+
 fn view(
     term: &mut AppTerminal,
     label: &str,
-    text: Option<&str>,
-    picture: Option<(&Picture, &[u8])>,
+    content: Content<'_>,
     backlink: Option<&str>,
     background: &mut impl FnMut(&mut ratatui::Frame),
-) -> io::Result<()> {
+) -> io::Result<Option<Anchor>> {
+    let mut note_page = None;
     let mut scroll = 0u16;
     let graphics = graphics();
     let mut viewer = crate::cover_viewer::Viewer::default();
@@ -142,7 +150,7 @@ fn view(
             let screen = f.area();
             let area = centered(
                 screen,
-                if picture.is_some() {
+                if matches!(content, Content::Picture(..)) {
                     screen.width.saturating_sub(2)
                 } else {
                     80
@@ -160,10 +168,15 @@ fn view(
                 ..inner
             };
             page = body.height.max(1);
-            if let Some((picture, _)) = picture {
+            if let Content::Picture(picture, _) = content {
                 picture.draw(f, body, &graphics);
             }
-            if let Some(text) = text {
+            if let Content::Note(doc) = content {
+                note_page
+                    .get_or_insert_with(|| note::NotePage::new(doc, body))
+                    .draw(f, body);
+            }
+            if let Content::Text(text) = content {
                 let p = Paragraph::new(text).wrap(Wrap { trim: false });
                 limit = p
                     .line_count(body.width.max(1))
@@ -173,7 +186,7 @@ fn view(
                 f.render_widget(p.scroll((scroll, 0)), body);
             }
             let label = backlink
-                .map(|s| format!("[ Back · Esc ]  [ {} ]", s))
+                .map(|s| format!("[ Back · Esc ]  [ {s} ]"))
                 .unwrap_or_else(|| "[ Back · Esc ]".into());
             let width = ratatui::text::Line::raw(&label).width() as u16;
             back = Rect::new(
@@ -183,7 +196,15 @@ fn view(
                 inner.height.min(1),
             );
             f.render_widget(Paragraph::new(label).cyan(), back);
-            if picture.is_some() {
+            if matches!(content, Content::Note(doc) if !doc.references.is_empty()) {
+                let x = back.right().saturating_add(2);
+                let hint = Rect::new(x, back.y, inner.right().saturating_sub(x), back.height);
+                f.render_widget(
+                    Paragraph::new("Tab / Shift+Tab · Select link   Enter · Follow").cyan(),
+                    hint,
+                );
+            }
+            if matches!(content, Content::Picture(..)) {
                 let button = "[ Open externally · o ]";
                 external = Rect::new(
                     back.right().saturating_add(2),
@@ -208,7 +229,7 @@ fn view(
             }
             _ => false,
         };
-        if open && let Some((image, bytes)) = picture {
+        if open && let Content::Picture(image, bytes) = content {
             // SVGs use the reader's self-contained rendering, including embedded resources.
             let result = if image::guess_format(bytes).is_ok() {
                 viewer.illustration(bytes)
@@ -222,23 +243,43 @@ fn view(
             }
             continue;
         }
+        let mut move_by = |rows: isize| {
+            if let Some(note) = &mut note_page {
+                note.scroll(rows);
+            } else {
+                scroll = ((scroll as isize).saturating_add(rows)).clamp(0, limit as isize) as u16;
+            }
+        };
         match event {
             Event::Key(k) if k.kind != KeyEventKind::Release => match k.code {
-                KeyCode::Esc | KeyCode::Enter | KeyCode::Char('q' | ',') => return Ok(()),
-                KeyCode::Down => scroll = scroll.saturating_add(1).min(limit),
-                KeyCode::Up => scroll = scroll.saturating_sub(1),
-                KeyCode::PageDown => scroll = scroll.saturating_add(page).min(limit),
-                KeyCode::PageUp => scroll = scroll.saturating_sub(page),
+                KeyCode::Esc | KeyCode::Char('q' | ',') => return Ok(None),
+                KeyCode::Enter => return Ok(note_page.as_ref().and_then(|p| p.destination(None))),
+                KeyCode::Tab | KeyCode::BackTab => {
+                    if let Some(note) = &mut note_page {
+                        note.select(
+                            k.code == KeyCode::Tab
+                                && !k.modifiers.contains(crossterm::event::KeyModifiers::SHIFT),
+                        );
+                    }
+                }
+                KeyCode::Down => move_by(1),
+                KeyCode::Up => move_by(-1),
+                KeyCode::PageDown => move_by(page as isize),
+                KeyCode::PageUp => move_by(-(page as isize)),
                 _ => (),
             },
             Event::Mouse(m) => match m.kind {
-                MouseEventKind::Down(MouseButton::Left)
-                    if back.contains((m.column, m.row).into()) =>
-                {
-                    return Ok(());
+                MouseEventKind::Down(MouseButton::Left) => {
+                    let pos = (m.column, m.row).into();
+                    if back.contains(pos) {
+                        return Ok(None);
+                    }
+                    if let Some(dest) = note_page.as_ref().and_then(|p| p.destination(Some(pos))) {
+                        return Ok(Some(dest));
+                    }
                 }
-                MouseEventKind::ScrollDown => scroll = scroll.saturating_add(2).min(limit),
-                MouseEventKind::ScrollUp => scroll = scroll.saturating_sub(2),
+                MouseEventKind::ScrollDown => move_by(2),
+                MouseEventKind::ScrollUp => move_by(-2),
                 _ => (),
             },
             _ => (),
