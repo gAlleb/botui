@@ -33,14 +33,14 @@ pub fn read(
     path: &Path,
     kind: FileKind,
     notices: &mut Vec<String>,
-) -> io::Result<()> {
-    let (_, percent) = read_server(term, path, kind, notices, None)?;
+) -> io::Result<crate::BookExit> {
+    let (_, percent, exit) = read_server(term, path, kind, notices, None)?;
     if let Some(p) = percent
         && let Err(e) = botui_store::HistoryEntry::record(path, p)
     {
         notices.push(e.to_string());
     }
-    Ok(())
+    Ok(exit)
 }
 pub fn read_server(
     term: &mut AppTerminal,
@@ -48,7 +48,11 @@ pub fn read_server(
     kind: FileKind,
     notices: &mut Vec<String>,
     base: Option<&botui_bookorbit::progress::Progress>,
-) -> io::Result<(Option<botui_bookorbit::progress::Move>, Option<f64>)> {
+) -> io::Result<(
+    Option<botui_bookorbit::progress::Move>,
+    Option<f64>,
+    crate::BookExit,
+)> {
     read_pages(term, path, kind, notices, base, None, None)
 }
 
@@ -60,7 +64,11 @@ pub(super) fn read_pages(
     base: Option<&botui_bookorbit::progress::Progress>,
     album: Option<botui_core::Document>,
     mut live: Option<&mut crate::live_progress::Live>,
-) -> io::Result<(Option<botui_bookorbit::progress::Move>, Option<f64>)> {
+) -> io::Result<(
+    Option<botui_bookorbit::progress::Move>,
+    Option<f64>,
+    crate::BookExit,
+)> {
     let _uploads = crate::cover::ScanGraphics;
     let worker = Worker::new();
     let p = path.to_owned();
@@ -70,6 +78,7 @@ pub(super) fn read_pages(
     let prefs = crate::settings::Settings::load()?;
     let comic = matches!(kind, FileKind::Cbz | FileKind::Cbr);
     let mut reading_theme = prefs.fixed_theme(comic);
+    let mut exit = crate::BookExit::Close;
     let mut page_colors = prefs.page_colors();
     let mut zen = prefs.zen;
     let mut zen_progress = prefs.zen_progress;
@@ -1017,7 +1026,12 @@ pub(super) fn read_pages(
                 KeyCode::Char('%') => 45,
                 KeyCode::Char('z' | 'Z') => 14,
                 KeyCode::Char('f' | 'F') => 15,
-                KeyCode::Char('q' | 'Q') => 5,
+                KeyCode::Char('q' | 'Q') => {
+                    if !from_leader {
+                        exit = crate::BookExit::Back;
+                    }
+                    5
+                }
                 KeyCode::F(2) => 26,
                 KeyCode::Char('?') | KeyCode::F(1) => 27,
                 KeyCode::Char('m' | 'M') | KeyCode::Esc | KeyCode::Enter => 0,
@@ -1417,6 +1431,7 @@ pub(super) fn read_pages(
             None
         },
         shelf_percent,
+        exit,
     ))
 }
 

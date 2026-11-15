@@ -53,6 +53,7 @@ pub struct Picker {
     navigation: navigation::Navigation,
     dir: PathBuf,
     root: PathBuf,
+    back_to_filesystem_root: bool,
     grid_view: bool,
     grid: Option<crate::shelf::gallery::Grid>,
     covers: crate::shelf::covers::Covers,
@@ -81,19 +82,35 @@ impl Picker {
         Self::open(dir, None)
     }
 
+    pub fn at_file(file: &Path) -> io::Result<Self> {
+        let absolute = std::path::absolute(file)?;
+        let dir = absolute
+            .parent()
+            .ok_or(io::ErrorKind::InvalidInput)?
+            .canonicalize()?;
+        let selected = dir.join(absolute.file_name().ok_or(io::ErrorKind::InvalidInput)?);
+        Self::open_with_settings(
+            dir,
+            None,
+            crate::settings::Settings::load()?,
+            Some(&selected),
+        )
+    }
+
     pub fn downloads(dir: PathBuf, source: crate::cache::Source) -> io::Result<Self> {
         Self::open(dir.canonicalize()?, Some(source))
     }
 
     fn open(dir: PathBuf, source: Option<crate::cache::Source>) -> io::Result<Self> {
         let settings = crate::settings::Settings::load()?;
-        Self::open_with_settings(dir, source, settings)
+        Self::open_with_settings(dir, source, settings, None)
     }
 
     fn open_with_settings(
         dir: PathBuf,
         source: Option<crate::cache::Source>,
         settings: crate::settings::Settings,
+        selection: Option<&Path>,
     ) -> io::Result<Self> {
         let mut picker = Self {
             search: None,
@@ -109,6 +126,7 @@ impl Picker {
             covers: crate::shelf::covers::Covers::new(),
             view_button: Rect::default(),
             root: dir.clone(),
+            back_to_filesystem_root: selection.is_some(),
             view: LocalView::Directory,
             shelves: [Rect::default(); 3],
             search_button: Rect::default(),
@@ -127,7 +145,7 @@ impl Picker {
             exit: Rect::default(),
             error: None,
         };
-        picker.load(&dir)?;
+        picker.load_selected(&dir, selection)?;
         Ok(picker)
     }
 
@@ -137,6 +155,10 @@ impl Picker {
     }
 
     fn load(&mut self, dir: &Path) -> io::Result<()> {
+        self.load_selected(dir, None)
+    }
+
+    fn load_selected(&mut self, dir: &Path, selected: Option<&Path>) -> io::Result<()> {
         let mut entries = Vec::new();
         for entry in fs::read_dir(dir)? {
             let entry = entry?;
@@ -151,7 +173,9 @@ impl Picker {
             }
             let is_dir = path.is_dir();
             let kind = (!is_dir).then(|| FileKind::from_path(&path)).flatten();
-            if !name.starts_with('.') && (is_dir || (path.is_file() && kind.is_some())) {
+            if (!name.starts_with('.') || selected == Some(&path))
+                && (is_dir || (path.is_file() && kind.is_some()))
+            {
                 entries.push(Entry {
                     path,
                     name,
@@ -168,6 +192,9 @@ impl Picker {
             && let Some(index) = entries.iter().position(|e| e.path == position.selected)
         {
             self.list = position.list;
+            self.list.select(Some(index));
+        }
+        if let Some(index) = selected.and_then(|p| entries.iter().position(|e| e.path == p)) {
             self.list.select(Some(index));
         }
         self.view = LocalView::Directory;
@@ -196,10 +223,7 @@ impl Picker {
     fn up(&mut self) -> io::Result<()> {
         let previous = self.dir.clone();
         if let Some(parent) = previous.parent() {
-            self.load(parent)?;
-            if let Some(index) = self.entries.iter().position(|e| e.path == previous) {
-                self.list.select(Some(index));
-            }
+            self.load_selected(parent, Some(&previous))?;
         }
         Ok(())
     }
@@ -210,7 +234,12 @@ impl Picker {
             self.load(&self.dir.clone())?;
             return Ok(false);
         }
-        if self.source.is_some() || self.dir == self.root || !self.dir.starts_with(&self.root) {
+        if self.dir.parent().is_none()
+            || (!self.back_to_filesystem_root
+                && (self.source.is_some()
+                    || self.dir == self.root
+                    || !self.dir.starts_with(&self.root)))
+        {
             return Ok(true);
         }
         self.up()?;

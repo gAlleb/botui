@@ -104,6 +104,12 @@ fn centered(area: Rect, width: u16, height: u16) -> Rect {
     )
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum BookExit {
+    Close,
+    Back,
+}
+
 enum Start {
     Shelf(Option<String>),
     Opds(String),
@@ -170,7 +176,7 @@ fn open_book(
     term: &mut AppTerminal,
     path: &std::path::Path,
     notices: &mut Vec<String>,
-) -> Result<()> {
+) -> Result<BookExit> {
     open_local_doc(term, path, None, notices)
 }
 
@@ -179,7 +185,7 @@ fn open_local_doc(
     path: &std::path::Path,
     document: Option<botui_core::Document>,
     notices: &mut Vec<String>,
-) -> Result<()> {
+) -> Result<BookExit> {
     let open = || -> Result<botui_core::Document> {
         match document {
             Some(doc) => Ok(doc),
@@ -190,13 +196,13 @@ fn open_local_doc(
     let path = absolute.as_path();
     if let Some(copy) = offline::Copy::open(path)? {
         let base = copy.starting_position();
-        let (change, percent) =
+        let (change, percent, exit) =
             if let Some(k) = botui_formats::FileKind::from_path(path).filter(|k| !k.readable()) {
                 scan::read_server(term, path, k, notices, Some(&base))?
             } else {
-                let (change, pct) =
+                let (change, pct, exit) =
                     reader::read_server(term, path, open()?, notices, Some(&base), None, None)?;
-                (change, Some(pct))
+                (change, Some(pct), exit)
             };
         if let Some(p) = percent {
             botui_store::HistoryEntry::record(path, p)?;
@@ -204,12 +210,28 @@ fn open_local_doc(
         if let Some(m) = change {
             copy.queue(path, m)?;
         }
-        return Ok(());
+        return Ok(exit);
     }
-    if let Some(kind) = botui_formats::FileKind::from_path(path).filter(|k| !k.readable()) {
-        scan::read(term, path, kind, notices)?;
-    } else {
-        reader::read(term, path, open()?, notices)?;
+    let exit =
+        if let Some(kind) = botui_formats::FileKind::from_path(path).filter(|k| !k.readable()) {
+            scan::read(term, path, kind, notices)?
+        } else {
+            reader::read(term, path, open()?, notices)?
+        };
+    Ok(exit)
+}
+
+fn direct_book(
+    term: &mut AppTerminal,
+    path: &std::path::Path,
+    doc: Option<botui_core::Document>,
+    notices: &mut Vec<String>,
+    resume: bool,
+) -> Result<()> {
+    if open_local_doc(term, path, doc, notices)? == BookExit::Back && !resume {
+        let mut picker = picker::Picker::at_file(path)?;
+        browse_picker(term, notices, &mut picker)?;
+        bookorbit_shelf(term, None, notices)?;
     }
     Ok(())
 }
@@ -448,7 +470,8 @@ fn run() -> Result<()> {
         println!("{}", settings::path()?.display());
         return Ok(());
     }
-    let start = if matches!(start, Start::Resume) {
+    let resume = matches!(start, Start::Resume);
+    let start = if resume {
         let entry = botui_store::HistoryEntry::last_unfinished()?
             .ok_or("No unfinished local books. Open a file or choose a local library first.")?;
         Start::File(entry.path)
@@ -471,7 +494,7 @@ fn run() -> Result<()> {
         if io::stdin().is_terminal() && io::stdout().is_terminal() {
             let (_screen, mut terminal) = Screen::enter()?;
             let mut notices = vec![];
-            open_book(&mut terminal, file, &mut notices)?;
+            direct_book(&mut terminal, file, None, &mut notices, resume)?;
             drop(_screen);
             for n in notices {
                 eprintln!("botui: {n}");
@@ -502,7 +525,9 @@ fn run() -> Result<()> {
     {
         let (_screen, mut terminal) = Screen::enter()?;
         match opened {
-            Some((path, doc)) => open_local_doc(&mut terminal, &path, Some(doc), &mut notices)?,
+            Some((path, doc)) => {
+                direct_book(&mut terminal, &path, Some(doc), &mut notices, resume)?
+            }
             None => match start {
                 Start::Shelf(server) => bookorbit_shelf(&mut terminal, server, &mut notices)?,
                 Start::Opds(url) => {

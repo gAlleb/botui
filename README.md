@@ -141,14 +141,15 @@ If you want a desktop file - you can create one with fine-tweaked font like `Ios
 ```sh
 [Desktop Entry]
 Name=botui
-Exec=kitty --class=botui -o 'font_family=family="Iosevka Term Slab" style="Extended Italic"' -o 'bold_font=family="Iosevka Term Slab" style="Bold Extended"'   -o 'italic_font=family="Iosevka Term Slab" style="Extended Italic"' -o 'bold_italic_font=family="Iosevka Term Slab" style="Bold Extended Italic"' -o font_size=18 -o window_margin_width=0 --title=botui -e bash -i -c "botui %F"
+Exec=kitty --class=botui -o "font_family=family=\\"Iosevka Term Slab\\" style=\\"Extended Italic\\"" -o "bold_font=family=\\"Iosevka Term Slab\\" style=\\"Bold Extended\\"" -o "italic_font=family=\\"Iosevka Term Slab\\" style=\\"Extended Italic\\"" -o "bold_italic_font=family=\\"Iosevka Term Slab\\" style=\\"Bold Extended Italic\\"" -o font_size=18 -o window_margin_width=0 --title=botui -e botui %F
 Type=Application
-Comment=botui
 Terminal=false
 Icon=books
-Categories=Books;
+Categories=Office;Viewer;
 Keywords=books;reader;
 ```
+
+When opening a file directly, **q** returns to its folder with the book selected. Press **q** again to move up one directory at a time to `/`, then to the source chooser. The configured library path is preserved.
 <p align="center">
   <img src="docs/images/kitty-fonts.png" width="50%" alt="fonts in kitty terminal">
 </p>

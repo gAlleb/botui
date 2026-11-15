@@ -1305,12 +1305,12 @@ pub fn read(
     path: &Path,
     doc: Document,
     notices: &mut Vec<String>,
-) -> io::Result<()> {
-    let (_, percent) = read_server(term, path, doc, notices, None, None, None)?;
+) -> io::Result<crate::BookExit> {
+    let (_, percent, exit) = read_server(term, path, doc, notices, None, None, None)?;
     if let Err(e) = botui_store::HistoryEntry::record(path, percent) {
         notices.push(e.to_string());
     }
-    Ok(())
+    Ok(exit)
 }
 pub fn read_server(
     term: &mut AppTerminal,
@@ -1320,7 +1320,11 @@ pub fn read_server(
     base: Option<&botui_bookorbit::progress::Progress>,
     mut remote: Option<&mut bookmarks::ServerMarks>,
     mut live: Option<&mut crate::live_progress::Live>,
-) -> io::Result<(Option<botui_bookorbit::progress::Move>, f64)> {
+) -> io::Result<(
+    Option<botui_bookorbit::progress::Move>,
+    f64,
+    crate::BookExit,
+)> {
     if !doc.image_pages.is_empty() {
         // Image-only EPUB uses a CFI remotely; comics use physical page numbers.
         let kind =
@@ -1329,7 +1333,7 @@ pub fn read_server(
             kind,
             botui_formats::FileKind::Cbz | botui_formats::FileKind::Cbr
         );
-        let (change, percent) = crate::scan::read_pages(
+        let (change, percent, exit) = crate::scan::read_pages(
             term,
             path,
             kind,
@@ -1338,7 +1342,7 @@ pub fn read_server(
             Some(doc),
             if comic { live } else { None },
         )?;
-        return Ok((change, percent.unwrap_or_default()));
+        return Ok((change, percent.unwrap_or_default(), exit));
     }
     let mut viewer = crate::cover_viewer::Viewer::default();
     let before = notices.len();
@@ -1403,6 +1407,7 @@ pub fn read_server(
     let mut last_save = Instant::now();
     let mut last_drag_scroll = Instant::now();
     let mut save_after_draw = None;
+    let mut exit = crate::BookExit::Close;
     let result: io::Result<()> = (|| {
         loop {
             let _dialog_theme = crate::settings::reader_dialogs(reader.theme);
@@ -1571,7 +1576,12 @@ pub fn read_server(
                 if let Some(action) = reader.study_input(&e) {
                     break action;
                 }
+                let back =
+                    matches!(&e, Event::Key(k) if matches!(k.code, KeyCode::Char('q' | 'Q')));
                 if let Some(action) = reader.input(e) {
+                    if back && action == Action::Close {
+                        exit = crate::BookExit::Back;
+                    }
                     break action;
                 }
             };
@@ -1804,6 +1814,7 @@ pub fn read_server(
                     percentage: percent,
                 }),
                 percent,
+                exit,
             ));
         }
         notices.push("Could not map this passage to BookOrbit. Saved locally.".into());
@@ -1819,5 +1830,5 @@ pub fn read_server(
     } else {
         percent
     };
-    Ok((None, shelf_percent))
+    Ok((None, shelf_percent, exit))
 }

@@ -3,6 +3,7 @@
 import importlib.util
 import os
 import tempfile
+import tomllib
 from pathlib import Path
 
 spec = importlib.util.spec_from_file_location('shelf', Path(__file__).with_name('smoke-shelf.py'))
@@ -100,3 +101,53 @@ for kind in ('fb2', 'epub', 'pdf'):
     with tempfile.TemporaryDirectory(prefix=f'botui-navigation-{kind}-') as tmp:
         check(Path(tmp), kind)
     print(f'PASS {kind}: Space submenus, Normal/Visual, panels, direct q/Q, reopen and parent folders', flush=True)
+
+def direct_file(home, extension):
+    library = home / "Library"
+    library.mkdir()
+    (library / "saved library.md").write_text("Saved library")
+    folder = home / "Downloads" / "Nested folder"
+    folder.mkdir(parents=True)
+    (folder / "aaa.md").write_text("First file in the list")
+    book = folder / f"Книга с пробелами.{extension}"
+    if extension == "pdf":
+        book.write_bytes(s.pdf())
+        marker = "1 / 3"
+        argument = str(book)
+    else:
+        book.write_bytes((s.ROOT / "examples/first-light.fb2").read_bytes())
+        marker = "Почта на пристани"
+        argument = "./" + str(book.relative_to(home))
+    config = home / "config/botui/config.toml"
+    config.parent.mkdir(parents=True)
+    config.write_text(f'library_root = "{library}"\nlocal_grid = false\n')
+    term = s.Terminal(home, BINARY, args=[argument])
+    try:
+        term.see(marker)
+        term.keys("Escape")
+        term.see("Resume")
+        term.keys("Escape")
+        term.wait("Esc returns to the same reader", lambda f: marker in f and "Resume" not in f)
+        term.keys("q")
+        term.see(str(folder))
+        term.keys("Enter")
+        term.see(marker)  # The book, rather than aaa.md, was selected.
+        term.keys("q")
+        for directory in book.parents:
+            term.wait(f"Directory {directory}", lambda f: any(
+                str(directory) in line and "[V Grid]" in line and
+                line.split("[V Grid]")[0].rstrip().endswith(str(directory))
+                for line in f.splitlines()))
+            term.keys("q")
+        term.see("Choose a library")
+        term.keys("l")
+        term.see("saved library.md")
+        assert tomllib.loads(config.read_text())["library_root"] == str(library)
+    finally:
+        term.run("kill-server", required=False)
+
+
+for kind in ("fb2", "pdf"):
+    with tempfile.TemporaryDirectory(prefix="botui-direct-") as tmp:
+        direct_file(Path(tmp), kind)
+    print(f"PASS direct {kind}: selected file, parents to /, main menu and saved library", flush=True)

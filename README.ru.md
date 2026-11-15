@@ -141,14 +141,15 @@ botui --resume                 # Продолжить последнюю нез�
 ```sh
 [Desktop Entry]
 Name=botui
-Exec=kitty --class=botui -o 'font_family=family="Iosevka Term Slab" style="Extended Italic"' -o 'bold_font=family="Iosevka Term Slab" style="Bold Extended"'   -o 'italic_font=family="Iosevka Term Slab" style="Extended Italic"' -o 'bold_italic_font=family="Iosevka Term Slab" style="Bold Extended Italic"' -o font_size=18 -o window_margin_width=0 --title=botui -e bash -i -c "botui %F"
+Exec=kitty --class=botui -o "font_family=family=\\"Iosevka Term Slab\\" style=\\"Extended Italic\\"" -o "bold_font=family=\\"Iosevka Term Slab\\" style=\\"Bold Extended\\"" -o "italic_font=family=\\"Iosevka Term Slab\\" style=\\"Extended Italic\\"" -o "bold_italic_font=family=\\"Iosevka Term Slab\\" style=\\"Bold Extended Italic\\"" -o font_size=18 -o window_margin_width=0 --title=botui -e botui %F
 Type=Application
-Comment=botui
 Terminal=false
 Icon=books
-Categories=Books;
+Categories=Office;Viewer;
 Keywords=books;reader;
 ```
+
+При открытии файла клавиша **q** возвращает в его папку и выделяет книгу. Следующие нажатия поднимают на один каталог вплоть до `/`, затем открывают выбор источника. Путь локальной библиотеки сохраняется.
 <p align="center">
   <img src="docs/images/kitty-fonts.png" width="50%" alt="fonts in kitty terminal">
 </p>
