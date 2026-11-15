@@ -2,7 +2,7 @@
 use crate::{Anchor, PageLine};
 use std::collections::VecDeque;
 
-pub(crate) type Geometry = (u16, usize, (u16, u16));
+pub(crate) type Geometry = (u16, usize, (u16, u16), bool);
 
 pub(crate) struct Snapshot {
     pub size: Geometry,

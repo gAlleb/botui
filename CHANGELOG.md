@@ -6,6 +6,7 @@
 - Preload the two nearest illustrations in each reading direction.
 - Leave one blank line above and below standalone illustrations.
 - Zoom and pan an open illustration with the keyboard or on-screen buttons.
+- Start chapters on a fresh page or column and separate them in scrolling mode.
 
 ## 0.1.15 — 2026-11-15
 

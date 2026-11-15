@@ -26,6 +26,8 @@ pub struct Document {
     pub markdown: Option<Markdown>,
     /// FB2 verse and explicit breaks before a block keep their own spacing.
     pub fixed_breaks: std::collections::BTreeSet<usize>,
+    /// Source blocks that open chapters or parts of the book.
+    pub chapter_starts: std::collections::BTreeSet<usize>,
     /// Lightweight inline faces in otherwise plain text (e.g. FB2), in source bytes.
     pub inline: std::collections::BTreeMap<usize, Vec<publisher::TextSpan>>,
     /// Ordered archive members when the entire reading order consists of raster plates.
@@ -141,6 +143,7 @@ pub struct PageLine {
     pub figures: Vec<Figure>,
     pub surfaces: Vec<Surface>,
     pub table_header: bool,
+    chapter_start: bool,
     pub text: String,
     pub heading: bool,
     start: Anchor,
@@ -592,6 +595,7 @@ fn wrap_block(lines: &mut Vec<PageLine>, block: &Block, index: usize, width: usi
             figures: Vec::new(),
             surfaces: Vec::new(),
             table_header: false,
+            chapter_start: false,
             text: std::mem::take(row),
             heading: block.heading,
             start: Anchor { block: index, byte },
@@ -653,6 +657,7 @@ mod tests {
         Document {
             markdown: None,
             fixed_breaks: Default::default(),
+            chapter_starts: Default::default(),
             inline: Default::default(),
             image_pages: vec![],
             image_sizes: Default::default(),

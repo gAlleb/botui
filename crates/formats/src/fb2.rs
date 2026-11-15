@@ -283,6 +283,10 @@ pub(super) fn parse(bytes: &[u8], fallback: &str) -> Result<Document> {
     Ok(Document {
         markdown: None,
         fixed_breaks,
+        chapter_starts: contents
+            .iter()
+            .filter_map(|entry| entry.anchor().map(|at| at.block))
+            .collect(),
         inline,
         styled: Default::default(),
         image_pages: vec![],

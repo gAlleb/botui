@@ -196,6 +196,7 @@ pub fn supplementary_document(
             &mut raw,
             &mut Default::default(),
             None,
+            &mut Default::default(),
         );
     }
     for link in raw.into_iter().filter(|link| !link.image) {

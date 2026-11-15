@@ -805,6 +805,46 @@ fn illustrations_fit_the_viewport_and_hidden_figures_take_no_space() {
 }
 
 #[test]
+fn chapter_boundaries_survive_resize_page_turns_and_scroll_mode() {
+    use botui_core::{Anchor, LayoutMode, Pager};
+    let doc = styled_fixture(
+        "<section role='doc-chapter'><h2>First</h2><p>Beginning.</p><h3>Within</h3><p>Last line.</p></section>         <section role='doc-chapter'><h2>Second</h2><p>Next line.</p><p>Closing.</p></section>",
+        "p,h2,h3{margin:0}",
+    );
+    assert_eq!(
+        doc.chapter_starts.iter().copied().collect::<Vec<_>>(),
+        [0, 4]
+    );
+    let mut pager = Pager::new(&doc, 90, 12, LayoutMode::Spread);
+    let start = Anchor { block: 4, byte: 0 };
+    let cfi = doc.cfi(start).unwrap();
+    for (width, height) in [(90, 12), (74, 8), (58, 9), (90, 12)] {
+        pager.relayout(&doc, width, height, LayoutMode::Spread);
+        pager.seek(Anchor::default());
+        assert!(pager.lines(0).iter().any(|l| l.text.contains("Last line.")));
+        if pager.columns() == 1 {
+            pager.next();
+            assert_eq!(pager.anchor(), start);
+        }
+        let column = pager.columns() - 1;
+        assert!(pager.lines(column)[0].text.contains("Second"));
+        assert!(pager.lines(column)[1].text.is_empty());
+        assert_eq!(doc.cfi(pager.lines(column)[0].anchor()), Some(cfi.clone()));
+        pager.seek(start);
+        pager.previous();
+        assert!(pager.lines(0)[0].text.contains("First"));
+    }
+    pager.relayout(&doc, 60, 30, LayoutMode::Scroll);
+    pager.seek(Anchor::default());
+    let rows = pager.lines(0);
+    let heading = rows.iter().position(|l| l.text.contains("Second")).unwrap();
+    assert!(rows[heading - 3].text.contains("Last line."));
+    assert!(rows[heading - 2..heading].iter().all(|l| l.text.is_empty()));
+    assert!(rows[heading + 1].text.is_empty());
+    assert!(rows[heading + 2].text.contains("Next line."));
+}
+
+#[test]
 fn standalone_illustrations_use_one_blank_row_at_the_actual_cell_shape() {
     use botui_core::{LayoutMode, Pager};
     let mut doc = styled_fixture(

@@ -6,6 +6,22 @@ repo=Path(__file__).resolve().parents[1]
 spec=importlib.util.spec_from_file_location('shelf',repo/'scripts/smoke-shelf.py')
 shelf=importlib.util.module_from_spec(spec); spec.loader.exec_module(shelf)
 binary=repo/'target/debug/botui'
+
+def contents_dialog(frame):
+    lines = frame.splitlines()
+    for row, line in enumerate(lines):
+        left = line.find('╭ Contents ')
+        if left <= 0:  # The pinned Contents sidebar starts at column zero.
+            continue
+        right = line.index('╮', left)
+        body = []
+        for line in lines[row + 1:]:
+            if line[left:left + 1] == '╰':
+                break
+            body.append(line[left + 1:right])
+        return '\n'.join(body)
+    return ''
+
 with tempfile.TemporaryDirectory(prefix='botui-reader-audit-') as d:
     root=Path(d)
     fb=root/'styles.fb2'
@@ -27,11 +43,14 @@ with tempfile.TemporaryDirectory(prefix='botui-reader-audit-') as d:
             print(book.suffix, "italic and bold faces: PASS", flush=True)
             assert "\x1b[1m" in line or re.search(r"\x1b\[[0-9;]*1(?:;[0-9]+)*m",line)
             assert italic
-            t.keys('Space', 'o'); toc=t.see('Sections: 4')
-            rows=[l for l in toc.splitlines() if any(x in l for x in ('RootChapter','ChildSection','LeafSection','OtherChapter'))]
+            t.keys('Space', 'o'); toc=t.wait('contents dialog',lambda s:'Sections: 4' in contents_dialog(s))
+            rows=contents_dialog(toc).splitlines()
             positions=[next(l.index(label) for l in rows if label in l) for label in ('RootChapter','ChildSection','LeafSection')]
             assert positions[1]-positions[0]==positions[2]-positions[1]==2,rows
-            t.keys('Home','Left'); collapsed=t.wait('collapsed',lambda s:'▸ RootChapter' in s and 'LeafSection' not in '\n'.join(l[22:] for l in s.splitlines()) and 'ChildSection' not in '\n'.join(l[22:] for l in s.splitlines()))
-            t.keys('Right'); t.see('LeafSection')
+            def collapsed(frame):
+                body = contents_dialog(frame)
+                return '▸ RootChapter' in body and 'LeafSection' not in body and 'ChildSection' not in body
+            t.keys('Home','Left'); t.wait('collapsed',collapsed)
+            t.keys('Right'); t.wait('expanded',lambda s:'LeafSection' in contents_dialog(s))
             print(book.suffix,'TREE 3 levels, fold and expand: PASS',flush=True)
         finally:t.run('kill-server',required=False)

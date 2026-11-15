@@ -67,6 +67,7 @@ pub(super) fn read_book(reader: impl Read + Seek, fallback: &str) -> Result<Docu
         }
     }
     let sheets = std::sync::Arc::new(sheets);
+    let mut chapters = xhtml::ChapterMarkers::default();
     let mut image_sizes = HashMap::new();
     let mut styled = std::collections::BTreeMap::new();
     let spine = section("spine").ok_or_else(|| invalid("Missing EPUB reading order"))?;
@@ -107,9 +108,14 @@ pub(super) fn read_book(reader: impl Read + Seek, fallback: &str) -> Result<Docu
             xhtml::parse_document(&html)
         };
         let mut origins = crate::publisher::uses_layout(&dom).then(xhtml::TextOrigins::new);
-        for (id, block) in
-            xhtml::extract(&dom, &mut blocks, &mut links, &mut tables, origins.as_mut())
-        {
+        for (id, block) in xhtml::extract(
+            &dom,
+            &mut blocks,
+            &mut links,
+            &mut tables,
+            origins.as_mut(),
+            &mut chapters,
+        ) {
             ids.entry((member.clone(), id)).or_insert(block);
         }
         if let Some(origins) = origins.filter(|_| blocks.len() > start) {
@@ -238,6 +244,21 @@ pub(super) fn read_book(reader: impl Read + Seek, fallback: &str) -> Result<Docu
         }
     }
     use botui_core::{Anchor, Reference, Target};
+    let mut chapter_starts = chapters.explicit;
+    if contents.is_empty() && chapter_starts.is_empty() {
+        chapter_starts.extend(chapters.headings.iter().copied());
+    }
+    chapter_starts.extend(
+        starts
+            .values()
+            .copied()
+            .filter(|&i| blocks.get(i).is_some_and(|b| b.heading)),
+    );
+    chapter_starts.extend(contents.iter().filter_map(|entry| {
+        let at = entry.anchor()?;
+        (at.byte == 0 && (entry.parent.is_none() || chapters.headings.contains(&at.block)))
+            .then_some(at.block)
+    }));
     for (member, block) in starts {
         ids.insert((member, String::new()), Anchor { block, byte: 0 });
     }
@@ -312,6 +333,7 @@ pub(super) fn read_book(reader: impl Read + Seek, fallback: &str) -> Result<Docu
     Ok(Document {
         markdown: None,
         fixed_breaks: Default::default(),
+        chapter_starts,
         inline: Default::default(),
         image_pages,
         image_sizes: image_sizes

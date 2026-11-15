@@ -141,13 +141,26 @@ impl RawLink {
 pub(super) type TextOrigins =
     std::collections::HashMap<ego_tree::NodeId, (botui_core::Anchor, usize)>;
 
+#[derive(Default)]
+pub(super) struct ChapterMarkers {
+    pub explicit: std::collections::BTreeSet<usize>,
+    pub headings: std::collections::BTreeSet<usize>,
+}
+
 pub(super) fn append_blocks(
     dom: &Html,
     blocks: &mut Vec<Block>,
     links: &mut Vec<RawLink>,
     tables: &mut std::collections::BTreeMap<usize, botui_core::TableRow>,
 ) -> Vec<(String, botui_core::Anchor)> {
-    extract(dom, blocks, links, tables, None)
+    extract(
+        dom,
+        blocks,
+        links,
+        tables,
+        None,
+        &mut ChapterMarkers::default(),
+    )
 }
 
 pub(super) fn extract(
@@ -156,6 +169,7 @@ pub(super) fn extract(
     links: &mut Vec<RawLink>,
     tables: &mut std::collections::BTreeMap<usize, botui_core::TableRow>,
     origins: Option<&mut TextOrigins>,
+    chapters: &mut ChapterMarkers,
 ) -> Vec<(String, botui_core::Anchor)> {
     let Some(body) = dom
         .root_element()
@@ -164,7 +178,7 @@ pub(super) fn extract(
     else {
         return vec![];
     };
-    extract_element(body, blocks, links, tables, origins)
+    extract_element(body, blocks, links, tables, origins, chapters)
 }
 
 pub(super) fn extract_element(
@@ -173,6 +187,7 @@ pub(super) fn extract_element(
     links: &mut Vec<RawLink>,
     tables: &mut std::collections::BTreeMap<usize, botui_core::TableRow>,
     mut origins: Option<&mut TextOrigins>,
+    chapters: &mut ChapterMarkers,
 ) -> Vec<(String, botui_core::Anchor)> {
     let mut ids = Vec::new();
     let mut buffer = String::new();
@@ -187,6 +202,20 @@ pub(super) fn extract_element(
             Edge::Open(node) if hidden.is_none() => match node.value() {
                 Node::Element(el) => {
                     let name = el.name();
+                    if el.attr("hidden").is_none() {
+                        let start = || blocks.len() + usize::from(!buffer.trim().is_empty());
+                        if matches!(name, "h1" | "h2") {
+                            chapters.headings.insert(start());
+                        }
+                        if ["epub:type", "role"]
+                            .iter()
+                            .filter_map(|attr| el.attr(attr))
+                            .flat_map(str::split_ascii_whitespace)
+                            .any(|v| matches!(v, "chapter" | "part" | "doc-chapter" | "doc-part"))
+                        {
+                            chapters.explicit.insert(start());
+                        }
+                    }
                     if name == "svg" && el.attr("hidden").is_none() {
                         links.push(RawLink {
                             node: node.id(),

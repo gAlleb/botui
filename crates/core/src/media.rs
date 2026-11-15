@@ -80,6 +80,7 @@ pub(super) fn table(lines: &mut Vec<PageLine>, start: usize, row: &TableRow, wid
             figures: Vec::new(),
             surfaces: Vec::new(),
             table_header: row.header,
+            chapter_start: false,
         });
     }
 }

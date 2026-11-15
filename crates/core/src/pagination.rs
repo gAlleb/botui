@@ -1,4 +1,5 @@
 //! Render the visible EPUB chapters first, then finish the exact book-wide page index.
+mod chapters;
 use super::{
     Anchor, Document, Figure, Layout, LayoutMode, PageLine, Pager, ReflowOptions, Target, media,
     printed, publisher, reflow_cache::Snapshot,
@@ -22,6 +23,7 @@ pub(super) struct BookLayout {
     reflow: publisher::Reflow,
     uses_height: bool,
     has_figures: bool,
+    has_chapters: bool,
 }
 impl BookLayout {
     pub(super) fn new(doc: &Document, mut options: ReflowOptions, resume: Option<Anchor>) -> Self {
@@ -76,6 +78,7 @@ impl BookLayout {
             resume,
             printed,
             uses_height: !doc.styled.is_empty() || !images.is_empty(),
+            has_chapters: !doc.chapter_starts.is_empty(),
             has_figures: !images.is_empty() || (options.inline_images && !positioned.is_empty()),
             images,
             reflow: publisher::Reflow::new(doc),
@@ -90,6 +93,7 @@ impl BookLayout {
             } else {
                 (1, 2)
             },
+            self.has_chapters && layout.scrolling,
         )
     }
 
@@ -104,7 +108,16 @@ impl BookLayout {
             .layout(doc, layout, self, |start| range.contains(&start));
         let mut lines = Vec::new();
         self.append(&mut lines, doc, layout, range, &mut styled);
-        media::space_figures(lines, doc, layout.image_cell)
+        self.format_rows(lines, doc, layout)
+    }
+
+    fn format_rows(&self, lines: Vec<PageLine>, doc: &Document, layout: Layout) -> Vec<PageLine> {
+        let lines = media::space_figures(lines, doc, layout.image_cell);
+        if self.has_chapters {
+            chapters::format(lines, doc, layout.scrolling)
+        } else {
+            lines
+        }
     }
 
     // Ranges start and end at chapter boundaries, so printed paragraphs and tables stay intact.
@@ -179,6 +192,7 @@ impl BookLayout {
                 .find(|i| {
                     images.contains_key(i)
                         || doc.fixed_breaks.contains(i)
+                        || doc.chapter_starts.contains(i)
                         || doc.tables.contains_key(i)
                         || doc.styled.contains_key(i)
                 })
@@ -230,7 +244,11 @@ impl Layout {
     /// Fill the column immediately before an exact reading position. If its
     /// first row would cut a picture, leave the whole picture on the earlier page.
     fn page_start(self, rows: &[PageLine], end: usize) -> usize {
-        let limit = end.saturating_sub(self.height);
+        let earliest = end.saturating_sub(self.height);
+        let limit = rows[earliest..end]
+            .iter()
+            .rposition(|line| line.chapter_start)
+            .map_or(earliest, |i| earliest + i);
         let mut start = limit;
         while start < end {
             let mut after = start;
@@ -255,7 +273,16 @@ impl Layout {
     /// Find a column break without cutting an illustration that fits on a fresh page.
     fn page_end(self, rows: &[PageLine], first: usize) -> usize {
         let limit = (first + self.height).min(rows.len());
-        let mut end = limit;
+        let next = (first + 1).min(limit);
+        let boundary = if self.scrolling {
+            limit
+        } else {
+            rows[next..limit]
+                .iter()
+                .position(|line| line.chapter_start)
+                .map_or(limit, |i| next + i)
+        };
+        let mut end = boundary;
         while !self.scrolling && end > first {
             let mut before = end;
             for figure in &rows[end - 1].figures {
@@ -264,7 +291,7 @@ impl Layout {
                     if top <= first {
                         // Overlapping floats or an exact text anchor inside an image.
                         // No earlier whole-image break is possible on this page.
-                        return limit;
+                        return boundary;
                     }
                     before = before.min(top);
                 }
@@ -335,7 +362,10 @@ impl Drop for Pending {
 impl Pager {
     pub(super) fn index_pages(&mut self) {
         self.page_starts.clear();
-        if self.layout.scrolling || !self.book.has_figures || self.layout.height == 0 {
+        if self.layout.scrolling
+            || (!self.book.has_figures && !self.book.has_chapters)
+            || self.layout.height == 0
+        {
             return;
         }
         // A search or restored position can start a page at an exact word.
@@ -497,7 +527,7 @@ impl Pager {
         for next in boundaries {
             rows.extend(self.book.lines(doc, layout, end..next));
             if end != start {
-                rows = media::space_figures(rows, doc, layout.image_cell);
+                rows = self.book.format_rows(rows, doc, layout);
             }
             end = next;
             let index = Self::source_index(doc, &rows);
@@ -541,7 +571,7 @@ impl Pager {
                 if stop.load(Ordering::Relaxed) {
                     return None;
                 }
-                let lines = media::space_figures(lines, &doc, layout.image_cell);
+                let lines = book.format_rows(lines, &doc, layout);
                 Some(Snapshot {
                     size: book.size(layout),
                     sources: Self::source_index(&doc, &lines),
