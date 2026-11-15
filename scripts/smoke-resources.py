@@ -64,7 +64,10 @@ def check(tmp):
         # The toolbar wraps on a narrow terminal. Each mouse target must still
         # address the same action as its printed key.
         t.run("resize-window", "-t", "shelf", "-x", "36", "-y", "25")
-        t.click("[+]", t.see("[→]"))
+        narrow = t.wait("wrapped illustration controls", lambda f: button in f and any(
+            "[+]" in line and "[→]" in line and button not in line for line in f.splitlines()
+        ))
+        t.click("[+]", narrow)
         t.see("110%")
         t.keys("+", "+", "+", "+")
         t.see("200%")
@@ -80,8 +83,10 @@ def check(tmp):
         t.click("[−]", t.see("[−]"))
         t.see("150%")
         t.run("resize-window", "-t", "shelf", "-x", "115", "-y", "30")
+        t.wait("expanded illustration controls", lambda f:
+               any(button in line and "150%" in line and "[→]" in line for line in f.splitlines()))
         t.keys("Escape")
-        t.wait("closed illustration", lambda f:"[ Back · Esc ]" not in f)
+        t.wait("closed illustration", lambda f: "Whitby" in f and "[ Back · Esc ]" not in f)
         select(t,"Publisher website")
         t.see("Open in browser: https://example.org/map")
         t.keys("Escape")

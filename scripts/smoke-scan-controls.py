@@ -19,7 +19,7 @@ def paper(frame):
 
 def apply_colors(term, label):
     term.keys("Space", "t")
-    term.click(label, term.see("Page colors"))
+    term.click(label, term.see("Page colors · [ / ]"))
     term.see(f"● {label}")
     term.keys("Enter")
 
