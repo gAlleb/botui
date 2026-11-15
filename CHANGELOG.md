@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Press `q` in a directly opened book to return to its folder with the file selected.
+
 ## 0.1.14 — 2026-11-14
 
 - Theme footnote and illustration windows and add `o` to open illustrations externally.
