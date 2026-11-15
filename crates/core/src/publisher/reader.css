@@ -3,6 +3,10 @@ html, body { margin: 0; padding: 0; font: 16px/16px monospace; }
 /* Each terminal glyph occupies whole cells at a single font size. Using
    publisher point sizes here would insert gaps inside words and headings. */
 *|* { font-size: 16px !important; line-height: 16px !important; letter-spacing: normal !important; }
+/* A raised link still occupies a full terminal cell. Align its marker with the
+   surrounding text so a citation cannot push the next line onto an extra row. */
+a[role~="doc-noteref"], a[epub\:type~="noteref"], a[role~="doc-noteref"] *,
+a[epub\:type~="noteref"] *, sup[data-botui-raised-link], sup a[href], a[href] sup { vertical-align: baseline !important; }
 body { overflow-wrap: anywhere; }
 p, blockquote, pre, figure, table, h1, h2, h3, h4, h5, h6 { margin: 0 0 16px; }
 h1, h2, h3, h4, h5, h6 { font-size: 1em; line-height: 1; text-align: center; }

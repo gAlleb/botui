@@ -386,6 +386,55 @@ fn styled_fixture(body: &str, css: &str) -> botui_core::Document {
 }
 
 #[test]
+fn raised_footnotes_keep_wrapped_prose_on_consecutive_rows() {
+    use botui_core::{LayoutMode, Pager, ReflowOptions};
+    for marker in [
+        "<a role='doc-noteref' class='raised' href='#note'>[21]</a>",
+        "<a epub:type='noteref' class='raised' href='#note'>[21]</a>",
+        "<sup><a href='#note'>[21]</a></sup>",
+        "<a href='#note'><sup>[21]</sup></a>",
+    ] {
+        let body = format!(
+            "{}<p id='note'>Next paragraph.</p>",
+            format!("<p>One two three four five{marker} six seven eight nine ten eleven twelve thirteen fourteen.</p>").repeat(8)
+        );
+        let doc = styled_fixture(
+            &body,
+            ".raised, sup { vertical-align: super; font-size: 0.8em }",
+        );
+        let pager = Pager::with_options(
+            &doc,
+            32,
+            80,
+            LayoutMode::Scroll,
+            ReflowOptions {
+                paragraph_spacing: Some(1),
+                repair_printed: true,
+                inline_images: true,
+                paragraph_indent: 0,
+            },
+        );
+        let rows = pager.lines(0);
+        assert!(
+            rows.iter()
+                .any(|r| r.link_range(&doc, &doc.references[0]).is_some())
+        );
+        for (i, row) in rows.iter().enumerate().skip(1) {
+            if row.text.trim().is_empty() {
+                assert!(
+                    rows[i - 1].text.ends_with("fourteen."),
+                    "{marker}: unexpected gap after {:?}",
+                    rows[i - 1].text
+                );
+            }
+            if row.text.contains("Next paragraph") {
+                assert!(rows[i - 1].text.trim().is_empty());
+            }
+        }
+    }
+}
+
+#[test]
 fn paragraph_spacing_in_epub_and_fb2_preserves_structured_content_and_anchors() {
     use botui_core::{LayoutMode, Pager, ReflowOptions};
     let epub = styled_fixture(

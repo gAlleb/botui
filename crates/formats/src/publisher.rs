@@ -49,7 +49,12 @@ pub(super) fn chapter(
 ) -> Chapter {
     let mut elements = Vec::new();
     let mut sources = Vec::new();
+    let mut raised_links = Vec::new();
+    let links = scraper::Selector::parse("a[href]").unwrap();
     for el in dom.tree.nodes().filter_map(ElementRef::wrap) {
+        if el.value().name() == "sup" && el.select(&links).next().is_some() {
+            raised_links.push(el.id());
+        }
         let spans: Vec<_> = el
             .children()
             .enumerate()
@@ -73,9 +78,17 @@ pub(super) fn chapter(
             el.attrs.retain(|(n, _)| {
                 !matches!(
                     &*n.local,
-                    "data-botui-text" | "data-botui-image" | "data-botui-equation"
+                    "data-botui-text"
+                        | "data-botui-image"
+                        | "data-botui-equation"
+                        | "data-botui-raised-link"
                 )
             });
+        }
+    }
+    for id in raised_links {
+        if let scraper::Node::Element(el) = dom.tree.get_mut(id).unwrap().value() {
+            set_attr(el, "data-botui-raised-link", "");
         }
     }
     for (i, id) in elements.into_iter().enumerate() {

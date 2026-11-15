@@ -3,6 +3,7 @@
 ## Unreleased
 
 - Press `q` in a directly opened book to return to its folder with the file selected.
+- Keep raised EPUB footnotes from adding a blank line inside a paragraph.
 
 ## 0.1.14 — 2026-11-14
 
