@@ -9,6 +9,7 @@ use crossterm::event::{Event, KeyCode, KeyEventKind, MouseButton, MouseEventKind
 use ratatui::{
     layout::Rect,
     style::Stylize,
+    text::Line,
     widgets::{Clear, Paragraph, Wrap},
 };
 use std::{io, path::Path};
@@ -127,6 +128,35 @@ enum Content<'a> {
     Picture(&'a Picture, &'a [u8]),
 }
 
+const LINK_HINT: &str = "Tab / Shift+Tab · Select link   Enter · Follow";
+
+impl Content<'_> {
+    fn note_width(&self, title: &str, buttons: &str) -> Option<u16> {
+        let width = |s: &str| Line::raw(s).width();
+        let (text, hint) = match self {
+            Self::Picture(..) => return None,
+            Self::Text(text) => (text.lines().map(width).max().unwrap_or(0), 0),
+            Self::Note(doc) => {
+                let hint = if doc.references.is_empty() {
+                    0
+                } else {
+                    2 + width(LINK_HINT)
+                };
+                (
+                    doc.blocks
+                        .iter()
+                        .flat_map(|b| b.text.lines())
+                        .map(width)
+                        .max()
+                        .unwrap_or(0),
+                    hint,
+                )
+            }
+        };
+        Some((2 + text.max(width(title)).max(width(buttons) + hint)).min(80) as u16)
+    }
+}
+
 fn view(
     term: &mut AppTerminal,
     label: &str,
@@ -139,6 +169,12 @@ fn view(
     let mut illustration = illustration::Illustration::default();
     let mut viewer = crate::cover_viewer::Viewer::default();
     let mut refresh_background = true;
+    let title = format!(" {} ", label.replace(char::is_control, " "));
+    let buttons = backlink.map_or_else(
+        || "[ Back · Esc ]".into(),
+        |s| format!("[ Back · Esc ]  [ {s} ]"),
+    );
+    let note_width = content.note_width(&title, &buttons);
     loop {
         let mut page = 1;
         let mut limit = 0;
@@ -149,19 +185,36 @@ fn view(
         let mut loading = false;
         let draw_dialog = |f: &mut ratatui::Frame| {
             let screen = f.area();
-            let area = centered(
+            let mut area = centered(
                 screen,
-                if matches!(content, Content::Picture(..)) {
-                    screen.width.saturating_sub(2)
-                } else {
-                    80
-                },
+                note_width.unwrap_or_else(|| screen.width.saturating_sub(2)),
                 screen.height.saturating_sub(2),
             );
+            let block = crate::appearance::block()
+                .title_style(ratatui::style::Style::new().cyan().not_dim())
+                .title(title.as_str());
+            let inner = block.inner(area);
+            let available = Rect {
+                height: inner.height.saturating_sub(1),
+                ..inner
+            };
+            let rows = match content {
+                Content::Text(text) => Paragraph::new(text)
+                    .wrap(Wrap { trim: false })
+                    .line_count(available.width.max(1)),
+                Content::Note(doc) => note_page
+                    .get_or_insert_with(|| note::NotePage::new(doc, available))
+                    .visible_height(available),
+                Content::Picture(..) => usize::from(available.height),
+            };
+            limit = rows
+                .saturating_sub(usize::from(available.height))
+                .min(u16::MAX as usize) as u16;
+            let unused = available
+                .height
+                .saturating_sub(rows.min(u16::MAX as usize) as u16);
+            area = centered(screen, area.width, area.height - unused);
             crate::overlay::paint(f, area, |f| {
-                let block = crate::appearance::block()
-                    .title_style(ratatui::style::Style::new().cyan().not_dim())
-                    .title(format!(" {} ", label.replace(char::is_control, " ")));
                 let inner = block.inner(area);
                 f.render_widget(Clear, area);
                 f.render_widget(block, area);
@@ -174,38 +227,27 @@ fn view(
                     ..inner
                 };
                 page = body.height.max(1);
-                if let Content::Note(doc) = content {
-                    note_page
-                        .get_or_insert_with(|| note::NotePage::new(doc, body))
-                        .draw(f, body);
+                if let Some(note) = &mut note_page {
+                    note.draw(f, body);
                 }
                 if let Content::Text(text) = content {
                     let p = Paragraph::new(text).wrap(Wrap { trim: false });
-                    limit = p
-                        .line_count(body.width.max(1))
-                        .saturating_sub(body.height as usize)
-                        .min(u16::MAX as usize) as u16;
                     scroll = scroll.min(limit);
                     f.render_widget(p.scroll((scroll, 0)), body);
                 }
-                let label = backlink
-                    .map(|s| format!("[ Back · Esc ]  [ {s} ]"))
-                    .unwrap_or_else(|| "[ Back · Esc ]".into());
-                let width = ratatui::text::Line::raw(&label).width() as u16;
                 back = Rect::new(
                     inner.x,
                     inner.bottom().saturating_sub(1),
-                    inner.width.min(width),
+                    Line::raw(buttons.as_str())
+                        .width()
+                        .min(usize::from(inner.width)) as u16,
                     inner.height.min(1),
                 );
-                f.render_widget(Paragraph::new(label).cyan(), back);
+                f.render_widget(Paragraph::new(buttons.as_str()).cyan(), back);
                 if matches!(content, Content::Note(doc) if !doc.references.is_empty()) {
                     let x = back.right().saturating_add(2);
                     let hint = Rect::new(x, back.y, inner.right().saturating_sub(x), back.height);
-                    f.render_widget(
-                        Paragraph::new("Tab / Shift+Tab · Select link   Enter · Follow").cyan(),
-                        hint,
-                    );
+                    f.render_widget(Paragraph::new(LINK_HINT).cyan(), hint);
                 }
             });
             crate::settings::paint_dialog(f)

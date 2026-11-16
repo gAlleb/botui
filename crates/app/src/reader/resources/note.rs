@@ -24,19 +24,25 @@ impl<'a> NotePage<'a> {
         }
     }
 
-    pub fn draw(&mut self, frame: &mut Frame, area: Rect) {
-        self.links.clear();
-        if area.is_empty() {
-            return;
-        }
+    pub fn visible_height(&mut self, area: Rect) -> usize {
         if self.pager.column_width() != area.width
-            || self.pager.viewport() != usize::from(area.height)
+            || self.pager.viewport() != usize::from(area.height.max(1))
         {
             self.pager
                 .relayout(self.doc, area.width, area.height, LayoutMode::Scroll);
             if let Some(id) = self.selected {
                 self.show_link(id);
             }
+            // A larger viewport can now contain rows above the old scroll position.
+            self.pager.scroll(0);
+        }
+        self.pager.lines(0).len()
+    }
+
+    pub fn draw(&mut self, frame: &mut Frame, area: Rect) {
+        self.links.clear();
+        if area.is_empty() {
+            return;
         }
         for (y, line) in self.pager.lines(0).iter().enumerate() {
             let row = Rect::new(area.x, area.y + y as u16, area.width, 1).intersection(area);

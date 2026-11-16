@@ -19,6 +19,14 @@ def select(t, label):
     t.see("Book links & illustrations")
     t.click(label, t.see(label))
 
+def popup_size(frame, title):
+    rows = frame.splitlines()
+    top, row = next((i, r) for i, r in enumerate(rows) if f"╭ {title} " in r)
+    left = row.index(f"╭ {title} ")
+    right = row.index("╮", left)
+    bottom = next(i for i in range(top + 1, len(rows)) if rows[i][left:left + 1] == "╰")
+    return right - left + 1, bottom - top + 1
+
 def check(tmp):
     pic = (ROOT / "scripts/fixtures/shelf-cover.jpg").read_bytes()
     epub = tmp / "Atlas.epub"
@@ -45,6 +53,9 @@ def check(tmp):
         assert any("Whitby" in line and "│" in line and "High" in line for line in page.splitlines()),page
         select(t, "Source note")
         note=t.see("In 1812 the harbour moved.")
+        width, height = popup_size(note, "Source note")
+        assert width < 80 and height == 4, (width, height, note)
+        assert "Whitby" in note or "▀" in note or "▄" in note, note
         check_accent("[ Back · Esc ]")
         assert "Open externally" not in note
         assert "Content of adjacent note" not in note
@@ -98,15 +109,30 @@ def check(tmp):
     finally:
         t.run("kill-server", required=False)
     fb2 = tmp / "Notes.fb2"
-    fb2.write_text('<FictionBook xmlns:xlink="http://www.w3.org/1999/xlink"><body><section><title><p>Evening tide</p></title><p>Read <a xlink:href="#n">Footnote one</a>.</p><image xlink:href="#chart"/></section></body><body name="notes"><section id="n"><p>The tide was high.</p></section></body><binary id="chart" content-type="image/jpeg">'+b64encode(pic).decode()+'</binary></FictionBook>')
+    long_note = ''.join(f'<p>Observation {i:02}: the harbour was quiet before high tide.</p>' for i in range(12))
+    fb2.write_text('<FictionBook xmlns:xlink="http://www.w3.org/1999/xlink"><body><section><title><p>Evening tide</p></title><p>Read <a xlink:href="#n">Footnote one</a> or <a xlink:href="#long">Tide diary</a>.</p><image xlink:href="#chart"/></section></body><body name="notes"><section id="n"><p>The tide was high.</p></section><section id="long">'+long_note+'</section></body><binary id="chart" content-type="image/jpeg">'+b64encode(pic).decode()+'</binary></FictionBook>')
     t = shelf.Terminal(tmp, BINARY, args=[str(fb2)])
     try:
         # A direct-file reader negotiates graphics when the first image arrives.
         # Wait for that response/timeout before sending interactive test keys.
         start = t.wait("FB2 inline illustration ready", lambda f: "Evening tide" in f and ("▀" in f or "▄" in f))
         assert "The tide was high." not in start
-        select(t,"Footnote one");t.see("The tide was high.")
+        select(t,"Footnote one")
+        short=t.see("The tide was high.")
+        assert popup_size(short, "Footnote one") == (len("The tide was high.") + 2, 4), short
         t.keys("Escape");t.wait("closed note",lambda f:"The tide was high." not in f)
+        select(t,"Tide diary")
+        t.see("Observation 00")
+        t.run("resize-window", "-t", "shelf", "-x", "38", "-y", "14")
+        narrow=t.wait("wrapped long footnote", lambda f: "Observation 00" in f and "Observation 11" not in f and len(f.splitlines()) == 14)
+        assert popup_size(narrow, "Tide diary") == (38, 12), narrow
+        t.keys(*(["PageDown"] * 8))
+        end=t.see("Observation 11")
+        assert "Observation 00" not in end and popup_size(end, "Tide diary") == (38, 12), end
+        t.keys(*(["PageUp"] * 8))
+        t.click("[ Back · Esc ]",t.see("Observation 00"))
+        t.run("resize-window", "-t", "shelf", "-x", "115", "-y", "30")
+        t.see("Evening tide")
         select(t,"Illustration · chart");t.wait("FB2 illustration",lambda f:"[ Back · Esc ]" in f and ("▀" in f or "▄" in f))
     finally:
         t.run("kill-server", required=False)

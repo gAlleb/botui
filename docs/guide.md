@@ -246,6 +246,8 @@ The terminal supplies the typeface and cell size. Justified paragraphs keep natu
 
 Search, footnotes, bookmarks and BookOrbit resume use the source text even when a table wraps differently.
 
+Short footnotes open in a popup fitted to their text. Scroll longer notes with the arrow keys, Page Up / Page Down or the mouse wheel. Click a return link, or select it with Tab / Shift+Tab and press Enter. Esc closes the note.
+
 Embedded raster illustrations use the available page height. **Space r i** opens an illustration separately. Press **o** or click **Open externally** to open it in the system image viewer. **F2 → Reader → Illustrations** switches to the separate viewer only.
 
 FB2 also preserves italic, bold and struck-through text in ordinary paragraphs. These faces do not change the text used for search or saved positions.
