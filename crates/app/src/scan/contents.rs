@@ -29,9 +29,9 @@ impl Contents {
             .get(i)
             .map_or(i as u32 + 1, |&j| self.items[j].page)
     }
-    fn index_for_page(&self, page: u32) -> usize {
+    fn index_for_page(&self, page: u32) -> Option<usize> {
         if self.items.is_empty() {
-            return page.saturating_sub(1) as usize;
+            return page.checked_sub(1).map(|i| i as usize);
         }
         let index = self
             .items
@@ -39,10 +39,8 @@ impl Contents {
             .enumerate()
             .filter(|(_, v)| v.page <= page)
             .max_by_key(|(_, v)| v.page)
-            .map_or(0, |(i, _)| i);
-        self.visible
-            .partition_point(|i| *i <= index)
-            .saturating_sub(1)
+            .map(|(i, _)| i)?;
+        self.visible.partition_point(|i| *i <= index).checked_sub(1)
     }
     pub fn set_outline(&mut self, items: Vec<botui_fixed::OutlineEntry>) {
         if items.is_empty() {
@@ -53,7 +51,7 @@ impl Contents {
         self.items = items;
         self.folded.clear();
         self.rebuild();
-        self.selected = self.index_for_page(selected_page);
+        self.selected = self.index_for_page(selected_page).unwrap_or(0);
         self.first = 0;
     }
     fn indent(&self, index: usize) -> usize {
@@ -106,16 +104,18 @@ impl Contents {
             self.focus = false;
             return;
         }
-        let border = crate::appearance::block().title(if self.items.is_empty() {
+        let title = if self.items.is_empty() {
             " Pages "
         } else {
             " Contents "
-        });
+        };
+        let border = crate::appearance::outline_block(title, self.focus);
         self.rows = border.inner(area);
         f.render_widget(border, area);
         let count = self.count(total);
+        let current = self.index_for_page(page);
         if !self.focus {
-            self.selected = self.index_for_page(page);
+            self.selected = current.unwrap_or(0);
         }
         self.selected = self.selected.min(count.saturating_sub(1));
         let height = usize::from(self.rows.height);
@@ -126,8 +126,9 @@ impl Contents {
             .min(count.saturating_sub(height));
         for (y, i) in (self.first..count).take(height).enumerate() {
             let item = self.visible.get(i).map(|&j| &self.items[j]);
+            let place = if Some(i) == current { '•' } else { ' ' };
             let label = item.map_or_else(
-                || format!(" Page {}", i + 1),
+                || format!("{place} Page {}", i + 1),
                 |e| {
                     let index = self.visible[i];
                     let marker = if !self.group(index) {
@@ -138,7 +139,7 @@ impl Contents {
                         "▾"
                     };
                     format!(
-                        " {:indent$}{marker} {}  {}",
+                        "{place}{:indent$}{marker} {}  {}",
                         "",
                         e.page,
                         e.title,
@@ -152,7 +153,11 @@ impl Contents {
             );
             let p = Paragraph::new(label).style(base);
             f.render_widget(
-                if i == self.selected { p.reversed() } else { p },
+                if self.focus && i == self.selected {
+                    p.reversed()
+                } else {
+                    p
+                },
                 Rect::new(self.rows.x, self.rows.y + y as u16, self.rows.width, 1),
             );
         }
@@ -160,6 +165,9 @@ impl Contents {
     /// Some(None) consumes a focus or selection movement without changing page.
     pub fn focus(&mut self) {
         self.focus = true;
+    }
+    pub fn focused(&self) -> bool {
+        self.focus
     }
 
     pub fn input(&mut self, e: &Event, total: u32) -> Option<Option<u32>> {
@@ -224,6 +232,30 @@ impl Contents {
 mod tests {
     use super::*;
     use ratatui::{Terminal, backend::TestBackend};
+
+    #[test]
+    fn page_marker_stays_put_while_browsing_an_unoutlined_pdf() {
+        use ratatui::style::Modifier;
+        let mut term = Terminal::new(TestBackend::new(25, 10)).unwrap();
+        let mut sidebar = Contents::default();
+        term.draw(|f| sidebar.draw(f, f.area(), 3, 7)).unwrap();
+        sidebar.input(&Event::Key(KeyCode::Tab.into()), 7);
+        sidebar.input(&Event::Key(KeyCode::Down.into()), 7);
+        term.draw(|f| sidebar.draw(f, f.area(), 3, 7)).unwrap();
+        let buffer = term.backend().buffer();
+        let (x, y) = (sidebar.rows.x, sidebar.rows.y + 2);
+        assert_eq!(buffer[(x, y)].symbol(), "•");
+        assert!(!buffer[(x, y)].modifier.contains(Modifier::REVERSED));
+        assert!(buffer[(x, y + 1)].modifier.contains(Modifier::REVERSED));
+        assert_eq!(
+            sidebar.input(&Event::Key(KeyCode::Enter.into()), 7),
+            Some(Some(4))
+        );
+        term.draw(|f| sidebar.draw(f, f.area(), 4, 7)).unwrap();
+        let marker = &term.backend().buffer()[(x, y + 1)];
+        assert_eq!(marker.symbol(), "•");
+        assert!(!marker.modifier.contains(Modifier::REVERSED));
+    }
 
     #[test]
     fn nested_sections_fold_without_losing_current_page_or_parent() {

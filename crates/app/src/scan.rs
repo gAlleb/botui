@@ -302,7 +302,8 @@ pub(super) fn read_pages(
             ),
             !zen && screen.width >= 78,
         );
-        let reading_frame = crate::appearance::ReadingFrame::new(content, zen, zen_progress);
+        let reading_frame = crate::appearance::ReadingFrame::new(content, zen, zen_progress)
+            .with_focus(!sidebar_area.is_empty() && !sidebar.focused());
         let area = reading_frame.inner;
         let available = area.width;
         let cols = if !scrolling && spread && total != Some(1) && available >= 68 {

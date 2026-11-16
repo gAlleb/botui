@@ -314,6 +314,8 @@ The separate **Compact blocks** switch is on by default. It preserves book spaci
 
 In an open book, drag the vertical border between the contents on the left and the page to change the width of the contents sidebar. You can also enter a width in **F2 → Reader → Contents width**. On the bookshelf, drag the border between navigation and the book list or use **F2 → Library → Sidebar width**.
 
+In the contents, **•** marks the chapter or page you are reading. **Tab** moves keyboard focus between the page and the sidebar. While browsing the sidebar, the highlighted row shows what **Enter** will open.
+
 **F2 → Library → Download limit** sets the maximum size per BookOrbit or OPDS edition. The default is **4096 MiB**. Set **0** for unlimited downloads. Downloads stream to disk.
 
 [Keyboard help](images/help.png).

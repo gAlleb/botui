@@ -33,6 +33,7 @@ pub(super) struct Navigation {
     depths: Vec<usize>,
     folded: std::collections::HashSet<usize>,
     visible: Vec<usize>,
+    current: Option<usize>,
     state: ListState,
     rows: Rect,
     back: Rect,
@@ -54,14 +55,16 @@ impl Navigation {
         for entry in &items {
             depths.push(entry.parent.map_or(0, |p| depths[p] + 1));
         }
-        let i = current(&items, place);
-        let state = ListState::default().with_selected((!items.is_empty()).then_some(i));
+        let current = current(&items, place);
+        let state =
+            ListState::default().with_selected((!items.is_empty()).then_some(current.unwrap_or(0)));
         Self {
             kind,
             index: None,
             hits: vec![],
             folded: Default::default(),
             visible: (0..items.len()).collect(),
+            current,
             depths,
             items,
             state,
@@ -72,21 +75,32 @@ impl Navigation {
     }
     pub fn draw(&mut self, f: &mut Frame, style: Style) {
         let area = centered(f.area(), 72, 22);
-        self.draw_at(f, style, area, true);
+        self.draw_at(f, style, area, None);
     }
-    pub fn follow(&mut self, place: Anchor) {
-        if !self.items.is_empty() {
-            let mut index = current(&self.items, place);
-            loop {
-                if let Ok(row) = self.visible.binary_search(&index) {
-                    self.state.select(Some(row));
-                    break;
-                }
-                let Some(parent) = self.items[index].parent else {
-                    break;
-                };
-                index = parent;
+    pub fn draw_sidebar(
+        &mut self,
+        f: &mut Frame,
+        style: Style,
+        area: Rect,
+        place: Anchor,
+        focused: bool,
+    ) {
+        self.follow(place, focused);
+        self.draw_at(f, style, area, Some(focused));
+    }
+    fn follow(&mut self, place: Anchor, focused: bool) {
+        self.current = current(&self.items, place);
+        if !focused && !self.items.is_empty() {
+            self.state.select(Some(self.current_row().unwrap_or(0)));
+        }
+    }
+    fn current_row(&self) -> Option<usize> {
+        let mut index = self.current?;
+        loop {
+            if let Ok(row) = self.visible.binary_search(&index) {
+                return Some(row);
             }
+            index = self.items[index].parent?;
         }
     }
     fn group(&self, index: usize) -> bool {
@@ -143,13 +157,15 @@ impl Navigation {
         }
         self.state.select(Some(row));
     }
-    pub fn draw_at(&mut self, f: &mut Frame, style: Style, area: Rect, popup: bool) {
+    fn draw_at(&mut self, f: &mut Frame, style: Style, area: Rect, sidebar_focus: Option<bool>) {
+        let popup = sidebar_focus.is_none();
         let title = match self.kind {
             Kind::Contents => " Contents ",
             Kind::Notes => " Reading notes ",
             Kind::Search => " Find in book ",
         };
-        let panel = crate::appearance::block().title(title).style(style);
+        let panel =
+            crate::appearance::outline_block(title, sidebar_focus == Some(true)).style(style);
         let inner = panel.inner(area);
         f.render_widget(Clear, area);
         f.render_widget(panel, area);
@@ -202,9 +218,11 @@ impl Navigation {
                 *self.state.offset_mut() = self.state.offset().min(last_start);
             }
             let entries: Vec<_> = if self.kind == Kind::Contents {
+                let active = self.current_row();
                 self.visible
                     .iter()
-                    .map(|&i| {
+                    .enumerate()
+                    .map(|(row, &i)| {
                         let indent = self.indent(i);
                         let marker = if !self.group(i) {
                             " "
@@ -213,7 +231,9 @@ impl Navigation {
                         } else {
                             "▾"
                         };
-                        let label = format!(" {:indent$}{marker} {}", "", self.items[i].title);
+                        let place = if Some(row) == active { '•' } else { ' ' };
+                        let label =
+                            format!("{place}{:indent$}{marker} {}", "", self.items[i].title);
                         let style = crate::appearance::outline_style(style, self.depths[i]);
                         ratatui::widgets::ListItem::new(label).style(if self.group(i) {
                             style.bold()
@@ -234,7 +254,11 @@ impl Navigation {
             f.render_stateful_widget(
                 List::new(entries)
                     .style(style)
-                    .highlight_style(style.reversed()),
+                    .highlight_style(if sidebar_focus == Some(false) {
+                        Style::default()
+                    } else {
+                        style.reversed()
+                    }),
                 self.rows,
                 &mut self.state,
             );
@@ -380,20 +404,54 @@ impl Navigation {
     }
 }
 
-fn current(items: &[ContentsEntry], place: Anchor) -> usize {
+fn current(items: &[ContentsEntry], place: Anchor) -> Option<usize> {
     items
         .iter()
         .enumerate()
         .filter_map(|(i, e)| Some((i, e.anchor()?)))
         .filter(|(_, a)| *a <= place)
         .max_by_key(|(_, a)| *a)
-        .map_or(0, |(i, _)| i)
+        .map(|(i, _)| i)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use ratatui::{Terminal, backend::TestBackend};
+
+    #[test]
+    fn moving_the_outline_cursor_keeps_the_reading_marker_in_both_palettes() {
+        use ratatui::style::Modifier;
+        let place = Anchor::default();
+        let doc = Document {
+            contents: vec![
+                ContentsEntry::passage(place, "One".into()),
+                ContentsEntry::passage(Anchor { block: 2, byte: 0 }, "Two".into()),
+            ],
+            ..Document::default()
+        };
+        let mut term = Terminal::new(TestBackend::new(32, 10)).unwrap();
+        for palette in ["sepia-light", "sepia-dark"] {
+            let theme = crate::theme::Theme::from_id(palette);
+            let mut nav = Navigation::new(Kind::Contents, &doc, place);
+            for focused in [true, false] {
+                nav.edit(Edit::Move(1));
+                term.draw(|f| {
+                    nav.draw_sidebar(f, theme.style(), f.area(), place, focused);
+                    crate::settings::paint_book(f, theme);
+                })
+                .unwrap();
+                let b = term.backend().buffer();
+                let (x, y) = (nav.rows.x, nav.rows.y);
+                assert_eq!(b[(x, y)].symbol(), "•");
+                assert_eq!(b[(x, y + 1)].symbol(), " ");
+                assert!(!b[(x, y)].modifier.contains(Modifier::REVERSED));
+                assert_eq!(b[(x, y + 1)].modifier.contains(Modifier::REVERSED), focused);
+                assert_eq!(b[(0, 0)].modifier.contains(Modifier::BOLD), focused);
+                assert_eq!(b[(0, 0)].fg, theme.link());
+            }
+        }
+    }
 
     #[test]
     fn expanded_contents_reveals_earlier_chapters_without_changing_selection() {
@@ -407,8 +465,10 @@ mod tests {
         let mut nav = Navigation::new(Kind::Contents, &doc, anchor(9));
         let mut term = Terminal::new(TestBackend::new(40, 24)).unwrap();
         let mut draw = |nav: &mut Navigation, height| {
-            term.draw(|f| nav.draw_at(f, Style::default(), Rect::new(0, 0, 40, height), false))
-                .unwrap();
+            term.draw(|f| {
+                nav.draw_at(f, Style::default(), Rect::new(0, 0, 40, height), Some(true))
+            })
+            .unwrap();
         };
         draw(&mut nav, 8);
         assert!(nav.state.offset() > 0);
@@ -416,7 +476,7 @@ mod tests {
         draw(&mut nav, 15);
         assert_eq!(nav.rows.height, 12);
         assert_eq!((nav.state.offset(), nav.state.selected()), (0, Some(10)));
-        nav.follow(anchor(9));
+        nav.follow(anchor(9), false);
         draw(&mut nav, 15);
         assert_eq!((nav.state.offset(), nav.state.selected()), (0, Some(9)));
     }

@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Mark the current chapter and highlight the focused pane and outline selection.
 - Share clickable footer shortcuts across readers and keep each button whole in narrow windows.
 - Preserve the book’s first-line indent in centered EPUB paragraphs.
 - Keep EPUB addresses and aligned text compact, with an independent switch enabled by default.

@@ -43,10 +43,16 @@ with tempfile.TemporaryDirectory(prefix='botui-outline-') as d:
             assert positions[0] < positions[1] < positions[2], frame
             if reopen:
                 term.see('2 / 3')
-                # The whole outline remains visible, with current section selected.
-                ansi = term.run('capture-pane','-p','-e','-t','shelf').stdout
-                leaf = next(line for line in ansi.splitlines() if 'LeafSection' in line)
-                assert '\x1b[7m' in leaf or re.search(r'\x1b\[[0-9;]*7(?:;[0-9]+)*m',leaf), repr(leaf)
+                term.wait('Current section marked after reopening', lambda f: any(
+                    '•' in line and 'LeafSection' in line for line in f.splitlines()))
+                term.keys('Tab', 'Down')
+                term.wait('Browsing the outline keeps the marked section', lambda f: any(
+                    '•' in line and 'LeafSection' in line for line in f.splitlines()))
+                def cursor_on_final(_):
+                    ansi = term.run('capture-pane','-p','-e','-t','shelf').stdout
+                    final = next((line for line in ansi.splitlines() if 'FinalChapter' in line), '')
+                    return re.search(r'\x1b\[[0-9;]*7(?:;[0-9]+)*m', final.split('FinalChapter')[0])
+                term.wait('Outline cursor highlights FinalChapter', cursor_on_final)
                 continue
             term.keys('Tab','Left','Left','Left')
             term.wait('Fold root',lambda s:'▸ 1  RootChapter' in s and 'LeafSection' not in s)

@@ -68,6 +68,7 @@ pub struct ReadingFrame {
     pub inner: Rect,
     area: Rect,
     borders: BordersStyle,
+    focused: bool,
 }
 
 impl ReadingFrame {
@@ -93,7 +94,13 @@ impl ReadingFrame {
             inner,
             area,
             borders,
+            focused: false,
         }
+    }
+
+    pub fn with_focus(mut self, focused: bool) -> Self {
+        self.focused = focused;
+        self
     }
 
     pub fn draw(&self, frame: &mut ratatui::Frame, style: Style, caption: Option<String>) {
@@ -104,7 +111,7 @@ impl ReadingFrame {
                 } else {
                     BorderType::Plain
                 })
-                .border_style(border_style(false))
+                .border_style(border_style(self.focused))
                 .title_style(style.dim());
             if let Some(label) = caption {
                 block = block.title_bottom(Line::from(format!(" {label} ")).centered());
@@ -129,6 +136,15 @@ impl ReadingFrame {
 pub fn border_style(focused: bool) -> Style {
     let accent = Style::new().fg(Color::Cyan);
     if focused { accent.bold() } else { accent.dim() }
+}
+pub fn outline_block(title: &str, focused: bool) -> Block<'_> {
+    let panel = block().title(title);
+    if focused {
+        let accent = border_style(true);
+        panel.border_style(accent).title_style(accent)
+    } else {
+        panel
+    }
 }
 pub fn card<'a>(active: bool) -> Block<'a> {
     let tile = block().border_style(border_style(active));

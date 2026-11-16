@@ -130,7 +130,7 @@ def check(tmp):
         keys("c")
         toc=wait_for("Оглавление",lambda s:"Sections:" in s and "Обратный рейс" in s)
         for row, line in enumerate(toc.splitlines(), 1):
-            entry = re.search(r"│[ ▸▾]*(Обратный рейс) *│", line)
+            entry = re.search(r"│[ •▸▾]*(Обратный рейс) *│", line)
             if entry:
                 mouse(0, entry.start(1) + 1, row)
                 break

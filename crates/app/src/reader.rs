@@ -368,7 +368,8 @@ impl Reader {
         let controls = self.study.controls_area(screen);
         let footer_height = controls.height.max(u16::from(self.links.visiting()));
         let (sidebar, page) = layout::panes(screen, &mut self.splitter, self.zen, footer_height);
-        let frame = crate::appearance::ReadingFrame::new(page, self.zen, self.zen_progress);
+        let frame = crate::appearance::ReadingFrame::new(page, self.zen, self.zen_progress)
+            .with_focus(!sidebar.is_empty() && !self.sidebar_focus);
         (sidebar, frame, controls)
     }
 
@@ -543,10 +544,13 @@ impl Reader {
         self.study.paint(frame);
         if !self.zen {
             if !self.sidebar_rect.is_empty() {
-                if !self.sidebar_focus {
-                    self.sidebar.follow(self.pager.anchor());
-                }
-                self.sidebar.draw_at(frame, style, self.sidebar_rect, false);
+                self.sidebar.draw_sidebar(
+                    frame,
+                    style,
+                    self.sidebar_rect,
+                    self.pager.anchor(),
+                    self.sidebar_focus,
+                );
             }
             let foot = Rect::new(
                 screen.x,
