@@ -42,6 +42,7 @@ pub struct Settings {
     pub scan_zoom: Option<u16>,
     pub scan_gap: Option<u16>,
     pub paragraph_indent: u8,
+    pub preserve_compact_spacing: Option<bool>,
     pub paragraph_spacing: Option<u8>,
     pub sidebar_width: Option<u16>,
     pub contents_width: Option<u16>,
@@ -321,6 +322,9 @@ fn extend_config(doc: &mut DocumentMut) -> io::Result<bool> {
 }
 
 impl Settings {
+    pub fn compact_spacing(&self) -> bool {
+        self.preserve_compact_spacing.unwrap_or(true)
+    }
     pub fn load() -> io::Result<Self> {
         let mut doc = document(&read(&path()?)?)?;
         lookup_migration::migrate(&mut doc)?;
@@ -530,6 +534,9 @@ mod dialog_tests {
     fn documented_configuration_matches_example() {
         let settings = decode(EXAMPLE).unwrap();
         assert_eq!(settings.leader_delay_ms, Some(150));
+        assert_eq!(settings.preserve_compact_spacing, Some(true));
+        assert!(settings.compact_spacing());
+        assert_eq!(settings.paragraph_spacing, None);
         assert!(settings.keys.is_empty());
         for doc in [
             include_str!("../../../README.md"),
@@ -541,6 +548,55 @@ mod dialog_tests {
                 doc.contains(EXAMPLE.trim()),
                 "Configuration reference is outdated"
             );
+        }
+    }
+
+    #[test]
+    fn compact_spacing_preserves_legacy_intervals_and_can_be_switched_independently() {
+        for (saved, interval) in [
+            ("# Existing profile\n", None),
+            ("paragraph_spacing = 0\n", Some(0)),
+            ("paragraph_spacing = 1\n", Some(1)),
+            ("paragraph_spacing = 2\n", Some(2)),
+        ] {
+            let mut doc = document(saved).unwrap();
+            extend_config(&mut doc).unwrap();
+            let mut settings = decode(&doc.to_string()).unwrap();
+            assert_eq!(settings.preserve_compact_spacing, None);
+            assert!(settings.compact_spacing());
+            assert_eq!(settings.paragraph_spacing, interval);
+            for enabled in [false, true, false] {
+                apply(&mut doc, &mut settings, |s| {
+                    s.preserve_compact_spacing = Some(enabled);
+                })
+                .unwrap();
+                extend_config(&mut doc).unwrap();
+                settings = decode(&doc.to_string()).unwrap();
+                assert_eq!(settings.compact_spacing(), enabled);
+                assert_eq!(settings.preserve_compact_spacing, Some(enabled));
+                assert_eq!(settings.paragraph_spacing, interval);
+                assert_eq!(doc.contains_key("paragraph_spacing"), interval.is_some());
+            }
+        }
+    }
+
+    #[test]
+    fn changing_paragraph_interval_preserves_the_compact_spacing_switch() {
+        for compact in [false, true] {
+            let mut doc = document(EXAMPLE).unwrap();
+            let mut settings = decode(EXAMPLE).unwrap();
+            apply(&mut doc, &mut settings, |s| {
+                s.preserve_compact_spacing = Some(compact);
+            })
+            .unwrap();
+            for interval in [Some(0), Some(1), Some(2), None] {
+                apply(&mut doc, &mut settings, |s| s.paragraph_spacing = interval).unwrap();
+                extend_config(&mut doc).unwrap();
+                settings = decode(&doc.to_string()).unwrap();
+                assert_eq!(settings.paragraph_spacing, interval);
+                assert_eq!(settings.preserve_compact_spacing, Some(compact));
+                assert_eq!(settings.compact_spacing(), compact);
+            }
         }
     }
 

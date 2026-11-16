@@ -11,6 +11,11 @@ s=importlib.util.module_from_spec(spec);spec.loader.exec_module(s)
 def check(tmp):
     t=s.Terminal(tmp,root/'target/debug/botui',args=[])
     def cfg():return tomllib.loads((tmp/'config/botui/config.toml').read_text())
+    def spacing_saved(compact, gap):
+        data = cfg()
+        return data.get('preserve_compact_spacing', True) == compact and data.get('paragraph_spacing') == gap
+    def compact_row(frame, enabled):
+        return re.search(r'Compact blocks\s+' + ('On' if enabled else 'Off') + r'\b', frame)
     try:
         t.click('[F1 Help]',t.see('[F1 Help]'));t.see('Keyboard shortcuts');guide=t.see('Open the selected item')
         aligned=[next(row.index(label) for row in guide.splitlines() if label in row) for label in ('Open settings','Back / close a panel','Open the selected item')]
@@ -69,9 +74,15 @@ def check(tmp):
             'Display embedded illustrations',
             'Choose one page, a spread',
             'Indent the first line',
+            'On keeps book spacing in addresses',
             '0, 1 or 2 blank lines between paragraphs',
             'divider between the contents sidebar',
             'Show the reading frame, page and percentage',
+            'Lines per wheel tick',
+            'Delay before command hints appear',
+            'Palette for PDF, DjVu',
+            'Keep document colors, invert the original page',
+            'Background around CBZ/CBR pages',
         )):
             if index:
                 t.keys('Down')
@@ -79,12 +90,37 @@ def check(tmp):
         t.click('Column gap',t.see('Column gap'));t.keys('C-u');t.type('10');t.keys('Enter');t.see('10 cells')
         t.click('First-line indent',t.see('First-line indent'));t.keys('C-u');t.type('3');t.keys('Enter');t.see('3 cells')
         assert cfg()['paragraph_indent']==3
+        assert compact_row(t.see('Compact blocks'), True) and spacing_saved(True, None)
         t.click('Paragraph spacing', t.see('Paragraph spacing'))
         t.click('0 blank lines', t.see('0 blank lines'))
-        t.wait('Paragraphs are adjacent', lambda f: 'First-line indent' in f and cfg().get('paragraph_spacing') == 0)
+        t.wait('Zero paragraph gap with compact blocks enabled', lambda f: compact_row(f, True) and spacing_saved(True, 0))
+        t.click('Compact blocks', t.see('Compact blocks'))
+        t.wait('Compact blocks off without changing the gap', lambda f: compact_row(f, False) and spacing_saved(False, 0))
+        t.click('Paragraph spacing', t.see('Paragraph spacing'))
+        t.click('2 blank lines', t.see('2 blank lines'))
+        t.wait('Gap changed independently of compact blocks', lambda f: compact_row(f, False) and spacing_saved(False, 2))
         t.click('Paragraph spacing', t.see('Paragraph spacing'))
         t.click('From book', t.see('From book'))
-        t.wait('Book spacing restored', lambda f: 'First-line indent' in f and 'paragraph_spacing' not in cfg())
+        t.wait('Book spacing without changing compact blocks', lambda f: compact_row(f, False) and spacing_saved(False, None))
+        t.click('Paragraph spacing', t.see('Paragraph spacing'))
+        t.click('2 blank lines', t.see('2 blank lines'))
+        t.wait('Explicit gap restored while compact blocks remain off', lambda f: compact_row(f, False) and spacing_saved(False, 2))
+        # Use the keyboard for the same toggle; it must retain the chosen gap.
+        t.keys('Up', 'Enter')
+        t.wait('Compact blocks on without changing the gap', lambda f: compact_row(f, True) and spacing_saved(True, 2))
+        # Each following row still opens its own editor after inserting the toggle.
+        for label, title in (
+            ('Contents width', 'Contents width · 12–100 cells'),
+            ('Mouse wheel step', 'Mouse wheel step · 1–12 lines'),
+            ('Space menu delay', 'Space menu delay · milliseconds'),
+            ('PDF reading theme', 'PDF reading theme'),
+            ('PDF page colors', 'PDF page colors'),
+            ('Comic background', 'Comic background'),
+        ):
+            t.click(label, t.see(label))
+            t.wait(title, lambda f: title in f and 'First-line indent' not in f)
+            t.keys('Escape')
+            t.see('First-line indent')
         t.click('Zen frame & progress',t.see('Zen frame & progress'))
         t.wait('Zen progress enabled',lambda _:cfg()['zen_progress'])
         t.keys('Tab', 'End', 'Up')
@@ -123,6 +159,7 @@ def check(tmp):
         t.keys('Escape');t.see('Your TUI book reader.');t.keys('q')
         data=cfg();assert (data['borders'],data['interface_theme'],data['column_gap'],data['opaque_background'])==('square','nord',10,True)
         assert data['bookorbit']['password']=='masked-test'
+        assert spacing_saved(True, 2)
     finally:t.run('kill-server',required=False)
     t=s.Terminal(tmp,root/'target/debug/botui',args=[str(root/'examples/first-light.fb2')])
     try:
@@ -132,8 +169,11 @@ def check(tmp):
         t.keys('Space','p')
         t.wait('Zen footer hidden', lambda f: not footer.search(f) and not cfg()['zen_progress'])
         t.keys('F2');t.see('Nord')
+        t.keys('Tab')
+        t.wait('Independent paragraph settings survive restart',
+               lambda f: compact_row(f, True) and re.search(r'Paragraph spacing\s+2 blank lines', f) and spacing_saved(True, 2))
         t.keys('Escape');t.wait('Returned to reading', lambda f:'Interface theme' not in f and 'Почта на пристани' in f);t.keys('F1');t.see('Keyboard shortcuts');t.see('EPUB, FB2 & Markdown');t.keys('Escape','Space','q')
     finally:t.run('kill-server',required=False)
 if __name__=='__main__':
     with tempfile.TemporaryDirectory(prefix='botui-settings-') as d:check(Path(d))
-    print('Passed themed settings, checked controls, masked password, mouse, independent palettes and restart.')
+    print('Passed themed settings, independent paragraph spacing and compact blocks, checked controls, masked password, mouse, palettes and restart.')

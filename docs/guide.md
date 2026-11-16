@@ -308,7 +308,9 @@ Run `botui --config-path` to print the exact path. The default is `~/.config/bot
 
 On startup, older configs gain missing dictionary/translation defaults, the Space hint delay, mouse-wheel step and an empty OPDS list. Existing values, connections and comments are preserved.
 
-In **F2 → Reader**, **First-line indent** moves the first line of a paragraph to the right by 0–8 cells. **Paragraph spacing** sets the vertical gap between paragraphs in EPUB and FB2. **From book** follows the EPUB layout and uses one blank line for plain FB2 prose. Choose **0 blank lines**, **1 blank line** or **2 blank lines** to set your own gap. The choice also applies to the book you have open.
+In **F2 → Reader**, **First-line indent** moves the first line of a paragraph to the right by 0–8 cells. **Paragraph spacing** sets the vertical gap between EPUB/FB2 paragraphs: **From book** (the default), **0 blank lines**, **1 blank line** or **2 blank lines**. **From book** follows EPUB layout and uses one blank line for plain FB2 prose.
+
+The separate **Compact blocks** switch is on by default. It preserves book spacing in EPUB addresses, centered or right-aligned groups and explicit blank paragraphs. Turn it off to apply your selected paragraph spacing to these blocks too. It never changes the **Paragraph spacing** setting; with **From book**, both switch positions use the book’s intervals. Tables, lists, poetry and captions retain their existing spacing in either case. Both settings apply immediately to the open book.
 
 In an open book, drag the vertical border between the contents on the left and the page to change the width of the contents sidebar. You can also enter a width in **F2 → Reader → Contents width**. On the bookshelf, drag the border between navigation and the book list or use **F2 → Library → Sidebar width**.
 
@@ -363,7 +365,9 @@ scan_gap = 2
 column_gap = 4
 # First line of a prose paragraph in EPUB/FB2, in cells (0–8; 0 disables).
 paragraph_indent = 0
-# Blank lines between EPUB/FB2 paragraphs (0, 1 or 2). Omit to follow the book.
+# Preserve book spacing in compact EPUB blocks when a paragraph interval is set.
+preserve_compact_spacing = true
+# Blank lines between paragraphs (0, 1 or 2). Omit to follow the book.
 # paragraph_spacing = 1
 # Default layout for books without a saved mode: auto, single, spread, scroll.
 reading_layout = "auto"

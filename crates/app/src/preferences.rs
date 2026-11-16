@@ -175,9 +175,14 @@ fn rows(tab: usize, s: &Settings) -> Vec<SettingRow> {
                 "Indent the first line of a text paragraph by 0–8 cells. Wrapped lines keep their left edge.",
             ),
             pair(
+                "Compact blocks",
+                if s.compact_spacing() { "On" } else { "Off" },
+                "On keeps book spacing in addresses, centered/right-aligned and blank paragraphs. Off applies Paragraph spacing there too.",
+            ),
+            pair(
                 "Paragraph spacing",
                 PARAGRAPH_SPACING[spacing_index(s)],
-                "Press Enter to use the book’s spacing or choose 0, 1 or 2 blank lines between paragraphs.",
+                "Use the book’s spacing or choose 0, 1 or 2 blank lines between paragraphs.",
             ),
             pair(
                 "Contents width",

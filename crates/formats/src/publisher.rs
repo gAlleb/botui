@@ -8,10 +8,31 @@ use botui_core::{
 use scraper::{ElementRef, Html};
 use std::sync::Arc;
 
+fn compact_structure(el: &scraper::node::Element) -> bool {
+    matches!(el.name(), "address" | "center")
+        || el
+            .attr("align")
+            .is_some_and(|a| matches!(a, "center" | "right"))
+        || el.attrs.iter().any(|(name, value)| {
+            let role = &*name.local == "role" && name.ns.is_empty();
+            // HTML parsing retains `epub:type` as an unnamespaced local name.
+            // Also accept a namespace-aware DOM without treating every `type`
+            // attribute as EPUB semantics.
+            let epub_type = (&*name.local == "epub:type" && name.ns.is_empty())
+                || (&*name.local == "type" && &*name.ns == "http://www.idpf.org/2007/ops");
+            value.split_ascii_whitespace().any(|token| {
+                (role && matches!(token, "doc-poem" | "doc-verse"))
+                    || (epub_type
+                        && matches!(token, "poem" | "verse" | "z3998:poem" | "z3998:verse"))
+            })
+        })
+}
+
 pub(super) fn uses_layout(dom: &Html) -> bool {
     dom.tree.nodes().filter_map(ElementRef::wrap).any(|e| {
         let el = e.value();
         super::tex::marked(el)
+            || compact_structure(el)
             || matches!(
                 el.name(),
                 "table"
@@ -82,6 +103,7 @@ pub(super) fn chapter(
                         | "data-botui-image"
                         | "data-botui-equation"
                         | "data-botui-raised-link"
+                        | "data-botui-prose-spacing"
                 )
             });
         }
@@ -131,6 +153,7 @@ pub(super) fn chapter(
             e.value().name(),
             "math" | "table" | "pre" | "ol" | "ul" | "img" | "svg"
         ) || super::tex::marked(e.value())
+            || compact_structure(e.value())
     });
     super::tex::convert(dom);
     // scraper serializes HTML void elements such as <img> and <br> without

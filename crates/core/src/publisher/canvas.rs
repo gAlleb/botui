@@ -788,6 +788,7 @@ mod tests {
                             repair_printed: true,
                             inline_images: true,
                             paragraph_indent: 0,
+                            compact_spacing: true,
                             paragraph_spacing: None,
                         },
                         &blocks,

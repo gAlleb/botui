@@ -31,7 +31,7 @@ pub(super) fn setting(
     p: &Settings,
 ) -> io::Result<()> {
     match (tab, i) {
-        (1, 14) => {
+        (1, 15) => {
             let modes = settings::PageColors::ALL;
             if let Some(i) = choose(
                 term,
@@ -42,7 +42,7 @@ pub(super) fn setting(
                 Settings::update(|s| s.scan_page_colors = Some(modes[i]))?;
             }
         }
-        (1, 12) => {
+        (1, 13) => {
             if let Some(value) = edit(
                 term,
                 "Space menu delay · milliseconds (0–1000)",
@@ -94,12 +94,12 @@ pub(super) fn setting(
                 Settings::update(|s| s.opaque_color = (!v.is_empty()).then_some(v))?;
             }
         }
-        (1, 0) | (1, 13) | (1, 15) => {
+        (1, 0) | (1, 14) | (1, 16) => {
             use crate::reader::theme_picker::{Edit, Picker};
-            let comic = i == 15;
+            let comic = i == 16;
             let mut picker = Picker::new(if comic {
                 p.comic_theme()
-            } else if i == 13 {
+            } else if i == 14 {
                 p.page_theme()
             } else {
                 Theme::from_id(p.theme.as_deref().unwrap_or("terminal"))
@@ -110,7 +110,7 @@ pub(super) fn setting(
                         f,
                         if comic {
                             " Comic background "
-                        } else if i == 13 {
+                        } else if i == 14 {
                             " PDF reading theme "
                         } else {
                             " Reading theme "
@@ -124,7 +124,7 @@ pub(super) fn setting(
                             Settings::update(|s| {
                                 if comic {
                                     s.comic_background = Some(t.id());
-                                } else if i == 13 {
+                                } else if i == 14 {
                                     s.scan_page_colors = Some(s.page_colors());
                                     s.scan_theme = Some(t.id());
                                 } else {
@@ -138,14 +138,14 @@ pub(super) fn setting(
                 }
             }
         }
-        (1, 10) => {
+        (1, 11) => {
             Settings::update(|s| s.zen_progress = !s.zen_progress)?;
         }
         (1, 1) => {
             Settings::update(|s| s.zen = !s.zen)?;
         }
-        (1, 2) | (1, 3) | (1, 7) | (1, 11) => {
-            let (val, lo, hi, title) = if i == 11 {
+        (1, 2) | (1, 3) | (1, 7) | (1, 12) => {
+            let (val, lo, hi, title) = if i == 12 {
                 (
                     u16::from(p.scroll_lines.unwrap_or(1).clamp(1, 12)),
                     1,
@@ -176,7 +176,7 @@ pub(super) fn setting(
                     )));
                 };
                 Settings::update(|s| {
-                    if i == 11 {
+                    if i == 12 {
                         s.scroll_lines = Some(n as u8)
                     } else if i == 2 {
                         s.page_width = Some(n)
@@ -205,6 +205,9 @@ pub(super) fn setting(
             }
         }
         (1, 8) => {
+            Settings::update(|s| s.preserve_compact_spacing = Some(!s.compact_spacing()))?;
+        }
+        (1, 9) => {
             if let Some(choice) = choose(
                 term,
                 "Paragraph spacing",
@@ -214,7 +217,7 @@ pub(super) fn setting(
                 Settings::update(|s| s.paragraph_spacing = choice.checked_sub(1).map(|n| n as u8))?;
             }
         }
-        (1, 9) | (2, 4) => {
+        (1, 10) | (2, 4) => {
             let reader = tab == 1;
             let val = if reader {
                 p.contents_width

@@ -2,6 +2,7 @@
 //! The font has no outlines: it supplies terminal cell advances to the shaper.
 //! Actual glyphs are drawn by the user's terminal.
 mod canvas;
+mod spacing;
 use super::{Anchor, Block, PageLine};
 use blitz_dom::{DocumentConfig, UserAgentStylesheet, build_single_font_ctx};
 use blitz_html::HtmlDocument;
@@ -145,6 +146,9 @@ impl Worker {
         if let Some(doc) = self.documents.get_mut(&start) {
             doc.set_viewport(viewport);
             doc.resolve(0.0);
+            if options.paragraph_spacing.is_some() {
+                spacing::apply(doc, options.compact_spacing);
+            }
             return canvas::lines(doc, layout.width, &chapter.sources, blocks, &chapter.images);
         }
         let mut doc = chapter.document(viewport, options, blocks, resume);
@@ -314,21 +318,20 @@ impl Chapter {
             u16::from(options.paragraph_indent) * CELL as u16
         );
         if let Some(rows) = options.paragraph_spacing {
-            // Publisher margins in tables, lists, poetry and captions are part of their layout.
             let gap = u16::from(rows) * ROW as u16;
             settings.push_str(&format!(
-                "p:not(:is(table, li, figure, pre, [role='doc-poem'], [*|type~='z3998:poem'], [*|type~='z3998:verse']) p) \
+                "p[data-botui-prose-spacing] \
                  {{ margin-block: 0 {gap}px !important; }}"
             ));
         }
-        let options = DocumentConfig {
+        let config = DocumentConfig {
             viewport: Some(viewport),
             base_url: Some(self.url.clone()),
             net_provider: Some(self.sheets.clone()),
             font_ctx: Some(FONT.with(Clone::clone)),
             ..Default::default()
         };
-        let mut doc = HtmlDocument::from_html(&self.html, options);
+        let mut doc = HtmlDocument::from_html(&self.html, config);
         // Blitz enables Stylo's Grid and other feature flags during document
         // construction. Parsing the reusable sheet earlier drops those rules.
         doc.add_user_agent_stylesheet(SHEET.clone());
@@ -337,6 +340,9 @@ impl Chapter {
             self.break_at(&mut doc, blocks, at);
         }
         doc.resolve(0.0);
+        if options.paragraph_spacing.is_some() {
+            spacing::apply(&mut doc, options.compact_spacing);
+        }
         doc
     }
 }

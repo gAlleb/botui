@@ -32,7 +32,9 @@ scan_gap = 2
 column_gap = 4
 # First line of a prose paragraph in EPUB/FB2, in cells (0–8; 0 disables).
 paragraph_indent = 0
-# Blank lines between EPUB/FB2 paragraphs (0, 1 or 2). Omit to follow the book.
+# Preserve book spacing in compact EPUB blocks when a paragraph interval is set.
+preserve_compact_spacing = true
+# Blank lines between paragraphs (0, 1 or 2). Omit to follow the book.
 # paragraph_spacing = 1
 # Default layout for books without a saved mode: auto, single, spread, scroll.
 reading_layout = "auto"

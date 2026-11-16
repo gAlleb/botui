@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Keep EPUB addresses and aligned text compact, with an independent switch enabled by default.
 - Frame the reading area and toggle its frame and progress with Space p in Zen mode.
 
 ## 0.1.18 — 2026-11-16

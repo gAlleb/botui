@@ -420,6 +420,7 @@ fn paging_back_from_a_citation_fills_prose_and_keeps_the_marker_whole() {
                     repair_printed: true,
                     inline_images: true,
                     paragraph_indent: 0,
+                    compact_spacing: true,
                     paragraph_spacing: Some(0),
                 },
                 resume,
@@ -470,6 +471,7 @@ fn exact_epub_positions_after_chapter_titles_and_pictures_do_not_clip_the_previo
         repair_printed: true,
         inline_images: true,
         paragraph_indent: 0,
+        compact_spacing: true,
         paragraph_spacing: Some(0),
     };
     for mode in [LayoutMode::Single, LayoutMode::Spread] {
@@ -517,6 +519,7 @@ fn raised_footnotes_keep_wrapped_prose_on_consecutive_rows() {
                 repair_printed: true,
                 inline_images: true,
                 paragraph_indent: 0,
+                compact_spacing: true,
             },
         );
         let rows = pager.lines(0);
@@ -570,6 +573,7 @@ fn paragraph_spacing_in_epub_and_fb2_preserves_structured_content_and_anchors() 
             repair_printed: true,
             inline_images: true,
             paragraph_indent: 3,
+            compact_spacing: true,
             paragraph_spacing: None,
         };
         let mut pager = Pager::with_options(doc, 60, 48, LayoutMode::Single, options);
@@ -604,6 +608,324 @@ fn paragraph_spacing_in_epub_and_fb2_preserves_structured_content_and_anchors() 
 }
 
 #[test]
+fn paragraph_spacing_keeps_centered_addresses_and_authored_blank_rows() {
+    use botui_core::{LayoutMode, Pager, ReflowOptions};
+    // The real Useful Addresses chapter uses centered p's for address lines,
+    // but justified NBSP paragraphs for the one- and two-row group separators.
+    let doc = styled_fixture(
+        "<h1><span style='text-decoration:underline'>USEFUL ADDRESSES</span></h1>\
+         <p>Ordinary prose A.</p><p>Ordinary prose B.</p>\
+         <p class='address'>Institute A</p><p class='address'>Box A</p>\
+         <p class='blank'>&#160;</p><p class='blank'>&#160;</p>\
+         <p class='address'>Institute B</p><p class='address'>Box B</p>\
+         <p class='blank'><br/></p>\
+         <p class='address'>Institute C</p><p class='address'>Box C<br/>City C</p>",
+        "p {margin:0; text-align:justify} .address {text-align:center} h1 {margin:0 0 16px}",
+    );
+    let options = ReflowOptions {
+        repair_printed: true,
+        inline_images: true,
+        paragraph_indent: 0,
+        compact_spacing: true,
+        paragraph_spacing: None,
+    };
+    let mut pager = Pager::with_options(&doc, 48, 96, LayoutMode::Single, options);
+    for width in [48, 80] {
+        for spacing in [None, Some(0), Some(1), Some(2), None] {
+            pager.reconfigure(
+                &doc,
+                width,
+                96,
+                LayoutMode::Single,
+                4,
+                ReflowOptions {
+                    paragraph_spacing: spacing,
+                    ..options
+                },
+            );
+            let lines = pager.lines(0);
+            let row = |text: &str| lines.iter().position(|l| l.text.trim() == text).unwrap();
+            let gap = |a, b| row(b) - row(a) - 1;
+            assert_eq!(
+                gap("Ordinary prose A.", "Ordinary prose B."),
+                usize::from(spacing.unwrap_or(0))
+            );
+            for (a, b, expected) in [
+                ("Institute A", "Box A", 0),
+                ("Box A", "Institute B", 2),
+                ("Institute B", "Box B", 0),
+                ("Box B", "Institute C", 1),
+                ("Institute C", "Box C", 0),
+                ("Box C", "City C", 0),
+            ] {
+                assert_eq!(
+                    gap(a, b),
+                    expected,
+                    "{a} to {b}: width {width}, spacing {spacing:?}"
+                );
+            }
+            for text in [
+                "Institute A",
+                "Box A",
+                "Institute B",
+                "Box B",
+                "Institute C",
+                "Box C",
+                "City C",
+            ] {
+                let line = &lines[row(text)];
+                let left = usize::from(line.indent) + line.text.find(text).unwrap();
+                assert!(
+                    left.abs_diff((usize::from(width) - text.len()) / 2) <= 1,
+                    "address alignment: {line:?}"
+                );
+            }
+            assert!(
+                lines[row("USEFUL ADDRESSES")]
+                    .spans
+                    .iter()
+                    .any(|s| s.face.underline)
+            );
+        }
+    }
+}
+
+#[test]
+fn compact_blocks_and_paragraph_spacing_are_independent() {
+    use botui_core::{LayoutMode, Pager, ReflowOptions};
+    let doc = styled_fixture(
+        "<p>Prose A.</p><p>Prose B.</p>\
+         <div class='center'><p>Center A</p><p>Center B</p></div>\
+         <address><p>Address A</p><p>Address B</p></address>\
+         <table><tr><td><p>Cell A</p><p>Cell B</p></td></tr></table>",
+        "p {margin:0} .center {text-align:center} table p {margin-bottom:32px}",
+    );
+    let options = ReflowOptions {
+        repair_printed: true,
+        inline_images: true,
+        paragraph_indent: 0,
+        paragraph_spacing: None,
+        compact_spacing: true,
+    };
+    let mut pager = Pager::with_options(&doc, 60, 96, LayoutMode::Single, options);
+    for spacing in [None, Some(0), Some(1), Some(2), None] {
+        for compact in [true, false, true] {
+            pager.reconfigure(
+                &doc,
+                60,
+                96,
+                LayoutMode::Single,
+                4,
+                ReflowOptions {
+                    paragraph_spacing: spacing,
+                    compact_spacing: compact,
+                    ..options
+                },
+            );
+            let lines = pager.lines(0);
+            let row = |text: &str| lines.iter().position(|l| l.text.trim() == text).unwrap();
+            let gap = |a, b| row(b) - row(a) - 1;
+            assert_eq!(
+                gap("Prose A.", "Prose B."),
+                usize::from(spacing.unwrap_or(0))
+            );
+            let expected = if compact { 0 } else { spacing.unwrap_or(0) };
+            assert_eq!(gap("Center A", "Center B"), usize::from(expected));
+            assert_eq!(gap("Address A", "Address B"), usize::from(expected));
+            assert_eq!(gap("Cell A", "Cell B"), 2);
+        }
+    }
+}
+
+#[test]
+fn paragraph_spacing_uses_inherited_alignment_and_rechecks_it_after_resize() {
+    use botui_core::{LayoutMode, Pager, ReflowOptions};
+    let doc = styled_fixture(
+        "<section class='center'><div class='group'><p>Center A</p><p>Center B</p></div>\
+         <div class='reset'><p>Reset prose A.</p><p>Reset prose B.</p></div></section>\
+         <section class='right'><div><p>Right A</p><p>Right B</p></div></section>\
+         <section class='responsive'><div><p>Responsive A.</p><p>Responsive B.</p></div></section>",
+        "p {margin:0 !important} .center {text-align:center} \
+         .center > .group > p {margin-bottom:32px !important} \
+         .reset {text-align:justify} .right {text-align:right} \
+         .right p {margin-bottom:16px !important} .responsive {text-align:center} \
+         @media(min-width:500px) {.responsive {text-align:justify}}",
+    );
+    let options = ReflowOptions {
+        repair_printed: true,
+        inline_images: true,
+        paragraph_indent: 0,
+        compact_spacing: true,
+        paragraph_spacing: None,
+    };
+    let mut pager = Pager::with_options(&doc, 48, 96, LayoutMode::Single, options);
+    for spacing in [None, Some(0), Some(1), Some(2), None] {
+        pager.reconfigure(
+            &doc,
+            48,
+            96,
+            LayoutMode::Single,
+            4,
+            ReflowOptions {
+                paragraph_spacing: spacing,
+                ..options
+            },
+        );
+        // Keep this Pager's DOM pool across resizes. 49 is a new narrow width:
+        // unlike cached 48, it must reclassify the DOM previously used at 80.
+        for width in [48, 80, 49, 48] {
+            pager.relayout(&doc, width, 96, LayoutMode::Single);
+            let lines = pager.lines(0);
+            let row = |text: &str| lines.iter().position(|l| l.text.trim() == text).unwrap();
+            let gap = |a, b| row(b) - row(a) - 1;
+            assert_eq!(gap("Center A", "Center B"), 2, "spacing {spacing:?}");
+            assert_eq!(gap("Right A", "Right B"), 1, "spacing {spacing:?}");
+            assert_eq!(
+                gap("Reset prose A.", "Reset prose B."),
+                usize::from(spacing.unwrap_or(0))
+            );
+            let responsive_gap = if width == 80 { spacing.unwrap_or(0) } else { 0 };
+            assert_eq!(
+                gap("Responsive A.", "Responsive B."),
+                usize::from(responsive_gap),
+                "width {width}, spacing {spacing:?}"
+            );
+            let line = &lines[row("Right A")];
+            let left = usize::from(line.indent) + line.text.find("Right A").unwrap();
+            assert!(
+                left.abs_diff(usize::from(width) - "Right A".len()) <= 1,
+                "right alignment: {line:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn paragraph_spacing_recognizes_bare_epub_compact_markup_without_stylesheets() {
+    use botui_core::{LayoutMode, Pager, ReflowOptions};
+    // Each wrapper is a separate EPUB: another styled element must not mask a
+    // missing layout-gate case. The reader's default paragraph gap is one row.
+    for (open, close) in [
+        ("<address>", "</address>"),
+        ("<div epub:type='appendix z3998:verse'>", "</div>"),
+        ("<div role='note doc-verse'>", "</div>"),
+        ("<center>", "</center>"),
+        ("<div align='right'>", "</div>"),
+    ] {
+        let html = format!(
+            "<html xmlns='http://www.w3.org/1999/xhtml' xmlns:epub='http://www.idpf.org/2007/ops'>\
+             <head><title>Bare groups</title></head><body>\
+             <p>Ordinary A.</p><p>Ordinary B.</p>\
+             {open}<p>Compact A</p><p>Compact B</p>{close}</body></html>"
+        );
+        let doc = read_book(
+            archive(&[
+                ("META-INF/container.xml", "<container><rootfile full-path='p'/></container>"),
+                ("p", "<package><manifest><item id='c' href='c.xhtml' media-type='application/xhtml+xml'/></manifest><spine><itemref idref='c'/></spine></package>"),
+                ("c.xhtml", &html),
+            ]),
+            "Bare groups",
+        ).unwrap();
+        for spacing in [0, 2] {
+            let pager = Pager::with_options(
+                &doc,
+                48,
+                48,
+                LayoutMode::Single,
+                ReflowOptions {
+                    repair_printed: true,
+                    inline_images: true,
+                    paragraph_indent: 0,
+                    compact_spacing: true,
+                    paragraph_spacing: Some(spacing),
+                },
+            );
+            let lines = pager.lines(0);
+            let row = |text: &str| lines.iter().position(|l| l.text.trim() == text).unwrap();
+            assert_eq!(
+                row("Ordinary B.") - row("Ordinary A.") - 1,
+                usize::from(spacing)
+            );
+            assert_eq!(
+                row("Compact B") - row("Compact A") - 1,
+                1,
+                "{open}, spacing {spacing}"
+            );
+        }
+    }
+}
+
+#[test]
+fn paragraph_spacing_preserves_semantic_groups_and_an_independent_unicode_cfi() {
+    use botui_core::{Anchor, LayoutMode, Pager, ReflowOptions};
+    let doc = styled_fixture(
+        "<p>Alpha <em>Кит 🐋 Маяк</em></p><p>Ordinary prose.</p>\
+         <address><p>Address A</p><p>Address B</p></address>\
+         <ul><li><p>List A</p><p>List B</p></li></ul>\
+         <div role='doc-poem'><p>Verse A</p><p>Verse B</p></div>",
+        "p {margin:0; text-align:left} address {font-style:normal} \
+         ul {margin:0; padding-left:16px; list-style:none} li p {margin-bottom:32px} \
+         [role='doc-poem'] p {margin-bottom:16px}",
+    );
+    // First body paragraph, its em's text node, UTF-16 offset after "Кит 🐋 ".
+    // This address is authored from the fixture DOM, not obtained from doc.cfi().
+    let cfi = "epubcfi(/4/2!/4/2/2/1:7)";
+    let at = doc
+        .resolve_cfi(cfi)
+        .expect("the independently authored CFI resolves");
+    assert_eq!(at.block, 0);
+    assert_eq!(&doc.blocks[at.block].text[at.byte..], "Маяк");
+    let options = ReflowOptions {
+        repair_printed: true,
+        inline_images: true,
+        paragraph_indent: 0,
+        compact_spacing: true,
+        paragraph_spacing: None,
+    };
+    let mut pager = Pager::with_options(&doc, 48, 96, LayoutMode::Single, options);
+    for width in [48, 80] {
+        for spacing in [None, Some(0), Some(1), Some(2), None] {
+            pager.seek(Anchor::default());
+            pager.reconfigure(
+                &doc,
+                width,
+                96,
+                LayoutMode::Single,
+                4,
+                ReflowOptions {
+                    paragraph_spacing: spacing,
+                    ..options
+                },
+            );
+            let lines = pager.lines(0);
+            let row = |text: &str| lines.iter().position(|l| l.text.trim() == text).unwrap();
+            let gap = |a, b| row(b) - row(a) - 1;
+            assert_eq!(
+                gap("Alpha Кит 🐋 Маяк", "Ordinary prose."),
+                usize::from(spacing.unwrap_or(0))
+            );
+            for (a, b, expected) in [
+                ("Address A", "Address B", 0),
+                ("List A", "List B", 2),
+                ("Verse A", "Verse B", 1),
+            ] {
+                assert_eq!(gap(a, b), expected, "{a} to {b}: spacing {spacing:?}");
+            }
+            let line = &lines[row("Alpha Кит 🐋 Маяк")];
+            assert!(
+                line.text_cells(&doc)
+                    .into_iter()
+                    .any(|cell| cell.source.start == at)
+            );
+            assert_eq!(doc.resolve_cfi(cfi), Some(at));
+            pager.seek(at);
+            assert_eq!(pager.anchor(), at);
+            assert!(pager.lines(0)[0].text.contains("Маяк"));
+        }
+    }
+}
+
+#[test]
 fn prose_preserves_words_indentation_footnotes_and_spread_page_turns() {
     use botui_core::{LayoutMode, Pager, ReflowOptions, Target};
     let mut body = String::from("<h1>Диалоги</h1>");
@@ -619,6 +941,7 @@ fn prose_preserves_words_indentation_footnotes_and_spread_page_turns() {
         repair_printed: true,
         inline_images: true,
         paragraph_indent: 3,
+        compact_spacing: true,
         paragraph_spacing: None,
     };
     let mut pager = Pager::with_options(&doc, 100, 8, LayoutMode::Spread, options);
@@ -834,6 +1157,7 @@ fn illustrations_fit_the_viewport_and_hidden_figures_take_no_space() {
             repair_printed: true,
             inline_images: false,
             paragraph_indent: 0,
+            compact_spacing: true,
             paragraph_spacing: None,
         },
     );
@@ -901,6 +1225,7 @@ fn reopening_before_the_last_picture_keeps_the_next_chapter_title_at_the_top() {
         repair_printed: true,
         inline_images: true,
         paragraph_indent: 0,
+        compact_spacing: true,
         paragraph_spacing: Some(1),
     };
     for height in [6, 12, 24] {
@@ -941,6 +1266,7 @@ fn reopening_an_illustrated_spread_distinguishes_the_picture_from_its_text_cfi()
         repair_printed: false,
         inline_images: true,
         paragraph_indent: 0,
+        compact_spacing: true,
         paragraph_spacing: Some(0),
     };
     let open = |at| Pager::with_start(&doc, 100, 8, LayoutMode::Spread, options, at);
@@ -1068,6 +1394,7 @@ fn resizing_and_cached_layouts_match_a_fresh_epub_layout() {
         repair_printed: true,
         inline_images: true,
         paragraph_indent: 2,
+        compact_spacing: true,
         paragraph_spacing: None,
     };
     let at = Anchor { block: 0, byte: 8 };
@@ -1109,6 +1436,7 @@ fn resizing_and_cached_layouts_match_a_fresh_epub_layout() {
     let changed = ReflowOptions {
         inline_images: false,
         paragraph_indent: 5,
+        compact_spacing: true,
         ..options
     };
     warm.reconfigure(&doc, 48, 40, LayoutMode::Single, 4, changed);
@@ -1248,6 +1576,7 @@ fn fb2_faces_survive_wrapping_and_resume_without_changing_source_offsets() {
             repair_printed: true,
             inline_images: true,
             paragraph_indent: 2,
+            compact_spacing: true,
             paragraph_spacing: None,
         },
         Some(at),

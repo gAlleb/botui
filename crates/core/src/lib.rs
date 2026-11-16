@@ -299,6 +299,8 @@ pub struct ReflowOptions {
     pub paragraph_indent: u8,
     /// Blank terminal rows between prose paragraphs. None follows the book.
     pub paragraph_spacing: Option<u8>,
+    /// Preserve publisher spacing in addresses, aligned groups and explicit spacers.
+    pub compact_spacing: bool,
 }
 
 pub struct Pager {
@@ -349,6 +351,7 @@ impl Pager {
                 repair_printed,
                 inline_images,
                 paragraph_indent: 0,
+                compact_spacing: true,
                 paragraph_spacing: None,
             },
         )
@@ -856,6 +859,7 @@ mod tests {
                 repair_printed: false,
                 inline_images: true,
                 paragraph_indent: 4,
+                compact_spacing: true,
                 paragraph_spacing: None,
             },
         );
@@ -1084,6 +1088,7 @@ mod tests {
                 repair_printed: true,
                 inline_images: false,
                 paragraph_indent: 3,
+                compact_spacing: true,
                 paragraph_spacing: None,
             },
             Some(at),

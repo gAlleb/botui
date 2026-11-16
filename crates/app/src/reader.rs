@@ -291,6 +291,7 @@ impl Reader {
                 inline_images: !settings.hide_inline_images,
                 paragraph_indent: settings.paragraph_indent,
                 paragraph_spacing: settings.paragraph_spacing,
+                compact_spacing: settings.compact_spacing(),
             },
             resume,
             image_cell,
@@ -1048,6 +1049,7 @@ impl Reader {
                             inline_images: !options.hide_inline_images,
                             paragraph_indent: 0,
                             paragraph_spacing: None,
+                            compact_spacing: true,
                         },
                     );
                     self.search.reflow(&self.pager, &self.doc);
@@ -1744,6 +1746,7 @@ pub fn read_server(
                     || old.hide_inline_images != new.hide_inline_images
                     || old.paragraph_indent != new.paragraph_indent
                     || old.paragraph_spacing != new.paragraph_spacing
+                    || old.compact_spacing() != new.compact_spacing()
                 {
                     let size = term.size()?;
                     let screen = Rect::new(0, 0, size.width, size.height);
@@ -1766,6 +1769,7 @@ pub fn read_server(
                             inline_images: !new.hide_inline_images,
                             paragraph_indent: new.paragraph_indent,
                             paragraph_spacing: new.paragraph_spacing,
+                            compact_spacing: new.compact_spacing(),
                         },
                     );
                     reader.search.reflow(&reader.pager, &reader.doc);
