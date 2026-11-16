@@ -1,5 +1,5 @@
 use crate::centered;
-use botui_core::{Anchor, ContentsEntry, Document, Target};
+use botui_core::{Anchor, ContentsEntry, Document, SearchMode, Target};
 use crossterm::event::{Event, KeyCode, KeyEventKind, MouseButton, MouseEventKind};
 use ratatui::{
     Frame,
@@ -24,12 +24,15 @@ pub(super) enum Edit {
     Type(char),
     Erase,
     Clear,
+    ToggleMode,
 }
 pub(super) struct Navigation {
     pub(super) index: Option<std::rc::Rc<botui_core::SearchIndex>>,
     pub(super) hits: Vec<botui_core::SearchMatch>,
     kind: Kind,
     pub(super) query: String,
+    pub(super) mode: SearchMode,
+    mode_button: Rect,
     items: Vec<ContentsEntry>,
     depths: Vec<usize>,
     folded: std::collections::HashSet<usize>,
@@ -72,6 +75,8 @@ impl Navigation {
             rows: Rect::default(),
             back: Rect::default(),
             query: String::new(),
+            mode: SearchMode::Phrase,
+            mode_button: Rect::default(),
         }
     }
     pub fn draw(&mut self, f: &mut Frame, style: Style) {
@@ -196,11 +201,26 @@ impl Navigation {
             Paragraph::new(heading).style(style.bold()),
             Rect::new(inner.x, inner.y, inner.width, 1.min(inner.height)),
         );
+        let mode_label = match self.mode {
+            SearchMode::Phrase => "[Tab: Exact phrase]",
+            SearchMode::AnyWord => "[Tab: Any word]",
+        };
+        let labels = ["[ Back ]", mode_label];
+        let footer = if !popup {
+            &labels[..0]
+        } else if self.kind == Kind::Search {
+            &labels[..]
+        } else {
+            &labels[..1]
+        };
+        let (buttons, footer_height) = super::controls::layout(inner, footer);
+        self.back = buttons.first().copied().unwrap_or_default();
+        self.mode_button = buttons.get(1).copied().unwrap_or_default();
         self.rows = Rect::new(
             inner.x,
             inner.y.saturating_add(1),
             inner.width,
-            inner.height.saturating_sub(1 + u16::from(popup)),
+            inner.height.saturating_sub(1 + footer_height),
         );
         if self.kind == Kind::Search
             && self.rows.height >= 6
@@ -286,41 +306,31 @@ impl Navigation {
                 &mut self.state,
             );
         }
-        self.back = Rect::new(
-            inner.x,
-            inner.bottom().saturating_sub(1),
-            inner.width.min(9),
-            1.min(inner.height),
-        );
         if popup {
-            f.render_widget(Paragraph::new("[ Back ]").style(style), self.back);
+            f.render_widget(Paragraph::new(labels[0]).style(style), self.back);
+            f.render_widget(Paragraph::new(mode_label).style(style), self.mode_button);
             let hint = match self.kind {
                 Kind::Search => Some("F3 next · F4 previous"),
                 Kind::Contents if self.depths.iter().any(|&d| d > 0) => Some("← Fold · → Expand"),
                 _ => None,
             };
+            let hint_x = self.back.right().max(self.mode_button.right());
             if let Some(hint) = hint
-                && inner.width >= 35
+                && inner.right().saturating_sub(hint_x) >= hint.len() as u16
                 && inner.height >= 2
             {
                 f.render_widget(
                     Paragraph::new(hint).right_aligned().style(style),
-                    Rect::new(
-                        self.back.right(),
-                        self.back.y,
-                        inner.width - self.back.width,
-                        1,
-                    ),
+                    Rect::new(hint_x, self.back.y, inner.right() - hint_x, 1),
                 );
             }
-        } else {
-            self.back = Rect::default();
         }
     }
     pub fn input(&self, e: Event) -> Option<Edit> {
         match e {
             Event::Key(k) if k.kind != KeyEventKind::Release => match k.code {
                 KeyCode::Esc => Some(Edit::Back),
+                KeyCode::Tab if self.kind == Kind::Search => Some(Edit::ToggleMode),
                 KeyCode::Enter => self.state.selected().map(Edit::Choose),
                 KeyCode::Left | KeyCode::Right if self.kind == Kind::Contents => self
                     .state
@@ -360,6 +370,9 @@ impl Navigation {
                             Some(Edit::Choose(row))
                         }
                     }
+                    MouseEventKind::Down(MouseButton::Left) if self.mode_button.contains(p) => {
+                        Some(Edit::ToggleMode)
+                    }
                     MouseEventKind::Down(MouseButton::Left) if self.back.contains(p) => {
                         Some(Edit::Back)
                     }
@@ -392,6 +405,12 @@ impl Navigation {
             }
             Edit::Type(c) if self.query.chars().count() < 256 => self.query.push(c),
             Edit::Clear => self.query.clear(),
+            Edit::ToggleMode => {
+                self.mode = match self.mode {
+                    SearchMode::Phrase => SearchMode::AnyWord,
+                    SearchMode::AnyWord => SearchMode::Phrase,
+                };
+            }
             Edit::Erase => {
                 self.query.pop();
             }
@@ -410,7 +429,7 @@ impl Navigation {
     }
     fn refresh_results(&mut self) {
         if let Some(index) = &self.index {
-            self.hits = index.matches(&self.query);
+            self.hits = index.matches_in(&self.query, self.mode);
         }
         self.show_results(0);
     }

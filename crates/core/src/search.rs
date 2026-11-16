@@ -1,6 +1,7 @@
 //! Search the same logical paragraphs the reader displays, even across print-line breaks.
 use super::{Anchor, Document, PageLine, Pager, printed};
-use std::ops::Range;
+use std::{collections::HashSet, ops::Range};
+use unicode_segmentation::UnicodeSegmentation;
 
 struct Paragraph {
     start: usize,
@@ -89,13 +90,32 @@ pub struct SearchMatch {
     source_end: usize,
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum SearchMode {
+    #[default]
+    Phrase,
+    AnyWord,
+}
+
 impl SearchIndex {
     pub fn matches(&self, query: &str) -> Vec<SearchMatch> {
+        self.matches_in(query, SearchMode::Phrase)
+    }
+
+    pub fn matches_in(&self, query: &str, mode: SearchMode) -> Vec<SearchMatch> {
         let mut hits = Vec::new();
         if query.is_empty() {
             return hits;
         }
         let q = query.to_lowercase();
+        let words: HashSet<_> = if mode == SearchMode::AnyWord {
+            q.unicode_words().collect()
+        } else {
+            HashSet::new()
+        };
+        if mode == SearchMode::AnyWord && words.is_empty() {
+            return hits;
+        }
         for (paragraph, p) in self.paragraphs.iter().enumerate() {
             // Case conversion can expand one source character into multiple code points.
             // Walk source and folded bytes together, once per paragraph.
@@ -113,7 +133,13 @@ impl SearchIndex {
                 }
                 source.peek().map(|(_, bytes)| bytes.clone())
             };
-            for (pos, matched) in p.folded.match_indices(&q) {
+            let mut phrases = p.folded.match_indices(&q);
+            let mut tokens = p.folded.unicode_word_indices();
+            let occurrences = std::iter::from_fn(|| match mode {
+                SearchMode::Phrase => phrases.next(),
+                SearchMode::AnyWord => tokens.find(|(_, word)| words.contains(word)),
+            });
+            for (pos, matched) in occurrences {
                 let Some(first) = source_char(pos) else { break };
                 let Some(last) = source_char(pos + matched.len() - 1) else {
                     break;
@@ -290,6 +316,27 @@ mod tests {
             hits.iter().map(|(a, _)| a.byte).collect::<Vec<_>>(),
             vec![text.find("Amber").unwrap(), text.find("AMBER").unwrap()]
         );
+    }
+    #[test]
+    fn any_word_matches_whole_words_in_source_order_and_deduplicates_query_terms() {
+        let text = "İ берегу. Маяк у моря, берег и маяк.";
+        let doc = Document {
+            blocks: vec![Block {
+                text: text.into(),
+                heading: false,
+            }],
+            ..Default::default()
+        };
+        let index = Pager::new(&doc, 30, 10, LayoutMode::Single).search_index(&doc);
+        assert!(index.matches("берег маяк").is_empty());
+        let hits = index.matches_in("берег маяк МАЯК", SearchMode::AnyWord);
+        assert_eq!(
+            hits.iter()
+                .map(|h| &text[h.bytes.clone()])
+                .collect::<Vec<_>>(),
+            ["Маяк", "берег", "маяк"]
+        );
+        assert!(index.matches_in("!?  ", SearchMode::AnyWord).is_empty());
     }
     #[test]
     fn context_shows_both_sides_including_short_neighbouring_paragraphs() {

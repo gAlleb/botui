@@ -199,7 +199,7 @@ In zen mode, **Space p** shows or hides the reading frame and progress. Hiding t
 | `Esc` | Back/close panel; hide search highlight; otherwise reading menu |
 | `Ctrl+C` | Copy selected text |
 
-In the text reader, move through search results with ↑/↓ to preview the passage around each match. Press Enter to read from that match.
+In the text reader, move through search results with ↑/↓ to preview the passage around each match. Press Enter to read from that match. The default search looks for an exact phrase. Press Tab or click the mode button to find any whole word in your query, in reading order. PDF and DjVu use their separate text-layer phrase search.
 
 In ordinary reading, **Esc** hides the search highlight without opening the menu. The query and results remain available: `n` / `N`, F3/F4, or choosing a result with F5 shows a match again. Open dialogs, text selections and Vim commands handle Esc first; saved notes and highlights are unchanged.
 

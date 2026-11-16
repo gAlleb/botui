@@ -1135,6 +1135,7 @@ impl Reader {
                     {
                         self.search.select(
                             std::mem::take(&mut nav.query),
+                            nav.mode,
                             std::mem::take(&mut nav.hits),
                             selected,
                         );

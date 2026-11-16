@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Find any whole word from a query in the text reader.
 - Preview the surrounding passage when selecting text search results.
 - Fit footnote popups to their text and scroll longer notes.
 - Mark the current chapter and highlight the focused pane and outline selection.

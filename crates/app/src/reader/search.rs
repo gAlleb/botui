@@ -1,5 +1,5 @@
 //! Keep book-wide text search available after its results dialog closes.
-use botui_core::{Anchor, Document, PageLine, Pager, SearchIndex, SearchMatch};
+use botui_core::{Anchor, Document, PageLine, Pager, SearchIndex, SearchMatch, SearchMode};
 use ratatui::{
     style::Modifier,
     text::{Line, Span},
@@ -13,6 +13,7 @@ pub(super) struct Search {
     hits: Vec<SearchMatch>,
     selected: usize,
     query: String,
+    mode: SearchMode,
     hidden: bool,
 }
 
@@ -24,9 +25,16 @@ impl Search {
             .get_or_insert_with(|| Rc::new(pager.search_index(doc)))
             .clone()
     }
-    pub fn select(&mut self, query: String, hits: Vec<SearchMatch>, selected: usize) {
+    pub fn select(
+        &mut self,
+        query: String,
+        mode: SearchMode,
+        hits: Vec<SearchMatch>,
+        selected: usize,
+    ) {
         self.hidden = false;
         self.query = query;
+        self.mode = mode;
         self.hits = hits;
         self.selected = selected;
     }
@@ -49,7 +57,7 @@ impl Search {
         // A media query can hide the current match after a resize.
         let previous = self.hits.get(self.selected).map(|hit| hit.anchor);
         let index = Rc::new(pager.search_index(doc));
-        self.hits = index.matches(&self.query);
+        self.hits = index.matches_in(&self.query, self.mode);
         self.selected = previous.map_or(0, |at| {
             self.hits
                 .partition_point(|hit| hit.anchor < at)
@@ -59,6 +67,7 @@ impl Search {
     }
     pub fn restore(&self, nav: &mut super::navigation::Navigation) {
         nav.query.clone_from(&self.query);
+        nav.mode = self.mode;
         nav.hits.clone_from(&self.hits);
         nav.show_results(self.selected);
     }
