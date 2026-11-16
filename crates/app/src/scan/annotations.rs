@@ -55,7 +55,7 @@ pub(super) fn open(
             let notes = store.notes()?;
             let initial = notes
                 .iter()
-                .find(|v| v.anchor() == at)
+                .find(|note| note.range().is_none() && note.anchor() == at)
                 .map_or("", |v| &v.body);
             if let Some(body) = crate::prompt::edit(
                 term,
