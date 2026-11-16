@@ -612,6 +612,8 @@ response_separator = ""
 
 Smoke tests need tmux, Python 3.11+, the PDF and DjVu helpers above, and `c44` and `djvm` for test fixtures.
 
+GitHub Actions runs both checks before building the Linux binaries for branches and release tags.
+
 [Architecture](docs/architecture.md) · [Verification checklist](docs/checklist.md) · [Coverage limits](docs/checklist.md#coverage-limits)
 
 [Release notes](CHANGELOG.md)

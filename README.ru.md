@@ -612,6 +612,8 @@ response_separator = ""
 
 Для smoke-тестов нужны tmux, Python 3.11+, указанные выше средства чтения PDF и DjVu, а также `c44` и `djvm` для создания тестовых файлов.
 
+GitHub Actions запускает обе проверки перед сборкой бинарников Linux для веток и релизных тегов.
+
 [Архитектура](docs/architecture.ru.md) · [Проверяемые сценарии](docs/checklist.ru.md) · [Границы проверок](docs/checklist.ru.md#границы-проверок)
 
 [История изменений](CHANGELOG.md)

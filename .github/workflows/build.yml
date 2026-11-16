@@ -14,7 +14,47 @@ concurrency:
   cancel-in-progress: ${{ github.ref_type == 'branch' }}
 
 jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      # Keep the native test build within the hosted runner's disk budget.
+      CARGO_INCREMENTAL: "0"
+      CARGO_PROFILE_DEV_DEBUG: "0"
+      CARGO_PROFILE_TEST_DEBUG: "0"
+      MISE_TASK_RUN_AUTO_INSTALL: "false"
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: jdx/mise-action@v5
+        with:
+          install_args: rust cmake
+
+      - name: Install test dependencies
+        run: |
+          rustup component add rustfmt clippy
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends tmux poppler-utils djvulibre-bin python3-gi-cairo gir1.2-poppler-0.18
+
+      - uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target/debug
+          key: linux-verify-${{ runner.arch }}-${{ hashFiles('Cargo.toml', 'crates/*/Cargo.toml', 'Cargo.lock', 'rust-toolchain.toml', 'mise.toml') }}
+
+      - name: Check formatting, Clippy and Rust tests
+        run: mise run check
+
+      - name: Run terminal smoke tests
+        # Ubuntu's Python can load the distro's Poppler GI and Cairo bindings.
+        run: PATH="/usr/bin:$PATH" mise run smoke
+
   linux:
+    needs: verify
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
