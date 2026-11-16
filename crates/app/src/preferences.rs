@@ -37,19 +37,23 @@ impl Open {
 #[derive(Default)]
 pub struct Buttons([Rect; 2]);
 impl Buttons {
-    pub fn draw(&mut self, f: &mut Frame, area: Rect) {
+    pub const LABELS: [&str; 2] = ["[F2 Settings]", "[F1/? Help]"];
+
+    pub fn draw(&mut self, f: &mut Frame, area: Rect) -> u16 {
         self.0 = [Rect::default(); 2];
-        let mut x = area.x;
-        for (i, s) in ["[F2 Settings]", "[F1 Help]"].iter().enumerate() {
+        let mut right = area.x;
+        for (i, s) in Self::LABELS.into_iter().enumerate() {
+            let x = right.saturating_add(u16::from(i != 0));
             let len = s.len() as u16;
-            if area.height == 0 || x + len > area.right() {
+            if area.height == 0 || area.right().saturating_sub(x) < len {
                 break;
             }
             let r = Rect::new(x, area.y, len, 1);
             self.0[i] = r;
-            f.render_widget(Paragraph::new(*s).cyan(), r);
-            x += len + 1;
+            f.render_widget(Paragraph::new(s).cyan(), r);
+            right = r.right();
         }
+        right
     }
     pub fn hit(&self, pos: Position) -> Option<Open> {
         self.0

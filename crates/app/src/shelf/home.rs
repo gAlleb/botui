@@ -33,7 +33,7 @@ fn source(cmd: &Command, connected: bool) -> (char, &'static str, &'static str) 
         ),
         Command::Local => (
             'L',
-            "Browse a folder on this device. Open an EPUB, FB2, Markdown, PDF, DjVu or comic and pick up where you left off.",
+            "Browse a folder on this device. Open an EPUB, FB2, MD, PDF, DjVu or comic and pick up where you left off.",
             "P  Choose folder      /  Search",
         ),
         Command::Opds => (
@@ -87,7 +87,7 @@ impl Shelf {
         let mut y = canvas.y + masthead_h + u16::from(illustrated && !short);
         if canvas.height >= 10 && !illustrated {
             let tagline = if canvas.width >= 82 {
-                "Your TUI book reader.   EPUB · FB2 · Markdown · PDF · DjVu · CBZ · CBR"
+                "Your TUI book reader.   EPUB · FB2 · MD · PDF · DjVu · CBZ · CBR"
             } else {
                 "Your TUI book reader."
             };
@@ -199,13 +199,13 @@ impl Shelf {
         {
             f.render_widget(Paragraph::new(msg.as_str()).yellow(), row(bottom, 1));
         }
-        self.prefs_buttons.draw(f, footer);
-        let mut x = footer.x + 23;
+        let buttons_end = self.prefs_buttons.draw(f, footer);
+        let mut x = buttons_end.saturating_add(3);
         self.home_controls.clear();
         for (label, command) in [
             ("↑↓ Choose", None),
-            ("Enter Open", self.current().action()),
-            ("Q Quit", Some(Command::Quit)),
+            ("[Enter Open]", self.current().action()),
+            ("[Q Quit]", Some(Command::Quit)),
         ] {
             let width = Line::from(label).width() as u16;
             if x.saturating_add(width) > footer.right() {
@@ -220,8 +220,10 @@ impl Shelf {
             f.render_widget(Paragraph::new(label).style(style), rect);
             if let Some(c) = command {
                 self.home_controls.push((rect, c));
+                x = rect.right().saturating_add(1);
+            } else {
+                x = rect.right().saturating_add(3);
             }
-            x = rect.right().saturating_add(3);
         }
     }
 }

@@ -408,9 +408,10 @@ impl Picker {
     /// leaves less space for actions. Reserve these rows before drawing the books.
     fn draw_footer(&mut self, frame: &mut Frame, inner: Rect, max_rows: u16) -> u16 {
         let directory = self.source.is_none() && self.view == LocalView::Directory;
+        let preferences = crate::preferences::Buttons::LABELS.join(" ");
         let actions = [
             Some("[ Q Back ]"),
-            Some("[F2 Settings] [? Help]"),
+            Some(preferences.as_str()),
             self.selected_scan().map(|_| "[I File info]"),
             (directory && self.dir.parent().is_some()).then_some("[↑ Up]"),
             self.source.is_none().then_some("[P Folder…]"),

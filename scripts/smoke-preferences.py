@@ -17,7 +17,14 @@ def check(tmp):
     def compact_row(frame, enabled):
         return re.search(r'Compact blocks\s+' + ('On' if enabled else 'Off') + r'\b', frame)
     try:
-        t.click('[F1 Help]',t.see('[F1 Help]'));t.see('Keyboard shortcuts');guide=t.see('Open the selected item')
+        help_button = '[F1/? Help]'
+        home_footer = f'[F2 Settings] {help_button}   ↑↓ Choose   [Enter Open] [Q Quit]'
+        for key in ('?', 'F1'):
+            t.see(home_footer)
+            t.keys(key)
+            t.see('Keyboard shortcuts')
+            t.keys('Escape')
+        t.click(help_button, t.see(home_footer));guide=t.see('Open the selected item')
         aligned=[next(row.index(label) for row in guide.splitlines() if label in row) for label in ('Open settings','Back / close a panel','Open the selected item')]
         assert len(set(aligned))==1,aligned
         assert 'series' in guide and 'Sections' in guide

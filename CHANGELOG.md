@@ -3,6 +3,7 @@
 ## Unreleased
 
 - Preserve key presses while detecting terminal image support.
+- Group home screen buttons, show both help keys, and use MD in the format list.
 
 ## 0.1.19 — 2026-11-16
 
