@@ -4,6 +4,7 @@ pub(super) const ITEMS: &[(&str, &str, usize)] = &[
     ("Previous page", "←", 1),
     ("Next page", "→", 2),
     ("Go to page number", "Space r p", 24),
+    ("Go to LaTeX source", "F8", 46),
     ("Jump back", "Space r [", 35),
     ("Jump forward", "Space r ]", 36),
     ("First page", "Home", 6),

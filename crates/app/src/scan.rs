@@ -108,6 +108,9 @@ pub(super) fn read_pages(
         ..Crop::default()
     };
     let initial_zoom = crop.percent;
+    let mut source_job: Option<
+        crate::shelf::background::Ticket<io::Result<botui_fixed::synctex::Source>>,
+    > = None;
     let mut reveal: Option<botui_store::PdfRegion> = None;
     let mut gap = prefs.scan_gap.unwrap_or(2).min(32);
     let mut dialog: Option<controls::Dialog> = None;
@@ -213,6 +216,7 @@ pub(super) fn read_pages(
     };
     let menu_items: Vec<_> = menu::ITEMS
         .iter()
+        .filter(|(_, _, action)| *action != 46 || watch.is_some())
         .filter(|(_, _, action)| !image_only || !matches!(action, 16 | 17 | 37 | 38))
         .collect();
 
@@ -228,6 +232,21 @@ pub(super) fn read_pages(
         let _reading_dialogs = crate::settings::reader_dialogs(preview_theme);
         if selectable {
             text.poll(path);
+        }
+        if let Some(job) = &source_job {
+            match job.receiver.try_recv() {
+                Ok(result) => {
+                    message = result
+                        .and_then(|source| {
+                            crate::synctex::open_editor(&prefs.synctex_editor, source)
+                        })
+                        .unwrap_or_else(|e| format!("SyncTeX: {e}"));
+                    text.message.clone_from(&message);
+                    source_job = None;
+                }
+                Err(TryRecvError::Disconnected) => source_job = None,
+                Err(TryRecvError::Empty) => (),
+            }
         }
         if let Some(msg) = viewer.collect() {
             message = msg;
@@ -769,7 +788,8 @@ pub(super) fn read_pages(
             }
             continue;
         }
-        let busy = motion.busy()
+        let busy = source_job.is_some()
+            || motion.busy()
             || sixel.as_ref().is_some_and(sixel::Cache::busy)
             || viewer.busy()
             || text.busy()
@@ -796,50 +816,75 @@ pub(super) fn read_pages(
             .min();
         let input = |delay| crate::settings::read_scan_event(delay, appearance.terminal_paper);
         let event = if let Some(watch) = &mut watch {
-            let (event, edition) = watch.wait(&worker, path, n, timeout, input)?;
-            if let Some(edition) = edition {
-                if let (Some(previous), Ok((current, _))) = (&store, &edition.state)
-                    && previous.same_edition(current)
-                {
+            match watch.wait(&worker, path, n, timeout, input)? {
+                reload::Wake::Input(event) => event,
+                reload::Wake::Jump(region) => {
+                    if total.is_some_and(|count| region.page > count) {
+                        message = "SyncTeX target is outside this PDF".into();
+                    } else {
+                        let from = Location {
+                            page: n,
+                            offset,
+                            crop,
+                        };
+                        let target =
+                            text::location(&region, crop, appearance.quarter_turns, scrolling);
+                        n = target.page;
+                        offset = target.offset;
+                        crop = target.crop;
+                        history.record(from, target);
+                        reveal = (!scrolling).then(|| region.clone());
+                        text.show_source(region);
+                        message = format!("SyncTeX · page {n}");
+                        text.message.clone_from(&message);
+                        dirty = true;
+                    }
                     continue;
                 }
-                if (dirty || save_failed)
-                    && let Some(previous) = &store
-                    && let Err(e) = previous.save_position(&checkpoint)
-                {
-                    notices.push(e.to_string());
+                reload::Wake::Revised(edition) => {
+                    if let (Some(previous), Ok((current, _))) = (&store, &edition.state)
+                        && previous.same_edition(current)
+                    {
+                        continue;
+                    }
+                    if (dirty || save_failed)
+                        && let Some(previous) = &store
+                        && let Err(e) = previous.save_position(&checkpoint)
+                    {
+                        notices.push(e.to_string());
+                    }
+                    crate::stats::finish(store.as_ref(), opened, notices);
+                    opened = std::time::Instant::now();
+                    let next = edition.state.map_err(|e| notices.push(e.to_string())).ok();
+                    let (updated, marks) = next.unzip();
+                    store = updated;
+                    checkpoint.marks = marks.unwrap_or_default();
+                    finished &= total == Some(edition.count);
+                    n = n.min(edition.count);
+                    book_title = edition.title.unwrap_or_else(|| file_title.to_string());
+                    total = Some(edition.count);
+                    pages = pages::Pages::new(checkpoint.scan_appearance, || {
+                        botui_fixed::PageReader::new(path, kind)
+                    });
+                    source_job = None;
+                    text.reload(store.as_ref());
+                    sixel = None;
+                    motion.clear();
+                    last_sheet = None;
+                    search = search::Search::default();
+                    history = history::History::default();
+                    sidebar = contents::Contents::default();
+                    let p = path.to_owned();
+                    outline_job =
+                        Some(worker.start(move |cancel| botui_fixed::outline(&p, kind, cancel)));
+                    reveal = None;
+                    finish_on_arrival = None;
+                    save_failed = false;
+                    dirty = true;
+                    message = "PDF reloaded".into();
+                    continue;
                 }
-                crate::stats::finish(store.as_ref(), opened, notices);
-                opened = std::time::Instant::now();
-                let next = edition.state.map_err(|e| notices.push(e.to_string())).ok();
-                let (updated, marks) = next.unzip();
-                store = updated;
-                checkpoint.marks = marks.unwrap_or_default();
-                finished &= total == Some(edition.count);
-                n = n.min(edition.count);
-                book_title = edition.title.unwrap_or_else(|| file_title.to_string());
-                total = Some(edition.count);
-                pages = pages::Pages::new(checkpoint.scan_appearance, || {
-                    botui_fixed::PageReader::new(path, kind)
-                });
-                text.reload(store.as_ref());
-                sixel = None;
-                motion.clear();
-                last_sheet = None;
-                search = search::Search::default();
-                history = history::History::default();
-                sidebar = contents::Contents::default();
-                let p = path.to_owned();
-                outline_job =
-                    Some(worker.start(move |cancel| botui_fixed::outline(&p, kind, cancel)));
-                reveal = None;
-                finish_on_arrival = None;
-                save_failed = false;
-                dirty = true;
-                message = "PDF reloaded".into();
-                continue;
             }
-            event
         } else {
             input(timeout)?
         };
@@ -984,7 +1029,24 @@ pub(super) fn read_pages(
                 }
             }
         }
-        if !menu && !from_leader && !text.normal() && !crate::leader::pdf_reading_event(&e) {
+        let source_click = match &e {
+            Event::Mouse(m)
+                if m.kind == MouseEventKind::Down(MouseButton::Left)
+                    && m.modifiers.contains(KeyModifiers::ALT) =>
+            {
+                Some(Position::new(m.column, m.row))
+            }
+            _ => None,
+        };
+        let source_key = matches!(e, Event::Key(k) if k.kind != KeyEventKind::Release && k.code == KeyCode::F(8));
+        let source_request =
+            !from_leader && watch.is_some() && (source_key || source_click.is_some());
+        if !menu
+            && !from_leader
+            && !text.normal()
+            && !source_request
+            && !crate::leader::pdf_reading_event(&e)
+        {
             continue;
         }
         if !menu && let Some(result) = splitter.input(&e) {
@@ -1018,6 +1080,7 @@ pub(super) fn read_pages(
         }
         if selectable
             && !menu
+            && !source_request
             && let Some(action) =
                 leader_action.or_else(|| if from_leader { None } else { text.input(&e) })
         {
@@ -1059,6 +1122,7 @@ pub(super) fn read_pages(
             || matches!(&e, Event::Key(k) if matches!(k.code,KeyCode::Char('a'|'A'))))
         .then(|| rendered.buffer.clone());
         let action = match e {
+            _ if !menu && source_request => 46,
             Event::Key(k) if k.kind != KeyEventKind::Release => match k.code {
                 KeyCode::Char('c') if k.modifiers.contains(KeyModifiers::CONTROL) => 5,
                 KeyCode::Up | KeyCode::BackTab | KeyCode::Char('k') if menu => {
@@ -1174,6 +1238,14 @@ pub(super) fn read_pages(
             16 | 17 | 37 | 38 if image_only => {
                 message = "Image-only book has no text layer".into();
                 continue;
+            }
+            46 => {
+                if let Some((page, point)) = text.source_point(source_click) {
+                    let pdf = path.to_owned();
+                    source_job = Some(worker.start(move |cancel| {
+                        botui_fixed::synctex::inverse(&pdf, page, point, cancel)
+                    }));
+                }
             }
             44 => {
                 viewer.document(path, kind);

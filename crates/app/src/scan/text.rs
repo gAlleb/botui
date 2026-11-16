@@ -158,6 +158,37 @@ impl Text {
         self.search_regions.clear();
         visible
     }
+    pub fn show_source(&mut self, region: PdfRegion) {
+        self.cursor = None;
+        self.start = None;
+        self.search_regions = vec![region];
+    }
+    pub fn source_point(&self, click: Option<Position>) -> Option<(u32, [f32; 2])> {
+        if let Some(p) = click {
+            return self
+                .views
+                .iter()
+                .find_map(|v| v.point(p).map(|(x, y)| (v.page, [x, y])));
+        }
+        let focus = self
+            .cursor
+            .and_then(|at| self.word(at).map(|w| (at.page, w.bounds)))
+            .or_else(|| self.search_regions.first().map(|r| (r.page, r.bounds)));
+        if let Some((page, b)) = focus
+            && self
+                .views
+                .iter()
+                .any(|v| v.page == page && v.rect(b).is_some())
+        {
+            return Some((page, [(b[0] + b[2]) * 0.5, (b[1] + b[3]) * 0.5]));
+        }
+        let v = self.views.first()?;
+        let (x, y) = v.point(Position::new(
+            v.screen.x + v.screen.width / 2,
+            v.screen.y + v.screen.height / 2,
+        ))?;
+        Some((v.page, [x, y]))
+    }
     pub fn show_search(
         &mut self,
         hit: &botui_fixed::PageMatch,

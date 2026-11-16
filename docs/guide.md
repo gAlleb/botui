@@ -125,6 +125,10 @@ Positions and notes are local.
 
 An open local PDF refreshes after an editor or typesetter finishes writing it. The reader keeps your page, zoom and scroll position. If the new PDF is shorter, it opens its last page. Each edition keeps its own bookmarks and annotations.
 
+For LaTeX, compile with `-synctex=1` and open the local PDF in BOTUI. With the optional `synctex` utility on your PATH, run `botui --synctex-forward 42:0:chapter.tex book.pdf` from the editor to highlight line 42 in the open PDF. An explicit PDF path picks the document; if it is open twice, the most recently opened copy receives the jump.
+
+**Alt + left click** finds the source at the clicked point. **F8** uses the visible Vim cursor, highlighted line, or center of the first visible page. BOTUI shows the source path and line. To open it in your editor, set `synctex_editor` in the configuration. For example, `["code", "--goto", "{file}:{line}:{column}"]` opens VS Code, and `["kitty", "nvim", "+{line}", "--", "{file}"]` opens Neovim in a separate terminal. The editor receives the filename as a single argument. Keep the matching `.synctex` or `.synctex.gz` beside the PDF.
+
 PDF contents require Python 3, PyGObject and the Poppler GI bindings. Image-only EPUBs use the fixed-page reader. There is no OCR: scans and comic images do not provide word selection, definitions or translation.
 
 Comic pages may be JPEG, PNG or WebP, up to 16 MiB each. Password-protected and multi-volume RAR archives are not supported. Files with a `.cbz` or `.cbr` extension are recognized as ZIP or RAR by their contents, so mislabeled archives also open without renaming.
@@ -377,6 +381,8 @@ zen = false
 zen_progress = false
 # PDF/DjVu zoom in percent. In scroll mode 100 fits the reading pane.
 scan_zoom = 100
+# Local PDF to LaTeX source: executable and separate arguments. Line/column start at 1.
+# synctex_editor = ["code", "--goto", "{file}:{line}:{column}"]
 # Space between PDF/DjVu/comic pages in a spread (0–32 terminal cells).
 scan_gap = 2
 # Preferred width of one text page and the space between facing pages, in terminal cells.

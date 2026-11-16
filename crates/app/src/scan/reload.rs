@@ -69,7 +69,14 @@ impl Revision {
     }
 }
 
+pub(super) enum Wake {
+    Input(Option<crossterm::event::Event>),
+    Revised(Revision),
+    Jump(botui_store::PdfRegion),
+}
+
 pub(super) struct Watch {
+    inbox: Option<crate::synctex::Inbox>,
     stamp: Option<Stamp>,
     next: Instant,
     settling: bool,
@@ -79,6 +86,7 @@ pub(super) struct Watch {
 impl Watch {
     pub fn new(path: &Path) -> Self {
         Self {
+            inbox: crate::synctex::Inbox::open(path).ok(),
             stamp: Stamp::read(path),
             next: Instant::now() + IDLE,
             settling: false,
@@ -95,19 +103,31 @@ impl Watch {
         page: u32,
         timeout: Option<Duration>,
         mut input: impl FnMut(Option<Duration>) -> io::Result<Option<crossterm::event::Event>>,
-    ) -> io::Result<(Option<crossterm::event::Event>, Option<Revision>)> {
+    ) -> io::Result<Wake> {
         let deadline = timeout.map(|d| Instant::now() + d);
         loop {
             let now = Instant::now();
-            if now >= self.next
+            if let Some(inbox) = &mut self.inbox {
+                inbox.poll();
+            }
+            let jump = self.inbox.as_ref().is_some_and(|i| i.pending.is_some());
+            // An editor can send its jump immediately after rebuilding the PDF.
+            // Adopt the new edition before navigating to its fresh coordinates.
+            if (now >= self.next || (jump && Stamp::read(path) != self.stamp))
                 && let Some(revision) = self.poll(worker, path, page, now)
             {
-                return Ok((None, Some(revision)));
+                return Ok(Wake::Revised(revision));
+            }
+            if !self.settling
+                && self.job.is_none()
+                && let Some(target) = self.inbox.as_mut().and_then(|i| i.pending.take())
+            {
+                return Ok(Wake::Jump(target));
             }
             let wake = deadline.map_or(self.next, |d| d.min(self.next));
             let event = input(Some(wake.saturating_duration_since(Instant::now())))?;
             if event.is_some() || deadline.is_some_and(|d| d <= Instant::now()) {
-                return Ok((event, None));
+                return Ok(Wake::Input(event));
             }
         }
     }

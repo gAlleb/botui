@@ -54,6 +54,7 @@ pub struct Settings {
     pub keys: BTreeMap<char, String>,
     /// Executable and arguments; {text} is replaced without invoking a shell.
     pub lookup_command: Vec<String>,
+    pub synctex_editor: Vec<String>,
     pub lookup: crate::lookup::Config,
     pub leader_delay_ms: Option<u16>,
 }

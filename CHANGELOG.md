@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Jump between LaTeX source lines and local PDFs with SyncTeX.
 - Start each text chapter on a new two-page spread.
 - Show the book title in the upper border when Zen progress is visible.
 - Search local highlights and notes across books from the start screen.

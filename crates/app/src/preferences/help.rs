@@ -157,6 +157,10 @@ pub(super) fn entries(ctx: Context, p: &Settings) -> Vec<Entry> {
                         "Navigate pages; arrows pan a zoomed page",
                     ),
                     ("Home / End", "First / last page"),
+                    (
+                        "F8 / Alt+click",
+                        "Local PDF: find the LaTeX source with SyncTeX",
+                    ),
                     ("+ / = / −", "Zoom in / zoom in / zoom out"),
                     ("Mouse wheel", "Scroll; F2 → Reader sets lines per tick"),
                     (

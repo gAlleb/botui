@@ -25,6 +25,7 @@ mod shelf;
 mod shell_theme;
 mod splitter;
 mod stats;
+mod synctex;
 mod terminal_frame;
 mod terminal_input;
 mod text_menu;
@@ -55,7 +56,7 @@ use ratatui::layout::Rect;
 use terminal_frame::AppTerminal;
 type Result<T> = std::result::Result<T, Box<dyn Error>>;
 
-const HELP: &str = "botui [FILE | DIRECTORY | --local [DIRECTORY] | --resume | --library DIRECTORY | --server URL | --opds URL]\n\nWith no arguments, choose a source. --resume opens the last unfinished local book or download.\n--config-path: locate config.toml; --license: license texts; --check-bookmarks TITLE: inspect server bookmarks without editing them.\nF1: complete contextual keyboard help; F2: settings.\nBooks open without a cursor. Space opens the command menu (150 ms hint delay, immediate execution).\nSpace c: toggle Vim cursor; v/V select only in Vim. Normal supports yiw/yw/yy.\nSpace l 1/2/3: single/spread/scroll; Space l w: width/spacing; Space z: zen; Space p: zen frame and progress.\nHiding the Zen frame frees reading space; text reflows at the same reading position.\nSpace f: search; F3/F4/F5: next/previous/results; Space b a/l: bookmark/list.\nSpace a: annotations/copy/export; Space d d/t: definitions/translation; Space t: theme or PDF colors.\nSpace r p: PDF page; Space r +/-: PDF zoom; Space r 0: fit. Space q: return to the book source.\nSpace submenu: q/Esc/Backspace returns one level. Esc closes the root.\nLibraries keep contextual shortcuts: / search, V grid/list, Q/Esc back.\nBookOrbit: 0 dashboard, 1 all books, 2 reading, 3 recent, 4 libraries, 5 collections, 6 authors, 7 series.\nF2 > Dictionaries > Word definitions / Translation: add, edit, test and delete connections.\nFull configuration example: config.example.toml; full controls: README.md and docs/guide.md.\n";
+const HELP: &str = "botui [FILE | DIRECTORY | --local [DIRECTORY] | --resume | --library DIRECTORY | --server URL | --opds URL]\n\nWith no arguments, choose a source. --resume opens the last unfinished local book or download.\n--config-path: locate config.toml; --license: license texts; --check-bookmarks TITLE: inspect server bookmarks without editing them.\nF1: complete contextual keyboard help; F2: settings.\nBooks open without a cursor. Space opens the command menu (150 ms hint delay, immediate execution).\nSpace c: toggle Vim cursor; v/V select only in Vim. Normal supports yiw/yw/yy.\nSpace l 1/2/3: single/spread/scroll; Space l w: width/spacing; Space z: zen; Space p: zen frame and progress.\nHiding the Zen frame frees reading space; text reflows at the same reading position.\nSpace f: search; F3/F4/F5: next/previous/results; Space b a/l: bookmark/list.\nSpace a: annotations/copy/export; Space d d/t: definitions/translation; Space t: theme or PDF colors.\nSpace r p: PDF page; Space r +/-: PDF zoom; Space r 0: fit. Space q: return to the book source.\nSpace submenu: q/Esc/Backspace returns one level. Esc closes the root.\nLocal PDF: --synctex-forward LINE:COLUMN:SOURCE OUTPUT.pdf sends a jump; F8 or Alt-click locates the source.\nLibraries keep contextual shortcuts: / search, V grid/list, Q/Esc back.\nBookOrbit: 0 dashboard, 1 all books, 2 reading, 3 recent, 4 libraries, 5 collections, 6 authors, 7 series.\nF2 > Dictionaries > Word definitions / Translation: add, edit, test and delete connections.\nFull configuration example: config.example.toml; full controls: README.md and docs/guide.md.\n";
 
 struct Screen;
 
@@ -117,6 +118,7 @@ enum Start {
     Local(Option<PathBuf>),
     File(PathBuf),
     Resume,
+    SyncTex(String, PathBuf),
     Help,
     License,
     ConfigPath,
@@ -128,6 +130,14 @@ fn arguments() -> Result<Start> {
     let start = match args.next() {
         None => Start::Shelf(None),
         Some(v) if v == "--resume" => Start::Resume,
+        Some(v) if v == "--synctex-forward" => Start::SyncTex(
+            args.next()
+                .and_then(|v| v.into_string().ok())
+                .ok_or("Expected LINE:COLUMN:SOURCE")?,
+            args.next()
+                .map(PathBuf::from)
+                .ok_or("Expected the path to an open local PDF")?,
+        ),
         Some(v) if v == "--check-bookmarks" => Start::CheckBookmarks(
             args.next()
                 .ok_or("Supply a book title after --check-bookmarks")?
@@ -488,6 +498,9 @@ fn run() -> Result<()> {
     if matches!(start, Start::Help) {
         print!("{HELP}");
         return Ok(());
+    }
+    if let Start::SyncTex(position, pdf) = &start {
+        return Ok(synctex::forward(position, pdf)?);
     }
     settings::Settings::initialize()?;
     if let Start::CheckBookmarks(title) = &start {

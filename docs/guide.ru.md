@@ -129,6 +129,10 @@ botui --config-path                         # создать конфиг и в�
 
 Если редактор пересобрал открытый локальный PDF, читалка покажет новую версию на той же странице, с прежним масштабом и прокруткой. Если страниц стало меньше и прежней страницы уже нет, откроется последняя. У каждой версии свои закладки и заметки.
 
+Для работы с LaTeX соберите документ с параметром `-synctex=1` и откройте локальный PDF в BOTUI. Если в PATH есть утилита `synctex`, команда редактора `botui --synctex-forward 42:0:chapter.tex book.pdf` подсветит строку 42 в открытом PDF. Путь к PDF определяет книгу. Если она открыта дважды, переход получит последнее открытое окно.
+
+**Alt + левый щелчок** находит исходник в указанной точке. **F8** использует видимый Vim-курсор, подсвеченную строку или центр первой видимой страницы. BOTUI покажет путь к исходнику и номер строки. Чтобы открыть файл, задайте `synctex_editor` в конфигурации. Например, `["code", "--goto", "{file}:{line}:{column}"]` откроет VS Code, а `["kitty", "nvim", "+{line}", "--", "{file}"]` запустит Neovim в отдельном терминале. Имя файла передаётся редактору одним аргументом. Файл разметки `.synctex` или `.synctex.gz` должен лежать рядом с PDF.
+
 Для оглавления PDF нужны Python 3, PyGObject и привязки Poppler GI. EPUB, состоящие из изображений, открываются в ридере фиксированных страниц. OCR нет: сканы и картинки комиксов не дают выделения слов, словаря и перевода.
 
 Страницы комиксов могут быть JPEG, PNG или WebP, до 16 МиБ каждая. Запароленные и многотомные RAR не поддерживаются. Для файлов `.cbz` и `.cbr` тип архива ZIP или RAR определяется по содержимому: комиксы с перепутанным расширением тоже открываются, переименовывать их не нужно.
@@ -377,6 +381,8 @@ zen = false
 zen_progress = false
 # PDF/DjVu zoom in percent. In scroll mode 100 fits the reading pane.
 scan_zoom = 100
+# Local PDF to LaTeX source: executable and separate arguments. Line/column start at 1.
+# synctex_editor = ["code", "--goto", "{file}:{line}:{column}"]
 # Space between PDF/DjVu/comic pages in a spread (0–32 terminal cells).
 scan_gap = 2
 # Preferred width of one text page and the space between facing pages, in terminal cells.
