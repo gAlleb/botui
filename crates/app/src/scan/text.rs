@@ -141,6 +141,14 @@ impl Text {
             buttons: vec![],
         }
     }
+    pub fn reload(&mut self, store: Option<&LocalState>) {
+        *self = Self {
+            enabled: self.enabled,
+            normal: self.normal,
+            auto_cursor: self.normal,
+            ..Self::new(store)
+        };
+    }
     pub fn clear_search(&mut self) {
         self.search_regions.clear();
         self.search_at = None;

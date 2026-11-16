@@ -8,6 +8,7 @@ pub(crate) mod layout;
 mod menu;
 mod pages;
 mod paper;
+mod reload;
 mod search;
 mod sixel;
 mod text;
@@ -28,13 +29,19 @@ use ratatui::{
 };
 use std::{io, path::Path, sync::mpsc::TryRecvError, time::Duration};
 
+pub(super) enum Source {
+    Local,
+    Catalog,
+    ImageBook(Box<botui_core::Document>),
+}
+
 pub fn read(
     term: &mut AppTerminal,
     path: &Path,
     kind: FileKind,
     notices: &mut Vec<String>,
 ) -> io::Result<crate::BookExit> {
-    let (_, percent, exit) = read_server(term, path, kind, notices, None)?;
+    let (_, percent, exit) = read_pages(term, path, kind, notices, None, Source::Local, None)?;
     if let Some(p) = percent
         && let Err(e) = botui_store::HistoryEntry::record(path, p)
     {
@@ -53,7 +60,7 @@ pub fn read_server(
     Option<f64>,
     crate::BookExit,
 )> {
-    read_pages(term, path, kind, notices, base, None, None)
+    read_pages(term, path, kind, notices, base, Source::Catalog, None)
 }
 
 pub(super) fn read_pages(
@@ -62,7 +69,7 @@ pub(super) fn read_pages(
     kind: FileKind,
     notices: &mut Vec<String>,
     base: Option<&botui_bookorbit::progress::Progress>,
-    album: Option<botui_core::Document>,
+    source: Source,
     mut live: Option<&mut crate::live_progress::Live>,
 ) -> io::Result<(
     Option<botui_bookorbit::progress::Move>,
@@ -70,6 +77,12 @@ pub(super) fn read_pages(
     crate::BookExit,
 )> {
     let _uploads = crate::cover::ScanGraphics;
+    let mut watch = (matches!(source, Source::Local) && kind == FileKind::Pdf)
+        .then(|| reload::Watch::new(path));
+    let album = match source {
+        Source::ImageBook(doc) => Some(doc),
+        _ => None,
+    };
     let worker = Worker::new();
     let p = path.to_owned();
     let count_job = album
@@ -118,7 +131,7 @@ pub(super) fn read_pages(
     let mut reveal: Option<botui_store::PdfRegion> = None;
     let mut gap = prefs.scan_gap.unwrap_or(2).min(32);
     let mut dialog: Option<controls::Dialog> = None;
-    let store = LocalState::for_file(path)
+    let mut store = LocalState::for_file(path)
         .map_err(|e| notices.push(e.to_string()))
         .ok();
     let saved = store.as_ref().and_then(|s| {
@@ -139,7 +152,7 @@ pub(super) fn read_pages(
     if let Some(count) = total {
         n = n.clamp(1, count);
     }
-    let opened = std::time::Instant::now();
+    let mut opened = std::time::Instant::now();
     let start = n;
     let mut scroll_lines = i32::from(prefs.scroll_lines.unwrap_or(1).clamp(1, 12));
     let mut spread = saved
@@ -769,7 +782,54 @@ pub(super) fn read_pages(
                     .map(|s| s.timeout()),
             )
             .min();
-        let event = crate::settings::read_scan_event(timeout, appearance.terminal_paper)?;
+        let input = |delay| crate::settings::read_scan_event(delay, appearance.terminal_paper);
+        let event = if let Some(watch) = &mut watch {
+            let (event, edition) = watch.wait(&worker, path, n, timeout, input)?;
+            if let Some(edition) = edition {
+                if let (Some(previous), Ok((current, _))) = (&store, &edition.state)
+                    && previous.same_edition(current)
+                {
+                    continue;
+                }
+                if (dirty || save_failed)
+                    && let Some(previous) = &store
+                    && let Err(e) = previous.save_position(&checkpoint)
+                {
+                    notices.push(e.to_string());
+                }
+                crate::stats::finish(store.as_ref(), opened, notices);
+                opened = std::time::Instant::now();
+                let next = edition.state.map_err(|e| notices.push(e.to_string())).ok();
+                let (updated, marks) = next.unzip();
+                store = updated;
+                checkpoint.marks = marks.unwrap_or_default();
+                finished &= total == Some(edition.count);
+                n = n.min(edition.count);
+                total = Some(edition.count);
+                pages = pages::Pages::new(checkpoint.scan_appearance, || {
+                    botui_fixed::PageReader::new(path, kind)
+                });
+                text.reload(store.as_ref());
+                sixel = None;
+                motion.clear();
+                last_sheet = None;
+                search = search::Search::default();
+                history = history::History::default();
+                sidebar = contents::Contents::default();
+                let p = path.to_owned();
+                outline_job =
+                    Some(worker.start(move |cancel| botui_fixed::outline(&p, kind, cancel)));
+                reveal = None;
+                finish_on_arrival = None;
+                save_failed = false;
+                dirty = true;
+                message = "PDF reloaded".into();
+                continue;
+            }
+            event
+        } else {
+            input(timeout)?
+        };
         let Some(mut e) = event else {
             continue;
         };

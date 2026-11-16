@@ -1398,7 +1398,7 @@ pub fn read_server(
             kind,
             notices,
             if comic { base } else { None },
-            Some(doc),
+            crate::scan::Source::ImageBook(Box::new(doc)),
             if comic { live } else { None },
         )?;
         return Ok((change, percent.unwrap_or_default(), exit));

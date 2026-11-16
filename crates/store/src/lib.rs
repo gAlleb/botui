@@ -196,6 +196,10 @@ impl LocalState {
         })
     }
 
+    pub fn same_edition(&self, other: &Self) -> bool {
+        self.path == other.path
+    }
+
     pub fn load(&self) -> io::Result<Option<Saved>> {
         let current = self.read_saved()?;
         self.baseline.set(Some(

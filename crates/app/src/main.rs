@@ -400,7 +400,7 @@ fn bookorbit_shelf(
                                 k,
                                 notices,
                                 base.as_ref(),
-                                None,
+                                scan::Source::Catalog,
                                 live.as_mut(),
                             )?
                             .0)
