@@ -325,10 +325,7 @@ impl Text {
                 KeyCode::Char('/') => filtering = true,
                 KeyCode::Enter => {
                     if let Some(n) = note {
-                        return Ok(Some(n.pdf_regions.first().cloned().unwrap_or(PdfRegion {
-                            page: n.anchor().block as u32 + 1,
-                            bounds: [0., 0., 1., 0.01],
-                        })));
+                        return Ok(Some(n.page_region()));
                     }
                 }
                 KeyCode::Char('n' | 'N' | 'h' | 'H') => {

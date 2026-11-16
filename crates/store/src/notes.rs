@@ -130,6 +130,19 @@ impl Note {
             updated: now(),
         }
     }
+    /// Passage rectangle, or the top of the physical page for a whole-page note.
+    pub fn page_region(&self) -> PdfRegion {
+        self.pdf_regions
+            .first()
+            .cloned()
+            .unwrap_or_else(|| PdfRegion {
+                page: u32::try_from(self.anchor().block)
+                    .unwrap_or(u32::MAX)
+                    .saturating_add(1),
+                bounds: [0., 0., 1., 0.01],
+            })
+    }
+
     pub fn range(&self) -> Option<TextRange> {
         let (block, byte) = self.end?;
         Some(TextRange::new(self.anchor(), Anchor { block, byte }))
@@ -147,6 +160,52 @@ struct NoteFile {
     notes: Vec<Note>,
     #[serde(default)]
     sync: std::collections::BTreeMap<String, serde_json::Value>,
+}
+/// Locally saved annotations, including editions whose book is no longer on disk.
+#[derive(Default)]
+pub struct LibraryNotes {
+    pub editions: std::collections::BTreeMap<String, Vec<Note>>,
+    pub unreadable: usize,
+}
+
+impl LibraryNotes {
+    pub fn on_device() -> io::Result<Self> {
+        Self::in_directory(&super::state_dir()?.join("botui/positions"))
+    }
+
+    fn in_directory(dir: &std::path::Path) -> io::Result<Self> {
+        let mut library = Self::default();
+        let entries = match fs::read_dir(dir) {
+            Ok(entries) => entries,
+            Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(library),
+            Err(e) => return Err(e),
+        };
+        for entry in entries {
+            let entry = entry?;
+            let path = entry.path();
+            if path.extension().is_none_or(|v| v != "notes") || !entry.file_type()?.is_file() {
+                continue;
+            }
+            let state = LocalState {
+                path: path.with_extension("json"),
+                baseline: Default::default(),
+            };
+            let Some(id) = path.file_stem().and_then(|v| v.to_str()) else {
+                continue;
+            };
+            if id.len() != 64 || !id.bytes().all(|c| c.is_ascii_hexdigit()) {
+                continue;
+            }
+            match state.notes() {
+                Ok(notes) if !notes.is_empty() => {
+                    library.editions.insert(id.to_owned(), notes);
+                }
+                Ok(_) => (),
+                Err(_) => library.unreadable += 1,
+            }
+        }
+        Ok(library)
+    }
 }
 impl LocalState {
     pub fn named_marks(&self) -> io::Result<std::collections::BTreeMap<char, Anchor>> {
@@ -365,6 +424,27 @@ fn now() -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn library_reports_corrupt_editions_and_keeps_readable_legacy_notes() -> io::Result<()> {
+        let d = tempfile::tempdir()?;
+        let dir = d.path();
+        let edition = "a".repeat(64);
+        fs::write(
+            dir.join(format!("{edition}.notes")),
+            r#"[{"block":4,"byte":7,"body":"Previous format"}]"#,
+        )?;
+        fs::write(dir.join(format!("{}.notes", "b".repeat(64))), b"truncated")?;
+        fs::write(dir.join(format!("{}.notes", "c".repeat(64))), b"[]")?;
+        fs::write(dir.join("unrelated.notes"), b"ignored")?;
+        let library = LibraryNotes::in_directory(dir)?;
+        assert_eq!(library.unreadable, 1);
+        assert_eq!(library.editions.len(), 1);
+        let note = &library.editions[&edition][0];
+        assert_eq!(note.id, "legacy-4-7");
+        assert_eq!(note.anchor(), Anchor { block: 4, byte: 7 });
+        Ok(())
+    }
+
     #[test]
     fn pdf_ranges_survive_reopen_and_reject_invalid_coordinates() {
         let dir = tempfile::tempdir().unwrap();

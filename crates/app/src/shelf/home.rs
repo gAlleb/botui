@@ -26,6 +26,11 @@ fn source(cmd: &Command, connected: bool) -> (char, &'static str, &'static str) 
             "Return to your account dashboard, current books and newest additions.",
             "0  Dashboard      /  Search",
         ),
+        Command::Annotations => (
+            'A',
+            "Find saved passages and comments across books on this device.",
+            "Type to filter      Enter  Open passage",
+        ),
         Command::Local => (
             'L',
             "Browse a folder on this device. Open an EPUB, FB2, Markdown, PDF, DjVu or comic and pick up where you left off.",

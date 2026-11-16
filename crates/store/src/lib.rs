@@ -4,7 +4,7 @@ mod fingerprint;
 mod notes;
 mod stats;
 use botui_core::{Anchor, IllustrationPosition};
-pub use notes::{HighlightColor, Note, PdfRegion};
+pub use notes::{HighlightColor, LibraryNotes, Note, PdfRegion};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 pub use stats::{LibraryStats, Stats};
@@ -138,6 +138,20 @@ impl HistoryEntry {
         Ok(Self::unfinished(None)?.into_iter().next())
     }
     fn unfinished(root: Option<&Path>) -> io::Result<Vec<Self>> {
+        let items = Self::on_device()?;
+        Ok(items
+            .into_iter()
+            .filter(|v| {
+                v.percent < 100
+                    && root.is_none_or(|r| v.path.starts_with(r))
+                    && v.path.is_file()
+                    && v.path.metadata().and_then(|m| m.modified()).ok() == v.modified
+            })
+            .collect())
+    }
+
+    /// Includes finished and unavailable books, most recently read first.
+    pub fn on_device() -> io::Result<Vec<Self>> {
         let dir = state_dir()?.join("botui/history");
         let files = match fs::read_dir(dir) {
             Ok(v) => v,
@@ -147,12 +161,6 @@ impl HistoryEntry {
         let mut items: Vec<Self> = files
             .flatten()
             .filter_map(|f| serde_json::from_reader(fs::File::open(f.path()).ok()?).ok())
-            .filter(|v: &Self| {
-                v.percent < 100
-                    && root.is_none_or(|r| v.path.starts_with(r))
-                    && v.path.is_file()
-                    && v.path.metadata().and_then(|m| m.modified()).ok() == v.modified
-            })
             .collect();
         items.sort_by_key(|v| std::cmp::Reverse(v.read_at));
         Ok(items)
@@ -194,6 +202,13 @@ impl LocalState {
             path: dir.join(format!("{key}.json")),
             baseline: Default::default(),
         })
+    }
+
+    pub fn edition_id(&self) -> &str {
+        self.path
+            .file_stem()
+            .and_then(|v| v.to_str())
+            .expect("content digest")
     }
 
     pub fn same_edition(&self, other: &Self) -> bool {

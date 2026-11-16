@@ -1,3 +1,5 @@
+mod annotations;
+pub(crate) use annotations::NoteId;
 pub(crate) mod background;
 mod collections;
 pub(crate) mod covers;
@@ -49,6 +51,7 @@ impl std::ops::Deref for EditionPath {
 }
 
 pub(crate) enum Selection {
+    Annotations,
     Downloads(Source),
     Opds,
     Local,
@@ -130,6 +133,7 @@ impl Scope {
 
 #[derive(Clone)]
 enum Command {
+    Annotations,
     Borders,
     Downloads(Source),
     Background,
@@ -251,6 +255,7 @@ impl Pane {
                 Command::Downloads(Source::BookOrbit),
             ),
             Row::new(Source::Opds.label(), Command::Downloads(Source::Opds)),
+            Row::new("Highlights & notes…", Command::Annotations),
         ];
         if connected {
             rows.push(Row::new("Change connection…", Command::Connect));
@@ -1057,6 +1062,7 @@ impl Shelf {
                     self.notice = Some(e.to_string());
                 }
             }
+            Command::Annotations => return Some(Selection::Annotations),
             Command::Downloads(source) => return Some(Selection::Downloads(source)),
             Command::Opds => return Some(Selection::Opds),
             Command::Feed(href) => self.fetch_feed(href),

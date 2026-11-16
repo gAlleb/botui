@@ -35,40 +35,12 @@ pub(super) enum Source {
     ImageBook(Box<botui_core::Document>),
 }
 
-pub fn read(
-    term: &mut AppTerminal,
-    path: &Path,
-    kind: FileKind,
-    notices: &mut Vec<String>,
-) -> io::Result<crate::BookExit> {
-    let (_, percent, exit) = read_pages(term, path, kind, notices, None, Source::Local, None)?;
-    if let Some(p) = percent
-        && let Err(e) = botui_store::HistoryEntry::record(path, p)
-    {
-        notices.push(e.to_string());
-    }
-    Ok(exit)
-}
-pub fn read_server(
-    term: &mut AppTerminal,
-    path: &Path,
-    kind: FileKind,
-    notices: &mut Vec<String>,
-    base: Option<&botui_bookorbit::progress::Progress>,
-) -> io::Result<(
-    Option<botui_bookorbit::progress::Move>,
-    Option<f64>,
-    crate::BookExit,
-)> {
-    read_pages(term, path, kind, notices, base, Source::Catalog, None)
-}
-
 pub(super) fn read_pages(
     term: &mut AppTerminal,
     path: &Path,
     kind: FileKind,
     notices: &mut Vec<String>,
-    base: Option<&botui_bookorbit::progress::Progress>,
+    at: crate::ReadingStart<'_>,
     source: Source,
     mut live: Option<&mut crate::live_progress::Live>,
 ) -> io::Result<(
@@ -76,6 +48,7 @@ pub(super) fn read_pages(
     Option<f64>,
     crate::BookExit,
 )> {
+    let base = at.server;
     let _uploads = crate::cover::ScanGraphics;
     let mut watch = (matches!(source, Source::Local) && kind == FileKind::Pdf)
         .then(|| reload::Watch::new(path));
@@ -199,6 +172,21 @@ pub(super) fn read_pages(
     let mut menu = false;
     let mut focus: usize = 0;
     let mut dirty = false;
+    if let Some(target) = at.annotation {
+        let note = target.resolve(store.as_ref())?;
+        let region = note.page_region();
+        let location = text::location(
+            &region,
+            crop,
+            checkpoint.scan_appearance.quarter_turns,
+            scrolling,
+        );
+        n = location.page;
+        offset = location.offset;
+        crop = location.crop;
+        reveal = (!scrolling).then_some(region);
+        dirty = true;
+    }
     let mut text = text::Text::new(store.as_ref());
     let mut annotation_sync = (kind == FileKind::Pdf)
         .then(|| live.as_ref().and_then(|l| l.annotations.clone()))

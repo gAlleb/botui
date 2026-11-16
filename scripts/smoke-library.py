@@ -36,6 +36,8 @@ def check(tmp):
         home.keys("q")
         home.see("Choose a library")
         home.keys("End")
+        home.see("Find saved passages")
+        home.keys("Up")
         home.see("Read books you saved from OPDS")
         home.keys("Enter")
         home.see("OPDS downloads")

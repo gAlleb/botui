@@ -1389,24 +1389,12 @@ fn bindings() -> io::Result<std::collections::HashMap<char, Action>> {
         .collect()
 }
 
-pub fn read(
-    term: &mut AppTerminal,
-    path: &Path,
-    doc: Document,
-    notices: &mut Vec<String>,
-) -> io::Result<crate::BookExit> {
-    let (_, percent, exit) = read_server(term, path, doc, notices, None, None, None)?;
-    if let Err(e) = botui_store::HistoryEntry::record(path, percent) {
-        notices.push(e.to_string());
-    }
-    Ok(exit)
-}
 pub fn read_server(
     term: &mut AppTerminal,
     path: &Path,
     doc: Document,
     notices: &mut Vec<String>,
-    base: Option<&botui_bookorbit::progress::Progress>,
+    at: crate::ReadingStart<'_>,
     mut remote: Option<&mut bookmarks::ServerMarks>,
     mut live: Option<&mut crate::live_progress::Live>,
 ) -> io::Result<(
@@ -1414,6 +1402,7 @@ pub fn read_server(
     f64,
     crate::BookExit,
 )> {
+    let base = at.server;
     if !doc.image_pages.is_empty() {
         // Image-only EPUB uses a CFI remotely; comics use physical page numbers.
         let kind =
@@ -1427,7 +1416,10 @@ pub fn read_server(
             path,
             kind,
             notices,
-            if comic { base } else { None },
+            crate::ReadingStart {
+                server: if comic { base } else { None },
+                ..at
+            },
             crate::scan::Source::ImageBook(Box::new(doc)),
             if comic { live } else { None },
         )?;
@@ -1493,6 +1485,11 @@ pub fn read_server(
     let opened = Instant::now();
     let start = reader.pager.anchor();
     let started_finished = reader.finished;
+    if let Some(target) = at.annotation {
+        let note = target.resolve(state.as_ref())?;
+        reader.jump_to(note.anchor());
+        reader.dirty = true;
+    }
     let mut observed = (start, reader.finished);
     let mut last_save = Instant::now();
     let mut last_drag_scroll = Instant::now();

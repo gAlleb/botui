@@ -173,12 +173,18 @@ fn arguments() -> Result<Start> {
     Ok(start)
 }
 
+#[derive(Default, Clone, Copy)]
+struct ReadingStart<'a> {
+    server: Option<&'a botui_bookorbit::progress::Progress>,
+    annotation: Option<&'a shelf::NoteId>,
+}
+
 fn open_book(
     term: &mut AppTerminal,
     path: &std::path::Path,
     notices: &mut Vec<String>,
 ) -> Result<BookExit> {
-    open_local_doc(term, path, None, notices)
+    open_local_doc(term, path, None, notices, None)
 }
 
 fn open_local_doc(
@@ -186,6 +192,7 @@ fn open_local_doc(
     path: &std::path::Path,
     document: Option<botui_core::Document>,
     notices: &mut Vec<String>,
+    annotation: Option<&shelf::NoteId>,
 ) -> Result<BookExit> {
     let open = || -> Result<botui_core::Document> {
         match document {
@@ -195,30 +202,33 @@ fn open_local_doc(
     };
     let absolute = path.canonicalize()?;
     let path = absolute.as_path();
-    if let Some(copy) = offline::Copy::open(path)? {
-        let base = copy.starting_position();
-        let (change, percent, exit) =
-            if let Some(k) = botui_formats::FileKind::from_path(path).filter(|k| !k.readable()) {
-                scan::read_server(term, path, k, notices, Some(&base))?
-            } else {
-                let (change, pct, exit) =
-                    reader::read_server(term, path, open()?, notices, Some(&base), None, None)?;
-                (change, Some(pct), exit)
-            };
-        if let Some(p) = percent {
-            botui_store::HistoryEntry::record(path, p)?;
-        }
-        if let Some(m) = change {
-            copy.queue(path, m)?;
-        }
-        return Ok(exit);
-    }
-    let exit =
+    let copy = offline::Copy::open(path)?;
+    let base = copy.as_ref().map(offline::Copy::starting_position);
+    let start = ReadingStart {
+        server: base.as_ref(),
+        annotation,
+    };
+    let (change, percent, exit) =
         if let Some(kind) = botui_formats::FileKind::from_path(path).filter(|k| !k.readable()) {
-            scan::read(term, path, kind, notices)?
+            let source = if copy.is_some() {
+                scan::Source::Catalog
+            } else {
+                scan::Source::Local
+            };
+            scan::read_pages(term, path, kind, notices, start, source, None)?
         } else {
-            reader::read(term, path, open()?, notices)?
+            let (change, pct, exit) =
+                reader::read_server(term, path, open()?, notices, start, None, None)?;
+            (change, Some(pct), exit)
         };
+    if let Some(p) = percent
+        && let Err(e) = botui_store::HistoryEntry::record(path, p)
+    {
+        notices.push(e.to_string());
+    }
+    if let (Some(copy), Some(change)) = (copy, change) {
+        copy.queue(path, change)?;
+    }
     Ok(exit)
 }
 
@@ -229,7 +239,7 @@ fn direct_book(
     notices: &mut Vec<String>,
     resume: bool,
 ) -> Result<()> {
-    if open_local_doc(term, path, doc, notices)? == BookExit::Back && !resume {
+    if open_local_doc(term, path, doc, notices, None)? == BookExit::Back && !resume {
         let mut picker = picker::Picker::at_file(path)?;
         browse_picker(term, notices, &mut picker)?;
         bookorbit_shelf(term, None, notices)?;
@@ -321,7 +331,15 @@ fn opds_shelf(term: &mut AppTerminal, url: String, notices: &mut Vec<String>) ->
                 let read = (|| -> Result<()> {
                     match botui_formats::FileKind::from_path(&f) {
                         Some(k) if !k.readable() => {
-                            scan::read_server(term, &f, k, notices, None)?;
+                            scan::read_pages(
+                                term,
+                                &f,
+                                k,
+                                notices,
+                                ReadingStart::default(),
+                                scan::Source::Catalog,
+                                None,
+                            )?;
                         }
                         _ => {
                             reader::read_server(
@@ -329,7 +347,7 @@ fn opds_shelf(term: &mut AppTerminal, url: String, notices: &mut Vec<String>) ->
                                 &f,
                                 botui_formats::open_document(&f)?,
                                 notices,
-                                None,
+                                ReadingStart::default(),
                                 None,
                                 None,
                             )?;
@@ -343,6 +361,7 @@ fn opds_shelf(term: &mut AppTerminal, url: String, notices: &mut Vec<String>) ->
             }
             shelf::Selection::Downloads(source) => browse_downloads(term, notices, source)?,
             shelf::Selection::Local => local_library(term, notices, None)?,
+            shelf::Selection::Annotations => shelf.browse_annotations(term, notices)?,
             shelf::Selection::Opds => return Ok(()),
         }
     }
@@ -379,6 +398,7 @@ fn bookorbit_shelf(
             shelf::Selection::Opds => opds_shelf(term, String::new(), notices)?,
             shelf::Selection::Downloads(source) => browse_downloads(term, notices, source)?,
             shelf::Selection::Local => local_library(term, notices, None)?,
+            shelf::Selection::Annotations => shelf.browse_annotations(term, notices)?,
             shelf::Selection::Book(file, base) => {
                 if base.is_none() && offline::Copy::open(&file)?.is_some() {
                     if let Err(e) = open_book(term, &file, notices) {
@@ -399,7 +419,10 @@ fn bookorbit_shelf(
                                 &file,
                                 k,
                                 notices,
-                                base.as_ref(),
+                                ReadingStart {
+                                    server: base.as_ref(),
+                                    annotation: None,
+                                },
                                 scan::Source::Catalog,
                                 live.as_mut(),
                             )?
@@ -410,7 +433,10 @@ fn bookorbit_shelf(
                                 &file,
                                 botui_formats::open_document(&file)?,
                                 notices,
-                                base.as_ref(),
+                                ReadingStart {
+                                    server: base.as_ref(),
+                                    annotation: None,
+                                },
                                 shelf.bookmarks.as_mut(),
                                 live.as_mut(),
                             )?
