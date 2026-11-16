@@ -88,6 +88,7 @@ class Fixture(ThreadingHTTPServer):
         self.expired_once = False
         self.statuses = {201:"reading"}
         self.progress = {}
+        self.book_percent = {201: 37}
         self.saved = []
         self.marks = {}
         self.files = {
@@ -107,7 +108,7 @@ class Fixture(ThreadingHTTPServer):
             files = [{"id": 4000 + index, "format": "pdf", "role": "primary", "sizeBytes": 1000}]
         return {"id": 200 + index, "title": title,
                 "authors": ["Марина Лоцман"], "libraryId": 31 if index == 0 else 32, "status": "present", "files": files,
-                "hasCover": index == 0, "coverVersion": "1", "readingProgress": 37 if index == 1 else None}
+                "hasCover": index == 0, "coverVersion": "1", "readingProgress": self.book_percent.get(200 + index)}
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -145,6 +146,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.reply(201, {})
         if self.path == API + "/books/201/reset-reading-state" and self.headers.get("Authorization") == f"Bearer {self.server.token}":
             self.server.statuses[201]="unread"
+            self.server.book_percent.pop(201, None)
             return self.reply(201,{"readStatus":{"status":"unread","startedAt":None,"finishedAt":None}})
         if self.path == API + "/dashboard/widgets/batch" and self.headers.get("Authorization") == f"Bearer {self.server.token}":
             return self.reply(200, {"items":[{"type":"reading-streak","failed":False,"data":{"currentStreak":4,"longestStreak":9}},
@@ -233,6 +235,7 @@ class Handler(BaseHTTPRequestHandler):
             self.server.save_entered.set()
             assert self.server.allow_save.wait(5), "fixture timed out during the pending save"
         self.server.statuses[200] = "read" if change["percentage"] >= 100 else "reading"
+        self.server.book_percent[200] = change["percentage"]
         self.server.progress[ident]=dict(fileId=ident,updatedAt="2026-11-07T10:00:00.000Z",percentage=change["percentage"],text=change["text"])
         self.server.saved.append(ident)
         return self.reply(200,{"results":[{"fileId":ident,"status":"saved"}]})
@@ -735,7 +738,15 @@ def check_without_collections(tmp, binary, fixture):
         labels = ["1 All", "2 R", "3 +", "4 L", "5 C"]
         assert [narrow.index(v) for v in labels] == sorted(narrow.index(v) for v in labels)
         term.click("2 R",narrow)
-        term.see("37%")
+        term.see("Currently reading  ·")
+        # Only one card fits. The book opened earlier can also be in Currently reading.
+        term.keys("End")
+        term.wait("Narrow grid shows this book's progress", lambda f: OTHER_BOOK in f and "37%" in f)
+        term.keys("v")
+        term.wait("Narrow list keeps progress on the book's row", lambda f: any(
+            OTHER_BOOK in row and "37%" in row for row in f.splitlines()))
+        term.keys("v")
+        term.wait("Back to the same grid card", lambda f: "[V List]" in f and OTHER_BOOK in f and "37%" in f)
         term.keys("Tab")
         term.see(OTHER_BOOK)
         term.keys("1")
