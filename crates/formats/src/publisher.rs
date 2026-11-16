@@ -105,6 +105,7 @@ pub(super) fn chapter(
                         | "data-botui-raised-link"
                         | "data-botui-centered"
                         | "data-botui-prose-spacing"
+                        | "data-botui-data-table"
                 )
             });
         }
@@ -148,6 +149,7 @@ pub(super) fn chapter(
             }
         }
     }
+    mark_data_tables(dom);
     normalize_spans(dom);
     let preserve_structure = dom.tree.nodes().filter_map(ElementRef::wrap).any(|e| {
         matches!(
@@ -164,6 +166,62 @@ pub(super) fn chapter(
     chapter.images = images;
     chapter.preserve_structure = preserve_structure;
     chapter
+}
+
+/// Some EPUBs use italic or bold td labels in place of th. Require evidence
+/// of a header before decorating an otherwise unmarked table used for layout.
+fn mark_data_tables(dom: &mut Html) {
+    let rows =
+        scraper::Selector::parse(":scope > tr, :scope > :is(thead, tbody, tfoot) > tr").unwrap();
+    let mut tables = Vec::new();
+    for table in dom
+        .tree
+        .nodes()
+        .filter_map(ElementRef::wrap)
+        .filter(|e| e.value().name() == "table")
+    {
+        let role = table
+            .attr("role")
+            .unwrap_or("")
+            .split_ascii_whitespace()
+            .next();
+        if matches!(role, Some("none" | "presentation")) {
+            continue;
+        }
+        let mut body = table.select(&rows);
+        let Some(first) = body.next() else { continue };
+        let header = |row: ElementRef<'_>| row.child_elements().any(|c| c.value().name() == "th");
+        let cells: Vec<_> = first
+            .child_elements()
+            .filter(|e| matches!(e.value().name(), "th" | "td"))
+            .collect();
+        let labelled = cells.len() >= 2
+            && cells.iter().all(|cell| {
+                cell.text().any(|s| !s.trim().is_empty())
+                    && cell.children().all(|n| match n.value() {
+                        scraper::Node::Text(t) => t.trim().is_empty(),
+                        scraper::Node::Element(e) => {
+                            matches!(e.name(), "b" | "strong" | "em" | "i")
+                        }
+                        _ => true,
+                    })
+            });
+        if matches!(role, Some("table" | "grid" | "treegrid"))
+            || table
+                .child_elements()
+                .any(|e| matches!(e.value().name(), "caption" | "thead"))
+            || header(first)
+            || body.clone().any(header)
+            || (labelled && body.next().is_some())
+        {
+            tables.push(table.id());
+        }
+    }
+    for id in tables {
+        if let scraper::Node::Element(el) = dom.tree.get_mut(id).unwrap().value() {
+            set_attr(el, "data-botui-data-table", "1");
+        }
+    }
 }
 
 pub(super) fn set_attr(el: &mut scraper::node::Element, name: &str, value: &str) {

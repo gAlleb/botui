@@ -7,6 +7,7 @@
 - Fit footnote popups to their text and scroll longer notes.
 - Mark the current chapter and highlight the focused pane and outline selection.
 - Share clickable footer shortcuts across readers and keep each button whole in narrow windows.
+- Show column dividers in borderless EPUB data tables.
 - Preserve the book’s first-line indent in centered EPUB paragraphs.
 - Keep EPUB addresses and aligned text compact, with an independent switch enabled by default.
 - Frame the reading area and toggle its frame and progress with Space p in Zen mode.

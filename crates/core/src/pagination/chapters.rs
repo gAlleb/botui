@@ -3,7 +3,7 @@ use super::{Document, PageLine};
 
 pub(super) fn format(lines: Vec<PageLine>, doc: &Document, scrolling: bool) -> Vec<PageLine> {
     let blank = |line: &PageLine| {
-        line.text.trim().is_empty() && line.figures.is_empty() && line.surfaces.is_empty()
+        line.text.trim().is_empty() && line.figures.is_empty() && !line.has_background()
     };
     let mut result = Vec::with_capacity(lines.len());
     let mut last_block = None;

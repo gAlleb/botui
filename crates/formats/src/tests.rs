@@ -386,6 +386,128 @@ fn styled_fixture(body: &str, css: &str) -> botui_core::Document {
 }
 
 #[test]
+fn epub_table_dividers_follow_spanned_cells_and_preserve_source_addresses() {
+    use botui_core::{Anchor, LayoutMode, Pager, Surface, TextRange};
+    let doc = styled_fixture(
+        "<table><tr><td><i>Name</i></td><td><i>Left</i></td><td><i>Right</i></td></tr>\
+         <tr><td>&#160;</td></tr>\
+         <tr><td rowspan='2'>Frame</td><td>Thin</td><td>Broad</td></tr>\
+         <tr><td>Slight</td><td>Heavy</td></tr>\
+         <tr><td>Weight</td><td colspan='2'>Combined</td><td>&#160;</td></tr></table>",
+        "table {width:100%}",
+    );
+    let mut pager = Pager::new(&doc, 72, 48, LayoutMode::Single);
+    let index = pager.search_index(&doc);
+    let hit = index.matches("Heavy").pop().unwrap();
+    let cfi = doc.cfi(hit.anchor).unwrap();
+    assert!(index.matches("│").is_empty());
+    let selection = TextRange::new(
+        index.matches("Thin").pop().unwrap().anchor,
+        Anchor {
+            byte: hit.anchor.byte + "Heavy".len(),
+            ..hit.anchor
+        },
+    );
+    let copied = doc.text_range(selection);
+    assert!(copied.contains("Thin") && copied.contains("Heavy") && !copied.contains('│'));
+    for width in [72, 30, 50] {
+        pager.relayout(&doc, width, 48, LayoutMode::Single);
+        let lines = pager.lines(0);
+        let blank = lines.iter().position(|l| l.text.contains("Name")).unwrap() + 1;
+        let dividers = |line: &botui_core::PageLine| {
+            line.surfaces
+                .iter()
+                .filter_map(|s| match s {
+                    Surface::TableDivider { x } => Some(*x),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+        };
+        assert!(lines[blank].text.trim().is_empty());
+        assert_eq!(dividers(&lines[blank]), dividers(&lines[blank - 1]));
+        for (word, count) in [("Name", 2), ("Thin", 2), ("Slight", 2), ("Combined", 1)] {
+            let line = lines.iter().find(|l| l.text.contains(word)).unwrap();
+            assert_eq!(dividers(line).len(), count, "{}", line.text);
+        }
+        assert!(lines.iter().all(|l| !l.text.contains(['─', '│'])));
+        let line = lines.iter().find(|l| l.text.contains("Heavy")).unwrap();
+        assert_eq!(
+            &line.text[index.visible_range(&hit, line).unwrap()],
+            "Heavy"
+        );
+        assert_eq!(doc.resolve_cfi(&cfi), Some(hit.anchor));
+    }
+}
+
+#[test]
+fn epub_table_dividers_leave_page_turns_and_illustrated_positions_unchanged() {
+    use botui_core::{LayoutMode, Pager};
+    let book = |role| {
+        styled_fixture(
+            &format!(
+                "<table role='{role}'><tr><th>Label</th><th>Value</th></tr>\
+            <tr><td>First</td><td>Second</td></tr><tr><td>&#160;</td></tr>\
+            <tr><td>Third</td><td>Fourth</td></tr></table>\
+            <figure><img src='fig.png'/></figure><p>End of passage.</p>"
+            ),
+            "table, p, figure {margin:0} img {display:block;width:160px;height:96px}",
+        )
+    };
+    let data = book("table");
+    let plain = book("presentation");
+    let mut with_rules = Pager::new(&data, 56, 5, LayoutMode::Single);
+    let mut without = Pager::new(&plain, 56, 5, LayoutMode::Single);
+    let mut saw_image = false;
+    loop {
+        assert_eq!(with_rules.position(), without.position());
+        assert_eq!(data.cfi(with_rules.anchor()), plain.cfi(without.anchor()));
+        let rows = with_rules.lines(0);
+        saw_image |= rows.iter().any(|line| !line.figures.is_empty());
+        assert_eq!(rows.len(), without.lines(0).len());
+        for (actual, expected) in rows.iter().zip(without.lines(0)) {
+            assert_eq!(actual.text, expected.text);
+            assert_eq!(actual.anchor(), expected.anchor());
+            assert_eq!(actual.figures.len(), expected.figures.len());
+        }
+        assert_eq!(with_rules.at_end(), without.at_end());
+        if with_rules.at_end() {
+            break;
+        }
+        let before = with_rules.position();
+        with_rules.next();
+        without.next();
+        assert_ne!(with_rules.position(), before);
+    }
+    assert!(saw_image);
+}
+
+#[test]
+fn epub_table_dividers_respect_presentation_tables_and_publisher_borders() {
+    use botui_core::{LayoutMode, Pager};
+    let doc = styled_fixture(
+        "<table role='presentation'><tr><th>Layout</th><th>Header</th></tr>\
+         <tr><td>A</td><td>B</td></tr></table>\
+         <table data-botui-data-table='1'><tr><td>Side</td><td>By side</td></tr>\
+         <tr><td>C</td><td>D</td></tr></table>\
+         <table class='ruled'><tr><th>Ruled</th><th>Author</th></tr>\
+         <tr><td>E</td><td>F</td></tr></table>",
+        ".ruled {border-top:16px solid}",
+    );
+    let pager = Pager::new(&doc, 60, 48, LayoutMode::Single);
+    let page = pager
+        .lines(0)
+        .iter()
+        .map(|l| l.text.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+    for word in ["Layout", "Side", "Ruled"] {
+        assert!(page.contains(word));
+    }
+    assert!(page.contains('─'));
+    assert!(pager.lines(0).iter().all(|l| l.surfaces.is_empty()));
+}
+
+#[test]
 fn paging_back_from_a_citation_fills_prose_and_keeps_the_marker_whole() {
     use botui_core::{Anchor, LayoutMode, Pager, ReflowOptions};
     let paragraphs = (0..60)

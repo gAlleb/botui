@@ -633,7 +633,9 @@ mod tests {
                         .any(|s| s.source.is_some() && s.face.role == (level + 1) as u8)
                 );
                 assert_eq!(row.surfaces.len(), 1);
-                assert_eq!(row.surfaces[0].width, width);
+                assert!(
+                    matches!(row.surfaces[0], botui_core::Surface::Background { width: w, .. } if w == width)
+                );
             }
             for label in ["Quoted", "Name", "# Sample heading", "**Strong**"] {
                 let row = rows.iter().find(|r| r.text.contains(label)).unwrap();
@@ -709,7 +711,12 @@ mod tests {
                 .iter()
                 .find(|r| r.text.contains("Keep this text."))
                 .unwrap();
-            assert!(warning.surfaces.iter().any(|s| s.role == 15));
+            assert!(
+                warning
+                    .surfaces
+                    .iter()
+                    .any(|s| matches!(s, botui_core::Surface::Background { role: 15, .. }))
+            );
             let byte = raw.find("this text").unwrap();
             let range = TextRange::new(
                 Anchor { block: 0, byte },

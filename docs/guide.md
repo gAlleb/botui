@@ -242,6 +242,8 @@ PDF search highlights each occurrence and brings it into view, including multipl
 
 ### Tables, equations and illustrations
 
+In EPUB data tables with column labels, thin vertical dividers use the space between columns. Merged cells stay intact and tables with publisher borders keep their own rules.
+
 Open a technical EPUB as you would a novel. The reader applies styles packaged with the edition, including merged table cells, side-by-side columns, lists and preformatted code. Equations in presentation MathML and TeX explicitly marked as math appear in the passage. A fraction has its numerator above its denominator. Change the page width with **Space l w** to give a wide table more room.
 
 The terminal supplies the typeface and cell size. Justified paragraphs keep natural spaces between words. Headings and right-aligned passages keep their alignment. The reader theme supplies the ink and paper colors.

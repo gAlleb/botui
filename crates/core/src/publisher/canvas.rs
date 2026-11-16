@@ -269,6 +269,7 @@ fn paint_lines<const GROUPED: bool>(
     let mut rows = Rows::new();
     let mut cursors: Vec<Cursor> = (0..sources.len()).map(|_| Cursor::default()).collect();
     let mut styles = HashMap::new();
+    let mut data_tables = Vec::new();
     let mut stack = vec![doc.root_element().id];
     while let Some(id) = stack.pop() {
         let Some(node) = doc.get_node(id) else {
@@ -283,6 +284,12 @@ fn paint_lines<const GROUPED: bool>(
             node.primary_styles()
                 .is_none_or(|s| s.clone_visibility() == Visibility::Visible)
         };
+        if node.element_data().is_some_and(|e| {
+            &*e.name.local == "table" && super::marker(e, "data-botui-data-table").is_some()
+        }) && visible()
+        {
+            data_tables.push(node);
+        }
         if let Some(reference) = node
             .element_data()
             .and_then(|e| super::marker(e, "data-botui-image"))
@@ -325,11 +332,14 @@ fn paint_lines<const GROUPED: bool>(
             if right > x {
                 for y in top..bottom.min(top.saturating_add(8192)) {
                     rows.entry(y).or_default();
-                    surfaces.entry(y).or_default().push(crate::Surface {
-                        x,
-                        width: right - x,
-                        role: role as u8,
-                    });
+                    surfaces
+                        .entry(y)
+                        .or_default()
+                        .push(crate::Surface::Background {
+                            x,
+                            width: right - x,
+                            role: role as u8,
+                        });
                 }
             }
         }
@@ -351,6 +361,20 @@ fn paint_lines<const GROUPED: bool>(
             &mut styles,
         );
     }
+    if !data_tables.is_empty() {
+        let mut previous = None;
+        let positions: Vec<_> = rows
+            .keys()
+            .flat_map(|&y| {
+                let blank = blank_rows(previous, y);
+                previous = Some(y);
+                blank.chain(std::iter::once(y))
+            })
+            .collect();
+        for table in data_tables {
+            draw_table_dividers(doc, table, width, &positions, &mut surfaces);
+        }
+    }
     let anchor = sources
         .iter()
         .flatten()
@@ -361,6 +385,138 @@ fn paint_lines<const GROUPED: bool>(
 }
 
 type Rows<'a> = BTreeMap<usize, Vec<Ink<'a>>>;
+
+/// Use spare terminal cells between the actual grid tracks. A merged cell
+/// contributes just its outer edge; a short continuation row needs no rule below it.
+fn draw_table_dividers(
+    doc: &BaseDocument,
+    node: &Node,
+    width: u16,
+    positions: &[usize],
+    surfaces: &mut BTreeMap<usize, Vec<crate::Surface>>,
+) {
+    use blitz_dom::node::SpecialElementData;
+    use style::values::computed::BorderStyle;
+    let Some(SpecialElementData::TableRoot(table)) = node.element_data().map(|e| &e.special_data)
+    else {
+        return;
+    };
+    let grid = table.computed_grid_info.borrow();
+    let Some(grid) = grid.as_ref() else { return };
+    let has_border = |id| {
+        doc.get_node(id)
+            .and_then(|n| n.primary_styles())
+            .is_some_and(|s| {
+                let b = s.get_border();
+                [
+                    b.border_left_style,
+                    b.border_right_style,
+                    b.border_top_style,
+                    b.border_bottom_style,
+                ]
+                .iter()
+                .any(|side| *side != BorderStyle::None)
+            })
+    };
+    if grid.columns.positions.len() < 2
+        || grid.rows.positions.is_empty()
+        || has_border(node.id)
+        || table.cells.iter().any(|c| has_border(c.node_id))
+        || table
+            .rows
+            .iter()
+            .any(|r| has_border(r.node_id) || r.group.is_some_and(has_border))
+        || table
+            .columns
+            .iter()
+            .any(|c| has_border(c.node_id) || c.group.is_some_and(has_border))
+    {
+        return;
+    }
+    let pos = node.absolute_position(0., 0.);
+    let y = |offset: f32| ((pos.y + offset) / ROW).round() as usize;
+    let tracks = &grid.rows.positions;
+    let first = positions.partition_point(|&row| row < y(tracks[0].start));
+    let last = positions.partition_point(|&row| row < y(tracks[tracks.len() - 1].end));
+    let rows = &positions[first..last];
+    let merged: Vec<_> = grid
+        .items
+        .iter()
+        .filter(|item| item.column_end - item.column_start > 1)
+        .collect();
+    // Ragged EPUB tables sometimes end with a stray empty td in a single
+    // row. An unlabeled, entirely empty trailing track needs no divider.
+    let mut last_column = 0;
+    for cell in &table.cells {
+        if cell.column > last_column
+            && doc.get_node(cell.node_id).is_some_and(|n| {
+                n.children
+                    .iter()
+                    .filter_map(|id| doc.get_node(*id))
+                    .any(|child| {
+                        child.element_data().is_some()
+                            || child
+                                .text_data()
+                                .is_some_and(|t| !t.content.trim().is_empty())
+                    })
+            })
+        {
+            last_column = cell.column;
+        }
+    }
+    for (col, pair) in grid
+        .columns
+        .positions
+        .windows(2)
+        .take(usize::from(last_column))
+        .enumerate()
+    {
+        let (a, b) = (&pair[0], &pair[1]);
+        let (left, right) = if a.start <= b.start {
+            (a.end, b.start)
+        } else {
+            (b.end, a.start)
+        };
+        let start = ((pos.x + left) / CELL).round() as usize;
+        let end = ((pos.x + right) / CELL).round() as usize;
+        if start >= end {
+            continue;
+        }
+        let x = start + (end - start - 1) / 2;
+        if x >= usize::from(width) {
+            continue;
+        }
+        // Grid items use one-based line numbers; the shared line of columns
+        // zero and one is line two. Only colspan cells covering it interrupt it.
+        let boundary = col + 2;
+        let mut interruptions: Vec<_> = merged
+            .iter()
+            .filter(|item| {
+                usize::from(item.column_start) < boundary && boundary < usize::from(item.column_end)
+            })
+            .map(|item| {
+                (
+                    y(tracks[usize::from(item.row_start - 1)].start),
+                    y(tracks[usize::from(item.row_end - 2)].end),
+                )
+            })
+            .collect();
+        interruptions.sort_unstable();
+        let mut interruptions = interruptions.into_iter().peekable();
+        let mut hidden_until = 0;
+        for &row in rows {
+            while let Some((_, end)) = interruptions.next_if(|&(start, _)| start <= row) {
+                hidden_until = hidden_until.max(end);
+            }
+            if row >= hidden_until {
+                surfaces
+                    .entry(row)
+                    .or_default()
+                    .push(crate::Surface::TableDivider { x: x as u16 });
+            }
+        }
+    }
+}
 
 fn draw_border(node: &Node, width: u16, rows: &mut Rows<'_>, face: Face) {
     let area = node.final_layout();
@@ -621,6 +777,12 @@ fn draw_text<'a, const GROUPED: bool>(
     }
 }
 
+/// Share the same bounded CSS whitespace rows between layout and decoration.
+fn blank_rows(previous: Option<usize>, y: usize) -> std::ops::Range<usize> {
+    let start = previous.map_or(y, |last| last.saturating_add(1));
+    start..y.min(start.saturating_add(4))
+}
+
 fn compose_rows(
     rows: Rows<'_>,
     mut figures: BTreeMap<usize, Vec<crate::Figure>>,
@@ -631,14 +793,12 @@ fn compose_rows(
     let mut result = Vec::new();
     let mut prev: Option<usize> = None;
     for (y, mut glyphs) in rows {
-        if let Some(last) = prev {
-            // A chapter may specify an arbitrarily large empty CSS area.
-            for _ in 0..y.saturating_sub(last.saturating_add(1)).min(4) {
-                result.push(PageLine {
-                    start: anchor,
-                    ..Default::default()
-                });
-            }
+        for blank in blank_rows(prev, y) {
+            result.push(PageLine {
+                surfaces: surfaces.remove(&blank).unwrap_or_default(),
+                start: anchor,
+                ..Default::default()
+            });
         }
         prev = Some(y);
         glyphs.sort_by_key(|g| (g.x, g.rule)); // text paints over a coincident thin rule

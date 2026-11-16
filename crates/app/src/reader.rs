@@ -462,17 +462,29 @@ impl Reader {
                     para = para.centered().style(style.add_modifier(Modifier::BOLD));
                 }
                 frame.render_widget(para, rect);
-                // Paint panel backgrounds after Paragraph, which sets the base paper
-                // color over its whole rectangle. Glyphs and source mappings stay intact.
+                // Paragraph paints the whole row. Apply book decoration afterwards.
                 for surface in &line.surfaces {
-                    let area =
-                        Rect::new(rect.x.saturating_add(surface.x), rect.y, surface.width, 1)
-                            .intersection(rect);
-                    frame.buffer_mut().set_style(
-                        area,
-                        ratatui::style::Style::new()
-                            .bg(markdown_style::background(surface.role, reading_theme)),
-                    );
+                    match *surface {
+                        botui_core::Surface::Background { x, width, role } => {
+                            let area = Rect::new(rect.x.saturating_add(x), rect.y, width, 1)
+                                .intersection(rect);
+                            frame.buffer_mut().set_style(
+                                area,
+                                ratatui::style::Style::new()
+                                    .bg(markdown_style::background(role, reading_theme)),
+                            );
+                        }
+                        botui_core::Surface::TableDivider { x } => {
+                            if x < rect.width
+                                && let Some(cell) =
+                                    frame.buffer_mut().cell_mut((rect.x + x, rect.y))
+                                && cell.symbol() == " "
+                            {
+                                cell.set_symbol("│")
+                                    .set_style(style.add_modifier(Modifier::DIM));
+                            }
+                        }
+                    }
                 }
                 self.links.mark_line(frame, &self.doc, line, rect);
                 if self.study.mapping() {

@@ -187,12 +187,11 @@ pub struct Figure {
     pub height: u16,
 }
 
-/// A theme-colored Markdown block, independent of selectable source text.
+/// Visual elements drawn over a row without changing its text or source positions.
 #[derive(Clone, Copy, Debug)]
-pub struct Surface {
-    pub x: u16,
-    pub width: u16,
-    pub role: u8,
+pub enum Surface {
+    Background { x: u16, width: u16, role: u8 },
+    TableDivider { x: u16 },
 }
 
 #[derive(Clone, Debug, Default)]
@@ -210,6 +209,12 @@ pub struct PageLine {
 }
 
 impl PageLine {
+    fn has_background(&self) -> bool {
+        self.surfaces
+            .iter()
+            .any(|s| matches!(s, Surface::Background { .. }))
+    }
+
     fn is_spacer(&self) -> bool {
         self.figures.is_empty() && !self.chapter_start && media::bare(self)
     }
