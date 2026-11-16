@@ -164,7 +164,7 @@ Keywords=books;reader;
 | BookOrbit | Войдите в аккаунт, выберите книгу по названию, автору, серии или коллекции и откройте издание из карточки. **Read** сохраняет скачанную копию; **D Save offline** загружает её заранее. Позиция чтения синхронизируется с аккаунтом. |
 | OPDS | Откройте каталог OPDS 1 или 2, найдите книгу и выберите доступное для скачивания издание. Сохранённые каталоги настраиваются в **F2 → Library → OPDS catalogs**. Позиция чтения хранится на этом устройстве. |
 
-На полке **V** переключает обложки/список, **/** открывает поиск. **Q** возвращает на шаг назад: из ридера BookOrbit — к карточке и исходной полке, из локальной книги — к папке и её родительским папкам. Выделение и прокрутка сохраняются. На экране выбора источника **Q** завершает BOTUI; закрытие файла, открытого напрямую из командной строки, завершает эту команду.
+На полке **V** переключает обложки/список, **/** открывает поиск. **Q** возвращает на шаг назад: из ридера BookOrbit — к карточке и исходной полке, из локальной книги — к папке и её родительским папкам. Выделение и прокрутка сохраняются. На экране выбора источника **Q** завершает BOTUI.
 
 Скачанные копии доступны через **D BookOrbit offline** и **O OPDS downloads** на стартовом экране. [Офлайн-синхронизация](docs/guide.ru.md#офлайн-чтение-и-синхронизация) · [Управление коллекциями](docs/guide.ru.md#управление-коллекциями)
 
@@ -275,6 +275,7 @@ Kitty показывает обложки и страницы картинкам
 | `Space r [` | Вернуться к предыдущему месту |
 | `Space r ]` | Перейти вперёд по истории |
 | `Space r i` | Ссылки и иллюстрации (текстовый ридер) |
+| `Space r t` | Открыть таблицу данных на этой странице (EPUB) |
 | `+` / `-`, стрелки | Менять масштаб и двигать увеличенную иллюстрацию. Кнопки внизу окна работают и мышью. |
 | `Space r f` | Перейти по видимым ссылкам (текстовый ридер) |
 | `Space r p` | Номер страницы (PDF/DjVu/комиксы) |
@@ -437,6 +438,8 @@ zen = false
 zen_progress = false
 # PDF/DjVu zoom in percent. In scroll mode 100 fits the reading pane.
 scan_zoom = 100
+# Local PDF to LaTeX source: executable and separate arguments. Line/column start at 1.
+# synctex_editor = ["code", "--goto", "{file}:{line}:{column}"]
 # Space between PDF/DjVu/comic pages in a spread (0–32 terminal cells).
 scan_gap = 2
 # Preferred width of one text page and the space between facing pages, in terminal cells.
@@ -484,6 +487,16 @@ list_view = false
 # search, search-results, next-match, previous-match, bookmark, bookmarks,
 # single, spread, scroll, page-layout, wider-gap, narrower-gap,
 # wider-margins (alias narrower-page), narrower-margins (alias wider-page), close
+
+# Optional navigation aliases: physical key = existing key in that mode.
+# Scope names: reading, pdf (PDF/DjVu), images (comics and illustrations),
+# vim, library and dialogs. Letters are case-sensitive. Ctrl, Alt and Shift
+# combine with +, for example "Alt+j" = "PageDown". Your aliases appear in F1.
+# Text entry and the Space command sequence use their original keys.
+# [keymap.reading]
+# x = "Right"
+# [keymap.pdf]
+# "Alt+j" = "PageDown"
 
 # Multiple OPDS catalogs. Credentials are optional for public catalogs.
 # [[opds]]

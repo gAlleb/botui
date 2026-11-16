@@ -233,6 +233,9 @@ impl Text {
     pub fn search_forward(&self) -> bool {
         self.search_forward
     }
+    pub fn expects_mark(&self) -> bool {
+        self.keys.expects_mark()
+    }
     pub fn normal(&self) -> bool {
         self.normal
     }

@@ -627,6 +627,8 @@ impl Picker {
                     continue;
                 };
                 e = event;
+            } else {
+                e = crate::keymap::Scope::Library.event(e);
             }
             if let Some(result) = self.navigation.splitter.input(&e) {
                 if let Err(error) = result {

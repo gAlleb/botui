@@ -51,6 +51,9 @@ impl Keys {
     pub fn reset(&mut self) {
         *self = Self::default();
     }
+    pub fn expects_mark(&self) -> bool {
+        matches!(self.prefix, Some('m' | '\'' | '`'))
+    }
     pub fn pending(&self) -> bool {
         self.operator || self.prefix.is_some() || self.count > 0
     }
@@ -69,7 +72,7 @@ impl Keys {
             KeyCode::End => '$',
             _ => return None,
         };
-        if matches!(self.prefix, Some('m' | '\'' | '`')) {
+        if self.expects_mark() {
             let prefix = self.prefix.take().unwrap();
             self.reset();
             return Some(if c.is_ascii_alphabetic() {

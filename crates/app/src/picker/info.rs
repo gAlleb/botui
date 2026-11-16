@@ -141,7 +141,7 @@ pub(crate) fn show_info(term: &mut AppTerminal, path: &Path, kind: FileKind) -> 
             open = open_button(back, right);
             external = external_button(open, right);
         })?;
-        let e = crate::settings::read_event()?;
+        let e = crate::settings::read_dialog()?;
         if matches!(e,Event::Key(k) if k.kind!=KeyEventKind::Release && matches!(k.code,KeyCode::Char('p'|'P')))
             || matches!(e,Event::Mouse(m) if m.kind==MouseEventKind::Down(MouseButton::Left) && open.contains(Position::new(m.column,m.row)))
         {

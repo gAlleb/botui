@@ -274,7 +274,11 @@ fn list(term: &mut AppTerminal, reader: &mut Reader, store: &LocalState) -> io::
             }
             crate::settings::paint_dialog(f);
         })?;
-        let event = crate::settings::read_event()?;
+        let event = if filtering {
+            crate::settings::read_event()?
+        } else {
+            crate::settings::read_dialog()?
+        };
         let key = match event {
             Event::Key(k) if k.kind != KeyEventKind::Release => k.code,
             Event::Mouse(m) if m.kind == MouseEventKind::Down(MouseButton::Left) => {

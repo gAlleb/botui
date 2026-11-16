@@ -53,6 +53,7 @@ pub struct Settings {
     pub bookorbit: Connection,
     pub opds: Vec<crate::opds_settings::Catalog>,
     pub keys: BTreeMap<char, String>,
+    pub keymap: crate::keymap::Keymap,
     /// Executable and arguments; {text} is replaced without invoking a shell.
     pub lookup_command: Vec<String>,
     pub synctex_editor: Vec<String>,
@@ -78,6 +79,10 @@ pub(crate) fn detect_terminal() {
 }
 pub(crate) fn read_event() -> io::Result<crossterm::event::Event> {
     Ok(read_event_for(None)?.expect("a blocking read returns an event"))
+}
+/// Navigation-only dialogs use aliases. Text inputs always call read_event directly.
+pub(crate) fn read_dialog() -> io::Result<crossterm::event::Event> {
+    Ok(crate::keymap::Scope::Dialogs.event(read_event()?))
 }
 pub(crate) fn read_event_for(
     timeout: Option<std::time::Duration>,
@@ -376,6 +381,7 @@ impl Settings {
         Ok(settings)
     }
     pub fn activate(&self) {
+        self.keymap.activate();
         SHELL_THEME.set(crate::shell_theme::index(self.interface_theme.as_deref()));
         SOLID_COLOR.set(self.opaque_color.as_deref().and_then(rgb));
         self.borders.activate();

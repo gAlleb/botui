@@ -33,7 +33,7 @@ pub(super) fn choose_theme(
     let mut picker = Picker::new(initial);
     loop {
         term.draw(|f| picker.draw_named(f, title))?;
-        if let Some(e) = picker.input(crate::settings::read_event()?) {
+        if let Some(e) = picker.input(crate::settings::read_dialog()?) {
             match e {
                 Edit::Cancel => return Ok(None),
                 Edit::Accept(t) => return Ok(Some(t)),
@@ -456,7 +456,7 @@ fn interface(term: &mut AppTerminal, p: &Settings) -> io::Result<Option<usize>> 
                 crate::settings::paint(f);
             }
         })?;
-        let delta = match crate::settings::read_event()? {
+        let delta = match crate::settings::read_dialog()? {
             Event::Key(k) if k.kind != KeyEventKind::Release => match k.code {
                 KeyCode::Esc | KeyCode::Char('q') => return Ok(None),
                 KeyCode::Enter => return Ok(Some(selected)),

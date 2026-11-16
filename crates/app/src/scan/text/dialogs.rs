@@ -272,7 +272,11 @@ impl Text {
                 });
                 crate::settings::paint_dialog(f);
             })?;
-            let mut e = crate::settings::read_event()?;
+            let mut e = if filtering {
+                crate::settings::read_event()?
+            } else {
+                crate::settings::read_dialog()?
+            };
             if let Event::Mouse(m) = e {
                 let pos = Position::new(m.column, m.row);
                 if m.kind == MouseEventKind::Down(MouseButton::Left) {

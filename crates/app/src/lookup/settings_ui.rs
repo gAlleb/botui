@@ -67,7 +67,7 @@ pub fn choose(
             );
             crate::settings::paint_dialog(f);
         })?;
-        let delta = match crate::settings::read_event()? {
+        let delta = match crate::settings::read_dialog()? {
             Event::Key(k) if k.kind != KeyEventKind::Release => match k.code {
                 KeyCode::Esc | KeyCode::Char('q') => return Ok(None),
                 KeyCode::Enter => return Ok(state.selected()),

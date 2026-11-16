@@ -1684,6 +1684,28 @@ pub fn read_server(
                     };
                     break action.unwrap_or(Action::Resize);
                 }
+                use crate::keymap::Scope;
+                let e = if reader.nav.as_ref().is_some_and(|nav| nav.editing()) {
+                    e
+                } else if reader.menu.is_some()
+                    || reader.nav.is_some()
+                    || reader.palette.is_some()
+                    || reader.layout_panel.is_some()
+                {
+                    Scope::Dialogs.event(e)
+                } else if reader.study.normal {
+                    if reader.study.expects_mark() {
+                        e
+                    } else {
+                        Scope::Vim.event(e)
+                    }
+                } else if matches!(&e, Event::Key(k) if k.modifiers.is_empty() && matches!(k.code, KeyCode::Char(c) if reader.bindings.contains_key(&c)))
+                {
+                    // A pre-existing [keys] action wins for its physical key.
+                    e
+                } else {
+                    Scope::Reading.event(e)
+                };
                 if reader.menu.is_none()
                     && reader.nav.is_none()
                     && reader.palette.is_none()

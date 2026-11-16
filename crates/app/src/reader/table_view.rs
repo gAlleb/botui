@@ -125,7 +125,7 @@ pub(super) fn open(term: &mut AppTerminal, reader: &Reader) -> io::Result<()> {
             }
             crate::settings::paint_dialog(f);
         })?;
-        let key = match crate::settings::read_event()? {
+        let key = match crate::settings::read_dialog()? {
             Event::Key(k) if k.kind != KeyEventKind::Release => k.code,
             Event::Mouse(m) => match m.kind {
                 MouseEventKind::Down(MouseButton::Left) => {

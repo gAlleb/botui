@@ -43,6 +43,10 @@ pub(super) struct Navigation {
     back: Rect,
 }
 impl Navigation {
+    pub fn editing(&self) -> bool {
+        self.kind == Kind::Search
+    }
+
     pub fn new(kind: Kind, doc: &Document, place: Anchor) -> Self {
         let items: Vec<_> = match kind {
             Kind::Contents if !doc.contents.is_empty() => doc.contents.clone(),

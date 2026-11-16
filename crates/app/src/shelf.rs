@@ -1988,6 +1988,13 @@ impl Shelf {
                     continue;
                 };
                 e = event;
+            } else if self.login.is_none() {
+                let scope = if self.info.is_some() {
+                    crate::keymap::Scope::Dialogs
+                } else {
+                    crate::keymap::Scope::Library
+                };
+                e = scope.event(e);
             }
             if let Some(result) = self.rail.splitter.input(&e) {
                 if let Err(err) = result {

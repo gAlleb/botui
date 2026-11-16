@@ -213,6 +213,7 @@ fn choose_rows(
             deadline = Some(Instant::now() + r.interval);
         }
         let Some(event) = event else { continue };
+        let event = crate::keymap::Scope::Dialogs.event(event);
         if removable {
             let target = match &event {
                 Event::Key(k) if k.kind != KeyEventKind::Release && k.code == KeyCode::Delete => {
@@ -341,7 +342,7 @@ fn document_panel(
             }
             crate::settings::paint_dialog(f);
         })?;
-        match crate::settings::read_event()? {
+        match crate::settings::read_dialog()? {
             Event::Key(k) if k.kind != KeyEventKind::Release => match k.code {
                 KeyCode::Esc | KeyCode::Char('q') => return Ok(false),
                 KeyCode::Enter => return Ok(reset && danger),

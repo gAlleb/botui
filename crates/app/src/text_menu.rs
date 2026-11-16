@@ -80,7 +80,7 @@ pub fn choose(
                 crate::settings::paint_dialog(f);
             });
         })?;
-        match crate::settings::read_event()? {
+        match crate::settings::read_dialog()? {
             Event::Key(k) if k.kind != KeyEventKind::Release => match k.code {
                 KeyCode::Esc | KeyCode::Char('q') => return Ok(None),
                 KeyCode::Enter => return Ok(Some(ITEMS[selected].1)),

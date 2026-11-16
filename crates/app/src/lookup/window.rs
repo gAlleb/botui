@@ -194,7 +194,7 @@ fn run(
         else {
             continue;
         };
-        let code = match e {
+        let code = match crate::keymap::Scope::Dialogs.event(e) {
             Event::Key(k) if k.kind != KeyEventKind::Release => k.code,
             Event::Mouse(m) if m.kind == MouseEventKind::Down(MouseButton::Left) => buttons
                 .iter()

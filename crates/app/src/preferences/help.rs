@@ -39,6 +39,11 @@ pub(super) fn entries(ctx: Context, p: &Settings) -> Vec<Entry> {
             .into_iter()
             .map(|(k, v)| key(&k, &v)),
     );
+    let mut aliases = p.keymap.descriptions().peekable();
+    if aliases.peek().is_some() {
+        rows.push(Entry::Section("Configured key aliases".into()));
+        rows.extend(aliases.map(|(from, to)| key(&from, &to)));
+    }
     let mut groups = vec![ctx];
     for c in [Context::Shelf, Context::Local, Context::Text, Context::Scan] {
         if c != ctx {

@@ -262,6 +262,12 @@ fn view(
         let Some(event) = crate::settings::read_event_for(timeout)? else {
             continue;
         };
+        let scope = if matches!(content, Content::Picture(..)) {
+            crate::keymap::Scope::Images
+        } else {
+            crate::keymap::Scope::Dialogs
+        };
+        let event = scope.event(event);
         refresh_background |= matches!(event, Event::Resize(..));
         if let Content::Picture(image, bytes) = content {
             match illustration.key(&event) {

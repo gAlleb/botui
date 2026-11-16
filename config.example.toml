@@ -75,6 +75,16 @@ list_view = false
 # single, spread, scroll, page-layout, wider-gap, narrower-gap,
 # wider-margins (alias narrower-page), narrower-margins (alias wider-page), close
 
+# Optional navigation aliases: physical key = existing key in that mode.
+# Scope names: reading, pdf (PDF/DjVu), images (comics and illustrations),
+# vim, library and dialogs. Letters are case-sensitive. Ctrl, Alt and Shift
+# combine with +, for example "Alt+j" = "PageDown". Your aliases appear in F1.
+# Text entry and the Space command sequence use their original keys.
+# [keymap.reading]
+# x = "Right"
+# [keymap.pdf]
+# "Alt+j" = "PageDown"
+
 # Multiple OPDS catalogs. Credentials are optional for public catalogs.
 # [[opds]]
 # name = "My catalog"

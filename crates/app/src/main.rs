@@ -7,6 +7,7 @@ mod connection;
 mod cover;
 mod cover_viewer;
 mod diagnostic;
+mod keymap;
 mod leader;
 mod live_progress;
 mod live_search;

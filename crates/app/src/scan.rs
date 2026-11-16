@@ -902,7 +902,7 @@ pub(super) fn read_pages(
         }
         if let Some(p) = &mut palette {
             use crate::reader::theme_picker::Edit;
-            if let Some(edit) = p.input(e) {
+            if let Some(edit) = p.input(crate::keymap::Scope::Dialogs.event(e)) {
                 match edit {
                     Edit::Cancel => palette = None,
                     Edit::Accept(theme) => {
@@ -956,6 +956,9 @@ pub(super) fn read_pages(
             crop,
         };
         if let Some(d) = &mut dialog {
+            if matches!(d, controls::Dialog::Width) {
+                e = crate::keymap::Scope::Dialogs.event(e);
+            }
             match d.input(&e, &dialog_hits, total.unwrap_or(0)) {
                 controls::Command::None => (),
                 controls::Command::Close => dialog = None,
@@ -1038,6 +1041,19 @@ pub(super) fn read_pages(
                     continue;
                 }
             }
+        }
+        if !from_leader && !text.expects_mark() {
+            use crate::keymap::Scope;
+            let scope = if menu {
+                Scope::Dialogs
+            } else if text.normal() {
+                Scope::Vim
+            } else if comic {
+                Scope::Images
+            } else {
+                Scope::Pdf
+            };
+            e = scope.event(e);
         }
         let source_click = match &e {
             Event::Mouse(m)

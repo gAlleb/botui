@@ -27,7 +27,7 @@ If a book or catalog has no cover image, BOTUI makes a [cloth jacket](images/gen
 
 **F2** opens Settings: Appearance, Reader, Library, BookOrbit, Dictionaries, Keys, About and Legal. **F1** (or **?** on a shelf) opens the shortcut guide for the current screen. Use **[ / ]** to switch groups or type **/** to find a key or command. The footer shortcuts are clickable.
 
-**Q** on shelves and during ordinary reading go back one step. In BookOrbit: reader → book card → the shelf, dashboard or search you opened it from. In the local library: reader → folder → parent folders → library root → source chooser. Selection and scroll position are kept when you return. On the source chooser, **Q** exits BOTUI. When launched with a single file path, closing that file ends the command.
+**Q** on shelves and during ordinary reading go back one step. In BookOrbit: reader → book card → the shelf, dashboard or search you opened it from. In the local library: reader → folder → parent folders → library root → source chooser. Selection and scroll position are kept when you return. On the source chooser, **Q** exits BOTUI. When opening a file directly, **q** first returns to its folder with the book selected. Further presses go up to `/` and then to the source chooser.
 
 **Esc** also goes back on library screens; in ordinary reading it first hides an active search highlight, otherwise it opens the reading menu. In a search field, **Q** is typed into the query and **Esc** closes the search. Click **Home** on a BookOrbit shelf to go straight to the source chooser.
 
@@ -327,6 +327,8 @@ Code uses a small built-in lexical highlighter for Markdown, Rust, Python, JavaS
 
 ## Configuration
 
+In `config.toml`, a `[keymap.reading]` entry such as `x = "Right"` makes the physical X key turn a page. Separate sections are available for `pdf`, `images`, `vim`, `library` and `dialogs`. Use a letter, a named key such as `Left`, `Esc`, `PageDown` or `F2`, or a chord such as `"Alt+j"`. Aliases apply once to physical input. Search fields, passwords, comments, mark names and Space sequences keep their usual input. Existing `[keys]` actions take priority in ordinary text reading. **F1** lists your configured aliases.
+
 Run `botui --config-path` to print the exact path. The default is `~/.config/botui/config.toml`. The same TOML file holds the library root, interface, reader bindings and BookOrbit account. The interface is in English. See the [commented configuration](../config.example.toml).
 
 On startup, older configs gain missing dictionary/translation defaults, the Space hint delay, mouse-wheel step and an empty OPDS list. Existing values, connections and comments are preserved.
@@ -432,6 +434,16 @@ list_view = false
 # search, search-results, next-match, previous-match, bookmark, bookmarks,
 # single, spread, scroll, page-layout, wider-gap, narrower-gap,
 # wider-margins (alias narrower-page), narrower-margins (alias wider-page), close
+
+# Optional navigation aliases: physical key = existing key in that mode.
+# Scope names: reading, pdf (PDF/DjVu), images (comics and illustrations),
+# vim, library and dialogs. Letters are case-sensitive. Ctrl, Alt and Shift
+# combine with +, for example "Alt+j" = "PageDown". Your aliases appear in F1.
+# Text entry and the Space command sequence use their original keys.
+# [keymap.reading]
+# x = "Right"
+# [keymap.pdf]
+# "Alt+j" = "PageDown"
 
 # Multiple OPDS catalogs. Credentials are optional for public catalogs.
 # [[opds]]

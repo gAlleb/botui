@@ -53,6 +53,10 @@ pub(super) struct Study {
     buttons: Vec<(Rect, Command)>,
 }
 impl Study {
+    pub fn expects_mark(&self) -> bool {
+        self.keys.expects_mark()
+    }
+
     pub fn clear(&mut self) -> bool {
         if self.selection.take().is_some() {
             self.visual = None;

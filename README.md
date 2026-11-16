@@ -164,7 +164,7 @@ All supported formats use the same readers regardless of their source. BookOrbit
 | BookOrbit | Sign in, browse books, authors, series and collections, then open an edition from its card. **Read** keeps a downloaded copy; **D Save offline** prepares it for later. Reading position syncs with your account. |
 | OPDS | Open an OPDS 1 or 2 catalog, browse or search, and choose a downloadable edition. Saved catalogs are managed in **F2 → Library → OPDS catalogs**. Reading positions stay on this device. |
 
-On a shelf, **V** switches cover grid/list and **/** searches. **Q** goes back one step: from a BookOrbit reader to its card and original shelf, or from a local book to its folder and parent folders. BOTUI keeps the selection and scroll position. **Q** on the source chooser exits; closing a file opened directly from the command line ends that command.
+On a shelf, **V** switches cover grid/list and **/** searches. **Q** goes back one step: from a BookOrbit reader to its card and original shelf, or from a local book to its folder and parent folders. BOTUI keeps the selection and scroll position. **Q** on the source chooser exits BOTUI.
 
 Offline copies are available through **D BookOrbit offline** and **O OPDS downloads** on the start screen. [Offline sync](docs/guide.md#offline-reading-and-sync) · [Managing collections](docs/guide.md#managing-collections)
 
@@ -275,6 +275,7 @@ Commands depend on the document: text actions need selectable text; page zoom, r
 | `Space r [` | Jump back |
 | `Space r ]` | Jump forward |
 | `Space r i` | Links and illustrations (text reader) |
+| `Space r t` | Open a data table on this page (EPUB) |
 | `+` / `-`, arrows | Zoom and pan an open illustration, or click its controls. |
 | `Space r f` | Follow visible links (text reader) |
 | `Space r p` | Go to page (PDF/DjVu/comics) |
@@ -437,6 +438,8 @@ zen = false
 zen_progress = false
 # PDF/DjVu zoom in percent. In scroll mode 100 fits the reading pane.
 scan_zoom = 100
+# Local PDF to LaTeX source: executable and separate arguments. Line/column start at 1.
+# synctex_editor = ["code", "--goto", "{file}:{line}:{column}"]
 # Space between PDF/DjVu/comic pages in a spread (0–32 terminal cells).
 scan_gap = 2
 # Preferred width of one text page and the space between facing pages, in terminal cells.
@@ -484,6 +487,16 @@ list_view = false
 # search, search-results, next-match, previous-match, bookmark, bookmarks,
 # single, spread, scroll, page-layout, wider-gap, narrower-gap,
 # wider-margins (alias narrower-page), narrower-margins (alias wider-page), close
+
+# Optional navigation aliases: physical key = existing key in that mode.
+# Scope names: reading, pdf (PDF/DjVu), images (comics and illustrations),
+# vim, library and dialogs. Letters are case-sensitive. Ctrl, Alt and Shift
+# combine with +, for example "Alt+j" = "PageDown". Your aliases appear in F1.
+# Text entry and the Space command sequence use their original keys.
+# [keymap.reading]
+# x = "Right"
+# [keymap.pdf]
+# "Alt+j" = "PageDown"
 
 # Multiple OPDS catalogs. Credentials are optional for public catalogs.
 # [[opds]]

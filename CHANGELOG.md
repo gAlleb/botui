@@ -3,6 +3,7 @@
 ## Unreleased
 
 - Keep PDF page notes separate from comments on the first word.
+- Configure navigation key aliases by screen and Vim mode.
 - Show why annotations stay local in BookOrbit sync status.
 - Override text layout and fixed-page colors per edition in Reader settings.
 - Jump between LaTeX source lines and local PDFs with SyncTeX.

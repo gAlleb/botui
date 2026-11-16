@@ -481,7 +481,11 @@ pub fn show_book(
         })?;
         let mut select = None;
         let mut opened = None;
-        let event = crate::settings::read_event()?;
+        let event = if tab == 4 && guide_view.filtering() {
+            crate::settings::read_event()?
+        } else {
+            crate::settings::read_dialog()?
+        };
         if tab == 1
             && let Some((store, kind)) = edition
             && (matches!(&event, Event::Key(k) if k.kind != KeyEventKind::Release && k.code == KeyCode::Char('s'))
