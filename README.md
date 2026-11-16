@@ -57,14 +57,14 @@ Click any image to open it at full size.
       <strong>Word definitions</strong><br><sub>Look up a selected word while reading</sub>
     </td>
     <td width="50%" valign="top">
-      <a href="docs/images/text-context-menu.png"><img src="docs/images/text-context-menu.png" alt="Selected text and context menu beside an EPUB illustration"></a><br>
-      <strong>Text context menu</strong><br><sub>Copy, highlight, search, translate or add a note</sub>
+      <a href="docs/images/illustrated-spread.png"><img src="docs/images/illustrated-spread.png" alt="Two-page EPUB spread with an illustration of three riders on the left page"></a><br>
+      <strong>Illustrated spread</strong><br><sub>Chapter progress above, book progress below</sub>
     </td>
   </tr>
   <tr>
     <td width="50%" valign="top">
-      <a href="docs/images/reading-contents.png"><img src="docs/images/reading-contents.png" alt="Contents sidebar, illustrated spread and text selection menu"></a><br>
-      <strong>Contents and illustrations</strong><br><sub>Chapter navigation alongside the illustrated book</sub>
+      <a href="docs/images/reading-contents.png"><img src="docs/images/reading-contents.png" alt="Contents sidebar and a selected passage in an illustrated book on Tibetan medicine"></a><br>
+      <strong>Contents and text selection</strong><br><sub>Copy, highlight or translate the selected passage</sub>
     </td>
     <td width="50%" valign="top">
       <a href="docs/images/bookorbit-shelf.png"><img src="docs/images/bookorbit-shelf.png" alt="BookOrbit library navigation and grid of book covers"></a><br>
@@ -153,7 +153,7 @@ Keywords=books;reader;
 
 When opening a file directly, **q** returns to its folder with the book selected. Press **q** again to move up one directory at a time to `/`, then to the source chooser. The configured library path is preserved.
 <p align="center">
-  <img src="docs/images/kitty-fonts.png" width="50%" alt="fonts in kitty terminal">
+  <img src="docs/images/kitty-fonts.png" width="50%" alt="The Chronicles of Amber open in Kitty with an italic reading font">
 </p>
 
 ## Libraries
