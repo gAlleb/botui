@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Preserve key presses while detecting terminal image support.
+
 ## 0.1.19 — 2026-11-16
 
 ### Reading

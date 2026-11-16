@@ -69,7 +69,7 @@ fn detect() -> Picker {
     if !monochrome()
         && std::env::var_os("STY").is_none()
         && candidate
-        && let Ok(p) = Picker::from_query_stdio_with_options(graphics_options())
+        && let Some(p) = crate::terminal_input::graphics(graphics_options())
         && p.protocol_type() != ProtocolType::Halfblocks
     {
         return p;

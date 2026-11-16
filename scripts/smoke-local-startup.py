@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Folder/list navigation must not wait for an unused graphics protocol query."""
+"""Check local shelf responsiveness, cover discovery and input during terminal queries."""
 import argparse
 from base64 import b64encode
 import fcntl
@@ -15,6 +15,7 @@ import termios
 import time
 
 ROOT = Path(__file__).resolve().parents[1]
+KITTY_REPLY = b"\x1b_Gi=31;OK\x1b\\\x1b[6;20;10t\x1b[0n"
 
 
 def write_book(path, embedded=False):
@@ -27,6 +28,19 @@ def write_book(path, embedded=False):
             f'<binary id="cover" content-type="image/jpeg">{image}</binary>'
         )
     path.write_text(f"<FictionBook>{cover}<body><section><p>{path.stem}</p></section></body></FictionBook>")
+
+
+def start_shelf(binary, directory, library, rows, columns):
+    env = dict(os.environ, HOME=str(directory), XDG_CONFIG_HOME=str(directory),
+               XDG_CACHE_HOME=str(directory), XDG_STATE_HOME=str(directory),
+               XDG_DATA_HOME=str(directory), TERM="xterm-kitty")
+    for key in ("TMUX", "STY", "NO_COLOR", "TERM_PROGRAM", "KITTY_WINDOW_ID"):
+        env.pop(key, None)
+    child, terminal = pty.fork()
+    if child == 0:
+        fcntl.ioctl(0, termios.TIOCSWINSZ, struct.pack("HHHH", rows, columns, columns * 10, rows * 20))
+        os.execve(binary, [str(binary), "--local", str(library)], env)
+    return child, terminal
 
 
 def check(binary, directory, listing=False):
@@ -43,14 +57,7 @@ def check(binary, directory, listing=False):
     (config / "config.toml").write_text(
         f'local_grid = {str(not listing).lower()}\ninterface_theme = "catppuccin-mocha"\n'
     )
-    env = dict(os.environ, HOME=str(directory), XDG_CONFIG_HOME=str(directory),
-               XDG_CACHE_HOME=str(directory), XDG_STATE_HOME=str(directory), TERM="xterm-kitty")
-    for key in ("TMUX", "STY", "NO_COLOR", "TERM_PROGRAM", "KITTY_WINDOW_ID"):
-        env.pop(key, None)
-    child, terminal = pty.fork()
-    if child == 0:
-        fcntl.ioctl(0, termios.TIOCSWINSZ, struct.pack("HHHH", 30, 120, 1200, 600))
-        os.execve(binary, [str(binary), "--local", str(library)], env)
+    child, terminal = start_shelf(binary, directory, library, 30, 120)
     stream = bytearray()
     start = time.monotonic()
     try:
@@ -78,7 +85,7 @@ def check(binary, directory, listing=False):
                     if select.select([terminal], [], [], .01)[0]:
                         stream += os.read(terminal, 65536)
                     if b"\x1b[5n" in stream:
-                        os.write(terminal, b"\x1b_Gi=31;OK\x1b\\\x1b[6;20;10t\x1b[0n")
+                        os.write(terminal, KITTY_REPLY)
                         stream.clear()
                         break
                 else:
@@ -99,6 +106,50 @@ def check(binary, directory, listing=False):
         os.close(terminal)
 
 
+def enter_during_probe(binary, directory, before_reply):
+    library = directory / "Library"
+    library.mkdir()
+    (library / "Lighthouse.fb2").write_bytes((ROOT / "examples/first-light.fb2").read_bytes())
+    config = directory / "botui"
+    config.mkdir()
+    (config / "config.toml").write_text('local_grid = true\nzen = true\n')
+    child, terminal = start_shelf(binary, directory, library, 30, 120)
+    stream = bytearray()
+
+    def receive(marker, description):
+        deadline = time.monotonic() + 5
+        while marker not in stream:
+            remaining = deadline - time.monotonic()
+            assert remaining > 0 and select.select([terminal], [], [], remaining)[0], description
+            stream.extend(os.read(terminal, 65536))
+        end = stream.index(marker) + len(marker)
+        result = stream[:end]
+        del stream[:end]
+        return result
+
+    try:
+        probe = receive(b"\x1b[5n", "The cover did not query terminal capabilities")
+        assert b"Lighthouse" in probe or "До первого парома".encode() in probe, "No book card before query"
+        if before_reply:
+            # A real key arrives while the terminal has yet to answer the probe.
+            os.write(terminal, b"\r")
+            time.sleep(.04)
+            os.write(terminal, KITTY_REPLY)
+        else:
+            # A single PTY write can carry both the final reply and the next key.
+            os.write(terminal, KITTY_REPLY + b"\r")
+        page = receive("оставалось сорок минут.".encode(), "One Enter did not open the selected book")
+        assert "Почта на пристани".encode() in page, "Expected the first chapter"
+        os.write(terminal, b"q")
+        returned = receive(b"Local library", "One q did not return to the library")
+        assert b"Resume" not in page + returned, "A second Enter opened the reading menu"
+        print(f"One Enter {'before' if before_reply else 'after'} the graphics reply opened the selected chapter.")
+    finally:
+        os.kill(child, signal.SIGTERM)
+        os.waitpid(child, 0)
+        os.close(terminal)
+
+
 def covers(binary, directory, embedded=False, reopen=False):
     """A cover folder is usable before generated jackets finish rendering."""
     library = directory / "Library"
@@ -109,15 +160,8 @@ def covers(binary, directory, embedded=False, reopen=False):
     config = directory / "botui"
     config.mkdir(exist_ok=True)
     (config / "config.toml").write_text('local_grid = true\ninterface_theme = "catppuccin-mocha"\n')
-    env = dict(os.environ, XDG_CONFIG_HOME=str(directory), XDG_CACHE_HOME=str(directory),
-               XDG_STATE_HOME=str(directory), TERM="xterm-kitty")
-    for key in ("TMUX", "STY", "NO_COLOR", "TERM_PROGRAM", "KITTY_WINDOW_ID"):
-        env.pop(key, None)
     cached_before = {p.name:p.stat().st_mtime_ns for p in (directory/"botui/jackets-v1").glob("*.png")}
-    child, terminal = pty.fork()
-    if child == 0:
-        fcntl.ioctl(0, termios.TIOCSWINSZ, struct.pack("HHHH", 45, 180, 1800, 900))
-        os.execve(binary, [str(binary), "--local", str(library)], env)
+    child, terminal = start_shelf(binary, directory, library, 45, 180)
 
     uploaded = set()
 
@@ -132,7 +176,7 @@ def covers(binary, directory, embedded=False, reopen=False):
             if b"\x1b]11;?" in chunk:
                 os.write(terminal, b"\x1b]11;rgb:2020/2020/2020\x07\x1b[?1;2c")
             if b"\x1b[5n" in chunk:
-                os.write(terminal, b"\x1b_Gi=31;OK\x1b\\\x1b[6;20;10t\x1b[0n")
+                os.write(terminal, KITTY_REPLY)
             # Exclude tiny corner images; retain uploads from the first frame.
             uploads = re.findall(rb"i=(\d+),a=T[^;]*?s=(\d+),v=(\d+)", output)
             uploaded.update(i for i, w, h in uploads if int(w) > 20 and int(h) > 20)
@@ -187,6 +231,9 @@ if __name__ == "__main__":
     for listing in (False, True):
         with tempfile.TemporaryDirectory(prefix="botui-local-startup-") as tmp:
             check(binary, Path(tmp), listing)
+    for before_reply in (True, False):
+        with tempfile.TemporaryDirectory(prefix="botui-local-enter-") as tmp:
+            enter_during_probe(binary, Path(tmp), before_reply)
     for embedded in (False, True):
         with tempfile.TemporaryDirectory(prefix="botui-local-covers-") as tmp:
             covers(binary, Path(tmp), embedded)
