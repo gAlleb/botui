@@ -126,7 +126,13 @@ impl ReadingFrame {
         self
     }
 
-    pub fn draw(&self, frame: &mut ratatui::Frame, style: Style, caption: Option<String>) {
+    pub fn draw(
+        &self,
+        frame: &mut ratatui::Frame,
+        style: Style,
+        title: Option<&str>,
+        caption: Option<String>,
+    ) {
         if self.borders != BordersStyle::None {
             let mut block = Block::bordered()
                 .border_type(if self.borders == BordersStyle::Rounded {
@@ -136,6 +142,17 @@ impl ReadingFrame {
                 })
                 .border_style(border_style(self.focused))
                 .title_style(style.dim());
+            if let Some(title) = title.filter(|s| !s.trim().is_empty() && self.area.width >= 6) {
+                use unicode_truncate::UnicodeTruncateStr;
+                let room = usize::from(self.area.width) - 4;
+                let (prefix, _) = title.unicode_truncate(room);
+                let label = if prefix.len() == title.len() {
+                    format!(" {title} ")
+                } else {
+                    format!(" {}… ", title.unicode_truncate(room - 1).0)
+                };
+                block = block.title_top(Line::from(label));
+            }
             if let Some(label) = caption {
                 block = block.title_bottom(Line::from(format!(" {label} ")).centered());
             }
@@ -272,12 +289,17 @@ mod tests {
             chrome.draw(
                 frame,
                 Style::new().fg(Color::White),
+                Some("Северная книга"),
                 Some(progress_label(Some((4, 12)), 25.)),
             );
         })
         .unwrap();
         let buffer = term.backend().buffer();
         assert_eq!(buffer[(area.x, area.y)].symbol(), "╭");
+        let top: String = (area.x..area.right())
+            .map(|x| buffer[(x, area.y)].symbol())
+            .collect();
+        assert!(top.starts_with("╭ Северная книга ─"));
         assert_eq!(buffer[(area.right() - 1, area.bottom() - 1)].symbol(), "╯");
         assert_eq!(buffer[(chrome.inner.x, chrome.inner.y)].fg, Color::Red);
         assert_eq!(buffer[(chrome.inner.x, chrome.inner.y)].bg, Color::Yellow);

@@ -57,10 +57,17 @@ pub(super) fn read_pages(
         _ => None,
     };
     let worker = Worker::new();
+    let file_title = path.file_stem().unwrap_or_default().to_string_lossy();
+    let mut book_title = album
+        .as_ref()
+        .map(|doc| &doc.title)
+        .filter(|s| !s.is_empty())
+        .cloned()
+        .unwrap_or_else(|| file_title.to_string());
     let p = path.to_owned();
     let count_job = album
         .is_none()
-        .then(|| worker.start(move |cancel| botui_fixed::page_count(&p, kind, cancel)));
+        .then(|| worker.start(move |cancel| botui_fixed::page_info(&p, kind, cancel)));
     let prefs = crate::settings::Settings::load()?;
     let comic = matches!(kind, FileKind::Cbz | FileKind::Cbr);
     let mut reading_theme = prefs.fixed_theme(comic);
@@ -230,7 +237,10 @@ pub(super) fn read_pages(
         {
             match count_job.receiver.try_recv() {
                 Ok(result) => {
-                    let count = result?;
+                    let (count, title) = result?;
+                    if let Some(title) = title {
+                        book_title = title;
+                    }
                     n = n.clamp(1, count);
                     total = Some(count);
                 }
@@ -483,7 +493,12 @@ pub(super) fn read_pages(
             let caption = caption.map(|label| {
                 crate::appearance::chapter_progress(label, remaining, reading_frame.inner.width)
             });
-            reading_frame.draw(f, Default::default(), caption);
+            reading_frame.draw(
+                f,
+                Default::default(),
+                show_progress.then_some(book_title.as_str()),
+                caption,
+            );
             if !zen && screen.height > 0 {
                 let y = screen.bottom() - 1;
                 let mut status =
@@ -802,6 +817,7 @@ pub(super) fn read_pages(
                 checkpoint.marks = marks.unwrap_or_default();
                 finished &= total == Some(edition.count);
                 n = n.min(edition.count);
+                book_title = edition.title.unwrap_or_else(|| file_title.to_string());
                 total = Some(edition.count);
                 pages = pages::Pages::new(checkpoint.scan_appearance, || {
                     botui_fixed::PageReader::new(path, kind)

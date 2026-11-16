@@ -61,3 +61,5 @@ elif int(sys.argv[2]):
     render(int(sys.argv[2]), int(sys.argv[3])).write_to_png(sys.stdout.buffer)
 else:
     print("Pages:", doc.get_n_pages())
+    if doc.get_title():
+        print("Title:", " ".join(doc.get_title().split()))

@@ -73,6 +73,15 @@ fn render_command(
     }
 }
 pub fn page_count(path: &Path, kind: FileKind, cancel: &AtomicBool) -> io::Result<u32> {
+    page_info(path, kind, cancel).map(|info| info.0)
+}
+
+/// Read the page count and the PDF title from the same metadata query.
+pub fn page_info(
+    path: &Path,
+    kind: FileKind,
+    cancel: &AtomicBool,
+) -> io::Result<(u32, Option<String>)> {
     let path = path.canonicalize()?;
     let cmd = match kind {
         FileKind::Pdf => {
@@ -95,10 +104,17 @@ pub fn page_count(path: &Path, kind: FileKind, cancel: &AtomicBool) -> io::Resul
     } else {
         Some(s.trim())
     };
-    count
+    let count = count
         .and_then(|v| v.trim().parse().ok())
         .filter(|v| *v > 0)
-        .ok_or_else(|| io::Error::other("Could not read the page count"))
+        .ok_or_else(|| io::Error::other("Could not read the page count"))?;
+    let title = s
+        .lines()
+        .find_map(|l| l.strip_prefix("Title:"))
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_owned);
+    Ok((count, title))
 }
 pub fn page(
     path: &Path,

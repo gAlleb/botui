@@ -39,6 +39,7 @@ impl Stamp {
 
 pub(super) struct Revision {
     pub count: u32,
+    pub title: Option<String>,
     pub state: io::Result<(LocalState, Vec<Anchor>)>,
 }
 
@@ -54,13 +55,17 @@ impl Revision {
         if !complete {
             return Err(io::Error::other("Unfinished PDF"));
         }
-        let count = botui_fixed::page_count(path, FileKind::Pdf, cancel)?;
+        let (count, title) = botui_fixed::page_info(path, FileKind::Pdf, cancel)?;
         botui_fixed::page(path, FileKind::Pdf, page.clamp(1, count), 200, cancel)?;
         let state = LocalState::for_file(path).and_then(|store| {
             let marks = store.load()?.map_or_else(Vec::new, |s| s.marks);
             Ok((store, marks))
         });
-        Ok(Self { count, state })
+        Ok(Self {
+            count,
+            title,
+            state,
+        })
     }
 }
 

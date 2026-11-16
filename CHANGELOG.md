@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Show the book title in the upper border when Zen progress is visible.
 - Search local highlights and notes across books from the start screen.
 - Distinguish selected rows, current sections and actions in library screens and dialogs.
 - Show how much of the current chapter remains in the reading progress.

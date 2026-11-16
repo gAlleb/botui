@@ -600,6 +600,7 @@ impl Reader {
         reading_frame.draw(
             frame,
             style,
+            show_progress.then_some(self.doc.title.as_str()),
             show_progress.then(|| {
                 crate::appearance::chapter_progress(
                     crate::appearance::progress_label(pages, self.reading_percent()),

@@ -133,6 +133,8 @@ Kitty displays covers and pages as images, including inside tmux with graphics p
 
 ## Reading
 
+In Zen, **Space p** shows the book title on the upper border. PDFs use the embedded title when present, and fixed-page files without a title use the file name.
+
 For books with chapter boundaries, the progress display shows how many more screenfuls it takes to reach the end of the chapter that starts or continues at the top left. A spread counts as one screenful. PDFs and DjVu files with an outline count physical pages beyond the displayed page or pair. “Chapter end” means the ending is already on screen.
 
 Press **Space**, then the command keys **in sequence**. Menu hints appear after 150 ms by default; commands work immediately. In a submenu, **q / Esc / Backspace** go back; Escape closes the root menu.

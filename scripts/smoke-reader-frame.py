@@ -49,7 +49,7 @@ def fixture(path):
 
 
 def framed(frame):
-    return bool(re.search(r"[╭┌]─+[╮┐]", frame))
+    return bool(re.search(r"[╭┌](?: [^\n]+? )?─+[╮┐]", frame))
 
 
 def target_on_first_line(frame):
@@ -128,7 +128,7 @@ def check(root, mode):
                           and target_on_first_line(f))
         term.keys("Space", "p")
         term.wait("Frame and progress retain the source passage", lambda f: framed(f)
-                  and PROGRESS.search(f) and target_on_first_line(f))
+                  and "Reader frame fixture" in f.splitlines()[0] and PROGRESS.search(f) and target_on_first_line(f))
         close(term)
         assert saved_position() == original, "Showing the frame changed the saved source address"
 
