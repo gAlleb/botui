@@ -5,7 +5,8 @@ use ratatui::{
     Frame,
     layout::{Position, Rect},
     style::Style,
-    widgets::{Clear, List, ListState, Paragraph},
+    text::{Line, Span},
+    widgets::{Block, Borders, Clear, List, ListState, Paragraph, Wrap},
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -201,6 +202,28 @@ impl Navigation {
             inner.width,
             inner.height.saturating_sub(1 + u16::from(popup)),
         );
+        if self.kind == Kind::Search
+            && self.rows.height >= 6
+            && let Some(hit) = self.state.selected().and_then(|i| self.hits.get(i))
+            && let Some(index) = &self.index
+        {
+            let height = (self.rows.height / 3).clamp(3, 6);
+            self.rows.height -= height;
+            let preview = Rect::new(inner.x, self.rows.bottom(), inner.width, height);
+            let [before, matched, after] = index.context(hit, usize::from(preview.width));
+            let line = Line::from(vec![
+                Span::raw(before),
+                Span::styled(matched, style.bold().underlined()),
+                Span::raw(after),
+            ]);
+            f.render_widget(
+                Paragraph::new(line)
+                    .block(Block::default().borders(Borders::TOP).title(" Context "))
+                    .style(style)
+                    .wrap(Wrap { trim: true }),
+                preview,
+            );
+        }
         if self.items.is_empty() {
             let help = match self.kind {
                 Kind::Contents => "No chapter headings in this text.",

@@ -177,6 +177,72 @@ impl SearchIndex {
             .collect()
     }
 
+    /// Surround the selected occurrence with visible text from its paragraph and,
+    /// for short paragraphs, the adjoining ones. Keep the match's original case.
+    pub fn context(&self, hit: &SearchMatch, width: usize) -> [String; 3] {
+        let paragraph = &self.paragraphs[hit.paragraph];
+        let text = &paragraph.text;
+        let visible = self
+            .visible
+            .get(&hit.anchor.block)
+            .filter(|_| paragraph.source_bytes.is_none());
+        let block_offset = paragraph.offsets[hit.anchor.block - paragraph.start];
+        let bounds = visible
+            .and_then(|ranges| ranges.iter().find(|r| r.contains(&hit.anchor.byte)))
+            .and_then(|r| {
+                let bounds = block_offset + r.start..block_offset + r.end;
+                text.get(bounds.clone()).map(|_| bounds)
+            })
+            .unwrap_or(0..text.len());
+        let neighbour = |index: usize, before: bool| {
+            let p = self.paragraphs.get(index)?;
+            let Some(ranges) = self.visible.get(&p.start) else {
+                return Some(p.text.as_str());
+            };
+            let range = if before {
+                ranges.last()?
+            } else {
+                ranges.first()?
+            };
+            p.text.get(range.clone())
+        };
+        let mut left = text[bounds.start..hit.bytes.start].chars().rev();
+        let mut right = text[hit.bytes.end..bounds.end].chars();
+        let mut prefix: Vec<_> = left.by_ref().take(width / 2).collect();
+        let mut suffix: String = right.by_ref().take(width * 2).collect();
+        let before = width / 2;
+        if prefix.len() < before
+            && bounds.start == 0
+            && let Some(prev) = hit
+                .paragraph
+                .checked_sub(1)
+                .and_then(|i| neighbour(i, true))
+            && !prev.is_empty()
+        {
+            prefix.push(' ');
+            prefix.extend(prev.chars().rev().take(before - prefix.len()));
+        } else if left.next().is_some() {
+            prefix.push('…');
+        }
+        let used = suffix.chars().count();
+        if used < width * 2
+            && bounds.end == text.len()
+            && let Some(next) = neighbour(hit.paragraph + 1, false)
+            && !next.is_empty()
+        {
+            suffix.push(' ');
+            suffix.extend(next.chars().take(width * 2 - used - 1));
+        } else if right.next().is_some() {
+            suffix.push('…');
+        }
+        [
+            prefix.into_iter().rev().collect(),
+            text[hit.bytes.clone()].to_string(),
+            suffix,
+        ]
+        .map(|s| s.replace(['\n', '\r', '\t'], " "))
+    }
+
     pub fn find(&self, query: &str) -> Vec<(Anchor, String)> {
         self.matches(query)
             .iter()
@@ -224,6 +290,27 @@ mod tests {
             hits.iter().map(|(a, _)| a.byte).collect::<Vec<_>>(),
             vec![text.find("Amber").unwrap(), text.find("AMBER").unwrap()]
         );
+    }
+    #[test]
+    fn context_shows_both_sides_including_short_neighbouring_paragraphs() {
+        let doc = Document {
+            blocks: ["Previous.", "İ маяк", "Following."]
+                .map(|s| Block {
+                    text: s.into(),
+                    heading: false,
+                })
+                .into(),
+            ..Default::default()
+        };
+        let mut index = Pager::new(&doc, 40, 10, LayoutMode::Single).search_index(&doc);
+        let hit = index.matches("МАЯК").remove(0);
+        assert_eq!(
+            index.context(&hit, 40),
+            ["Previous. İ ", "маяк", " Following."]
+        );
+        index.visible.insert(0, vec![]);
+        index.visible.insert(2, vec![]);
+        assert_eq!(index.context(&hit, 40), ["İ ", "маяк", ""]);
     }
     #[test]
     fn selected_phrase_highlights_both_wrapped_lines_after_case_expansion() {

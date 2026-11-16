@@ -66,7 +66,14 @@ def text_search(root, extension, mode):
     t = s.Terminal(d, BINARY, args=[str(book)])
     try:
         t.see('lighthouse alpha')
-        t.keys('Space', 'f'); t.see('Find:'); t.type('lighthouse'); t.see('4 matches'); t.keys('Enter')
+        t.keys('Space', 'f'); t.see('Find:'); t.type('lighthouse'); t.see('4 matches')
+        def preview_contains(frame, text):
+            return ' Context ' in frame and text in frame.partition(' Context ')[2]
+        t.keys('Down')
+        t.wait('Context before entering the second match', lambda f: preview_contains(f, 'alpha lighthouse bravo'))
+        t.keys('End')
+        t.wait('Preview follows selection without navigating', lambda f: preview_contains(f, 'Last lighthouse delta.'))
+        t.keys('Home', 'Enter')
         selected(t, 'alpha')
         # Closing a result dialog or Space menu must not dismiss the match.
         t.keys('F5'); t.see('4 matches'); t.keys('Escape'); selected(t, 'alpha')

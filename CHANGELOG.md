@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Preview the surrounding passage when selecting text search results.
 - Fit footnote popups to their text and scroll longer notes.
 - Mark the current chapter and highlight the focused pane and outline selection.
 - Share clickable footer shortcuts across readers and keep each button whole in narrow windows.

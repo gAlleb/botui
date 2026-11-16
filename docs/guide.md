@@ -199,6 +199,8 @@ In zen mode, **Space p** shows or hides the reading frame and progress. Hiding t
 | `Esc` | Back/close panel; hide search highlight; otherwise reading menu |
 | `Ctrl+C` | Copy selected text |
 
+In the text reader, move through search results with ↑/↓ to preview the passage around each match. Press Enter to read from that match.
+
 In ordinary reading, **Esc** hides the search highlight without opening the menu. The query and results remain available: `n` / `N`, F3/F4, or choosing a result with F5 shows a match again. Open dialogs, text selections and Vim commands handle Esc first; saved notes and highlights are unchanged.
 
 PDF search highlights each occurrence and brings it into view, including multiple matches on one page. In Vim mode, `n` follows the search direction and `N` reverses it. Search requires an embedded text layer; image-only scans need OCR outside BOTUI.
