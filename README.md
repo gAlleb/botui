@@ -17,12 +17,14 @@ BOTUI is a terminal book reader for Linux. Read books, documents and comics from
 - BookOrbit offline downloads and reading-position sync across devices
 - Single pages, two-page spreads and continuous scrolling, with adjustable margins, spacing and zoom
 - Independent interface and reading themes, live preview and a distraction-free zen mode
-- Local notes and colored highlights work independently of any server, with editable comments and Markdown export
+- Search saved highlights and notes across books, reopen a passage, or export a book’s annotations to Markdown
 - Two-way BookOrbit sync for passage notes and highlights, including comment edits, colors and deletions
 - Text selection and bookmarks
 - Word definitions and translation through editable HTTP, OpenAI-compatible or local connections
 - Mouse controls, a Space command menu and an optional Vim cursor
-- EPUB tables, equations and illustrations; formatted Markdown with code highlighting and a source view
+- EPUB equations and illustrations, plus a full-width table view with pinned column headings
+- Formatted Markdown with code highlighting and a source view
+- Local PDF auto-reload and SyncTeX navigation between a PDF and its LaTeX source
 
 ## Screenshots
 
@@ -180,6 +182,8 @@ Offline copies are available through **D BookOrbit offline** and **O OPDS downlo
 
 PDF contents require Python 3, PyGObject and the Poppler GI bindings. Image-only EPUBs use the fixed-page reader. There is no OCR: scans and comic images do not provide word selection, definitions or translation.
 
+When a local PDF is rebuilt, BOTUI reloads it at the current page and zoom. With the optional `synctex` utility and a PDF built with `-synctex=1`, your editor can jump to a source line in the PDF. **Alt + left click** in the PDF finds the corresponding location in the source. Set **F2 → Reader → SyncTeX editor command** to open it in your editor. [SyncTeX example](docs/guide.md#formats)
+
 Formatted Markdown distinguishes heading levels with numbers and colors, preserves list numbering and nesting, and uses reading-theme panels for code, quotes and table headers. NOTE/TIP/IMPORTANT/WARNING/CAUTION blocks have their own labels and colors. **F9** opens the source with Markdown highlighting.
 
 Markdown reads local images within the document’s directory or its subdirectories; remote images are not downloaded. Raw HTML is shown as text, and MDX/Obsidian plugins are not executed. Notes keep their positions when switching views or resizing; external edits to the source file can shift them. Limits: 4 MiB of Markdown text and 16 MiB per image.
@@ -193,6 +197,8 @@ Kitty displays covers and pages as images, including inside tmux with graphics p
 ### Layout and text size
 
 Use **1 / 2 / 3** for a single page, a two-page spread or continuous scroll. In Vim these digits are counts; use **Space l 1 / 2 / 3** to change layout. **Space o** opens contents, **Space z** toggles zen mode, and **Space p** toggles its frame and progress. Hiding them frees their space for reading; text reflows while keeping your place in the document.
+
+In two-page text mode, each chapter starts on the left of a new spread. In scroll mode, you can read straight through chapter breaks. The upper border shows the book title and, when available, the current section and its progress. The lower border shows progress through the whole book.
 
 **Space l w** adjusts text page width and the gap between columns. For PDF, DjVu, comics and image-only EPUBs, the same panel controls zoom and spread spacing. Its gap buttons or **[ / ]** set **0–32 terminal cells**; zero joins facing pages. `scan_gap` saves this independently of text spacing. **+ / −** zoom fixed pages, arrows pan, and **Space r 0** restores Fit page (Fit width in scroll mode). Enlarged pages fill the available margins and are clipped only at the reading pane edge.
 

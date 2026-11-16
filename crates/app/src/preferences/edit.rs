@@ -50,6 +50,16 @@ pub(super) fn setting(
     p: &Settings,
 ) -> io::Result<()> {
     match (tab, i) {
+        (1, 17) => {
+            if let Some(command) = edit(
+                term,
+                "SyncTeX editor command · e.g. kitty nvim +{line} -- {file}",
+                &crate::synctex::editor_command(&p.synctex_editor),
+            )? {
+                let args = crate::synctex::parse_editor_command(&command)?;
+                Settings::update(|s| s.synctex_editor = args)?;
+            }
+        }
         (1, 15) => {
             let modes = settings::PageColors::ALL;
             if let Some(i) = choose(

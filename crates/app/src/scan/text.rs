@@ -14,7 +14,6 @@ pub(super) use geometry::rotate;
 use ratatui::{
     Frame,
     layout::{Position, Rect},
-    style::Stylize,
     widgets::Paragraph,
 };
 use ratatui_image::picker::Picker;
@@ -104,6 +103,7 @@ pub(super) struct Text {
     sixel: Option<super::sixel::Cache>,
     pub notes: Vec<Note>,
     pub message: String,
+    pub toolbar: crate::reader::controls::ActionRow,
     buttons: Vec<(Rect, Action)>,
 }
 impl Text {
@@ -138,6 +138,7 @@ impl Text {
             sixel: None,
             notes: store.and_then(|s| s.notes().ok()).unwrap_or_default(),
             message: String::new(),
+            toolbar: Default::default(),
             buttons: vec![],
         }
     }
@@ -573,6 +574,9 @@ impl Text {
                         Some(Action::None)
                     }
                     MouseEventKind::Down(MouseButton::Left) => {
+                        if self.enabled && self.toolbar.advance(p) {
+                            return Some(Action::None);
+                        }
                         if let Some((_, a)) = self.buttons.iter().find(|(r, _)| r.contains(p)) {
                             return Some(*a);
                         }
@@ -993,9 +997,9 @@ impl Text {
         }
         self.patches = next;
     }
-    pub fn footer(&mut self, f: &mut Frame, area: Rect) {
+    pub fn footer(&mut self, f: &mut Frame, area: Rect) -> bool {
         if !self.enabled || area.is_empty() {
-            return;
+            return false;
         }
         let label = if self.busy() && self.cursor.is_none() {
             "Loading text layer…"
@@ -1009,41 +1013,28 @@ impl Text {
             "TEXT"
         };
         let actions = [
-            ("[Space a y Copy]", Action::Copy),
-            ("[Space a h Highlight]", Action::Highlight),
-            ("[Space a n Note]", Action::Comment),
+            (label, None),
+            ("[Space a y Copy]", Some(Action::Copy)),
+            ("[Space a h Highlight]", Some(Action::Highlight)),
+            ("[Space a n Note]", Some(Action::Comment)),
             (
                 if self.start.is_some() || self.keys.pending() || self.pending_visual {
                     "[Esc Clear]"
                 } else {
                     "[Esc Read]"
                 },
-                Action::Clear,
+                Some(Action::Clear),
             ),
         ];
-        let (rects, h) = crate::reader::controls::layout(area, &actions.map(|v| v.0));
-        let panel = Rect::new(
-            area.x,
-            area.bottom().saturating_sub(h + 1),
-            area.width,
-            (h + 1).min(area.height),
+        self.toolbar.draw(
+            f,
+            area,
+            Default::default(),
+            (!self.message.is_empty()).then_some(self.message.as_str()),
+            &actions,
+            &mut self.buttons,
         );
-        crate::overlay::paint(f, panel, |f| {
-            f.render_widget(ratatui::widgets::Clear, panel);
-            f.render_widget(
-                Paragraph::new(if self.message.is_empty() {
-                    label
-                } else {
-                    &self.message
-                })
-                .dim(),
-                Rect::new(panel.x, panel.y, panel.width, 1),
-            );
-            for ((label, a), r) in actions.into_iter().zip(rects) {
-                f.render_widget(Paragraph::new(label), r);
-                self.buttons.push((r, a));
-            }
-        });
+        true
     }
 }
 

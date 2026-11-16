@@ -15,19 +15,6 @@ pub fn open_epub(path: &Path) -> Result<Document> {
     read_book(BufReader::new(File::open(path)?), &fallback)
 }
 
-fn numbered_title(number: &str, heading: &str, label: &str) -> bool {
-    if number.is_empty() || !number.bytes().all(|b| b.is_ascii_digit()) {
-        return false;
-    }
-    let Some(rest) = label.trim().strip_prefix(number) else {
-        return false;
-    };
-    let title = rest.trim_start_matches(|c: char| {
-        c.is_whitespace() || matches!(c, '.' | ')' | ':' | '-' | '–' | '—')
-    });
-    title.len() < rest.len() && title.to_lowercase() == heading.trim().to_lowercase()
-}
-
 pub(super) fn read_book(reader: impl Read + Seek, fallback: &str) -> Result<Document> {
     let mut archive = ZipArchive::new(reader)?;
     let mut remaining = MAX_TEXT_BYTES;
@@ -89,11 +76,14 @@ pub(super) fn read_book(reader: impl Read + Seek, fallback: &str) -> Result<Docu
     let mut starts = HashMap::new();
     let mut ids = HashMap::new();
     let mut raw = vec![];
+    let mut spine_counts = Vec::new();
     let mut tables = Default::default();
-    for item in spine
-        .children()
-        .filter(|n| tag(*n, "itemref") && n.attribute("linear") != Some("no"))
-    {
+    for item in spine.children().filter(|n| tag(*n, "itemref")) {
+        let item_index = spine_counts.len();
+        spine_counts.push((0, 0));
+        if item.attribute("linear") == Some("no") {
+            continue;
+        }
         let spine_path = super::locations::steps(item);
         let id = item
             .attribute("idref")
@@ -179,13 +169,14 @@ pub(super) fn read_book(reader: impl Read + Seek, fallback: &str) -> Result<Docu
             styled.insert(start, chapter);
         }
         let member: std::sync::Arc<str> = member.into();
-        raw.extend(links.into_iter().map(|v| (member.clone(), v)));
+        spine_counts[item_index].0 = blocks.len() - start;
+        raw.extend(links.into_iter().map(|v| (member.clone(), v, item_index)));
         super::locations::epub(&html, &spine_path, start, &blocks[start..], &mut locations);
     }
     let mut image_pages = Vec::new();
     if blocks.is_empty() {
         let mut plates = HashMap::<String, (usize, usize)>::new();
-        for (base, link) in &mut raw {
+        for (base, link, item_index) in &mut raw {
             if link.image
                 && let Ok(member) = super::svg::locator(base, &link.href)
                 && (member.starts_with(super::svg::INLINE)
@@ -195,6 +186,7 @@ pub(super) fn read_book(reader: impl Read + Seek, fallback: &str) -> Result<Docu
             {
                 image_pages.push(member);
                 link.block = blocks.len();
+                spine_counts[*item_index].0 += 1;
                 let entry = plates.entry(base.to_string()).or_insert((blocks.len(), 0));
                 entry.1 += 1;
                 blocks.push(Block {
@@ -283,7 +275,7 @@ pub(super) fn read_book(reader: impl Read + Seek, fallback: &str) -> Result<Docu
             && spine_starts.contains(&first)
             && !spine_starts.contains(&at.block)
             && let Some(title) = blocks.get(at.block).filter(|b| b.heading)
-            && numbered_title(&blocks[first].text, &title.text, &entry.title)
+            && entry.matches_numbered_title(&blocks[first].text, &title.text)
         {
             chapter_starts.remove(&at.block);
             chapter_starts.insert(first);
@@ -296,7 +288,7 @@ pub(super) fn read_book(reader: impl Read + Seek, fallback: &str) -> Result<Docu
     let references: Vec<Reference> = raw
         .into_iter()
         .enumerate()
-        .filter_map(|(index, (base, link))| {
+        .filter_map(|(index, (base, link, item_index))| {
             let bytes = link.text_range(&blocks);
             let label = if link.label.trim().is_empty() {
                 link.href
@@ -334,6 +326,7 @@ pub(super) fn read_book(reader: impl Read + Seek, fallback: &str) -> Result<Docu
                     }
                 }
             };
+            spine_counts[item_index].1 += 1;
             Some((
                 index,
                 Reference {
@@ -361,6 +354,7 @@ pub(super) fn read_book(reader: impl Read + Seek, fallback: &str) -> Result<Docu
         }
     }
     Ok(Document {
+        epub_spine: botui_core::EpubSpine::from_counts(spine_counts),
         markdown: None,
         fixed_breaks: Default::default(),
         chapter_starts,

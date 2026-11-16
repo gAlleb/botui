@@ -13,39 +13,133 @@ fn forward_breaks(pager: &mut Pager) -> Vec<[usize; 3]> {
 }
 
 #[test]
-fn chapter_remainder_matches_actual_page_turns_after_jumps_and_reflow() {
-    let doc = Document {
-        blocks: (0..72)
+fn chapter_percentage_uses_the_first_visible_source_line_across_reflow() {
+    let mut doc = Document {
+        blocks: (0..9)
             .map(|i| Block {
-                heading: matches!(i, 5 | 23 | 50),
-                text: format!("Passage {i} in the book."),
+                text: format!("Passage {i}."),
+                heading: matches!(i, 1 | 5),
             })
             .collect(),
-        chapter_starts: [5, 23, 50].into(),
+        chapter_starts: [1, 5].into(),
         ..Default::default()
     };
-    let mut pager = Pager::new(&doc, 90, 7, LayoutMode::Spread);
-    for mode in [LayoutMode::Single, LayoutMode::Spread, LayoutMode::Scroll] {
-        for height in [6, 13] {
-            pager.relayout(&doc, 90, height, mode);
-            pager.seek(Anchor::default());
-            assert_eq!(pager.screens_left_in_chapter(), None);
-            for block in [5, 9, 21, 23, 49, 50, 67] {
-                pager.seek(Anchor { block, byte: 0 });
-                let expected = pager.screens_left_in_chapter().unwrap();
-                let end = (pager.first + 1..pager.lines.len())
-                    .find(|&row| pager.lines[row].chapter_start)
-                    .unwrap_or(pager.lines.len());
-                let mut turns = 0;
-                while pager.complete_view().end() < end {
-                    let before = pager.first;
-                    pager.next();
-                    assert!(pager.first > before);
-                    turns += 1;
-                }
-                assert_eq!(turns, expected, "{mode:?} at {block}, height {height}");
-            }
+    let mut pager = Pager::with_reflow(&doc, 60, 5, LayoutMode::Single, false);
+    for (mode, width, height) in [
+        (LayoutMode::Single, 48, 6),
+        (LayoutMode::Spread, 140, 12),
+        (LayoutMode::Scroll, 52, 7),
+    ] {
+        pager.relayout(&doc, width, height, mode);
+        pager.seek(Anchor::default());
+        assert_eq!(
+            pager.chapter_progress().and_then(|s| s.percent),
+            None,
+            "front matter"
+        );
+        for (block, expected) in [(1, 0), (3, 50), (4, 75), (5, 0), (7, 50), (8, 75)] {
+            // Seeking a word within a line still reports the start of that visible line.
+            let byte = if matches!(block, 3 | 7) { 6 } else { 0 };
+            pager.seek(Anchor { block, byte });
+            assert_eq!(
+                pager.chapter_progress().and_then(|s| s.percent),
+                Some(expected),
+                "{mode:?} block {block}"
+            );
         }
+    }
+    doc.chapter_starts.clear();
+    doc.blocks.iter_mut().for_each(|b| b.heading = false);
+    assert_eq!(
+        Pager::new(&doc, 60, 5, LayoutMode::Single)
+            .chapter_progress()
+            .and_then(|s| s.percent),
+        None
+    );
+}
+
+#[test]
+fn chapter_percentage_accepts_outline_destinations_within_one_source_block() {
+    let text = "aaaa bbbb cccc dddd eeee ffff gggg hhhh";
+    let doc = Document {
+        blocks: vec![Block {
+            text: text.to_owned(),
+            heading: false,
+        }],
+        contents: [5, 25]
+            .map(|byte| crate::ContentsEntry::passage(Anchor { block: 0, byte }, "Heading".into()))
+            .into(),
+        ..Default::default()
+    };
+    let mut pager = Pager::with_reflow(&doc, 5, 3, LayoutMode::Single, false);
+    for (byte, expected) in [
+        (0, None),
+        (5, Some(0)),
+        (15, Some(50)),
+        (25, Some(0)),
+        (35, Some(71)),
+    ] {
+        pager.seek(Anchor { block: 0, byte });
+        assert_eq!(
+            pager.chapter_progress().and_then(|s| s.percent),
+            expected,
+            "offset {byte}"
+        );
+    }
+}
+
+#[test]
+fn chapter_progress_pairs_the_printed_title_with_its_outline_destination() {
+    let blocks = [
+        ("Знак Единорога", true),
+        ("3", false),
+        ("ANATOMY", true),
+        ("First passage", false),
+        ("Chapter IV", true),
+        ("Second passage", false),
+        ("Anonymous opening paragraph", false),
+        ("Рука Оберона", true),
+        ("Глава первая", true),
+        ("45", false),
+        ("Interlude", true),
+    ];
+    let doc = Document {
+        blocks: blocks
+            .map(|(s, heading)| Block {
+                text: s.to_owned(),
+                heading,
+            })
+            .into(),
+        chapter_starts: [0, 1, 4, 6, 7, 8, 9].into(),
+        contents: [
+            (0, "Знак Единорога"),
+            (2, "3. Anatomy"),
+            (4, "Physiology"),
+            (7, "Рука Оберона"),
+            (10, "45. Other heading"),
+        ]
+        .map(|(block, title)| {
+            crate::ContentsEntry::passage(Anchor { block, byte: 0 }, title.to_owned())
+        })
+        .into(),
+        ..Default::default()
+    };
+    let mut pager = Pager::with_reflow(&doc, 80, 7, LayoutMode::Spread, false);
+    for (block, title, toc_title) in [
+        (0, Some("Знак Единорога"), Some("Знак Единорога")),
+        (1, Some("ANATOMY"), Some("3. Anatomy")),
+        (4, Some("Chapter IV"), Some("Physiology")),
+        (6, None, None),
+        (7, Some("Рука Оберона"), Some("Рука Оберона")),
+        (8, Some("Глава первая"), None),
+        (9, None, None),
+    ] {
+        pager.seek(Anchor { block, byte: 0 });
+        let progress = pager.chapter_progress().unwrap();
+        assert_eq!(
+            (progress.title, progress.toc_title, progress.percent),
+            (title, toc_title, Some(0))
+        );
     }
 }
 

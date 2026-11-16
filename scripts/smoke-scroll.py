@@ -23,7 +23,9 @@ def text_scroll(d):
     file.write_text('<FictionBook><body><section>'+''.join(f'<p>Passage {i:03}.</p>' for i in range(100))+'</section></body></FictionBook>')
     t=start(d,file)
     try:
-        t.see('Passage 001');t.keys('Space', 'l', '3');state=t.see('Scroll ·');first=re.findall(r'Passage \d+',state)
+        t.see('Passage 001');t.keys('Space', 'l', '3')
+        state=t.wait('Scroll mode in the command row',lambda f:f.rstrip().rpartition('\n')[2].lstrip().startswith('Scroll '))
+        first=re.findall(r'Passage \d+',state)
         t.keys('Down');second=t.wait('Line scroll keeps neighboring passages',lambda a:first[0] not in a and first[2] in a);assert len(set(first)&set(re.findall(r'Passage \d+',second)))>2
         t.keys('Up');t.wait('Up restores first row',lambda a: re.findall(r'Passage \d+',a)==first)
         wheel(t,65);t.wait('Wheel defaults to exactly one line',lambda a:a==second)

@@ -128,6 +128,97 @@ fn a_spine_initial_printed_number_stays_with_its_named_chapter() {
 }
 
 #[test]
+fn epub_spine_ordinals_and_semantic_chapters_have_independent_boundaries() {
+    use botui_core::{Anchor, LayoutMode, Pager};
+    let manifest: String = [
+        "cover", "intro", "empty", "chapters", "continue", "final", "notes",
+    ]
+    .iter()
+    .map(|id| format!("<item id='{id}' href='{id}' media-type='application/xhtml+xml'/>"))
+    .collect();
+    let opf = format!(
+        "<package><manifest>{manifest}</manifest><spine>
+        <itemref idref='cover' linear='no'/><itemref idref='intro'/><itemref idref='empty'/>
+        <itemref idref='chapters'/><itemref idref='continue'/><itemref idref='final'/>
+        <itemref idref='notes' linear='no'/></spine></package>"
+    );
+    let doc = read_book(
+        archive(&[
+            (
+                "META-INF/container.xml",
+                "<container><rootfile full-path='book.opf'/></container>",
+            ),
+            ("book.opf", &opf),
+            ("cover", "<body><p>Cover</p></body>"),
+            ("notes", "<body><p>Non-linear notes</p></body>"),
+            ("intro", "<body><p>1111</p><p>2222</p></body>"),
+            ("empty", "<body></body>"),
+            (
+                "chapters",
+                "<body><h1>One</h1><p>Text</p><h1>Two</h1><p>2222</p></body>",
+            ),
+            ("continue", "<body><p>3333</p></body>"),
+            ("final", "<body><h1>Three</h1><p>End</p></body>"),
+        ]),
+        "Book",
+    )
+    .unwrap();
+    let mut pager = Pager::new(&doc, 90, 6, LayoutMode::Single);
+    for (block, ordinal, title, percent) in [
+        (0, 2, None, 0),
+        (1, 2, None, 50),
+        (2, 4, Some("One"), 0),
+        (4, 4, Some("Two"), 0),
+        (6, 5, Some("Two"), 63),
+        (7, 6, Some("Three"), 0),
+    ] {
+        pager.seek(Anchor { block, byte: 0 });
+        let progress = pager.chapter_progress().unwrap();
+        assert_eq!(
+            (
+                progress.ordinal,
+                progress.total,
+                progress.title,
+                progress.percent
+            ),
+            (ordinal, 7, title, Some(percent)),
+            "source block {block}"
+        );
+    }
+}
+
+#[test]
+fn standalone_picture_spine_uses_its_own_ordinal_at_the_preceding_text_anchor() {
+    use botui_core::{Anchor, IllustrationPosition, LayoutMode, Pager, ViewPosition};
+    let doc = read_book(archive(&[
+        ("META-INF/container.xml", "<container><rootfile full-path='p'/></container>"),
+        ("p", "<package><manifest><item id='a' href='a' media-type='application/xhtml+xml'/><item id='plate' href='plate' media-type='application/xhtml+xml'/><item id='b' href='b' media-type='application/xhtml+xml'/><item id='img' href='i.jpg' media-type='image/jpeg'/></manifest><spine><itemref idref='a'/><itemref idref='plate'/><itemref idref='b'/></spine></package>"),
+        ("a", "<body><p>Before.</p></body>"),
+        ("plate", "<body><img src='i.jpg'/></body>"),
+        ("b", "<body><p>After.</p></body>"),
+    ]), "Album with text").unwrap();
+    let mut pager = Pager::new(&doc, 70, 9, LayoutMode::Single);
+    let body = Anchor { block: 0, byte: 7 };
+    pager.restore_position(ViewPosition {
+        anchor: body,
+        illustration: Some(IllustrationPosition {
+            reference: 0,
+            row: 0,
+        }),
+    });
+    let progress = pager.chapter_progress().unwrap();
+    assert_eq!(
+        (progress.ordinal, progress.total, progress.percent),
+        (2, 3, None)
+    );
+    assert_eq!(
+        pager.anchor(),
+        body,
+        "the saved reading address stays in the text"
+    );
+}
+
+#[test]
 fn empty_xhtml_title_keeps_chapter_text_and_its_navigation_target() {
     let book = read_book(archive(&[
         ("META-INF/container.xml", r#"<container><rootfile full-path="book.opf"/></container>"#),
@@ -267,14 +358,23 @@ fn a_repeated_epub_passage_has_its_own_file_address() {
 fn image_only_epub_keeps_two_spine_destinations_and_ignores_remote_art() {
     let book=read_book(archive(&[
         ("META-INF/container.xml",r#"<container><rootfiles><rootfile full-path="book.opf"/></rootfiles></container>"#),
-        ("book.opf",r#"<package><manifest><item id="a" href="a.xhtml" media-type="application/xhtml+xml"/><item id="b" href="b.xhtml" media-type="application/xhtml+xml"/><item id="nav" properties="nav" href="toc.xhtml" media-type="application/xhtml+xml"/><item id="ill" href="i.jpg" media-type="image/jpeg"/></manifest><spine><itemref idref="a"/><itemref idref="b"/></spine></package>"#),
+        ("book.opf",r#"<package><manifest><item id="cover" href="cover.xhtml" media-type="application/xhtml+xml"/><item id="notes" href="notes.xhtml" media-type="application/xhtml+xml"/><item id="a" href="a.xhtml" media-type="application/xhtml+xml"/><item id="b" href="b.xhtml" media-type="application/xhtml+xml"/><item id="nav" properties="nav" href="toc.xhtml" media-type="application/xhtml+xml"/><item id="ill" href="i.jpg" media-type="image/jpeg"/></manifest><spine><itemref idref="cover" linear="no"/><itemref idref="a"/><itemref idref="b"/><itemref idref="notes" linear="no"/></spine></package>"#),
+        ("cover.xhtml","<body><img src='i.jpg'/></body>"),
+        ("notes.xhtml","<body><p>Non-linear notes</p></body>"),
         ("a.xhtml",r#"<html><body><img src="https://example.org/out.jpg"/><svg><image href="i.jpg"/></svg></body></html>"#),
-        ("b.xhtml",r#"<html><body><img alt="Last plate" src="i.jpg"/></body></html>"#),
+        ("b.xhtml",r#"<html><body><img src="missing.jpg"/><img src="i.jpg"/><img alt="Last plate" src="i.jpg"/></body></html>"#),
         ("toc.xhtml",r#"<html><body><nav epub:type="toc"><ol><li><a href="a.xhtml">First</a></li><li><a href="b.xhtml">Last</a></li></ol></nav></body></html>"#),
     ]),"album").unwrap();
-    assert_eq!(book.image_pages, ["botui-inline-svg:0:a.xhtml", "i.jpg"]);
-    assert_eq!(book.blocks.len(), 2);
-    assert_eq!(book.blocks[1].text, "Last plate");
+    assert_eq!(
+        book.image_pages,
+        ["botui-inline-svg:0:a.xhtml", "i.jpg", "i.jpg"]
+    );
+    assert_eq!(book.blocks.len(), 3);
+    for (page, ordinal, range) in [(0, 2, 0..1), (1, 3, 1..3), (2, 3, 1..3)] {
+        let item = book.epub_spine.position_at_block(page).unwrap();
+        assert_eq!((item.ordinal, item.total, item.blocks), (ordinal, 4, range));
+    }
+    assert_eq!(book.blocks[2].text, "Last plate");
     assert_eq!(
         book.contents
             .iter()
@@ -467,7 +567,7 @@ fn epub_table_dividers_follow_spanned_cells_and_preserve_source_addresses() {
         assert_eq!(dividers(&lines[blank]), dividers(&lines[blank - 1]));
         for (word, count) in [("Name", 2), ("Thin", 2), ("Slight", 2), ("Combined", 1)] {
             let line = lines.iter().find(|l| l.text.contains(word)).unwrap();
-            assert_eq!(dividers(line).len(), count, "{}", line.text);
+            assert_eq!(dividers(line).len(), count + 2, "{}", line.text);
         }
         assert!(lines.iter().all(|l| !l.text.contains(['─', '│'])));
         let line = lines.iter().find(|l| l.text.contains("Heavy")).unwrap();
@@ -480,45 +580,134 @@ fn epub_table_dividers_follow_spanned_cells_and_preserve_source_addresses() {
 }
 
 #[test]
-fn epub_table_dividers_leave_page_turns_and_illustrated_positions_unchanged() {
+fn epub_table_sides_enclose_wrapped_content_even_without_cell_spacing() {
+    use botui_core::{LayoutMode, Pager, Surface};
+    for css in ["", "border-spacing:0", "border-collapse:collapse;padding:0"] {
+        let doc = styled_fixture(
+            "<table><tr><th>A</th><th>B</th><th>C</th></tr>\
+             <tr><td>coast</td><td colspan='2'>the coast remains visible</td></tr>\
+             <tr><td>&#160;</td></tr><tr><td>port</td><td>dock</td><td>boats</td></tr></table>",
+            &format!("table {{width:100%;{css}}} th,td {{text-align:left}}"),
+        );
+        let mut pager = Pager::new(&doc, 52, 30, LayoutMode::Single);
+        for width in [52, 19, 33, 52] {
+            pager.relayout(&doc, width, 30, LayoutMode::Single);
+            pager.previous();
+            let lines = pager.lines(0);
+            let mut edges = lines.iter().enumerate().filter_map(|(i, l)| {
+                l.surfaces.iter().find_map(|s| {
+                    if let Surface::TableEdge { x, width, top } = s {
+                        Some((i, *x, *x + *width - 1, *top))
+                    } else {
+                        None
+                    }
+                })
+            });
+            let (start, left, right, true) = edges.next().unwrap() else {
+                panic!("top edge missing, {css} {width}")
+            };
+            assert!(right < width, "{css} width {width}: border at {right}");
+            let (end, l, r, false) = edges
+                .next()
+                .expect("table must retain its bottom edge at the end of a book")
+            else {
+                panic!("bottom edge missing")
+            };
+            assert_eq!((left, right), (l, r));
+            assert!(edges.next().is_none());
+            for row in &lines[start + 1..end] {
+                for x in [left, right] {
+                    assert!(
+                        row.surfaces
+                            .iter()
+                            .any(|s| matches!(s,Surface::TableDivider{x:at} if *at==x)),
+                        "{css} width {width} side {x}: {}",
+                        row.text
+                    );
+                    assert!(
+                        row.text
+                            .as_bytes()
+                            .get(usize::from(x))
+                            .is_none_or(|b| *b == b' '),
+                        "side collides with text: {css} width {width} side {x}: {}",
+                        row.text
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn epub_table_edges_preserve_text_addresses_illustrations_and_page_turns() {
     use botui_core::{LayoutMode, Pager};
     let book = |role| {
         styled_fixture(
             &format!(
-                "<table role='{role}'><tr><th>Label</th><th>Value</th></tr>\
+                "<p>Table caption</p><div><table role='{role}'><tr><th>Label</th><th>Value</th></tr>\
             <tr><td>First</td><td>Second</td></tr><tr><td>&#160;</td></tr>\
-            <tr><td>Third</td><td>Fourth</td></tr></table>\
+            <tr><td>Third</td><td>Fourth</td></tr></table></div>\
             <figure><img src='fig.png'/></figure><p>End of passage.</p>"
             ),
-            "table, p, figure {margin:0} img {display:block;width:160px;height:96px}",
+            "table, p, figure {margin:0} p:first-child {margin-bottom:64px} img {display:block;width:160px;height:96px}",
         )
     };
     let data = book("table");
     let plain = book("presentation");
-    let mut with_rules = Pager::new(&data, 56, 5, LayoutMode::Single);
-    let mut without = Pager::new(&plain, 56, 5, LayoutMode::Single);
-    let mut saw_image = false;
-    loop {
-        assert_eq!(with_rules.position(), without.position());
-        assert_eq!(data.cfi(with_rules.anchor()), plain.cfi(without.anchor()));
-        let rows = with_rules.lines(0);
-        saw_image |= rows.iter().any(|line| !line.figures.is_empty());
-        assert_eq!(rows.len(), without.lines(0).len());
-        for (actual, expected) in rows.iter().zip(without.lines(0)) {
-            assert_eq!(actual.text, expected.text);
-            assert_eq!(actual.anchor(), expected.anchor());
-            assert_eq!(actual.figures.len(), expected.figures.len());
+    let contents = |doc: &botui_core::Document| {
+        let mut pager = Pager::new(doc, 56, 5, LayoutMode::Single);
+        let mut source = Vec::new();
+        let mut edges = Vec::new();
+        loop {
+            let lines = pager.lines(0);
+            for line in lines {
+                for surface in &line.surfaces {
+                    if let botui_core::Surface::TableEdge { top, .. } = surface {
+                        edges.push(*top);
+                    }
+                }
+                if !line.text.trim().is_empty() || !line.figures.is_empty() {
+                    source.push((
+                        line.text.clone(),
+                        doc.cfi(line.anchor()),
+                        line.figures.len(),
+                    ));
+                }
+            }
+            if pager.at_end() {
+                break;
+            }
+            let before = pager.position();
+            pager.next();
+            let after = pager.position();
+            assert_ne!(before, after);
+            pager.previous();
+            assert_eq!(pager.position(), before);
+            pager.next();
+            assert_eq!(pager.position(), after);
         }
-        assert_eq!(with_rules.at_end(), without.at_end());
-        if with_rules.at_end() {
-            break;
-        }
-        let before = with_rules.position();
-        with_rules.next();
-        without.next();
-        assert_ne!(with_rules.position(), before);
-    }
-    assert!(saw_image);
+        (source, edges)
+    };
+    let (actual, rules) = contents(&data);
+    let (expected, no_rules) = contents(&plain);
+    assert_eq!(actual, expected);
+    assert!(actual.iter().any(|(_, _, figures)| *figures > 0));
+    assert_eq!(rules, [true, false]);
+    assert!(no_rules.is_empty());
+    let pager = Pager::new(&data, 56, 60, LayoutMode::Single);
+    let lines = pager.lines(0);
+    let title = lines
+        .iter()
+        .position(|l| l.text.contains("Table caption"))
+        .unwrap();
+    assert!(lines[title + 1].text.is_empty() && lines[title + 1].surfaces.is_empty());
+    assert!(
+        lines[title + 2]
+            .surfaces
+            .iter()
+            .any(|s| matches!(s, botui_core::Surface::TableEdge { top: true, .. }))
+    );
+    assert!(lines[title + 3].text.contains("Label"));
 }
 
 #[test]

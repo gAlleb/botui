@@ -124,6 +124,25 @@ pub(crate) fn forward(position: &str, pdf: &Path) -> io::Result<()> {
     ))
 }
 
+pub(crate) fn editor_command(args: &[String]) -> String {
+    // NUL cannot occur in a process argument. Make an invalid hand-edited TOML
+    // value visible and editable in the same field.
+    shlex::try_join(args.iter().map(String::as_str))
+        .unwrap_or_else(|_| args.join(" ").replace('\0', "�"))
+}
+
+pub(crate) fn parse_editor_command(input: &str) -> io::Result<Vec<String>> {
+    let args = shlex::split(input).ok_or_else(|| {
+        io::Error::other("Unclosed quote or trailing backslash in the editor command.")
+    })?;
+    if !input.trim().is_empty() && args.first().is_none_or(String::is_empty) {
+        return Err(io::Error::other(
+            "Enter the editor executable or clear the field.",
+        ));
+    }
+    Ok(args)
+}
+
 pub(crate) fn open_editor(
     editor: &[String],
     source: botui_fixed::synctex::Source,
@@ -131,9 +150,7 @@ pub(crate) fn open_editor(
     let file = botui_fixed::synctex::as_str(&source.path)?;
     let location = format!("{}:{}:{}", file, source.line, source.column);
     let Some((program, args)) = editor.split_first() else {
-        return Ok(format!(
-            "{location} · set synctex_editor to open your editor"
-        ));
+        return Ok(format!("{location} · choose your editor in F2 → Reader"));
     };
     let values = [
         ("{line}", source.line.to_string()),
@@ -155,4 +172,33 @@ pub(crate) fn open_editor(
         let _ = child.wait();
     });
     Ok(location)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn editable_command_preserves_configured_arguments() {
+        let args = [
+            "/my applications/редактор",
+            "+{line}",
+            "{file}:{line}:{column}",
+            "quote \" and '",
+            r#"C:\path with space\file"#,
+            "$(literal);",
+            "#argument",
+            "",
+        ]
+        .map(String::from);
+        assert_eq!(parse_editor_command(&editor_command(&args)).unwrap(), args);
+        assert_eq!(
+            parse_editor_command(r#"kitty nvim +{line} -- "{file}""#).unwrap(),
+            ["kitty", "nvim", "+{line}", "--", "{file}"]
+        );
+        assert!(parse_editor_command("   ").unwrap().is_empty());
+        for invalid in ["'unfinished", "editor \\", "'' --goto"] {
+            assert!(parse_editor_command(invalid).is_err());
+        }
+    }
 }

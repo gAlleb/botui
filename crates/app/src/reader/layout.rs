@@ -1,5 +1,6 @@
 //! A spread is one centered rectangle. The distance between its text columns is explicit.
 use super::{Action, LayoutMode};
+use crate::appearance::ReadingFrame;
 use crossterm::event::{Event, KeyCode, KeyEventKind, MouseButton, MouseEventKind};
 use ratatui::{
     Frame,
@@ -12,21 +13,19 @@ pub(super) fn panes(
     mut screen: Rect,
     splitter: &mut crate::splitter::Splitter,
     zen: bool,
-    controls_height: u16,
 ) -> (Rect, Rect) {
-    screen.height = screen
-        .height
-        .saturating_sub(controls_height.max(u16::from(!zen)));
+    screen.height = screen.height.saturating_sub(u16::from(!zen));
     splitter.layout(screen, !zen && screen.width >= 78)
 }
 
 pub(super) fn geometry(
-    area: Rect,
+    frame: &ReadingFrame,
     mode: LayoutMode,
     width: u16,
     gap: u16,
     zen: bool,
 ) -> (Rect, LayoutMode, u16) {
+    let area = frame.inner;
     let available = area
         .width
         .saturating_sub(if area.width >= 12 { 2 } else { 0 });
@@ -41,7 +40,10 @@ pub(super) fn geometry(
     } else {
         width.min(available)
     };
-    let vertical = (area.height / 13).min(2).saturating_sub(u16::from(zen));
+    // In the normal reader the frame itself provides one row of separation.
+    let vertical = (area.height / 13)
+        .min(2)
+        .saturating_sub(u16::from(zen || frame.has_border()));
     let mut text = crate::centered(area, used, area.height);
     text.y += vertical;
     text.height = area.height.saturating_sub(vertical * 2);
@@ -75,6 +77,7 @@ impl Panel {
         let screen = f.area();
         let mut panel = crate::centered(screen, 52, 5);
         panel.y = screen.bottom().saturating_sub(panel.height);
+        crate::overlay::backdrop(f, panel);
         let block = crate::appearance::block()
             .title(" Page layout ")
             .style(style);
@@ -165,13 +168,17 @@ impl Panel {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::appearance::BordersStyle;
+    fn frame(area: Rect, zen: bool, style: BordersStyle) -> ReadingFrame {
+        ReadingFrame::with_borders(area, zen, true, style)
+    }
     #[test]
     fn extra_terminal_space_stays_outside_the_spread() {
         for width in [180, 240, 320] {
             for page in [52, 76] {
                 for gap in [0, 4, 12] {
                     let (area, mode, actual_gap) = geometry(
-                        Rect::new(0, 0, width, 40),
+                        &frame(Rect::new(0, 0, width, 40), false, BordersStyle::None),
                         LayoutMode::Spread,
                         page,
                         gap,
@@ -185,19 +192,58 @@ mod tests {
                 }
             }
         }
-        let (single, mode, _) = geometry(Rect::new(0, 0, 45, 14), LayoutMode::Spread, 76, 6, false);
+        let (single, mode, _) = geometry(
+            &frame(Rect::new(0, 0, 45, 14), false, BordersStyle::None),
+            LayoutMode::Spread,
+            76,
+            6,
+            false,
+        );
         assert_eq!(mode, LayoutMode::Single);
         assert!(single.width <= 45);
     }
     #[test]
-    fn zen_reclaims_one_row_on_each_edge_without_changing_the_spread() {
+    fn clean_zen_keeps_its_margins_and_spread_width() {
         for (height, top) in [(8, 0), (24, 0), (40, 1)] {
             let screen = Rect::new(0, 0, 160, height);
-            let (normal, _, _) = geometry(screen, LayoutMode::Spread, 70, 8, false);
-            let (zen, _, gap) = geometry(screen, LayoutMode::Spread, 70, 8, true);
+            let (normal, _, _) = geometry(
+                &frame(screen, false, BordersStyle::None),
+                LayoutMode::Spread,
+                70,
+                8,
+                false,
+            );
+            let (zen, _, gap) = geometry(
+                &ReadingFrame::new(screen, true, false),
+                LayoutMode::Spread,
+                70,
+                8,
+                true,
+            );
             assert_eq!((zen.x, zen.width, gap), (normal.x, normal.width, 8));
             assert_eq!((zen.y, screen.bottom() - zen.bottom()), (top, top));
             assert_eq!(zen.height, height - top * 2);
+        }
+    }
+    #[test]
+    fn only_normal_framed_text_reclaims_one_of_its_existing_margin_rows() {
+        for (height, framed_normal, unframed_normal, zen_margin) in
+            [(3, 0, 0, 0), (8, 0, 0, 0), (24, 0, 1, 0), (40, 1, 2, 1)]
+        {
+            for (zen, border, expected) in [
+                (false, BordersStyle::Rounded, framed_normal),
+                (false, BordersStyle::Square, framed_normal),
+                (false, BordersStyle::None, unframed_normal),
+                (true, BordersStyle::Rounded, zen_margin),
+                (true, BordersStyle::None, zen_margin),
+            ] {
+                let frame = frame(Rect::new(3, 4, 120, height), zen, border);
+                for mode in [LayoutMode::Single, LayoutMode::Spread, LayoutMode::Scroll] {
+                    let (text, _, _) = geometry(&frame, mode, 70, 8, zen);
+                    assert_eq!(text.y - frame.inner.y, expected);
+                    assert_eq!(frame.inner.bottom() - text.bottom(), expected);
+                }
+            }
         }
     }
 }

@@ -85,7 +85,7 @@ impl Navigation {
     }
     pub fn draw(&mut self, f: &mut Frame, style: Style) {
         let area = centered(f.area(), 72, 22);
-        self.draw_at(f, style, area, None);
+        crate::overlay::modal(f, area, |f| self.draw_at(f, style, area, None));
     }
     pub fn draw_sidebar(
         &mut self,
@@ -479,6 +479,7 @@ mod tests {
         let mut term = Terminal::new(TestBackend::new(32, 10)).unwrap();
         for palette in ["sepia-light", "sepia-dark"] {
             let theme = crate::theme::Theme::from_id(palette);
+            let _context = crate::settings::reader_dialogs(theme);
             let mut nav = Navigation::new(Kind::Contents, &doc, place);
             for focused in [true, false] {
                 nav.edit(Edit::Move(1));
@@ -493,8 +494,10 @@ mod tests {
                 assert_eq!(b[(x, y + 1)].symbol(), " ");
                 assert!(!b[(x, y)].modifier.contains(Modifier::REVERSED));
                 assert_eq!(b[(x, y + 1)].modifier.contains(Modifier::REVERSED), focused);
-                assert_eq!(b[(0, 0)].modifier.contains(Modifier::BOLD), focused);
-                assert_eq!(b[(0, 0)].fg, theme.link());
+                let frame = theme.frame_style(focused);
+                let corner = &b[(0, 0)];
+                assert_eq!(corner.modifier, frame.add_modifier);
+                assert_eq!(Some(corner.fg), frame.fg.or(theme.style().fg));
             }
         }
     }

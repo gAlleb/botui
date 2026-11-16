@@ -70,9 +70,16 @@ def check(tmp):
         rows = (re.sub(r"[\u2500-\u257f]", " ", row) for row in frame.splitlines()[:-1])
         return 2 if any(row[:20].strip() and row[62:].strip() for row in rows) else 1
 
-    def reading_frame(frame, title=""):
-        label = f" {re.escape(title)} " if title else ""
-        return bool(re.search(rf"[╭┌]{label}─+[╮┐]$", frame.partition("\n")[0]))
+    def framed_chapter_start(frame, number, chapter, passage):
+        top, _, body = frame.partition("\n")
+        # Normal mode can put the contents frame to the left of the book.
+        title = re.search(r"[╭┌] До первого парома ─+ "
+                          rf"{number}/3 · {re.escape(chapter)} · 0% [╮┐]$", top)
+        if not title:
+            return False
+        page_rows = [row[title.start() + 1:] for row in body.splitlines()]
+        return (any(chapter in row for row in page_rows)
+                and any(passage in row for row in page_rows))
 
     def first_words(frame):
         for row in frame.splitlines():
@@ -86,13 +93,15 @@ def check(tmp):
     heading = "Почта на пристани"
     try:
         open_book()
-        wait_for("Content frame in normal reading", lambda s: heading in s and reading_frame(s))
+        wait_for("Content frame in normal reading", lambda s: framed_chapter_start(
+            s, 1, heading, "До первого парома оставалось"))
         keys('Space', 'z')
         before = wait_for("Clean Zen spread", lambda s: "Space z Zen" not in s
                           and heading in s and not s.startswith(("╭", "┌")) and columns(s) == 2)
         # The frame takes space and may reflow both pages, but keeps the reading position.
         keys('Space', 'p')
-        shown = wait_for("Zen frame and progress", lambda s: reading_frame(s, "До первого парома")
+        shown = wait_for("Zen frame and progress", lambda s: framed_chapter_start(
+            s, 1, heading, "До первого парома оставалось")
                          and re.search(r"\d+ / \d+  ·  \d+%", s))
         assert first_words(shown) == first_words(before), "Frame toggle lost the start of the passage"
         keys('Space', 'p')
@@ -138,7 +147,13 @@ def check(tmp):
                 break
         else:
             raise AssertionError(f"Chapter missing from the contents tree\n{toc}")
-        wait_for("Переход к главе без панели",lambda s:s.strip().startswith("Обратный рейс") and "Sections:" not in s)
+        last_chapter = wait_for("Переход к главе без панели", lambda s:
+                                s.strip().startswith("Обратный рейс") and "Sections:" not in s)
+        keys('Space', 'p')
+        wait_for("Frame follows the chapter jump", lambda s: framed_chapter_start(
+            s, 3, "Обратный рейс", "Мальчики появились сразу"))
+        keys('Space', 'p')
+        wait_for("Clean Zen restores the last chapter", lambda s: s == last_chapter)
         keys('Space', 'b', 'a', 'Space', 'b', 'l')
         wait_for("Поставленная закладка",lambda s:"Bookmarks: 1" in s)
         keys("Escape");wait_for("Закрыли закладки",lambda s:"Bookmarks:" not in s);keys('Space', 'f');wait_for("Строка поиска",lambda s:"Find:" in s);keys("-l",heading);wait_for("Найден заголовок",lambda s:heading in s and " 1 " in s);keys("Enter")

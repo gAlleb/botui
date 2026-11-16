@@ -190,9 +190,7 @@ fn view(
                 note_width.unwrap_or_else(|| screen.width.saturating_sub(2)),
                 screen.height.saturating_sub(2),
             );
-            let block = crate::appearance::block()
-                .title_style(ratatui::style::Style::new().cyan().not_dim())
-                .title(title.as_str());
+            let block = crate::appearance::block().title(title.as_str());
             let inner = block.inner(area);
             let available = Rect {
                 height: inner.height.saturating_sub(1),
@@ -214,7 +212,7 @@ fn view(
                 .height
                 .saturating_sub(rows.min(u16::MAX as usize) as u16);
             area = centered(screen, area.width, area.height - unused);
-            crate::overlay::paint(f, area, |f| {
+            crate::overlay::modal(f, area, |f| {
                 let inner = block.inner(area);
                 f.render_widget(Clear, area);
                 f.render_widget(block, area);

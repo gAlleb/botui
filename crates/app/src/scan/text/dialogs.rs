@@ -93,7 +93,8 @@ impl Text {
                 let (_, quote, _) = self
                     .selection()
                     .ok_or_else(|| io::Error::other("Select some PDF text first"))?;
-                self.message = crate::reader::clipboard::copy(&quote)?.into();
+                self.toolbar.notify(crate::reader::clipboard::copy(&quote)?);
+                self.message.clear();
                 if let (Some(a), Some(b)) = (self.start.take(), self.cursor) {
                     self.previous = Some((a, b));
                 }
@@ -201,7 +202,7 @@ impl Text {
             term.draw(|f| {
                 background(f, saved);
                 let area = crate::centered(f.area(), 88, 26);
-                crate::overlay::paint(f, area, |f| {
+                crate::overlay::modal(f, area, |f| {
                     let border = crate::appearance::block()
                         .title(format!(" PDF highlights & notes · {} ", notes.len()));
                     let inner = border.inner(area);

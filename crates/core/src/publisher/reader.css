@@ -13,6 +13,8 @@ h1, h2, h3, h4, h5, h6 { font-size: 1em; line-height: 1; text-align: center; }
 p:not([data-botui-centered]) { text-indent: var(--botui-indent, 0px) !important; }
 blockquote { margin-inline: 2ch; }
 table { border-spacing: 1ch 0; }
+table[data-botui-gutter-left] { padding-left: 1ch !important; }
+table[data-botui-gutter-right] { padding-right: 1ch !important; }
 td, th { padding: 0; }
 pre { white-space: pre-wrap; tab-size: 4; }
 img, svg { max-width: 100%; }

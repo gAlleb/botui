@@ -1,7 +1,104 @@
 use super::{Anchor, Block, CELL, Chapter, PageLine, ROW, canvas};
-use blitz_dom::UserAgentStylesheet;
+use blitz_dom::{BaseDocument, Node, UserAgentStylesheet};
+use blitz_traits::node_id::NodeId;
 use blitz_traits::shell::{ColorScheme, Viewport};
 use std::ops::Range;
+
+/// Preserve publisher-drawn borders on any part of the table.
+pub(super) fn needs_rules(doc: &BaseDocument, node: &Node) -> bool {
+    use blitz_dom::node::SpecialElementData;
+    use style::values::computed::BorderStyle;
+    let Some(SpecialElementData::TableRoot(table)) = node.element_data().map(|e| &e.special_data)
+    else {
+        return false;
+    };
+    let has_border = |id| {
+        doc.get_node(id)
+            .and_then(|n| n.primary_styles())
+            .is_some_and(|s| {
+                let b = s.get_border();
+                [
+                    b.border_left_style,
+                    b.border_right_style,
+                    b.border_top_style,
+                    b.border_bottom_style,
+                ]
+                .iter()
+                .any(|side| *side != BorderStyle::None)
+            })
+    };
+    !has_border(node.id)
+        && !table.cells.iter().any(|c| has_border(c.node_id))
+        && !table
+            .rows
+            .iter()
+            .any(|r| has_border(r.node_id) || r.group.is_some_and(has_border))
+        && !table
+            .columns
+            .iter()
+            .any(|c| has_border(c.node_id) || c.group.is_some_and(has_border))
+}
+
+// The default border spacing already supplies one terminal cell on each side.
+pub(super) fn missing_gutters(
+    doc: &BaseDocument,
+    chapter: &Chapter,
+) -> Vec<(NodeId, &'static str)> {
+    let mut gutters = Vec::new();
+    if chapter.tables.is_empty() {
+        return gutters;
+    }
+    for (id, node) in doc.tree().iter() {
+        if node
+            .element_data()
+            .and_then(|e| super::marker(e, "data-botui-data-table"))
+            .is_none()
+        {
+            continue;
+        }
+        let Some(style) = node.primary_styles() else {
+            continue;
+        };
+        let gap = if style.clone_border_collapse()
+            == style::computed_values::border_collapse::T::Separate
+        {
+            style.clone_border_spacing().0.width.px()
+        } else {
+            0.
+        };
+        let padding = node.final_layout().padding;
+        if gap < CELL && needs_rules(doc, node) {
+            if gap + padding.left < CELL {
+                gutters.push((id, "data-botui-gutter-left"));
+            }
+            if gap + padding.right < CELL {
+                gutters.push((id, "data-botui-gutter-right"));
+            }
+        }
+    }
+    gutters
+}
+
+pub(super) fn set_gutters(
+    doc: &mut BaseDocument,
+    gutters: &[(NodeId, &'static str)],
+    enabled: bool,
+) {
+    if gutters.is_empty() {
+        return;
+    }
+    let mut dom = doc.mutate();
+    for &(id, marker) in gutters {
+        let mut name = blitz_dom::qual_name!("class");
+        name.local = marker.into();
+        if enabled {
+            dom.set_attribute(id, name, "");
+        } else {
+            // The next viewport measures the original publisher box again.
+            dom.clear_attribute(id, name);
+        }
+    }
+}
 
 /// Lightweight index into the already annotated spine HTML. The full table is
 /// laid out independently only while the user has its viewer open.
@@ -73,7 +170,7 @@ impl Chapter {
             {selector} {{ width:100% !important; max-width:none !important; margin:0 !important }}"
         )));
         super::spacing::resolve(&mut doc, options);
-        let rows = canvas::lines(&mut doc, width, &self.sources, blocks, &self.images);
+        let rows = canvas::lines(&mut doc, width, self, blocks);
         let mut header = 0..0;
         if let Some(source) = &table.heading {
             let mut range = rows
@@ -87,7 +184,13 @@ impl Chapter {
                 })
                 .map(|(i, _)| i);
             if let Some(first) = range.next() {
-                header = first..range.next_back().unwrap_or(first) + 1;
+                let end = range.next_back().unwrap_or(first) + 1;
+                let top_rule = first.checked_sub(1).filter(|&i| {
+                    rows[i].surfaces.iter().any(|surface| {
+                        matches!(surface, crate::Surface::TableEdge { top: true, .. })
+                    })
+                });
+                header = top_rule.unwrap_or(first)..end;
             }
         }
         Some(TableView {

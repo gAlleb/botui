@@ -45,6 +45,56 @@ const MARKS: &[char] = &[
     '\u{1D188}', '\u{1D189}', '\u{1D1AA}', '\u{1D1AB}', '\u{1D1AC}', '\u{1D1AD}', '\u{1D242}', '\u{1D243}',
     '\u{1D244}',
 ];
+/// Reader dialogs share the book's palette. Resolve that palette before
+/// softening surrounding cells so the dialog itself keeps its normal contrast.
+pub(crate) fn modal(f: &mut Frame, panel: Rect, draw: impl FnOnce(&mut Frame)) {
+    backdrop(f, panel);
+    paint(f, panel, draw);
+}
+
+pub(crate) fn backdrop(f: &mut Frame, panel: Rect) {
+    if panel != f.area() {
+        crate::settings::paint_dialog(f);
+        dim_outside(f.buffer_mut(), panel);
+    }
+}
+
+fn dim_outside(buffer: &mut ratatui::buffer::Buffer, panel: Rect) {
+    use ratatui::{
+        buffer::CellDiffOption,
+        style::{Color, Modifier},
+    };
+    for y in buffer.area.y..buffer.area.bottom() {
+        for x in buffer.area.x..buffer.area.right() {
+            if panel.contains((x, y).into()) {
+                continue;
+            }
+            let cell = &mut buffer[(x, y)];
+            // Native graphics use cell colors as image IDs and can contain a
+            // one-shot pixel transfer. Keep the terminal's original payload.
+            if matches!(
+                cell.diff_option,
+                CellDiffOption::Skip | CellDiffOption::ForcedWidth(_)
+            ) || cell.symbol().contains(PIXEL)
+                || cell.symbol().contains('\x1b')
+            {
+                continue;
+            }
+            if let Color::Rgb(r, g, b) = cell.bg {
+                let paper = [r, g, b].map(|v| v - v / 8);
+                cell.bg = Color::Rgb(paper[0], paper[1], paper[2]);
+                if let Color::Rgb(r, g, b) = cell.fg {
+                    let blend = |ink, bg| ((3 * u16::from(ink) + u16::from(bg)) / 4) as u8;
+                    cell.fg =
+                        Color::Rgb(blend(r, paper[0]), blend(g, paper[1]), blend(b, paper[2]));
+                    continue;
+                }
+            }
+            cell.modifier.insert(Modifier::DIM);
+        }
+    }
+}
+
 pub(crate) fn paint(f: &mut Frame, panel: Rect, draw: impl FnOnce(&mut Frame)) {
     let buf = f.buffer_mut();
     let mut transmissions = vec![];
@@ -118,6 +168,38 @@ fn repaint_sixel_text(buffer: &mut ratatui::buffer::Buffer, panel: Rect) {
 mod tests {
     use super::*;
     use ratatui::buffer::{Buffer, CellDiffOption};
+    #[test]
+    fn backdrop_softens_light_and_dark_pages_and_preserves_modal_and_native_graphics() {
+        use ratatui::style::{Color, Modifier};
+        let area = Rect::new(0, 0, 6, 2);
+        let panel = Rect::new(2, 0, 2, 2);
+        for (ink, paper) in [(30, 220), (220, 30)] {
+            let mut buf = Buffer::empty(area);
+            for cell in &mut buf.content {
+                cell.set_symbol("A")
+                    .set_fg(Color::Rgb(ink, ink, ink))
+                    .set_bg(Color::Rgb(paper, paper, paper));
+            }
+            buf[(0, 1)]
+                .set_symbol("\u{10eeee}")
+                .set_fg(Color::Rgb(1, 2, 3));
+            buf[(1, 1)].set_diff_option(CellDiffOption::Skip);
+            buf[(5, 0)].set_fg(Color::Reset).set_bg(Color::Reset);
+            let original = buf.clone();
+            dim_outside(&mut buf, panel);
+            assert_eq!(buf[(2, 0)], original[(2, 0)]);
+            assert_eq!(buf[(0, 1)], original[(0, 1)]);
+            assert_eq!(buf[(1, 1)], original[(1, 1)]);
+            assert!(buf[(5, 0)].modifier.contains(Modifier::DIM));
+            assert_eq!(buf[(5, 0)].bg, Color::Reset);
+            let (Color::Rgb(fg, _, _), Color::Rgb(bg, _, _)) = (buf[(0, 0)].fg, buf[(0, 0)].bg)
+            else {
+                panic!()
+            };
+            assert!(fg.abs_diff(bg) < ink.abs_diff(paper));
+            assert!(bg < paper);
+        }
+    }
     #[test]
     fn sixel_selection_keeps_image_width_and_skips_under_text_overlays() {
         let area = Rect::new(0, 0, 6, 2);

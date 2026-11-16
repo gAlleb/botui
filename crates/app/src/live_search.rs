@@ -243,7 +243,7 @@ impl<S: Source> Search<S> {
                 let height = area.height.saturating_sub(area.height / 3).clamp(7, 16);
                 popup =
                     crate::centered(area, width.min(area.width.saturating_sub(2).max(1)), height);
-                crate::overlay::paint(f, popup, |f| {
+                crate::overlay::modal(f, popup, |f| {
                     (rows, close) = self.draw(f, popup);
                 });
                 crate::settings::paint_interface(f);

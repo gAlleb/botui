@@ -223,6 +223,17 @@ def check_frame_position(root, mode):
         original = position()
         assert original[0] == 1 and bool(original[2]) == (mode == "spread"), original
         assert bool(original[3]) == (mode == "scroll"), original
+        term = scroll.start(root, book)
+        term.wait("PDF reopens in clean Zen", lambda f: pixels.search(f) and not has_frame(f))
+        term.keys("Space", "z")
+        normal = term.wait("PDF progress is in the normal reading frame", lambda f:
+                           "[Space z Zen]" in f and re.search(r"2 / 4  ·  \d+%", f.splitlines()[-2]))
+        assert "2 / 4" not in normal.splitlines()[-1], normal
+        assert book.stem in normal.splitlines()[0], normal
+        term.keys("Space", "z")
+        term.wait("Return to clean Zen", lambda f: pixels.search(f) and "[Space z Zen]" not in f)
+        scroll.stop(term)
+        assert position() == original, (mode, original, position())
         for visible in (True, False):
             term = scroll.start(root, book)
             term.wait("PDF reopens with the saved frame setting", lambda f:

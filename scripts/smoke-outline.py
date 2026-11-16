@@ -38,8 +38,10 @@ with tempfile.TemporaryDirectory(prefix='botui-outline-') as d:
     for book, reopen in [(book,False),(book,True),(djvu,False),(djvu,True)]:
         term = shelf.Terminal(root, repo/'target/debug/botui', args=[str(book)])
         try:
-            frame = term.see('LeafSection')
-            positions = [next(line.index(word) for line in frame.splitlines() if word in line) for word in ('RootChapter','ChildSection','LeafSection')]
+            header = '3/4 · LeafSection · 0%' if reopen else '2/4 · ChildSection · 0%'
+            frame = term.wait('Section title and original outline index', lambda s: header in s.partition('\n')[0])
+            outline = [line[1:].partition('│')[0] for line in frame.splitlines() if line.startswith('│')]
+            positions = [next(line.index(word) for line in outline if word in line) for word in ('RootChapter','ChildSection','LeafSection')]
             assert positions[0] < positions[1] < positions[2], frame
             if reopen:
                 term.see('2 / 3')
@@ -55,7 +57,7 @@ with tempfile.TemporaryDirectory(prefix='botui-outline-') as d:
                 term.wait('Outline cursor highlights FinalChapter', cursor_on_final)
                 continue
             term.keys('Tab','Left','Left','Left')
-            term.wait('Fold root',lambda s:'▸ 1  RootChapter' in s and 'LeafSection' not in s)
+            term.wait('Fold root',lambda s:'▸ 1  RootChapter' in s and 'LeafSection' not in s and header in s.partition('\n')[0])
             term.keys('Right','Down','Right')
             term.see('LeafSection')
             term.click('LeafSection',term.see('LeafSection'))

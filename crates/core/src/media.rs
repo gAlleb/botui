@@ -150,7 +150,7 @@ pub(super) fn space_figures(
 
 pub(super) fn bare(line: &PageLine) -> bool {
     line.text.trim().is_empty()
-        && !line.has_background()
+        && !line.has_visible_surface()
         && !line.table_header
         && line.spans.iter().all(|s| s.source.is_none())
 }

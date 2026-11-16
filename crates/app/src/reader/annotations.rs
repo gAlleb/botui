@@ -53,8 +53,11 @@ pub(super) fn run(
                 .study
                 .range(&reader.doc, reader.pager.anchor())
                 .ok_or_else(|| io::Error::other("Select some text first"))?;
-            reader.study.message =
-                Some(super::clipboard::copy(&reader.doc.text_range(range))?.into());
+            reader
+                .study
+                .toolbar
+                .notify(super::clipboard::copy(&reader.doc.text_range(range))?);
+            reader.study.message = None;
             reader.study.copied();
         }
         Command::Comment | Command::Highlight | Command::Peek => {
@@ -187,6 +190,7 @@ fn list(term: &mut AppTerminal, reader: &mut Reader, store: &LocalState) -> io::
         term.draw(|f| {
             reader.draw(f, None);
             let area = centered(f.area(), 90, 28);
+            crate::overlay::backdrop(f, area);
             let border =
                 crate::appearance::block().title(format!(" Highlights & notes · {} ", notes.len()));
             let inner = border.inner(area);

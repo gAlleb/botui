@@ -127,7 +127,9 @@ An open local PDF refreshes after an editor or typesetter finishes writing it. T
 
 For LaTeX, compile with `-synctex=1` and open the local PDF in BOTUI. With the optional `synctex` utility on your PATH, run `botui --synctex-forward 42:0:chapter.tex book.pdf` from the editor to highlight line 42 in the open PDF. An explicit PDF path picks the document; if it is open twice, the most recently opened copy receives the jump.
 
-**Alt + left click** finds the source at the clicked point. **F8** uses the visible Vim cursor, highlighted line, or center of the first visible page. BOTUI shows the source path and line. To open it in your editor, set `synctex_editor` in the configuration. For example, `["code", "--goto", "{file}:{line}:{column}"]` opens VS Code, and `["kitty", "nvim", "+{line}", "--", "{file}"]` opens Neovim in a separate terminal. The editor receives the filename as a single argument. Keep the matching `.synctex` or `.synctex.gz` beside the PDF.
+**Alt + left click** finds the source at the clicked point. **F8** uses the visible Vim cursor, highlighted line, or center of the first visible page. Keep the matching `.synctex` or `.synctex.gz` beside the PDF.
+
+Under **F2 → Reader → SyncTeX editor command**, enter the command that opens your editor. For example, `kitty nvim +{line} -- "{file}"` opens Neovim at the source line. You can use `{file}`, `{line}` and `{column}`. Quote arguments that contain spaces. Press **Enter** to apply the command to the open PDF. Clear the field to have **F8** show just the source location. The field also displays commands already saved in `synctex_editor` in your configuration.
 
 PDF contents require Python 3, PyGObject and the Poppler GI bindings. Image-only EPUBs use the fixed-page reader. There is no OCR: scans and comic images do not provide word selection, definitions or translation.
 
@@ -137,11 +139,13 @@ Kitty displays covers and pages as images, including inside tmux with graphics p
 
 ## Reading
 
-In Zen, **Space p** shows the book title on the upper border. PDFs use the embedded title when present, and fixed-page files without a title use the file name.
+The upper border shows the book title on the left and the current section on the right. PDFs use the embedded title when present. Fixed-page documents without a title use the file name. Long titles end in an ellipsis as the window narrows. Borders use shades of the reading theme’s text and background colors. The focused pane has a higher-contrast border.
+
+In an EPUB, **8/30 · Chapter Four · 40%** means the eighth of 30 files in the publisher’s reading order and a position 40% of the way through Chapter Four. The count includes covers and other entries in the EPUB spine. A PDF or DjVu with an outline uses the outline entry number.
+
+The current page, page count and percentage of the whole book appear in the center of the lower border. With borders disabled in normal mode, progress appears in the shortcut row. In Zen, **Space p** toggles the frame and progress.
 
 In a two-page text spread, each chapter starts on the left. If the preceding chapter ends on the left, the facing page stays empty. Scrolling runs continuously across chapters.
-
-For books with chapter boundaries, the progress display shows how many more screenfuls it takes to reach the end of the chapter that starts or continues at the top left. A spread counts as one screenful. PDFs and DjVu files with an outline count physical pages beyond the displayed page or pair. “Chapter end” means the ending is already on screen.
 
 Press **Space**, then the command keys **in sequence**. Menu hints appear after 150 ms by default; commands work immediately. In a submenu, **q / Esc / Backspace** go back; Escape closes the root menu.
 
@@ -255,7 +259,7 @@ PDF search highlights each occurrence and brings it into view, including multipl
 
 ### Tables, equations and illustrations
 
-In EPUB data tables with column labels, thin vertical dividers use the space between columns. Merged cells stay intact and tables with publisher borders keep their own rules.
+EPUB data tables with column labels have thin dividers and an outer frame. One blank line separates the caption from the table. The side borders continue across page turns, and the bottom border follows the last row. Merged cells stay intact and tables with publisher borders keep their own rules.
 
 Open a technical EPUB as you would a novel. The reader applies styles packaged with the edition, including merged table cells, side-by-side columns, lists and preformatted code. Equations in presentation MathML and TeX explicitly marked as math appear in the passage. A fraction has its numerator above its denominator. Press **Space r t** to open a table across the full window. Use the arrow keys or the buttons below the table to pan. **PgUp/PgDn** scroll by a screen and **Esc** returns to the same place in the book. Recognized column headings stay visible while scrolling.
 

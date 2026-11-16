@@ -432,11 +432,14 @@ impl Drop for DialogTheme {
 pub fn reader_dialogs(theme: crate::theme::Theme) -> DialogTheme {
     DialogTheme(DIALOG_THEME.replace(Some(theme)))
 }
+pub(crate) fn dialog_reader_theme() -> Option<crate::theme::Theme> {
+    DIALOG_THEME.get()
+}
 pub fn interface_dialogs() -> DialogTheme {
     DialogTheme(DIALOG_THEME.replace(None))
 }
 pub fn paint_dialog(frame: &mut Frame) {
-    if let Some(theme) = DIALOG_THEME.get() {
+    if let Some(theme) = dialog_reader_theme() {
         paint_book(frame, theme);
     } else {
         paint_interface(frame);

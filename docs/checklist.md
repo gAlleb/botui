@@ -100,11 +100,11 @@ The canvas regression compares grouped rendering with individual shaping cluster
 - **EPUB layout.** Tests cover local CSS, Grid, Flexbox, table spans, fractions, roots, scripts, matrices and marked TeX. The terminal supplies one font size and the reader supplies the palette. Static SVG inside XHTML and linked through `img`/`object` is displayed as illustrations. Arbitrary fixed HTML layout, JavaScript, SVG animation and `foreignObject` are not supported. FB2 has its own text and raster-image reader.
 - **OPDS 1 and 2.** Tests cover direct file acquisition. DRM and separate lending workflows are unsupported.
 - **PDF and DjVu.** Image-only pages are readable. Search requires an existing text layer. The server syncs the page number, and the device also saves the scroll offset.
+- Local PDFs support forward and inverse SyncTeX navigation. [Commands and editor setup](guide.md#formats)
 
 ## Next reader improvements
 
 1. **Extended annotation positions.** Whole-page notes and ranges across PDF pages / EPUB spine documents remain local. Exact CFI ranges and single-page PDF text highlights sync through BookOrbit. The owner confirmed EPUB highlights in the basic colors and multiline comment exchange on the live server; PDF, offline and conflict checks use a test server.
-2. **SyncTeX — not implemented yet.** Navigate between a position in a PDF and the corresponding line of its `.tex` source using a `.synctex` file. This is separate from the existing rendering of MathML and marked-up TeX formulas inside EPUB. OCR is outside the current scope: PDF selection requires an existing text layer.
 
 ### Terminal and device checks
 

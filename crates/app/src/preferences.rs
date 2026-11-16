@@ -222,6 +222,15 @@ fn rows(tab: usize, s: &Settings) -> Vec<SettingRow> {
                 &s.comic_theme().name(),
                 "Background around CBZ/CBR pages. Artwork always keeps its original colors. Space t previews and saves this choice.",
             ),
+            pair(
+                "SyncTeX editor command",
+                &if s.synctex_editor.is_empty() {
+                    "Show source location".into()
+                } else {
+                    crate::synctex::editor_command(&s.synctex_editor)
+                },
+                "F8 opens a local PDF’s LaTeX source. Use {file}, {line} and optionally {column}. Leave blank to show the location.",
+            ),
         ],
         2 => vec![
             pair(

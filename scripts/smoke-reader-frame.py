@@ -36,21 +36,22 @@ def fixture(path):
           <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/></manifest>
           <spine><itemref idref="one"/><itemref idref="two"/></spine></package>''')
         book.writestr("nav.xhtml", '''<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
-          <body><nav epub:type="toc"><ol><li><a href="one.xhtml">Frame chapter one</a></li>
-          <li><a href="two.xhtml">Frame chapter two</a></li></ol></nav></body></html>''')
+          <body><nav epub:type="toc"><ol><li><a href="one.xhtml">Chapter 1. Departure</a></li>
+          <li><a href="two.xhtml">Chapter 2. Return</a></li></ol></nav></body></html>''')
         book.writestr("one.xhtml", '<html xmlns="http://www.w3.org/1999/xhtml"><body>'
-                      '<h1>Frame chapter one</h1><p>' + PARAGRAPH + '</p><p>BeforePlate</p>'
+                      '<h1>Chapter 1. Departure</h1><p>' + PARAGRAPH + '</p><p>BeforePlate</p>'
                       '<img src="plate.png" style="width:120px;height:90px"/>'
                       '<p>AfterPlate</p></body></html>')
         book.writestr("two.xhtml", '<html xmlns="http://www.w3.org/1999/xhtml"><body>'
-                      '<h1>Frame chapter two</h1>' + ''.join(
+                      '<h1>Chapter 2. Return</h1>' + ''.join(
                           f'<p>Following passage {i:03} continues the second chapter.</p>'
                           for i in range(50)) + '</body></html>')
         book.writestr("plate.png", shelf.ORIGINAL_COVER)
 
 
 def framed(frame):
-    return bool(re.search(r"[╭┌](?: [^\n]+? )?─+[╮┐]", frame))
+    top = frame.partition("\n")[0]
+    return top.startswith(("╭", "┌")) and top.rstrip().endswith(("╮", "┐"))
 
 
 def target_on_first_line(frame):
@@ -115,6 +116,21 @@ def check(root, mode):
     fixture(book)
     start, saved_position = isolated_reader(root, book)
 
+    def check_selection_row(term, before):
+        book_rows = before.splitlines()[:-1]
+        term.keys("Space", "c", "V")
+        selected = term.see("VISUAL")
+        assert selected.splitlines()[:-1] == book_rows, "Selecting moved the book"
+        term.keys("Space", "a", "y")
+        copied = term.see("Copied to clipboard")
+        assert "Copied to clipboard" in copied.splitlines()[-1], copied
+        assert copied.splitlines()[:-1] == book_rows, "Copying moved the book"
+        assert (root / "copied").read_text() == PARAGRAPH
+        restored = term.see("NORMAL")
+        assert restored.splitlines()[:-1] == book_rows, "Dismissing feedback moved the book"
+        term.keys("Escape")
+        term.wait("Leaving Vim restores the original frame", lambda frame: frame == before)
+
     term = start()
     try:
         term.see("word000")
@@ -134,15 +150,25 @@ def check(root, mode):
         assert saved_position() == original, "Showing the frame changed the saved source address"
 
         term = start()
-        term.wait("Reopen framed Zen at the same word", lambda f: framed(f)
-                  and PROGRESS.search(f) and target_on_first_line(f))
+        bordered = term.wait("Reopen framed Zen at the same word", lambda f: framed(f)
+                             and PROGRESS.search(f) and target_on_first_line(f))
+        check_selection_row(term, bordered)
         term.keys("Space", "p")
         term.wait("Removing the frame restores the clean layout", lambda f: f == clean)
         term.keys("Space", "z")
         normal = term.wait("Normal reader keeps the word inside its frame", lambda f: framed(f)
-                           and "[Space z Zen]" in f and target_on_first_line(f))
+                           and "[Space z Zen]" in f and PROGRESS.search(f) and target_on_first_line(f))
+        border = normal.splitlines()[-2]
+        assert PROGRESS.search(border), normal
+        assert "Chapter 1" not in border, normal
+        assert re.search(r"1/2 · Chapter 1\. Departure · \d+% ╮$", normal.splitlines()[0]), normal
+        assert not PROGRESS.search(normal.splitlines()[-1]), normal
+        assert normal.splitlines()[0].count("Reader frame fixture") == 1, normal
+        assert "Reader frame fixture" not in normal.splitlines()[-1], normal
+        check_selection_row(term, normal)
         term.click("[Space z Zen]", normal)
         term.wait("Return from normal reader restores clean Zen", lambda f: f == clean)
+        check_selection_row(term, clean)
 
         # V selects the source paragraph, including text outside this viewport.
         # Changing the frame must not copy padding, omit text or change the range.

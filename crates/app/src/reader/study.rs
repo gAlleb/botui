@@ -6,7 +6,6 @@ use ratatui::{
     Frame,
     layout::{Position, Rect},
     style::{Color, Modifier, Style},
-    widgets::{Clear, Paragraph},
 };
 use std::time::{Duration, Instant};
 
@@ -51,6 +50,7 @@ pub(super) struct Study {
     search_backward: bool,
     map: Vec<Cell>,
     buttons: Vec<(Rect, Command)>,
+    pub toolbar: super::controls::ActionRow,
 }
 impl Study {
     pub fn expects_mark(&self) -> bool {
@@ -198,6 +198,9 @@ impl Study {
                         action(Command::ContextMenu(p))
                     }
                     MouseEventKind::Down(MouseButton::Left) => {
+                        if self.controls_visible() && self.toolbar.advance(p) {
+                            return Some(Action::Resize);
+                        }
                         // A footer can reflow the book after the first click. The
                         // rest of that click series still belongs to its source.
                         let continued = self.clicks.filter(|(at, pos, count, _)| {
@@ -541,7 +544,7 @@ impl Study {
             }
         }
     }
-    fn control_actions(&self) -> [(&'static str, Option<Command>); 7] {
+    fn control_actions(&self, compact: bool) -> [(&'static str, Option<Command>); 7] {
         let label = if self.keys.pending() {
             "NORMAL · command…"
         } else if self.visual.is_some() {
@@ -558,8 +561,22 @@ impl Study {
             ("[Space a y Copy]", Some(Command::Copy)),
             ("[Space a h Highlight]", Some(Command::Highlight)),
             ("[Space a n Note]", Some(Command::Comment)),
-            ("[Space a a Notes]", Some(Command::List)),
-            ("[Space d d Dictionary]", Some(Command::Lookup)),
+            (
+                if compact {
+                    "[Notes]"
+                } else {
+                    "[Space a a Notes]"
+                },
+                Some(Command::List),
+            ),
+            (
+                if compact {
+                    "[Dictionary]"
+                } else {
+                    "[Space d d Dictionary]"
+                },
+                Some(Command::Lookup),
+            ),
             (
                 if self.selection.is_some() || self.keys.pending() {
                     "[Esc Clear]"
@@ -581,49 +598,27 @@ impl Study {
             })
             .filter(|body| !body.is_empty())
     }
-    pub fn controls_area(&self, area: Rect) -> Rect {
-        let height = if self.cursor.is_none() && self.message.is_none() {
-            0
-        } else {
-            let (_, rows) = super::controls::layout(area, &self.control_actions().map(|a| a.0));
-            rows.saturating_add(u16::from(self.control_body().is_some()))
-                .min(area.height)
-        };
-        Rect::new(
-            area.x,
-            area.bottom().saturating_sub(height),
-            area.width,
-            height,
-        )
+    pub fn controls_visible(&self) -> bool {
+        self.cursor.is_some() || self.message.is_some() || self.toolbar.feedback().is_some()
     }
     pub fn controls(&mut self, f: &mut Frame, area: Rect, style: Style) {
-        if area.is_empty() || (self.cursor.is_none() && self.message.is_none()) {
+        if !self.controls_visible() {
             return;
         }
-        let actions = self.control_actions();
-        let (rects, height) = super::controls::layout(area, &actions.map(|a| a.0));
-        let foot = Rect::new(area.x, area.bottom() - height, area.width, height);
-        f.render_widget(Clear, foot);
-        for ((text, command), rect) in actions.into_iter().zip(rects) {
-            f.render_widget(
-                Paragraph::new(text).style(style.add_modifier(Modifier::BOLD)),
-                rect,
-            );
-            if let Some(cmd) = command {
-                self.buttons.push((rect, cmd));
-            }
-        }
-        if let Some(body) = self.control_body()
-            && foot.y > area.y
-        {
-            let row = Rect::new(area.x, foot.y - 1, area.width, 1);
-            f.render_widget(Clear, row);
-            f.render_widget(
-                Paragraph::new(body.replace('\n', " · "))
-                    .style(style.add_modifier(Modifier::ITALIC)),
-                row,
-            );
-        }
+        let full = self.control_actions(false);
+        let compact = full
+            .iter()
+            .map(|(label, _)| ratatui::text::Line::raw(*label).width() + 1)
+            .sum::<usize>()
+            > usize::from(area.width) + 1;
+        let actions = if compact {
+            self.control_actions(true)
+        } else {
+            full
+        };
+        let body = self.control_body().map(str::to_owned);
+        self.toolbar
+            .draw(f, area, style, body.as_deref(), &actions, &mut self.buttons);
     }
 }
 fn highlight(color: HighlightColor) -> Style {
@@ -712,11 +707,11 @@ mod tests {
     #[test]
     fn wrapped_controls_and_feedback_leave_the_last_book_row_visible_in_clean_zen() {
         use botui_core::LayoutMode;
-        use ratatui::{Terminal, backend::TestBackend};
+        use ratatui::{Terminal, backend::TestBackend, widgets::Paragraph};
         for width in [40, 80, 160] {
             for height in [8, 24] {
                 let screen = Rect::new(0, 0, width, height);
-                assert_eq!(Study::default().controls_area(screen).height, 0);
+                assert!(!Study::default().controls_visible());
                 for feedback in [false, true] {
                     let mut study = Study {
                         cursor: Some(Anchor { block: 0, byte: 0 }),
@@ -724,16 +719,14 @@ mod tests {
                         message: feedback.then(|| "Saved".into()),
                         ..Default::default()
                     };
-                    let controls = study.controls_area(screen);
-                    if width == 40 {
-                        assert!(controls.height > 1, "narrow controls must wrap");
-                    }
+                    let controls = super::super::controls::last_row(screen);
                     let mut splitter =
                         crate::splitter::Splitter::new(crate::splitter::Pane::Contents, None);
-                    let (_, page) =
-                        super::super::layout::panes(screen, &mut splitter, true, controls.height);
+                    let (_, page) = super::super::layout::panes(screen, &mut splitter, true);
+                    let frame = crate::appearance::ReadingFrame::new(page, true, false);
                     let (text, _, _) =
-                        super::super::layout::geometry(page, LayoutMode::Single, 78, 4, true);
+                        super::super::layout::geometry(&frame, LayoutMode::Single, 78, 4, true);
+                    let text = super::super::controls::above_status(text, screen);
                     assert!(text.height > 0);
                     assert!(text.bottom() <= controls.y);
                     let mut term = Terminal::new(TestBackend::new(width, height)).unwrap();

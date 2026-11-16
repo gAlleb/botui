@@ -108,7 +108,7 @@ pub(crate) fn edit(
             } else {
                 " Comment "
             });
-            crate::overlay::paint(f, area, |f| {
+            crate::overlay::modal(f, area, |f| {
                 let inner = border.inner(area);
                 f.render_widget(Clear, area);
                 f.render_widget(border, area);

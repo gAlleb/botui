@@ -1,5 +1,6 @@
 //! Render the visible EPUB chapters first, then finish the exact book-wide page index.
 mod chapters;
+pub use chapters::ChapterProgress;
 #[cfg(test)]
 mod tests;
 use super::{
@@ -26,6 +27,7 @@ pub(super) struct BookLayout {
     uses_height: bool,
     has_figures: bool,
     has_chapters: bool,
+    chapter_progress: chapters::Progress,
 }
 impl BookLayout {
     pub(super) fn new(doc: &Document, mut options: ReflowOptions, resume: Option<Anchor>) -> Self {
@@ -81,6 +83,7 @@ impl BookLayout {
             printed,
             uses_height: !doc.styled.is_empty() || !images.is_empty(),
             has_chapters: !doc.chapter_starts.is_empty(),
+            chapter_progress: chapters::Progress::new(doc),
             has_figures: !images.is_empty() || (options.inline_images && !positioned.is_empty()),
             images,
             reflow: publisher::Reflow::new(doc),
@@ -230,9 +233,9 @@ impl BookLayout {
             }
         }
         if range.end == doc.blocks.len()
-            && lines
-                .last()
-                .is_some_and(|l| l.figures.is_empty() && l.text.is_empty())
+            && lines.last().is_some_and(|l| {
+                l.figures.is_empty() && l.text.is_empty() && !l.has_visible_surface()
+            })
         {
             lines.pop();
         }
@@ -464,36 +467,19 @@ impl Pager {
         Viewport::new(self.layout, &self.lines, first)
     }
 
-    /// Further screenfuls needed to see the end of the chapter at the top left.
-    pub fn screens_left_in_chapter(&self) -> Option<usize> {
-        if self.is_paginating() {
-            return None;
-        }
-        let chapter = self.chapter_rows.partition_point(|&row| row <= self.first);
-        if chapter == 0 {
-            return None;
-        }
-        let end = self
-            .chapter_rows
-            .get(chapter)
-            .copied()
-            .unwrap_or(self.lines.len());
-        let visible_end = self.complete_view().end();
-        if visible_end >= end {
-            return Some(0);
-        }
-        if self.layout.scrolling {
-            return Some((end - visible_end).div_ceil(self.viewport()));
-        }
-        if !self.positioned_spreads.is_empty() {
-            let starts = &self.positioned_spreads;
-            return Some(
-                starts.partition_point(|&r| r < end) - starts.partition_point(|&r| r <= self.first),
-            );
-        }
-        let columns_left = self.page_starts.partition_point(|&r| r < end)
-            - self.page_starts.partition_point(|&r| r < visible_end);
-        Some(columns_left.div_ceil(self.columns()))
+    /// Logical percentage of the chapter at the first visible content row.
+    pub fn chapter_progress(&self) -> Option<ChapterProgress<'_>> {
+        let view = self.viewport_rows();
+        let first = view.rows[view.bounds[0]..view.end()]
+            .iter()
+            .find(|row| row.reading_anchor().is_some())?;
+        let figure = first
+            .figures
+            .first()
+            .filter(|_| first.text.trim().is_empty());
+        self.book
+            .chapter_progress
+            .at(first.start, figure.map(|f| f.reference))
     }
 
     pub(super) fn complete_view(&self) -> Viewport<'_> {

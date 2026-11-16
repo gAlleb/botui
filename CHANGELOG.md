@@ -2,27 +2,30 @@
 
 ## Unreleased
 
-- Keep PDF page notes separate from comments on the first word.
-- Configure navigation key aliases by screen and Vim mode.
-- Show why annotations stay local in BookOrbit sync status.
-- Override text layout and fixed-page colors per edition in Reader settings.
-- Jump between LaTeX source lines and local PDFs with SyncTeX.
-- Start each text chapter on a new two-page spread.
-- Show the book title in the upper border when Zen progress is visible.
+### Reading
+
+- Show the book title, section number, title and progress above, with total book progress below.
+- Reduce vertical margins in normal reading mode and toggle the Zen frame with `Space p`.
+- Match reader frames to the theme, highlight the focused pane and mark the current chapter in the contents.
+- Share clickable footer shortcuts across readers and keep the page still during selection and copying.
+- Dim the page behind reading dialogs and fit footnote windows to the length of the note.
+- Start each text chapter on a fresh two-page spread and scroll continuously across chapters.
+- Keep EPUB addresses compact with custom paragraph spacing and preserve the book’s indent in centered text.
+- Frame EPUB tables, separate their captions, and open them at full width with panning and pinned column headings.
+
+### Search and annotations
+
+- Search text by exact phrase or whole words and preview each match in context.
 - Search local highlights and notes across books from the start screen.
-- Distinguish selected rows, current sections and actions in library screens and dialogs.
-- Show how much of the current chapter remains in the reading progress.
-- Reload edited local PDFs at the current page and zoom.
-- Find any whole word from a query in the text reader.
-- Preview the surrounding passage when selecting text search results.
-- Fit footnote popups to their text and scroll longer notes.
-- Mark the current chapter and highlight the focused pane and outline selection.
-- Share clickable footer shortcuts across readers and keep each button whole in narrow windows.
-- Open EPUB data tables at full width with panning and pinned column headings.
-- Show column dividers in borderless EPUB data tables.
-- Preserve the book’s first-line indent in centered EPUB paragraphs.
-- Keep EPUB addresses and aligned text compact, with an independent switch enabled by default.
-- Frame the reading area and toggle its frame and progress with Space p in Zen mode.
+- Show why an annotation stays local in BookOrbit sync status.
+- Keep PDF page notes separate from comments on the first word.
+
+### PDF and settings
+
+- Reload edited local PDFs at the same page, zoom and scroll position.
+- Jump between LaTeX source and a local PDF with SyncTeX and set the editor command in `F2`.
+- Override text layout and fixed-page colors per edition.
+- Configure navigation key aliases by screen and Vim mode.
 
 ## 0.1.18 — 2026-11-16
 

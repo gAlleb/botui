@@ -281,6 +281,7 @@ pub(super) fn parse(bytes: &[u8], fallback: &str) -> Result<Document> {
         })
         .collect();
     Ok(Document {
+        epub_spine: Default::default(),
         markdown: None,
         fixed_breaks,
         chapter_starts: contents

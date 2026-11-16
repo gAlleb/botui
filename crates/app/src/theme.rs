@@ -125,6 +125,21 @@ impl Theme {
         self.colors()
             .map_or(Color::Blue, |Colors(_, _, v)| color(v))
     }
+
+    pub(crate) fn frame_style(self, focused: bool) -> Style {
+        let Some(Colors(ink, paper, _)) = self.colors() else {
+            let native = Style::new().fg(Color::Reset);
+            return if focused { native.bold() } else { native.dim() };
+        };
+        let ink_percent = if focused { 85 } else { 45 };
+        let blend = |ink: u8, paper: u8| {
+            ((u16::from(ink) * ink_percent + u16::from(paper) * (100 - ink_percent) + 50) / 100)
+                as u8
+        };
+        let [_, r, g, b] = ink.to_be_bytes();
+        let [_, pr, pg, pb] = paper.to_be_bytes();
+        Style::new().fg(Color::Rgb(blend(r, pr), blend(g, pg), blend(b, pb)))
+    }
 }
 
 #[cfg(test)]
@@ -155,5 +170,52 @@ mod tests {
             Theme::from_id("terminal").style(),
             Style::new().fg(Color::Reset).bg(Color::Reset)
         );
+    }
+
+    #[test]
+    fn focused_and_inactive_frames_have_distinct_contrast_on_every_book_paper() {
+        fn luminance(color: Color) -> f64 {
+            let Color::Rgb(r, g, b) = color else {
+                panic!("expected an RGB reading theme")
+            };
+            let linear = |c: u8| {
+                let c = f64::from(c) / 255.0;
+                if c <= 0.04045 {
+                    c / 12.92
+                } else {
+                    ((c + 0.055) / 1.055).powf(2.4)
+                }
+            };
+            0.2126 * linear(r) + 0.7152 * linear(g) + 0.0722 * linear(b)
+        }
+        let contrast = |a: f64, b: f64| (a.max(b) + 0.05) / (a.min(b) + 0.05);
+        for row in 1..Theme::COUNT {
+            for dark in [false, true] {
+                let theme = Theme::at(row, dark);
+                let paper = luminance(theme.style().bg.unwrap());
+                let active = luminance(theme.frame_style(true).fg.unwrap());
+                let inactive = luminance(theme.frame_style(false).fg.unwrap());
+                assert!(contrast(active, paper) >= 3.0, "{}", theme.id());
+                assert!(contrast(inactive, paper) >= 1.8, "{}", theme.id());
+                assert!(contrast(active, inactive) >= 1.8, "{}", theme.id());
+            }
+        }
+    }
+
+    #[test]
+    fn frames_follow_the_books_ink_and_paper_and_terminal_frames_use_native_ink() {
+        for (id, active, inactive) in [
+            ("amoled-dark", 0xd9d9d9, 0x737373),
+            ("amoled-light", 0x262626, 0x8c8c8c),
+            ("azure-dark", 0xa4a8ca, 0x6a6f8c),
+            ("azure-light", 0x3f4862, 0x828ea7),
+        ] {
+            let theme = Theme::from_id(id);
+            assert_eq!(theme.frame_style(true), Style::new().fg(color(active)));
+            assert_eq!(theme.frame_style(false), Style::new().fg(color(inactive)));
+        }
+        let native = Style::new().fg(Color::Reset);
+        assert_eq!(Theme::TERMINAL.frame_style(true), native.bold());
+        assert_eq!(Theme::TERMINAL.frame_style(false), native.dim());
     }
 }

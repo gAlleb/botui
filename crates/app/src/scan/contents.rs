@@ -9,7 +9,9 @@ use ratatui::{
 #[derive(Default)]
 pub struct Contents {
     items: Vec<botui_fixed::OutlineEntry>,
-    section_pages: Vec<u32>,
+    epub_spine: Option<botui_core::EpubSpine>,
+    /// Indices of the deepest entry at each destination, in physical page order.
+    sections: Vec<usize>,
     visible: Vec<usize>,
     folded: std::collections::HashSet<usize>,
     selected: usize,
@@ -18,17 +20,64 @@ pub struct Contents {
     focus: bool,
 }
 impl Contents {
-    /// Physical pages after the displayed page or pair, up to the next outline destination.
-    pub fn pages_left_in_section(&self, first: u32, shown: u32, total: u32) -> Option<usize> {
-        let next = self.section_pages.partition_point(|&page| page <= first);
-        if next == 0 || total == 0 {
+    pub fn set_epub_spine(&mut self, spine: botui_core::EpubSpine) {
+        self.epub_spine = Some(spine);
+    }
+
+    fn section_index(&self, shown: u32) -> Option<usize> {
+        self.sections
+            .partition_point(|&i| self.items[i].page <= shown)
+            .checked_sub(1)
+    }
+
+    /// Position within the outline section containing the first displayed page.
+    /// Scroll offsets cover a whole page, from zero at its top to u16::MAX at its end.
+    pub fn section_position(
+        &self,
+        shown: u32,
+        scroll_offset: Option<u16>,
+        total: u32,
+        finished: bool,
+    ) -> Option<crate::appearance::SectionPosition<'_>> {
+        if shown == 0 || shown > total {
             return None;
         }
-        let last = self
-            .section_pages
-            .get(next)
-            .map_or(total, |&page| (page - 1).min(total));
-        Some(last.saturating_sub(first.saturating_add(shown.saturating_sub(1))) as usize)
+        let outline = self.section_index(shown);
+        let page = (shown - 1) as usize;
+        // A plate is a page. Several plates can belong to one EPUB spine item.
+        let (index, count, member_pages) = if let Some(spine) = &self.epub_spine {
+            let member = spine.position_at_block(page)?;
+            (member.ordinal, member.total, Some(member.blocks))
+        } else {
+            (self.sections[outline?] + 1, self.items.len(), None)
+        };
+        let (title, pages) = if let Some(section) = outline {
+            let entry = &self.items[self.sections[section]];
+            let end = self
+                .sections
+                .get(section + 1)
+                .map_or(total, |&i| total.min(self.items[i].page - 1));
+            (
+                Some(entry.title.as_str()).filter(|s| !s.trim().is_empty()),
+                (entry.page - 1) as usize..end as usize,
+            )
+        } else {
+            (None, member_pages?)
+        };
+        let units_per_page = u64::from(u16::MAX);
+        let elapsed =
+            (page - pages.start) as u64 * units_per_page + u64::from(scroll_offset.unwrap_or(0));
+        let length = pages.len() as u64 * units_per_page;
+        Some(crate::appearance::SectionPosition {
+            index,
+            total: count,
+            title,
+            percent: Some(if finished && shown == total {
+                100
+            } else {
+                (100 * elapsed / length) as u8
+            }),
+        })
     }
     fn count(&self, total: u32) -> usize {
         if self.items.is_empty() {
@@ -46,13 +95,7 @@ impl Contents {
         if self.items.is_empty() {
             return page.checked_sub(1).map(|i| i as usize);
         }
-        let index = self
-            .items
-            .iter()
-            .enumerate()
-            .filter(|(_, v)| v.page <= page)
-            .max_by_key(|(_, v)| v.page)
-            .map(|(i, _)| i)?;
+        let index = self.sections[self.section_index(page)?];
         self.visible.partition_point(|i| *i <= index).checked_sub(1)
     }
     pub fn set_outline(&mut self, items: Vec<botui_fixed::OutlineEntry>) {
@@ -62,9 +105,14 @@ impl Contents {
         // A page selected while the outline was loading now belongs to a chapter.
         let selected_page = self.page(self.selected);
         self.items = items;
-        self.section_pages = self.items.iter().map(|e| e.page).collect();
-        self.section_pages.sort_unstable();
-        self.section_pages.dedup();
+        self.sections = (0..self.items.len())
+            .filter(|&i| self.items[i].page > 0)
+            .collect();
+        self.sections.sort_unstable_by_key(|&i| {
+            let entry = &self.items[i];
+            (entry.page, std::cmp::Reverse((entry.depth, i)))
+        });
+        self.sections.dedup_by_key(|i| self.items[*i].page);
         self.folded.clear();
         self.rebuild();
         self.selected = self.index_for_page(selected_page).unwrap_or(0);
@@ -250,6 +298,101 @@ mod tests {
     use ratatui::{Terminal, backend::TestBackend};
 
     #[test]
+    fn section_percentage_tracks_the_visible_page_and_scroll_offset() {
+        let mut toc = Contents::default();
+        assert!(toc.section_position(2, None, 12, false).is_none());
+        // Unordered destinations, duplicate headings, and an invalid destination
+        // must not change the physical extent of a section.
+        toc.set_outline(
+            [8, 3, 0, 3, 7, 10, 20]
+                .map(|page| botui_fixed::OutlineEntry {
+                    title: format!("Destination {page}"),
+                    page,
+                    depth: 0,
+                })
+                .into(),
+        );
+        let percent = |page, offset, total| {
+            toc.section_position(page, offset, total, false)
+                .and_then(|s| s.percent)
+        };
+        assert_eq!(percent(2, None, 12), None);
+        assert_eq!(percent(3, None, 12), Some(0));
+        assert_eq!(percent(4, None, 12), Some(25));
+        assert_eq!(percent(4, Some(0), 12), Some(25));
+        assert_eq!(percent(4, Some(32768), 12), Some(37));
+        assert_eq!(percent(6, None, 12), Some(75));
+        assert_eq!(percent(6, Some(u16::MAX - 1), 12), Some(99));
+        assert_eq!(percent(6, Some(u16::MAX), 12), Some(100));
+        assert_eq!(percent(7, None, 12), Some(0));
+        assert_eq!(percent(7, Some(32768), 12), Some(50));
+        assert_eq!(percent(7, Some(u16::MAX), 12), Some(100));
+        assert_eq!(percent(8, None, 12), Some(0));
+        assert_eq!(percent(12, None, 12), Some(66));
+        assert_eq!(percent(12, Some(u16::MAX), 12), Some(100));
+        assert_eq!(percent(13, None, 12), None);
+        assert_eq!(percent(0, None, 0), None);
+    }
+
+    #[test]
+    fn section_title_and_percentage_choose_the_same_outline_destination() {
+        let mut toc = Contents::default();
+        toc.set_outline(
+            [(9, 0, "Chapter 4"), (3, 1, "Section 2.1"), (3, 0, "Part I")]
+                .map(|(page, depth, title)| botui_fixed::OutlineEntry {
+                    page,
+                    depth,
+                    title: title.into(),
+                })
+                .into(),
+        );
+        let current = |page: u32, finished: bool| {
+            toc.section_position(page, None, 10, finished)
+                .map(|s| (s.index, s.total, s.title, s.percent))
+        };
+        assert_eq!(current(1, false), None);
+        assert_eq!(
+            current(3, false),
+            Some((2, 3, Some("Section 2.1"), Some(0)))
+        );
+        assert_eq!(
+            current(6, false),
+            Some((2, 3, Some("Section 2.1"), Some(50)))
+        );
+        assert_eq!(current(9, true), Some((1, 3, Some("Chapter 4"), Some(0))));
+        assert_eq!(
+            current(10, true),
+            Some((1, 3, Some("Chapter 4"), Some(100)))
+        );
+    }
+
+    #[test]
+    fn album_numbers_spine_items_and_measures_the_chapter_across_plates() {
+        let mut toc = Contents::default();
+        // Six plates across two XHTML files; two other itemrefs have no plates.
+        toc.set_epub_spine(botui_core::EpubSpine::from_counts(vec![
+            (0, 0),
+            (4, 0),
+            (2, 0),
+            (0, 0),
+        ]));
+        let position = |toc: &Contents, page| {
+            let s = toc.section_position(page, None, 6, false).unwrap();
+            (s.index, s.total, s.title.map(str::to_owned), s.percent)
+        };
+        assert_eq!(position(&toc, 2), (2, 4, None, Some(25)));
+        assert_eq!(position(&toc, 5), (3, 4, None, Some(0)));
+        toc.set_outline(vec![botui_fixed::OutlineEntry {
+            page: 3,
+            title: "Plates".into(),
+            depth: 0,
+        }]);
+        assert_eq!(position(&toc, 2), (2, 4, None, Some(25)));
+        assert_eq!(position(&toc, 3), (2, 4, Some("Plates".into()), Some(0)));
+        assert_eq!(position(&toc, 5), (3, 4, Some("Plates".into()), Some(50)));
+    }
+
+    #[test]
     fn page_marker_stays_put_while_browsing_an_unoutlined_pdf() {
         use ratatui::style::Modifier;
         let mut term = Terminal::new(TestBackend::new(25, 10)).unwrap();
@@ -292,9 +435,6 @@ mod tests {
             })
             .into(),
         );
-        assert_eq!(toc.pages_left_in_section(7, 2, 12), Some(1));
-        assert_eq!(toc.pages_left_in_section(9, 2, 12), Some(0));
-        assert_eq!(toc.pages_left_in_section(10, 1, 12), Some(2));
         let mut draw = |toc: &mut Contents| {
             term.draw(|f| toc.draw(f, Rect::new(0, 0, 50, 30), 7, 12))
                 .unwrap();
@@ -307,6 +447,11 @@ mod tests {
         toc.input(&Event::Key(KeyCode::Left.into()), 12); // collapse
         draw(&mut toc);
         assert_eq!(toc.visible, [0, 1, 4]);
+        let section = toc.section_position(7, None, 12, false).unwrap();
+        assert_eq!(
+            (section.index, section.total, section.title),
+            (4, 5, Some("Next"))
+        );
         toc.input(&Event::Key(KeyCode::Tab.into()), 12); // current hidden under Chapter
         draw(&mut toc);
         assert_eq!(toc.selected, 1);

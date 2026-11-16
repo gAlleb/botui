@@ -107,6 +107,8 @@ pub(super) fn chapter(
                         | "data-botui-prose-spacing"
                         | "data-botui-data-table"
                         | "data-botui-table-hidden"
+                        | "data-botui-gutter-left"
+                        | "data-botui-gutter-right"
                 )
             });
         }

@@ -1,3 +1,6 @@
+mod section;
+pub(crate) use section::SectionPosition;
+
 use ratatui::{
     layout::{Margin, Rect},
     style::{Color, Style},
@@ -54,35 +57,24 @@ pub fn cycle() -> std::io::Result<()> {
     crate::settings::Settings::update(|s| s.borders = s.borders.next()).map(|_| ())
 }
 pub fn block<'a>() -> Block<'a> {
-    match BordersStyle::current() {
+    let block = match BordersStyle::current() {
         BordersStyle::Rounded => Block::bordered().border_type(BorderType::Rounded),
         BordersStyle::Square => Block::bordered(),
         BordersStyle::None => Block::new().padding(Padding::horizontal(1)),
+    };
+    let border = border_style(false);
+    let block = block.border_style(border);
+    if let Some(caption) = reader_caption_style() {
+        block.title_style(caption)
+    } else {
+        block
     }
-    .border_style(border_style(false))
 }
 pub fn progress_label(pages: Option<(usize, usize)>, percent: f64) -> String {
     pages.map_or_else(
         || format!("{percent:.0}%"),
         |(page, total)| format!("{page} / {total}  ·  {percent:.0}%"),
     )
-}
-
-/// The book position always comes first when a narrow terminal clips the footer.
-pub fn chapter_progress(mut position: String, remaining: Option<usize>, width: u16) -> String {
-    if let Some(remaining) = remaining {
-        let detail = if remaining == 0 {
-            " · Chapter end".to_owned()
-        } else {
-            format!(" · {remaining} left in chapter")
-        };
-        if Line::from(position.as_str()).width() + Line::from(detail.as_str()).width() + 4
-            <= usize::from(width)
-        {
-            position.push_str(&detail);
-        }
-    }
-    position
 }
 
 /// Both readers lay out content inside the same frame. Hidden Zen chrome takes
@@ -99,7 +91,12 @@ impl ReadingFrame {
         Self::with_borders(area, zen, zen_progress, BordersStyle::current())
     }
 
-    fn with_borders(area: Rect, zen: bool, zen_progress: bool, style: BordersStyle) -> Self {
+    pub(crate) fn with_borders(
+        area: Rect,
+        zen: bool,
+        zen_progress: bool,
+        style: BordersStyle,
+    ) -> Self {
         let borders = if (!zen || zen_progress) && area.width >= 3 && area.height >= 3 {
             style
         } else {
@@ -126,54 +123,88 @@ impl ReadingFrame {
         self
     }
 
+    pub fn has_border(&self) -> bool {
+        self.borders != BordersStyle::None
+    }
+
     pub fn draw(
         &self,
         frame: &mut ratatui::Frame,
         style: Style,
         title: Option<&str>,
-        caption: Option<String>,
+        book_position: Option<&str>,
+        section: Option<SectionPosition<'_>>,
     ) {
-        if self.borders != BordersStyle::None {
+        let room = usize::from(self.inner.width).saturating_sub(2);
+        let book_progress = book_position.and_then(|label| {
+            let compact;
+            let label = if Line::from(label).width() <= room {
+                label
+            } else {
+                compact = label.split_whitespace().collect::<String>();
+                if Line::from(compact.as_str()).width() <= room {
+                    &compact
+                } else {
+                    label.rsplit('·').next().unwrap_or_default().trim()
+                }
+            };
+            (Line::from(label).width() <= room).then(|| Line::from(format!(" {label} ")).centered())
+        });
+        if self.has_border() {
+            let border = border_style(self.focused);
             let mut block = Block::bordered()
                 .border_type(if self.borders == BordersStyle::Rounded {
                     BorderType::Rounded
                 } else {
                     BorderType::Plain
                 })
-                .border_style(border_style(self.focused))
-                .title_style(style.dim());
-            if let Some(title) = title.filter(|s| !s.trim().is_empty() && self.area.width >= 6) {
-                use unicode_truncate::UnicodeTruncateStr;
-                let room = usize::from(self.area.width) - 4;
-                let (prefix, _) = title.unicode_truncate(room);
-                let label = if prefix.len() == title.len() {
-                    format!(" {title} ")
-                } else {
-                    format!(" {}… ", title.unicode_truncate(room - 1).0)
-                };
-                block = block.title_top(Line::from(label));
+                .border_style(border)
+                .title_style(reader_caption_style().unwrap_or_else(|| style.dim()));
+            let (book, chapter) = section::top_labels(self.inner.width, title, section);
+            if !book.is_empty() {
+                block = block.title_top(Line::from(format!(" {book} ")));
             }
-            if let Some(label) = caption {
-                block = block.title_bottom(Line::from(format!(" {label} ")).centered());
+            if !chapter.is_empty() {
+                block = block.title_top(Line::from(format!(" {chapter} ")).right_aligned());
+            }
+            if let Some(book) = book_progress {
+                block = block.title_bottom(book);
             }
             frame.render_widget(block, self.area);
-        } else if let Some(label) = caption {
-            frame.render_widget(
-                ratatui::widgets::Paragraph::new(label)
-                    .centered()
-                    .style(style.dim()),
-                Rect::new(
-                    self.area.x,
-                    self.area.bottom().saturating_sub(1),
-                    self.area.width,
-                    self.area.height.min(1),
-                ),
+            return;
+        }
+        if let Some(book) = book_progress {
+            let row = Rect::new(
+                self.inner.x,
+                self.area.bottom().saturating_sub(1),
+                self.inner.width,
+                self.area.height.min(1),
             );
+            let book = book.style(style.dim());
+            let right_space = usize::from(row.width).saturating_sub(book.width()) / 2;
+            frame.render_widget(book, row);
+            // With borders disabled, Zen's single progress row is its only chrome.
+            if let Some(section) = section {
+                let section = Line::from(format!(" {} ", section.compact_label()))
+                    .style(style.dim())
+                    .right_aligned();
+                if section.width() < right_space {
+                    frame.render_widget(section, row);
+                }
+            }
         }
     }
 }
 
+fn reader_caption_style() -> Option<Style> {
+    // Titles are drawn over an existing border cell, including its modifiers.
+    crate::settings::dialog_reader_theme().map(|theme| theme.frame_style(true).not_dim())
+}
+
 pub fn border_style(focused: bool) -> Style {
+    if let Some(theme) = crate::settings::dialog_reader_theme() {
+        return theme.frame_style(focused);
+    }
     let accent = ACTION;
     if focused { accent.bold() } else { accent.dim() }
 }
@@ -181,7 +212,9 @@ pub fn outline_block(title: &str, focused: bool) -> Block<'_> {
     let panel = block().title(title);
     if focused {
         let accent = border_style(true);
-        panel.border_style(accent).title_style(accent)
+        panel
+            .border_style(accent)
+            .title_style(reader_caption_style().unwrap_or(accent))
     } else {
         panel
     }
@@ -290,7 +323,13 @@ mod tests {
                 frame,
                 Style::new().fg(Color::White),
                 Some("Северная книга"),
-                Some(progress_label(Some((4, 12)), 25.)),
+                Some(&progress_label(Some((4, 12)), 25.)),
+                Some(SectionPosition {
+                    index: 2,
+                    total: 4,
+                    title: None,
+                    percent: Some(25),
+                }),
             );
         })
         .unwrap();
@@ -307,6 +346,179 @@ mod tests {
             .map(|x| buffer[(x, 7)].symbol())
             .collect();
         assert!(bottom.contains("4 / 12  ·  25%"));
+        assert!(!bottom.contains("Chapter"));
         assert_eq!(buffer[(0, 0)].symbol(), " ");
+    }
+
+    #[test]
+    fn all_four_reader_edges_follow_focus_and_every_caption_stays_legible() {
+        use crate::theme::Theme;
+        use ratatui::{Terminal, backend::TestBackend, widgets::Paragraph};
+        let area = Rect::new(3, 1, 64, 7);
+        for theme in [
+            Theme::TERMINAL,
+            Theme::from_id("sepia-dark"),
+            Theme::from_id("sepia-light"),
+        ] {
+            let _context = crate::settings::reader_dialogs(theme);
+            for focused in [false, true] {
+                let expected = theme.frame_style(focused);
+                for borders in [BordersStyle::Rounded, BordersStyle::Square] {
+                    let chrome =
+                        ReadingFrame::with_borders(area, false, false, borders).with_focus(focused);
+                    let mut term = Terminal::new(TestBackend::new(72, 10)).unwrap();
+                    term.draw(|f| {
+                        f.render_widget(
+                            Paragraph::new("link").style(Style::new().fg(theme.link())),
+                            chrome.inner,
+                        );
+                        chrome.draw(
+                            f,
+                            theme.style(),
+                            Some("Book"),
+                            Some("10 / 20 · 50%"),
+                            Some(SectionPosition {
+                                index: 3,
+                                total: 8,
+                                title: Some("Chapter"),
+                                percent: Some(15),
+                            }),
+                        );
+                    })
+                    .unwrap();
+                    let buf = term.backend().buffer();
+                    let reference = &buf[(area.x, area.y)];
+                    assert_eq!(Some(reference.fg), expected.fg);
+                    assert_eq!(reference.modifier, expected.add_modifier);
+                    for (x, y) in area.positions().map(|p| (p.x, p.y)) {
+                        if x == area.x
+                            || x + 1 == area.right()
+                            || y == area.y
+                            || y + 1 == area.bottom()
+                        {
+                            let cell = &buf[(x, y)];
+                            if matches!(
+                                cell.symbol(),
+                                "─" | "│" | "╭" | "╮" | "╰" | "╯" | "┌" | "┐" | "└" | "┘"
+                            ) {
+                                assert_eq!(
+                                    cell.style(),
+                                    reference.style(),
+                                    "{x},{y} {} focused={focused}",
+                                    cell.symbol()
+                                );
+                            } else {
+                                let caption = theme.frame_style(true);
+                                assert_eq!(Some(cell.fg), caption.fg, "{x},{y}");
+                                assert_eq!(cell.modifier, caption.add_modifier, "{x},{y}");
+                            }
+                        }
+                    }
+                    assert_eq!(buf[(chrome.inner.x, chrome.inner.y)].fg, theme.link());
+                }
+            }
+            let _shell = crate::settings::interface_dialogs();
+            assert_eq!(border_style(true), ACTION.bold());
+            assert_eq!(border_style(false), ACTION.dim());
+        }
+    }
+
+    #[test]
+    fn frame_separates_chapter_and_book_progress_across_widths() {
+        use ratatui::{Terminal, backend::TestBackend};
+        let section = SectionPosition {
+            index: 8,
+            total: 30,
+            title: Some("Глава четвертая"),
+            percent: Some(40),
+        };
+        for width in [3, 7, 12, 16, 28, 34, 50, 84] {
+            let area = Rect::new(3, 0, width, 6);
+            for borders in [BordersStyle::Square, BordersStyle::None] {
+                let chrome = ReadingFrame::with_borders(area, true, true, borders);
+                let mut term = Terminal::new(TestBackend::new(area.right(), 6)).unwrap();
+                let mut book_x = None;
+                for info in [None, Some(section)] {
+                    term.draw(|frame| {
+                        chrome.draw(
+                            frame,
+                            Style::default(),
+                            Some("Северная книга"),
+                            Some("79 / 307 · 26%"),
+                            info,
+                        )
+                    })
+                    .unwrap();
+                    let row = |y| {
+                        (area.x..area.right())
+                            .map(|x| term.backend().buffer()[(x, y)].symbol())
+                            .collect::<String>()
+                    };
+                    let top = row(0);
+                    let bottom = row(5);
+                    if let Some(x) = bottom.find("79 / 307") {
+                        assert_eq!(*book_x.get_or_insert(x), x);
+                    }
+                    if borders == BordersStyle::None {
+                        assert!(top.trim().is_empty());
+                        if width == 84 && info.is_some() {
+                            assert!(bottom.trim_end().ends_with("8/30 · 40%"));
+                        }
+                    } else {
+                        assert!(top.starts_with('┌') && top.ends_with('┐'), "{top}");
+                        assert!(bottom.starts_with('└') && bottom.ends_with('┘'), "{bottom}");
+                        assert!(
+                            !bottom.contains("8/30") && !bottom.contains("40%"),
+                            "{bottom}"
+                        );
+                        if info.is_some() && width >= 34 {
+                            assert!(top.starts_with("┌ Север"), "{top}");
+                            assert!(top.contains("8/30") && top.ends_with("40% ┐"), "{top}");
+                        }
+                        if width == 84 && info.is_some() {
+                            assert!(top.contains("8/30 · Глава четвертая · 40%"));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn top_border_shares_space_between_long_unicode_titles_and_keeps_numbers_whole() {
+        let section = SectionPosition {
+            index: 8,
+            total: 30,
+            title: Some("地球科学研究 методика измерений"),
+            percent: Some(40),
+        };
+        let title = Some("長い本の名前 — подробное издание");
+        let (left, right) = section::top_labels(40, title, Some(section));
+        assert!(left.starts_with("長") && left.ends_with('…'));
+        assert!(right.starts_with("8/30 · 地") && right.ends_with("… · 40%"));
+        assert!(Line::from(left).width() + Line::from(right).width() + 5 <= 40);
+        // There is just enough space for two short ellipsized names and both numbers.
+        let (left, right) = section::top_labels(26, title, Some(section));
+        assert!(
+            left.starts_with("長") && right.contains("地"),
+            "{left} | {right}"
+        );
+        for width in 0..100 {
+            let (left, right) = section::top_labels(width, title, Some(section));
+            let used = [left, right]
+                .iter()
+                .filter(|s| !s.is_empty())
+                .map(|s| Line::from(s.as_str()).width() + 2)
+                .sum::<usize>();
+            assert!(used <= usize::from(width));
+        }
+        let unmeasured = SectionPosition {
+            percent: None,
+            ..section
+        };
+        assert_eq!(
+            section::top_labels(80, None, Some(unmeasured)).1,
+            "8/30 · 地球科学研究 методика измерений"
+        );
     }
 }

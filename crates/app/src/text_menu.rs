@@ -59,7 +59,7 @@ pub fn choose(
         term.draw(|f| {
             underneath(f);
             panel = placement(f.area(), at);
-            crate::overlay::paint(f, panel, |f| {
+            crate::overlay::modal(f, panel, |f| {
                 f.render_widget(Clear, panel);
                 let block = crate::appearance::block();
                 rows = block.inner(panel);

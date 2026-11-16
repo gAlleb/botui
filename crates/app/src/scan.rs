@@ -86,6 +86,9 @@ pub(super) fn read_pages(
         .is_none()
         .then(|| worker.start(move |cancel| botui_fixed::outline(&outline_path, kind, cancel)));
     let plates = album.map(|doc| {
+        if kind == FileKind::Epub {
+            sidebar.set_epub_spine(doc.epub_spine);
+        }
         let mut depths = Vec::new();
         for e in &doc.contents {
             depths.push(e.parent.map_or(0, |p| depths[p] + 1));
@@ -221,6 +224,7 @@ pub(super) fn read_pages(
         .collect();
 
     loop {
+        text.toolbar.expire();
         if let Some(sync) = annotation_sync.as_mut()
             && sync.tick()
             && let Some(store) = &store
@@ -238,7 +242,8 @@ pub(super) fn read_pages(
                 Ok(result) => {
                     message = result
                         .and_then(|source| {
-                            crate::synctex::open_editor(&prefs.synctex_editor, source)
+                            let editor = crate::settings::Settings::load()?.synctex_editor;
+                            crate::synctex::open_editor(&editor, source)
                         })
                         .unwrap_or_else(|e| format!("SyncTeX: {e}"));
                     text.message.clone_from(&message);
@@ -334,7 +339,10 @@ pub(super) fn read_pages(
         );
         let reading_frame = crate::appearance::ReadingFrame::new(content, zen, zen_progress)
             .with_focus(!sidebar_area.is_empty() && !sidebar.focused());
-        let area = reading_frame.inner;
+        let area = crate::reader::controls::above_status(
+            reading_frame.inner,
+            Rect::new(0, 0, screen.width, screen.height),
+        );
         let available = area.width;
         let cols = if !scrolling && spread && total != Some(1) && available >= 68 {
             2u16
@@ -488,12 +496,18 @@ pub(super) fn read_pages(
         let rendered = term.draw_frame(|f| {
             let screen = f.area();
             sidebar.draw(f, sidebar_area, shown, total.unwrap_or(0));
-            let remaining = if (!zen || show_progress) && !image_only && !comic {
-                sidebar.pages_left_in_section(shown, u32::from(cols), total.unwrap_or(0))
+            let section = if (!zen || show_progress) && !comic {
+                sidebar.section_position(
+                    shown,
+                    scrolling.then_some(shown_offset),
+                    total.unwrap_or(0),
+                    finished && end_visible && shown == n,
+                )
             } else {
                 None
             };
-            let caption = if show_progress {
+            let position_in_border = !zen && reading_frame.has_border();
+            let position = if !zen || show_progress {
                 total.filter(|count| *count > 0).map(|count| {
                     crate::appearance::progress_label(
                         Some((shown as usize, count as usize)),
@@ -509,19 +523,27 @@ pub(super) fn read_pages(
             } else {
                 None
             };
-            let caption = caption.map(|label| {
-                crate::appearance::chapter_progress(label, remaining, reading_frame.inner.width)
-            });
+            let (caption, footer_position) = if zen || position_in_border {
+                (position, None)
+            } else {
+                (None, position)
+            };
             reading_frame.draw(
                 f,
                 Default::default(),
-                show_progress.then_some(book_title.as_str()),
-                caption,
+                reading_frame.has_border().then_some(book_title.as_str()),
+                caption.as_deref(),
+                section,
             );
             if !zen && screen.height > 0 {
                 let y = screen.bottom() - 1;
-                let mut status =
-                    format!(" {}   ·   {} / {}", kind.label(), shown, total.unwrap_or(0));
+                let mut status = format!(" {}", kind.label());
+                if let Some(position) = footer_position {
+                    status.push_str(&format!("   ·   {position}"));
+                    if let Some(section) = section {
+                        status.push_str(&format!("   {}", section.compact_label()));
+                    }
+                }
                 if shown != n {
                     status.push_str(&format!(" → {n}"));
                 }
@@ -533,8 +555,10 @@ pub(super) fn read_pages(
                         status.push_str(&format!(" · {}%", crop.percent));
                     }
                 }
-                let status = crate::appearance::chapter_progress(status, remaining, screen.width);
                 let foot = Rect::new(screen.x, y, screen.width, 1);
+                if !message.is_empty() {
+                    status.clone_from(&message);
+                }
                 if menu {
                     f.render_widget(Paragraph::new(status).dim(), foot);
                 } else {
@@ -643,18 +667,17 @@ pub(super) fn read_pages(
                     centered(area, 36, 1),
                 );
             }
-            if !message.is_empty() && area.height > 0 {
-                f.render_widget(
-                    Paragraph::new(message.as_str()).reversed(),
-                    Rect::new(area.x, area.bottom() - 1, area.width, 1),
-                );
+            let last_row = crate::reader::controls::last_row(screen);
+            if zen && !message.is_empty() {
+                f.render_widget(Clear, last_row);
+                f.render_widget(Paragraph::new(message.as_str()).reversed(), last_row);
             }
-            if selectable && !menu && dialog.is_none() {
-                text.footer(f, area);
+            if selectable && !menu && dialog.is_none() && text.footer(f, last_row) {
+                footer.fill(Rect::default());
             }
             if menu {
                 let panel = centered(area, 48, 20);
-                crate::overlay::paint(f, panel, |f| {
+                crate::overlay::modal(f, panel, |f| {
                     let block = crate::appearance::block().title(format!(
                         " {} · {} / {} ",
                         kind.label(),
@@ -806,6 +829,7 @@ pub(super) fn read_pages(
         };
         let timeout = timeout
             .into_iter()
+            .chain(text.toolbar.timeout())
             .chain(leader.timeout())
             .chain(annotation_sync.as_ref().map(|s| s.timeout()))
             .chain(

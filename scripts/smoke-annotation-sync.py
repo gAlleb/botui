@@ -116,7 +116,7 @@ with tempfile.TemporaryDirectory(prefix='botui-annotation-sync-') as temp,s.Fixt
             return []
         wait('PDF browser comment imported',lambda:any(n['body']=='PDF browser comment' for n in pdf_notes()))
         t.keys('Space','a','a');t.see('Highlights & notes');t.see('PDF browser comment')
-        t.keys('Escape','Escape');t.wait('PDF note list closed',lambda f:'Highlights & notes' not in f and 'Space r p' in f)
+        t.keys('Escape','Escape');t.wait('PDF note list closed',lambda f:'Highlights & notes' not in f and '2 / 3' in f and ('[Esc Read]' in f or 'Space r p' in f))
         t.keys('Space','a','p');t.see('Page note');t.type('My whole-page note');t.keys('Enter')
         wait('local PDF page note saved',lambda:any(n['body']=='My whole-page note' for n in pdf_notes()))
         reads=server.annotation_reads;sync_now(t)

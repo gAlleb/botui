@@ -148,16 +148,10 @@ impl Worker {
         if let Some(doc) = self.documents.get_mut(&start) {
             doc.set_viewport(viewport);
             spacing::resolve(doc, options);
-            return canvas::lines(doc, layout.width, &chapter.sources, blocks, &chapter.images);
+            return canvas::lines(doc, layout.width, chapter, blocks);
         }
         let mut doc = chapter.document(viewport, options, blocks, resume);
-        let lines = canvas::lines(
-            &mut doc,
-            layout.width,
-            &chapter.sources,
-            blocks,
-            &chapter.images,
-        );
+        let lines = canvas::lines(&mut doc, layout.width, chapter, blocks);
         let tags = chapter.html.bytes().filter(|b| *b == b'<').count();
         if self.markup + chapter.html.len() <= 2 * 1024 * 1024 / self.partitions
             && self.tags + tags <= 24_000 / self.partitions

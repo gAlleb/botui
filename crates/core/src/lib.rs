@@ -10,10 +10,12 @@ pub mod publisher;
 mod reference;
 mod reflow_cache;
 use pagination::BookLayout;
-pub use pagination::Viewport;
+pub use pagination::{ChapterProgress, Viewport};
 pub use reference::{Reference, Target};
 use std::sync::Arc;
 mod search;
+mod spine;
+pub use spine::{EpubSpine, SpinePosition};
 mod selection;
 pub use location::{Locations, RangeCfiError, Run};
 pub use search::{SearchIndex, SearchMatch, SearchMode};
@@ -23,6 +25,7 @@ use unicode_width::UnicodeWidthStr;
 
 #[derive(Clone, Debug, Default)]
 pub struct Document {
+    pub epub_spine: EpubSpine,
     pub markdown: Option<Markdown>,
     /// FB2 verse and explicit breaks before a block keep their own spacing.
     pub fixed_breaks: std::collections::BTreeSet<usize>,
@@ -82,6 +85,20 @@ pub struct ContentsEntry {
     pub parent: Option<usize>,
 }
 impl ContentsEntry {
+    /// A TOC label such as "3. Anatomy" can span two printed source blocks.
+    pub fn matches_numbered_title(&self, number: &str, heading: &str) -> bool {
+        if number.is_empty() || !number.bytes().all(|b| b.is_ascii_digit()) {
+            return false;
+        }
+        let Some(rest) = self.title.trim().strip_prefix(number) else {
+            return false;
+        };
+        let title = rest.trim_start_matches(|c: char| {
+            c.is_whitespace() || matches!(c, '.' | ')' | ':' | '-' | '–' | '—')
+        });
+        title.len() < rest.len() && title.to_lowercase() == heading.trim().to_lowercase()
+    }
+
     pub fn passage(anchor: Anchor, title: String) -> Self {
         Self {
             title,
@@ -192,6 +209,7 @@ pub struct Figure {
 pub enum Surface {
     Background { x: u16, width: u16, role: u8 },
     TableDivider { x: u16 },
+    TableEdge { x: u16, width: u16, top: bool },
 }
 
 #[derive(Clone, Debug, Default)]
@@ -209,10 +227,8 @@ pub struct PageLine {
 }
 
 impl PageLine {
-    fn has_background(&self) -> bool {
-        self.surfaces
-            .iter()
-            .any(|s| matches!(s, Surface::Background { .. }))
+    fn has_visible_surface(&self) -> bool {
+        !self.surfaces.is_empty()
     }
 
     fn is_spacer(&self) -> bool {
@@ -221,6 +237,14 @@ impl PageLine {
 
     pub fn anchor(&self) -> Anchor {
         self.start
+    }
+    fn reading_anchor(&self) -> Option<Anchor> {
+        let content = if self.spans.is_empty() {
+            !self.text.trim().is_empty()
+        } else {
+            self.spans.iter().any(|s| s.source.is_some())
+        };
+        (content || !self.figures.is_empty()).then_some(self.start)
     }
     pub(crate) fn source_range(
         &self,
@@ -748,16 +772,8 @@ impl Pager {
         let line = &self.lines[first];
         self.focus = self.lines[first..]
             .iter()
-            .find(|row| {
-                !row.figures.is_empty()
-                    || if row.spans.is_empty() {
-                        !row.text.trim().is_empty()
-                    } else {
-                        row.spans.iter().any(|s| s.source.is_some())
-                    }
-            })
-            .unwrap_or(line)
-            .start;
+            .find_map(PageLine::reading_anchor)
+            .unwrap_or(line.start);
     }
 }
 
@@ -839,6 +855,7 @@ mod tests {
 
     fn document(paragraphs: &[&str]) -> Document {
         Document {
+            epub_spine: Default::default(),
             markdown: None,
             fixed_breaks: Default::default(),
             chapter_starts: Default::default(),

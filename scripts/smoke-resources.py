@@ -214,7 +214,8 @@ def check_notes_contents(tmp):
         z.writestr("Notes/list.xhtml", '<html><body>' + ''.join(notes) + '</body></html>')
     t = shelf.Terminal(tmp, BINARY, args=[str(book)])
     try:
-        t.click("Endnotes", t.see("Endnotes"))
+        # The reading frame also shows the book title. Click the indented TOC entry.
+        t.click("  Endnotes", t.see("  Endnotes"))
         popup = t.see("Select link")
         # Two double-width characters precede the second arrow, identical to all the others.
         row, line = next((i, s) for i, s in enumerate(popup.splitlines()) if "引用 2 ↩" in s)

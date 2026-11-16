@@ -155,7 +155,7 @@ fn run(
         term.draw(|f| {
             underneath(f);
             let area = centered(f.area(), 88, 24);
-            crate::overlay::paint(f, area, |f| {
+            crate::overlay::modal(f, area, |f| {
                 f.render_widget(Clear, area);
                 let block = appearance::block()
                     .title(format!(" {} · {} → {} ", profile.name, source, target));

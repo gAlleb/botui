@@ -89,7 +89,12 @@ url = "https://example.org/opds"
         t.run('resize-window', '-t', 'shelf', '-x', '54', '-y', '18')
         t.keys('End'); click('Save changes & back'); t.see('+ Add dictionary')
         t.run('resize-window', '-t', 'shelf', '-x', '115', '-y', '30')
-        click('My HTTP dictionary'); t.keys('Home'); click('Name'); replace('Discarded name')
+        # The profile name is present in both sizes, but its clickable position changes.
+        wide = t.wait('Dictionary list after widening', lambda f:
+            any(len(row) > 54 and '╭ Word definitions' in row and '╮' in row for row in f.splitlines()))
+        t.click('My HTTP dictionary', wide); t.see('Connection type'); t.keys('Home')
+        click('Name'); t.see('Connection name'); replace('Discarded name')
+        t.see('╭ Discarded name')
         t.keys('Escape'); click('Discard changes')
         assert data()['lookup']['profiles'][0]['name'] == 'My HTTP dictionary'
         click('My HTTP dictionary'); t.keys('End'); click('Delete connection')

@@ -136,13 +136,17 @@ struct Ink<'a> {
 pub(super) fn lines(
     doc: &mut BaseDocument,
     width: u16,
-    sources: &[Vec<SourceText>],
+    chapter: &super::Chapter,
     blocks: &[Block],
-    images: &[Option<usize>],
 ) -> Vec<PageLine> {
     use style::values::computed::text::TextAlignLast;
     // Parley has already broken the lines. On a cell grid, stretching those
     // lines to fill the column leaves whole blank cells between words.
+    let gutters = super::table::missing_gutters(doc, chapter);
+    if !gutters.is_empty() {
+        super::table::set_gutters(doc, &gutters, true);
+        doc.resolve(0.);
+    }
     let justified: Vec<_> = doc
         .tree()
         .iter()
@@ -212,7 +216,7 @@ pub(super) fn lines(
             area.size.width = (new_right - new_left) as f32;
         }
     }
-    let rows = paint_lines::<true>(doc, width, sources, blocks, images);
+    let rows = paint_lines::<true>(doc, width, &chapter.sources, blocks, &chapter.images);
     // Blitz reuses the document on resize. Keep its cached geometry intact.
     for (child, x, width) in original_boxes {
         let area = doc.get_node_mut(child).unwrap().final_layout_mut();
@@ -228,6 +232,7 @@ pub(super) fn lines(
             },
         );
     }
+    super::table::set_gutters(doc, &gutters, false);
     rows
 }
 
@@ -287,6 +292,7 @@ fn paint_lines<const GROUPED: bool>(
         if node.element_data().is_some_and(|e| {
             &*e.name.local == "table" && super::marker(e, "data-botui-data-table").is_some()
         }) && visible()
+            && super::table::needs_rules(doc, node)
         {
             data_tables.push(node);
         }
@@ -361,6 +367,7 @@ fn paint_lines<const GROUPED: bool>(
             &mut styles,
         );
     }
+    let mut edges = TableEdges::default();
     if !data_tables.is_empty() {
         let mut previous = None;
         let positions: Vec<_> = rows
@@ -372,7 +379,42 @@ fn paint_lines<const GROUPED: bool>(
             })
             .collect();
         for table in data_tables {
-            draw_table_dividers(doc, table, width, &positions, &mut surfaces);
+            if let Some((range, x, end)) =
+                draw_table_dividers(doc, table, width, &positions, &mut surfaces)
+            {
+                let mut occupied = rows.range(range);
+                if let Some((&first, _)) = occupied.next() {
+                    let last = occupied.next_back().map_or(first, |(&row, _)| row);
+                    // Keep the side rules on every emitted row inside the frame,
+                    // including wrapped cells and the publisher's blank rows.
+                    let start = positions.partition_point(|y| *y < first);
+                    let end_row = positions.partition_point(|y| *y <= last);
+                    for &y in &positions[start..end_row] {
+                        surfaces.entry(y).or_default().extend([
+                            crate::Surface::TableDivider { x },
+                            crate::Surface::TableDivider { x: end - 1 },
+                        ]);
+                    }
+                    edges
+                        .above
+                        .entry(first)
+                        .or_default()
+                        .push(crate::Surface::TableEdge {
+                            x,
+                            width: end - x,
+                            top: true,
+                        });
+                    edges
+                        .below
+                        .entry(last)
+                        .or_default()
+                        .push(crate::Surface::TableEdge {
+                            x,
+                            width: end - x,
+                            top: false,
+                        });
+                }
+            }
         }
     }
     let anchor = sources
@@ -381,10 +423,16 @@ fn paint_lines<const GROUPED: bool>(
         .next()
         .map(|s| s.start)
         .unwrap_or_default();
-    compose_rows(rows, figures, surfaces, width, anchor)
+    compose_rows(rows, figures, surfaces, edges, width, anchor)
 }
 
 type Rows<'a> = BTreeMap<usize, Vec<Ink<'a>>>;
+
+#[derive(Default)]
+struct TableEdges {
+    above: BTreeMap<usize, Vec<crate::Surface>>,
+    below: BTreeMap<usize, Vec<crate::Surface>>,
+}
 
 /// Use spare terminal cells between the actual grid tracks. A merged cell
 /// contributes just its outer edge; a short continuation row needs no rule below it.
@@ -394,44 +442,16 @@ fn draw_table_dividers(
     width: u16,
     positions: &[usize],
     surfaces: &mut BTreeMap<usize, Vec<crate::Surface>>,
-) {
+) -> Option<(std::ops::Range<usize>, u16, u16)> {
     use blitz_dom::node::SpecialElementData;
-    use style::values::computed::BorderStyle;
     let Some(SpecialElementData::TableRoot(table)) = node.element_data().map(|e| &e.special_data)
     else {
-        return;
+        return None;
     };
     let grid = table.computed_grid_info.borrow();
-    let Some(grid) = grid.as_ref() else { return };
-    let has_border = |id| {
-        doc.get_node(id)
-            .and_then(|n| n.primary_styles())
-            .is_some_and(|s| {
-                let b = s.get_border();
-                [
-                    b.border_left_style,
-                    b.border_right_style,
-                    b.border_top_style,
-                    b.border_bottom_style,
-                ]
-                .iter()
-                .any(|side| *side != BorderStyle::None)
-            })
-    };
-    if grid.columns.positions.len() < 2
-        || grid.rows.positions.is_empty()
-        || has_border(node.id)
-        || table.cells.iter().any(|c| has_border(c.node_id))
-        || table
-            .rows
-            .iter()
-            .any(|r| has_border(r.node_id) || r.group.is_some_and(has_border))
-        || table
-            .columns
-            .iter()
-            .any(|c| has_border(c.node_id) || c.group.is_some_and(has_border))
-    {
-        return;
+    let grid = grid.as_ref()?;
+    if grid.columns.positions.len() < 2 || grid.rows.positions.is_empty() {
+        return None;
     }
     let pos = node.absolute_position(0., 0.);
     let y = |offset: f32| ((pos.y + offset) / ROW).round() as usize;
@@ -448,20 +468,27 @@ fn draw_table_dividers(
     // row. An unlabeled, entirely empty trailing track needs no divider.
     let mut last_column = 0;
     for cell in &table.cells {
-        if cell.column > last_column
-            && doc.get_node(cell.node_id).is_some_and(|n| {
-                n.children
-                    .iter()
-                    .filter_map(|id| doc.get_node(*id))
-                    .any(|child| {
-                        child.element_data().is_some()
-                            || child
-                                .text_data()
-                                .is_some_and(|t| !t.content.trim().is_empty())
-                    })
-            })
+        let Some(node) = doc.get_node(cell.node_id) else {
+            continue;
+        };
+        let span = node
+            .attr(blitz_dom::local_name!("colspan"))
+            .and_then(|value| value.parse::<u16>().ok())
+            .unwrap_or(1);
+        let end_column = cell.column.saturating_add(span.saturating_sub(1));
+        if end_column > last_column
+            && node
+                .children
+                .iter()
+                .filter_map(|id| doc.get_node(*id))
+                .any(|child| {
+                    child.element_data().is_some()
+                        || child
+                            .text_data()
+                            .is_some_and(|t| !t.content.trim().is_empty())
+                })
         {
-            last_column = cell.column;
+            last_column = end_column;
         }
     }
     for (col, pair) in grid
@@ -516,6 +543,23 @@ fn draw_table_dividers(
             }
         }
     }
+    let columns = grid
+        .columns
+        .positions
+        .iter()
+        .take(usize::from(last_column) + 1);
+    let x = |offset: f32| ((pos.x + offset) / CELL).round() as u16;
+    // The first and last column contain source text all the way to their
+    // track edges. Use the adjacent cell reserved by the table's padding.
+    let left = columns.clone().map(|c| x(c.start)).min()?.saturating_sub(1);
+    let right = columns.map(|c| x(c.end)).max()?.saturating_add(1);
+    (right > left).then(|| {
+        (
+            y(tracks[0].start)..y(tracks.last().unwrap().end),
+            left,
+            right,
+        )
+    })
 }
 
 fn draw_border(node: &Node, width: u16, rows: &mut Rows<'_>, face: Face) {
@@ -787,6 +831,7 @@ fn compose_rows(
     rows: Rows<'_>,
     mut figures: BTreeMap<usize, Vec<crate::Figure>>,
     mut surfaces: BTreeMap<usize, Vec<crate::Surface>>,
+    mut edges: TableEdges,
     width: u16,
     mut anchor: Anchor,
 ) -> Vec<PageLine> {
@@ -821,6 +866,42 @@ fn compose_rows(
             surfaces: surfaces.remove(&y).unwrap_or_default(),
             ..Default::default()
         };
+        if let Some(mut rules) = edges.above.remove(&y) {
+            // Publisher margins can already supply the gap under a caption.
+            // Only ordinary empty rows may be collapsed here.
+            let plain_gap = result
+                .iter()
+                .rev()
+                .take_while(|line| line.is_spacer() && line.surfaces.is_empty())
+                .count();
+            result.truncate(result.len() - plain_gap.saturating_sub(1));
+            if result.last().is_some_and(|previous| !previous.is_spacer()) {
+                result.push(PageLine {
+                    start: anchor,
+                    ..Default::default()
+                });
+            }
+            rules.extend(
+                line.surfaces
+                    .iter()
+                    .copied()
+                    .filter(|s| matches!(s, crate::Surface::TableDivider { .. })),
+            );
+            result.push(PageLine {
+                surfaces: rules,
+                start: anchor,
+                ..Default::default()
+            });
+        }
+        let lower_edge = edges.below.remove(&y).map(|mut rules| {
+            rules.extend(
+                line.surfaces
+                    .iter()
+                    .copied()
+                    .filter(|s| matches!(s, crate::Surface::TableDivider { .. })),
+            );
+            rules
+        });
         let mut band = 0;
         let mut col = 0;
         let mut previous_x = None;
@@ -869,6 +950,13 @@ fn compose_rows(
             }
         }
         finish(&mut result, &mut line, &mut anchor);
+        if let Some(surfaces) = lower_edge {
+            result.push(PageLine {
+                surfaces,
+                start: anchor,
+                ..Default::default()
+            });
+        }
     }
     result
 }

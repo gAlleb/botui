@@ -264,11 +264,12 @@ impl Reader {
             crate::splitter::Pane::Contents,
             settings.contents_width,
         );
-        let (_, page) = layout::panes(area, &mut splitter, settings.zen, 0);
+        let (_, page) = layout::panes(area, &mut splitter, settings.zen);
         let reading_frame =
             crate::appearance::ReadingFrame::new(page, settings.zen, settings.zen_progress);
         let (text, mode_for_size, actual_gap) =
-            layout::geometry(reading_frame.inner, mode, page_width, gap, settings.zen);
+            layout::geometry(&reading_frame, mode, page_width, gap, settings.zen);
+        let text = controls::above_status(text, area);
         let image_cell = if doc.image_sizes.is_empty() {
             (1, 2)
         } else {
@@ -399,9 +400,8 @@ impl Reader {
     }
 
     fn reading_panes(&mut self, screen: Rect) -> (Rect, crate::appearance::ReadingFrame, Rect) {
-        let controls = self.study.controls_area(screen);
-        let footer_height = controls.height.max(u16::from(self.links.visiting()));
-        let (sidebar, page) = layout::panes(screen, &mut self.splitter, self.zen, footer_height);
+        let controls = controls::last_row(screen);
+        let (sidebar, page) = layout::panes(screen, &mut self.splitter, self.zen);
         let frame = crate::appearance::ReadingFrame::new(page, self.zen, self.zen_progress)
             .with_focus(!sidebar.is_empty() && !self.sidebar_focus);
         (sidebar, frame, controls)
@@ -418,12 +418,13 @@ impl Reader {
             self.sidebar_focus = false;
         }
         let (text, actual, gap) = layout::geometry(
-            reading_frame.inner,
+            &reading_frame,
             self.mode,
             self.page_width,
             self.gap,
             self.zen,
         );
+        let text = controls::above_status(text, screen);
         self.text_rect = text;
         self.study.begin_frame();
         if !self.doc.image_sizes.is_empty() {
@@ -437,6 +438,7 @@ impl Reader {
         let pages = (!self.pager.is_paginating())
             .then(|| (self.pager.page_number(), self.pager.page_count()));
         let reading_theme = self.palette.as_ref().map_or(self.theme, |p| p.preview());
+        let _preview_dialogs = crate::settings::reader_dialogs(reading_theme);
         let mut style = reading_theme.style();
         if !crate::settings::opaque() {
             style.bg = Some(ratatui::style::Color::Reset);
@@ -566,6 +568,25 @@ impl Reader {
         }
         self.study.extend_drag();
         self.study.paint(frame);
+        let show_position = !self.zen || show_progress;
+        let position =
+            show_position.then(|| crate::appearance::progress_label(pages, self.reading_percent()));
+        let chapter = if show_position {
+            self.pager
+                .chapter_progress()
+                .map(|chapter| crate::appearance::SectionPosition {
+                    index: chapter.ordinal,
+                    total: chapter.total,
+                    title: chapter.toc_title.or(chapter.title),
+                    percent: if self.finished && self.pager.at_end() {
+                        Some(100)
+                    } else {
+                        chapter.percent
+                    },
+                })
+        } else {
+            None
+        };
         if !self.zen {
             if !self.sidebar_rect.is_empty() {
                 self.sidebar.draw_sidebar(
@@ -582,21 +603,23 @@ impl Reader {
                 screen.width,
                 screen.height.min(1),
             );
-            let position = pages.map_or_else(
-                || format!("{:.0}%", self.reading_percent()),
-                |(page, total)| format!("{page} / {total}"),
-            );
-            let prefix = if self.mode == LayoutMode::Scroll {
-                "Scroll · "
-            } else {
-                ""
+            let count = match (self.mode, reading_frame.has_border()) {
+                (LayoutMode::Scroll, true) => " Scroll ".to_owned(),
+                (_, true) => String::new(),
+                (mode, false) => {
+                    let prefix = if mode == LayoutMode::Scroll {
+                        "Scroll · "
+                    } else {
+                        ""
+                    };
+                    let mut status =
+                        format!(" {prefix}{} ", position.as_deref().unwrap_or_default());
+                    if let Some(chapter) = chapter {
+                        status.push_str(&chapter.compact_label());
+                    }
+                    status
+                }
             };
-            let position = crate::appearance::chapter_progress(
-                position,
-                self.pager.screens_left_in_chapter(),
-                foot.width,
-            );
-            let count = format!(" {prefix}{position} ");
             let source = self.doc.markdown.as_ref().map_or("", |md| {
                 if md.show_source {
                     "Formatted"
@@ -608,7 +631,11 @@ impl Reader {
                 frame,
                 foot,
                 style,
-                &format!(" {}", self.doc.title),
+                if reading_frame.has_border() {
+                    ""
+                } else {
+                    &self.doc.title
+                },
                 &count,
                 [
                     ("Space z", "Zen"),
@@ -631,16 +658,15 @@ impl Reader {
         reading_frame.draw(
             frame,
             style,
-            show_progress.then_some(self.doc.title.as_str()),
-            show_progress.then(|| {
-                crate::appearance::chapter_progress(
-                    crate::appearance::progress_label(pages, self.reading_percent()),
-                    self.pager.screens_left_in_chapter(),
-                    reading_frame.inner.width,
-                )
-            }),
+            reading_frame
+                .has_border()
+                .then_some(self.doc.title.as_str()),
+            position
+                .as_deref()
+                .filter(|_| self.zen || reading_frame.has_border()),
+            chapter,
         );
-        if self.links.visiting() {
+        if self.links.visiting() && !self.study.controls_visible() {
             let footer = Rect::new(
                 screen.x,
                 screen.bottom().saturating_sub(1),
@@ -650,7 +676,10 @@ impl Reader {
             frame.render_widget(Clear, footer);
             self.links.controls(frame, footer, style);
         }
-        self.study.controls(frame, controls, style);
+        if self.study.controls_visible() {
+            self.footer.fill(Rect::default());
+            self.study.controls(frame, controls, style);
+        }
         let context = self.leader_context();
         self.leader.draw(frame, context);
         if let Some(panel) = &mut self.layout_panel {
@@ -678,6 +707,7 @@ impl Reader {
             54,
             COMMANDS.len() as u16 + 3 + u16::from(notice.is_some()),
         );
+        crate::overlay::backdrop(frame, popup);
         frame.render_widget(Clear, popup);
         let block = crate::appearance::block().title(" Reading ").style(style);
         let inner = block.inner(popup);
@@ -1366,9 +1396,34 @@ fn paint_surfaces(
             botui_core::Surface::TableDivider { x } => {
                 if let Some(x) = x.checked_sub(left).filter(|&x| x < rect.width)
                     && let Some(cell) = frame.buffer_mut().cell_mut((rect.x + x, rect.y))
-                    && cell.symbol() == " "
                 {
-                    cell.set_symbol("│")
+                    let symbol = match cell.symbol() {
+                        " " => "│",
+                        "─" if line.surfaces.iter().any(|s| {
+                            matches!(s, botui_core::Surface::TableEdge { top: true, .. })
+                        }) =>
+                        {
+                            "┬"
+                        }
+                        "─" => "┴",
+                        _ => continue,
+                    };
+                    cell.set_symbol(symbol)
+                        .set_style(style.add_modifier(Modifier::DIM));
+                }
+            }
+            botui_core::Surface::TableEdge { x, width, top } => {
+                let end = x.saturating_add(width);
+                for col in x.max(left)..end.min(left.saturating_add(rect.width)) {
+                    let glyph = if col == x {
+                        if top { "┌" } else { "└" }
+                    } else if col + 1 == end {
+                        if top { "┐" } else { "┘" }
+                    } else {
+                        "─"
+                    };
+                    frame.buffer_mut()[(rect.x + (col - left), rect.y)]
+                        .set_symbol(glyph)
                         .set_style(style.add_modifier(Modifier::DIM));
                 }
             }
@@ -1602,12 +1657,16 @@ pub fn read_server(
                             .then_some(Duration::from_millis(55)),
                     )
                     .chain(reader.leader.timeout())
+                    .chain(reader.study.toolbar.timeout())
                     .chain(images.then_some(Duration::from_millis(70)))
                     .chain((drag_direction != 0).then_some(
                         Duration::from_millis(80).saturating_sub(last_drag_scroll.elapsed()),
                     ))
                     .min();
                 let Some(e) = crate::settings::read_event_for(timeout)? else {
+                    if reader.study.toolbar.expire() {
+                        break Action::Resize;
+                    }
                     if drag_direction != 0
                         && last_drag_scroll.elapsed() >= Duration::from_millis(80)
                     {
@@ -1851,12 +1910,13 @@ pub fn read_server(
                     let screen = Rect::new(0, 0, size.width, size.height);
                     let (_, reading_frame, _) = reader.reading_panes(screen);
                     let (text, mode, gap) = layout::geometry(
-                        reading_frame.inner,
+                        &reading_frame,
                         reader.mode,
                         reader.page_width,
                         reader.gap,
                         reader.zen,
                     );
+                    let text = controls::above_status(text, screen);
                     reader.pager.reconfigure(
                         &reader.doc,
                         text.width,
