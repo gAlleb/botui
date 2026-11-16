@@ -554,41 +554,6 @@ impl Reader {
                 screen.width,
                 screen.height.min(1),
             );
-            let mut right = foot.right();
-            for (i, label) in [
-                " Space z Zen ",
-                " Space o Contents ",
-                " Space m Menu ",
-                " F2 Settings ",
-                " F1 Help ",
-                if self.links.has_visible() {
-                    " Space r f Links "
-                } else {
-                    ""
-                },
-                if let Some(md) = &self.doc.markdown {
-                    if md.show_source {
-                        " F9 Formatted "
-                    } else {
-                        " F9 Source "
-                    }
-                } else {
-                    ""
-                },
-            ]
-            .into_iter()
-            .enumerate()
-            .rev()
-            {
-                let width = (label.len() as u16).min(right - foot.x);
-                right -= width;
-                let r = Rect::new(right, foot.y, width, foot.height);
-                self.footer[i] = r;
-                frame.render_widget(
-                    Paragraph::new(label).style(style.add_modifier(Modifier::BOLD)),
-                    r,
-                );
-            }
             let position = pages.map_or_else(
                 || format!("{:.0}%", self.reading_percent()),
                 |(page, total)| format!("{page} / {total}"),
@@ -599,15 +564,35 @@ impl Reader {
                 ""
             };
             let count = format!(" {prefix}{position} ");
-            let cw = (count.len() as u16).min(right - foot.x);
-            frame.render_widget(
-                Paragraph::new(count).style(style),
-                Rect::new(right - cw, foot.y, cw, foot.height),
-            );
-            frame.render_widget(
-                Paragraph::new(format!(" {}", self.doc.title))
-                    .style(style.add_modifier(Modifier::DIM)),
-                Rect::new(foot.x, foot.y, right - cw - foot.x, foot.height),
+            let source = self.doc.markdown.as_ref().map_or("", |md| {
+                if md.show_source {
+                    "Formatted"
+                } else {
+                    "Source"
+                }
+            });
+            self.footer = crate::reader_footer::draw(
+                frame,
+                foot,
+                style,
+                &format!(" {}", self.doc.title),
+                &count,
+                [
+                    ("Space z", "Zen"),
+                    ("Space o", "Contents"),
+                    (
+                        "Space r f",
+                        if self.links.has_visible() {
+                            "Links"
+                        } else {
+                            ""
+                        },
+                    ),
+                    ("F9", source),
+                    ("Space m", "Menu"),
+                    ("F2", "Settings"),
+                    ("F1", "Help"),
+                ],
             );
         }
         reading_frame.draw(
@@ -977,11 +962,11 @@ impl Reader {
                         [
                             Action::Zen,
                             Action::Navigate(Kind::Contents),
+                            Action::VisibleLinks,
+                            Action::Source,
                             Action::Menu,
                             Action::Settings,
                             Action::Help,
-                            Action::VisibleLinks,
-                            Action::Source,
                         ][i]
                     })
             }

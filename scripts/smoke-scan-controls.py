@@ -31,7 +31,11 @@ with tempfile.TemporaryDirectory(prefix="botui-width-") as tmp:
     term = scroll.start(root, book)
     try:
         term.see("1 / 3")
-        term.keys("Space", "z", "Space", "p")
+        term.click("[Space m Menu]", term.see("[Space m Menu]"))
+        term.see("Previous page")
+        term.keys("Escape")
+        term.click("[Space z Zen]", term.see("[Space z Zen]"))
+        term.keys("Space", "p")
         term.see("1 / 3  ·  33%")
         term.keys("Right")
         term.see("2 / 3  ·  67%")

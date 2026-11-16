@@ -18,6 +18,7 @@ mod picker;
 mod preferences;
 mod prompt;
 mod reader;
+mod reader_footer;
 mod scan;
 mod settings;
 mod shelf;

@@ -293,14 +293,15 @@ pub(super) fn read_pages(
         }
         let screen = term.size()?;
         let show_progress = zen && zen_progress && screen.height > 1;
-        let (sidebar_area, body) = splitter.layout(
-            Rect::new(0, 0, screen.width, screen.height),
+        let (sidebar_area, content) = splitter.layout(
+            Rect::new(
+                0,
+                0,
+                screen.width,
+                screen.height.saturating_sub(u16::from(!zen)),
+            ),
             !zen && screen.width >= 78,
         );
-        let content = Rect {
-            height: body.height.saturating_sub(u16::from(!zen)),
-            ..body
-        };
         let reading_frame = crate::appearance::ReadingFrame::new(content, zen, zen_progress);
         let area = reading_frame.inner;
         let available = area.width;
@@ -448,9 +449,7 @@ pub(super) fn read_pages(
         }
         let mut hits = vec![];
         let mut dialog_hits = Vec::new();
-        let mut width_button = Rect::default();
-        let mut go_button = Rect::default();
-        let mut footer_buttons = crate::preferences::Buttons::default();
+        let mut footer = [Rect::default(); 6];
         text.begin_frame();
         if let Some(cache) = &mut sixel {
             cache.begin_frame();
@@ -490,32 +489,27 @@ pub(super) fn read_pages(
                         status.push_str(&format!(" · {}%", crop.percent));
                     }
                 }
-                let mut right = area.right();
-                let reserved = status.chars().count() as u16 + 1;
-                if !menu && right.saturating_sub(area.x) >= reserved + 23 && screen.height > 1 {
-                    right -= 23;
-                    footer_buttons.draw(f, Rect::new(right, y, 23, 1));
+                let foot = Rect::new(screen.x, y, screen.width, 1);
+                if menu {
+                    f.render_widget(Paragraph::new(status).dim(), foot);
+                } else {
+                    let zoom = format!("{}%", crop.percent);
+                    footer = crate::reader_footer::draw(
+                        f,
+                        foot,
+                        Default::default(),
+                        "",
+                        &status,
+                        [
+                            ("Space z", "Zen"),
+                            ("Space r p", "Page…"),
+                            ("Space l w", &zoom),
+                            ("Space m", "Menu"),
+                            ("F2", "Settings"),
+                            ("F1", "Help"),
+                        ],
+                    );
                 }
-                if !menu && right.saturating_sub(area.x) >= reserved + 35 && screen.height > 1 {
-                    let label = "[Space r p Page…]";
-                    let w = label.chars().count() as u16;
-                    right -= w + 1;
-                    go_button = Rect::new(right, y, w, 1);
-                    f.render_widget(Paragraph::new(label).cyan(), go_button);
-                }
-                if !menu && right.saturating_sub(area.x) >= reserved + 17 {
-                    let label = format!("[Space l w {}%]", crop.percent);
-                    let w = label.len() as u16;
-                    right -= w + 1;
-                    width_button = Rect::new(right, y, w, 1);
-                    f.render_widget(Paragraph::new(label).cyan(), width_button);
-                }
-                let space = right.saturating_sub(area.x);
-                let hints = "   ·   Space z Zen   Space m Menu";
-                if status.chars().count() + hints.chars().count() <= usize::from(space) {
-                    status.push_str(hints);
-                }
-                f.render_widget(Paragraph::new(status).dim(), Rect::new(area.x, y, space, 1));
             }
             if scrolling {
                 strip.draw(f, area, shown, shown_offset, sixel.as_mut());
@@ -1085,20 +1079,12 @@ pub(super) fn read_pages(
                     .find(|(r, _)| r.contains(Position::new(m.column, m.row)))
                     .map(|(_, i)| *i)
                     .unwrap_or(0),
-                MouseEventKind::Down(MouseButton::Left)
-                    if !menu && width_button.contains(Position::new(m.column, m.row)) =>
-                {
-                    39
-                }
-                MouseEventKind::Down(MouseButton::Left)
-                    if !menu && go_button.contains(Position::new(m.column, m.row)) =>
-                {
-                    24
-                }
                 MouseEventKind::Down(MouseButton::Left) => {
-                    match footer_buttons.hit(Position::new(m.column, m.row)) {
-                        Some(crate::preferences::Open::Settings) => 26,
-                        Some(crate::preferences::Open::Help) => 27,
+                    match footer
+                        .iter()
+                        .position(|r| r.contains(Position::new(m.column, m.row)))
+                    {
+                        Some(i) => [14, 24, 39, 0, 26, 27][i],
                         None if selectable => continue,
                         None => 0,
                     }
@@ -1206,8 +1192,8 @@ pub(super) fn read_pages(
                 if let Some(store) = store.as_ref() {
                     if action == 21 && selectable {
                         // A can also be selected from the reading menu.
-                        let background =
-                            note_background.unwrap_or_else(|| ratatui::buffer::Buffer::empty(body));
+                        let background = note_background
+                            .unwrap_or_else(|| ratatui::buffer::Buffer::empty(content));
                         match text.list(term, store, path, total, &background) {
                             Ok(Some(region)) => {
                                 let previous = Location {

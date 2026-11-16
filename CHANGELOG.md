@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Share clickable footer shortcuts across readers and keep each button whole in narrow windows.
 - Preserve the book’s first-line indent in centered EPUB paragraphs.
 - Keep EPUB addresses and aligned text compact, with an independent switch enabled by default.
 - Frame the reading area and toggle its frame and progress with Space p in Zen mode.

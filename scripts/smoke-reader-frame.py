@@ -128,9 +128,9 @@ def check(root, mode):
         term.keys("Space", "p")
         term.wait("Removing the frame restores the clean layout", lambda f: f == clean)
         term.keys("Space", "z")
-        term.wait("Normal reader keeps the word inside its frame", lambda f: framed(f)
-                  and "Contents" in f and target_on_first_line(f))
-        term.keys("Space", "z")
+        normal = term.wait("Normal reader keeps the word inside its frame", lambda f: framed(f)
+                           and "[Space z Zen]" in f and target_on_first_line(f))
+        term.click("[Space z Zen]", normal)
         term.wait("Return from normal reader restores clean Zen", lambda f: f == clean)
 
         # V selects the source paragraph, including text outside this viewport.
