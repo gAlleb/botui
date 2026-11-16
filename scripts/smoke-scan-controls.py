@@ -202,7 +202,7 @@ def check_frame_position(root, mode):
     pixels = re.compile(r"([.:%#*=+@-])\1{14,}")
 
     def has_frame(frame):
-        return bool(re.search(r"[╭┌]─+[╮┐]", frame))
+        return bool(re.fullmatch(rf"[╭┌] {re.escape(book.stem)} ─+[╮┐]", frame.partition("\n")[0]))
 
     def position():
         state = scroll.saved(root) or {}

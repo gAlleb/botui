@@ -70,12 +70,14 @@ def check(tmp):
         rows = (re.sub(r"[\u2500-\u257f]", " ", row) for row in frame.splitlines()[:-1])
         return 2 if any(row[:20].strip() and row[62:].strip() for row in rows) else 1
 
-    def reading_frame(frame):
-        # The content frame has an uninterrupted top edge, unlike Contents.
-        return bool(re.search(r"[╭┌]─+[╮┐]", frame))
+    def reading_frame(frame, title=""):
+        label = f" {re.escape(title)} " if title else ""
+        return bool(re.search(rf"[╭┌]{label}─+[╮┐]$", frame.partition("\n")[0]))
 
     def first_words(frame):
         for row in frame.splitlines():
+            if row.startswith(("╭", "┌")):
+                continue
             row = re.sub(r"[\u2500-\u257f]", " ", row).strip()
             if row:
                 return row.split()[:3]
@@ -87,10 +89,10 @@ def check(tmp):
         wait_for("Content frame in normal reading", lambda s: heading in s and reading_frame(s))
         keys('Space', 'z')
         before = wait_for("Clean Zen spread", lambda s: "Space z Zen" not in s
-                          and heading in s and not reading_frame(s) and columns(s) == 2)
+                          and heading in s and not s.startswith(("╭", "┌")) and columns(s) == 2)
         # The frame takes space and may reflow both pages, but keeps the reading position.
         keys('Space', 'p')
-        shown = wait_for("Zen frame and progress", lambda s: reading_frame(s)
+        shown = wait_for("Zen frame and progress", lambda s: reading_frame(s, "До первого парома")
                          and re.search(r"\d+ / \d+  ·  \d+%", s))
         assert first_words(shown) == first_words(before), "Frame toggle lost the start of the passage"
         keys('Space', 'p')

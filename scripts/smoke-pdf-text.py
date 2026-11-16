@@ -45,7 +45,7 @@ def check_frame_hit(d, mode):
     term = start(d, file)
 
     def framed(frame):
-        return bool(re.search(r'[╭┌]─+[╮┐]', frame))
+        return bool(re.fullmatch(rf'[╭┌] {re.escape(file.stem)} ─+[╮┐]', frame.partition('\n')[0]))
 
     def raster(frame, spread=False):
         # White pixels are rendered as white-background spaces. Measuring only
