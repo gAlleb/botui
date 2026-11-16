@@ -88,6 +88,46 @@ fn imports_spine_in_order_without_front_matter_or_note_bodies() {
 }
 
 #[test]
+fn a_spine_initial_printed_number_stays_with_its_named_chapter() {
+    use botui_core::Anchor;
+    let doc = read_book(archive(&[
+        ("META-INF/container.xml", "<container><rootfile full-path='p'/></container>"),
+        ("p", "<package><manifest><item id='a' href='a' media-type='application/xhtml+xml'/><item id='b' href='b' media-type='application/xhtml+xml'/><item id='c' href='c' media-type='application/xhtml+xml'/><item id='d' href='d' media-type='application/xhtml+xml'/><item id='nav' href='nav' media-type='application/xhtml+xml' properties='nav'/></manifest><spine><itemref idref='a'/><itemref idref='b'/><itemref idref='c'/><itemref idref='d'/></spine></package>"),
+        ("a", "<html><body><p>2</p></body></html>"),
+        ("b", "<html><body><h1 id='b'>BASIC PRINCIPLES</h1><p>End.</p></body></html>"),
+        ("c", "<html><body><p>3</p><h1 id='c'>ANATOMY</h1><p>Body.</p></body></html>"),
+        ("d", "<html><body><p>45</p><h1 id='d'>ROUTINE</h1></body></html>"),
+        ("nav", "<html><body><nav role='doc-toc'><a href='b#b'>2. Basic Principles</a><a href='c#c'>3. Anatomy</a><a href='d#d'>4. Routine</a></nav></body></html>"),
+    ]), "Numbered chapters").unwrap();
+    let block = |text| doc.blocks.iter().position(|b| b.text == text).unwrap();
+    assert!(doc.chapter_starts.contains(&block("3")));
+    assert!(!doc.chapter_starts.contains(&block("ANATOMY")));
+    assert!(doc.chapter_starts.contains(&block("BASIC PRINCIPLES")));
+    assert!(
+        !doc.chapter_starts.contains(&block("2")),
+        "do not pull in the previous member"
+    );
+    assert!(doc.chapter_starts.contains(&block("ROUTINE")));
+    assert!(
+        !doc.chapter_starts.contains(&block("45")),
+        "different leading number"
+    );
+    let target = Anchor {
+        block: block("ANATOMY"),
+        byte: 0,
+    };
+    assert_eq!(
+        doc.contents
+            .iter()
+            .find(|e| e.title == "3. Anatomy")
+            .unwrap()
+            .anchor(),
+        Some(target)
+    );
+    assert_eq!(doc.resolve_cfi(&doc.cfi(target).unwrap()), Some(target));
+}
+
+#[test]
 fn empty_xhtml_title_keeps_chapter_text_and_its_navigation_target() {
     let book = read_book(archive(&[
         ("META-INF/container.xml", r#"<container><rootfile full-path="book.opf"/></container>"#),
@@ -1404,14 +1444,12 @@ fn chapter_boundaries_survive_resize_page_turns_and_scroll_mode() {
         pager.relayout(&doc, width, height, LayoutMode::Spread);
         pager.seek(Anchor::default());
         assert!(pager.lines(0).iter().any(|l| l.text.contains("Last line.")));
-        if pager.columns() == 1 {
-            pager.next();
-            assert_eq!(pager.anchor(), start);
-        }
-        let column = pager.columns() - 1;
-        assert!(pager.lines(column)[0].text.contains("Second"));
-        assert!(pager.lines(column)[1].text.is_empty());
-        assert_eq!(doc.cfi(pager.lines(column)[0].anchor()), Some(cfi.clone()));
+        assert!(pager.lines(1).is_empty());
+        pager.next();
+        assert_eq!(pager.anchor(), start);
+        assert!(pager.lines(0)[0].text.contains("Second"));
+        assert!(pager.lines(0)[1].text.is_empty());
+        assert_eq!(doc.cfi(pager.lines(0)[0].anchor()), Some(cfi.clone()));
         pager.seek(start);
         pager.previous();
         assert!(pager.lines(0)[0].text.contains("First"));
@@ -1454,7 +1492,7 @@ fn reopening_before_the_last_picture_keeps_the_next_chapter_title_at_the_top() {
                 for (row, line) in pager.lines(column).iter().enumerate() {
                     pictures += line.figures.iter().filter(|f| f.row == 0).count();
                     if line.text.trim() == "Eleven" {
-                        assert_eq!((pictures, row), (1, 0), "height {height}");
+                        assert_eq!((pictures, column, row), (1, 0, 0), "height {height}");
                         titles += 1;
                     }
                 }

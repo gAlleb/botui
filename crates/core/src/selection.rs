@@ -60,8 +60,8 @@ impl Pager {
                 let height = self.viewport() * self.layout.columns;
                 row / height * height
             } else {
-                let column = self.page_starts.partition_point(|&start| start <= row) - 1;
-                self.page_starts[column / self.layout.columns * self.layout.columns]
+                let starts = self.regular_views();
+                starts[starts.partition_point(|&start| start <= row) - 1]
             };
             self.positioned_spreads.clear();
             self.move_to(first);

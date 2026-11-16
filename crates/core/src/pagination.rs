@@ -317,6 +317,10 @@ impl<'a> Viewport<'a> {
     fn new(layout: Layout, rows: &'a [PageLine], first: usize) -> Self {
         let mut bounds = [first; 3];
         for column in 0..layout.columns {
+            if column > 0 && rows.get(bounds[column]).is_some_and(|r| r.chapter_start) {
+                bounds[column + 1] = bounds[column];
+                break;
+            }
             bounds[column + 1] = layout.page_end(rows, bounds[column]);
         }
         Self {
@@ -361,6 +365,7 @@ impl Drop for Pending {
 impl Pager {
     pub(super) fn index_pages(&mut self) {
         self.page_starts.clear();
+        self.spread_starts.clear();
         self.chapter_rows.clear();
         if self.book.has_chapters {
             self.chapter_rows.extend(
@@ -378,20 +383,31 @@ impl Pager {
         }
         let mut start = 0;
         while start < self.lines.len() {
-            self.page_starts.push(start);
-            start = self.layout.page_end(&self.lines, start);
+            let view = Viewport::new(self.layout, &self.lines, start);
+            if view.columns() == 2 {
+                self.spread_starts.push(start);
+            }
+            for column in 0..view.columns() {
+                if !view.lines(column).is_empty() {
+                    self.page_starts.push(view.bounds[column]);
+                }
+            }
+            start = view.end();
+        }
+    }
+
+    pub(super) fn regular_views(&self) -> &[usize] {
+        if self.layout.columns == 2 {
+            &self.spread_starts
+        } else {
+            &self.page_starts
         }
     }
 
     pub(super) fn index_position(&mut self) {
         self.positioned_spreads.clear();
         let columns = self.layout.columns;
-        if self.page_starts.is_empty()
-            || self
-                .page_starts
-                .binary_search(&self.first)
-                .is_ok_and(|i| i % columns == 0)
-        {
+        if self.page_starts.is_empty() || self.regular_views().binary_search(&self.first).is_ok() {
             return;
         }
 
@@ -409,26 +425,38 @@ impl Pager {
         }
         // A preceding ordinary page may overlap the first exact page. Keep both
         // starts so that turning forward again returns to the same spread.
+        // Pair pages backwards only inside this chapter. Earlier chapters
+        // already have complete, reversible spreads of their own.
+        let chapter = self.chapter_rows.partition_point(|&r| r <= self.first);
+        let chapter_start = chapter.checked_sub(1).map_or(0, |i| self.chapter_rows[i]);
+        let begin = self.page_starts.partition_point(|&r| r < chapter_start);
         let before = self.page_starts.partition_point(|&row| row < end);
         let earlier_columns = preceding
             .into_iter()
-            .chain(self.page_starts[..before].iter().rev().copied());
+            .chain(self.page_starts[begin..before].iter().rev().copied());
         self.positioned_spreads
             .extend(earlier_columns.skip(columns - 1).step_by(columns));
-        if self.positioned_spreads.last() != Some(&0) {
-            self.positioned_spreads.push(0);
+        if self.positioned_spreads.last() != Some(&chapter_start) {
+            self.positioned_spreads.push(chapter_start);
         }
+        let regular = if columns == 2 {
+            &self.spread_starts
+        } else {
+            &self.page_starts
+        };
+        let prior = regular.partition_point(|&r| r < chapter_start);
+        self.positioned_spreads
+            .extend(regular[..prior].iter().rev().copied());
         self.positioned_spreads.reverse();
 
         let mut start = self.first;
         while start < self.lines.len() {
-            if let Ok(index) = self.page_starts.binary_search(&start) {
-                self.positioned_spreads
-                    .extend(self.page_starts[index..].iter().step_by(columns));
+            if let Ok(index) = regular.binary_search(&start) {
+                self.positioned_spreads.extend_from_slice(&regular[index..]);
                 break;
             }
             self.positioned_spreads.push(start);
-            start = self.view_at(start).end();
+            start = Viewport::new(self.layout, &self.lines, start).end();
         }
     }
 

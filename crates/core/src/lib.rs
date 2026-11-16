@@ -318,6 +318,8 @@ pub struct Pager {
     source_lines: Vec<(Anchor, usize)>,
     /// Column starts, paginated forward from the start of the book.
     page_starts: Vec<usize>,
+    /// Two-page views can end after the left page at a chapter boundary.
+    spread_starts: Vec<usize>,
     /// First laid-out row of each chapter, including in scroll mode.
     chapter_rows: Vec<usize>,
     /// Spread starts for paging in either direction from an exact search or resume position.
@@ -490,6 +492,7 @@ impl Pager {
             figure_starts: Self::index_figures(&lines),
             lines,
             page_starts: Vec::new(),
+            spread_starts: Vec::new(),
             chapter_rows: Vec::new(),
             positioned_spreads: Vec::new(),
             first: 0,
@@ -717,8 +720,9 @@ impl Pager {
             self.first
                 .saturating_sub(self.layout.columns * self.layout.height)
         } else {
-            let before = self.page_starts.partition_point(|&row| row < self.first);
-            self.page_starts[before.saturating_sub(self.layout.columns)]
+            let starts = self.regular_views();
+            let before = starts.partition_point(|&row| row < self.first);
+            starts[before.saturating_sub(1)]
         }
     }
 

@@ -1,17 +1,12 @@
 use crate::{Anchor, Block, Document, LayoutMode, Pager, Reference, Target};
 
-// Record each column once by reading the book from its beginning.
-fn forward_breaks(pager: &mut Pager) -> Vec<usize> {
-    let mut breaks = vec![0];
+// Record every visible spread in reading order, including an empty right page.
+fn forward_breaks(pager: &mut Pager) -> Vec<[usize; 3]> {
+    let mut spreads = Vec::new();
     loop {
-        let view = pager.complete_view();
-        for &end in &view.bounds[1..=view.columns()] {
-            if end > *breaks.last().unwrap() {
-                breaks.push(end);
-            }
-        }
+        spreads.push(pager.complete_view().bounds);
         if pager.at_end() {
-            return breaks;
+            return spreads;
         }
         pager.next();
     }
@@ -54,24 +49,20 @@ fn chapter_remainder_matches_actual_page_turns_after_jumps_and_reflow() {
     }
 }
 
-fn check_direction_changes(pager: &mut Pager, breaks: &[usize]) {
-    let columns = pager.columns();
-    let end = breaks.len() - 1;
-    let mut index = breaks.binary_search(&pager.first).unwrap();
+fn check_direction_changes(pager: &mut Pager, spreads: &[[usize; 3]]) {
+    let mut index = spreads
+        .iter()
+        .position(|view| view[0] == pager.first)
+        .unwrap();
     for direction in [-1, -1, 1, 1, 1, -1, -1, 1] {
         if direction < 0 {
             pager.previous();
-            index = index.saturating_sub(columns);
+            index = index.saturating_sub(1);
         } else {
             pager.next();
-            if index + columns < end {
-                index += columns;
-            }
+            index = (index + 1).min(spreads.len() - 1);
         }
-        let view = pager.complete_view();
-        for (column, &edge) in view.bounds[..=columns].iter().enumerate() {
-            assert_eq!(edge, breaks[(index + column).min(end)]);
-        }
+        assert_eq!(pager.complete_view().bounds, spreads[index]);
     }
 }
 

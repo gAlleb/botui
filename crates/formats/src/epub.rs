@@ -3,7 +3,7 @@ const MAX_MEMBER: u64 = 16 << 20;
 use botui_core::{Block, Document};
 use percent_encoding::percent_decode_str;
 use roxmltree::{Document as Xml, Node};
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::fs::File;
 use std::io::{BufReader, Read, Seek};
 use std::path::Path;
@@ -13,6 +13,19 @@ use zip::ZipArchive;
 pub fn open_epub(path: &Path) -> Result<Document> {
     let fallback = path.file_stem().unwrap_or_default().to_string_lossy();
     read_book(BufReader::new(File::open(path)?), &fallback)
+}
+
+fn numbered_title(number: &str, heading: &str, label: &str) -> bool {
+    if number.is_empty() || !number.bytes().all(|b| b.is_ascii_digit()) {
+        return false;
+    }
+    let Some(rest) = label.trim().strip_prefix(number) else {
+        return false;
+    };
+    let title = rest.trim_start_matches(|c: char| {
+        c.is_whitespace() || matches!(c, '.' | ')' | ':' | '-' | '–' | '—')
+    });
+    title.len() < rest.len() && title.to_lowercase() == heading.trim().to_lowercase()
 }
 
 pub(super) fn read_book(reader: impl Read + Seek, fallback: &str) -> Result<Document> {
@@ -259,6 +272,23 @@ pub(super) fn read_book(reader: impl Read + Seek, fallback: &str) -> Result<Docu
         (at.byte == 0 && (entry.parent.is_none() || chapters.headings.contains(&at.block)))
             .then_some(at.block)
     }));
+    // The TOC sometimes addresses the title one block after its printed
+    // number. Break before both, while links still resolve to the title.
+    let spine_starts: BTreeSet<_> = starts.values().copied().collect();
+    for entry in &contents {
+        let Some(at) = entry.anchor() else { continue };
+        if let Some(first) = at.block.checked_sub(1)
+            && at.byte == 0
+            && chapter_starts.contains(&at.block)
+            && spine_starts.contains(&first)
+            && !spine_starts.contains(&at.block)
+            && let Some(title) = blocks.get(at.block).filter(|b| b.heading)
+            && numbered_title(&blocks[first].text, &title.text, &entry.title)
+        {
+            chapter_starts.remove(&at.block);
+            chapter_starts.insert(first);
+        }
+    }
     for (member, block) in starts {
         ids.insert((member, String::new()), Anchor { block, byte: 0 });
     }
