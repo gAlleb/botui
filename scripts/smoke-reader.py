@@ -65,22 +65,36 @@ def check(tmp):
         raise AssertionError("Книга не закрылась")
 
     def columns(frame):
-        # On a 120-cell screen a single page is centered and at most 78 cells wide.
-        return 2 if any(row[:20].strip() and row[62:].strip() for row in frame.splitlines()) else 1
+        # Used in Zen, without a sidebar. A border is not a second text column.
+        # On this 120-cell screen a single page is centered and at most 78 cells wide.
+        rows = (re.sub(r"[\u2500-\u257f]", " ", row) for row in frame.splitlines()[:-1])
+        return 2 if any(row[:20].strip() and row[62:].strip() for row in rows) else 1
+
+    def reading_frame(frame):
+        # The content frame has an uninterrupted top edge, unlike Contents.
+        return bool(re.search(r"[╭┌]─+[╮┐]", frame))
+
+    def first_words(frame):
+        for row in frame.splitlines():
+            row = re.sub(r"[\u2500-\u257f]", " ", row).strip()
+            if row:
+                return row.split()[:3]
+        return []
 
     heading = "Почта на пристани"
     try:
         open_book()
-        wait_for("Начальный разворот", lambda s: heading in s and columns(s) == 2)
-        keys('Space', 'z');wait_for("Zen hides contents",lambda s:"Space z Zen" not in s and heading in s)
-        # Showing a footer must not resize/reflow either page or move the passage.
-        before = tmux("capture-pane", "-p", "-t", "reader").stdout.splitlines()
+        wait_for("Content frame in normal reading", lambda s: heading in s and reading_frame(s))
+        keys('Space', 'z')
+        before = wait_for("Clean Zen spread", lambda s: "Space z Zen" not in s
+                          and heading in s and not reading_frame(s) and columns(s) == 2)
+        # The frame takes space and may reflow both pages, but keeps the reading position.
         keys('Space', 'p')
-        shown = wait_for("Zen progress", lambda s: re.search(r"\d+ / \d+  ·  \d+%", s)).splitlines()
-        assert shown[:-1] == before[:-1], "Progress footer moved the book text"
+        shown = wait_for("Zen frame and progress", lambda s: reading_frame(s)
+                         and re.search(r"\d+ / \d+  ·  \d+%", s))
+        assert first_words(shown) == first_words(before), "Frame toggle lost the start of the passage"
         keys('Space', 'p')
-        hidden = wait_for("Hide zen progress", lambda s: not re.search(r"\d+ / \d+  ·  \d+%", s)).splitlines()
-        assert hidden == before, "Hiding progress changed the page"
+        wait_for("Clean Zen restores the same passage and layout", lambda s: s == before)
         keys('Space', 'm')
         actions = ("Resume", "Single page", "Two-page spread", "Theme", "Add bookmark", "Page width & column gap")
         menu = wait_for("Меню по M", lambda s: all(name in s for name in actions))

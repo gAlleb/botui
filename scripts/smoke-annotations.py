@@ -229,6 +229,7 @@ with tempfile.TemporaryDirectory() as name:
             t.keys("Escape")
             t.see("TEXT")
             time.sleep(.5)
+            x, y = point(t.see("TEXT"), "bravo")
             click(t, (x, y), 3)
             t.see("SELECT")
             t.keys("Space", "a", "y")

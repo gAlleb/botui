@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Frame the reading area and toggle its frame and progress with Space p in Zen mode.
+
 ## 0.1.18 — 2026-11-16
 
 - Restore the same illustrated spread after reopening a book or turning back and forward.

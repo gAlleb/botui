@@ -137,13 +137,15 @@ Books open without a cursor. **Space c** enables Vim navigation and selection; *
 
 Commands depend on the document: text actions need selectable text; page zoom, rotation and page notes apply to PDF, DjVu, comics and image-only EPUBs. Text-reader commands below also apply to Markdown unless a format is named explicitly. In ordinary reading, q/Q returns to the source; in Vim use Space q.
 
+In zen mode, **Space p** shows or hides the reading frame and progress. Hiding them frees their space for reading; text reflows while keeping your place in the document.
+
 | Keys | Action |
 | --- | --- |
 | `Space c` | Toggle Vim cursor (Normal ↔ reading) |
 | `Space m` | Reading menu |
 | `Space o` | Contents |
 | `Space z` | Zen mode |
-| `Space p` | Dim progress footer in zen |
+| `Space p` | Show/hide frame and progress in zen |
 | `Space f` | Find in book |
 | `Space b a` | Add/remove bookmark |
 | `Space b l` | Bookmark list |
@@ -350,7 +352,7 @@ interface_theme = "catppuccin-mocha"
 # Optional override. By default, solid Terminal paper follows the active terminal background.
 # opaque_color = "#1f2125"
 zen = false
-# Show a dim page count and percentage in zen mode. Toggle with Space p.
+# Show frame and progress in zen; hiding them frees space for reading. Toggle with Space p.
 zen_progress = false
 # PDF/DjVu zoom in percent. In scroll mode 100 fits the reading pane.
 scan_zoom = 100

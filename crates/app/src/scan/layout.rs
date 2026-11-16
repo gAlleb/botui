@@ -229,22 +229,31 @@ mod tests {
         assert_eq!(zoom.window[0], 0.);
         assert_eq!(zoom.window[2], 1.);
         assert!(zoom.window[3] < 1.);
-        for pan in [0, 128, 255] {
-            let spread = pages(
-                area,
-                cell,
-                &dims,
-                0,
-                Crop {
-                    percent: 400,
-                    x: pan,
-                    y: pan,
-                },
-                false,
-            );
-            for placement in spread.iter().flatten() {
-                assert_eq!(placement.screen.intersection(area), placement.screen);
-                assert!(placement.window.iter().all(|v| (0. ..=1.).contains(v)));
+        // The outer chrome can disappear in Zen. The same zoom and pan must
+        // remain clipped to the current reading pane, including its origin.
+        for pane in [area, Rect::new(21, 4, 118, 38)] {
+            for count in [1, 2] {
+                for align_height in [false, true] {
+                    for pan in [0, 128, 255] {
+                        let spread = pages(
+                            pane,
+                            cell,
+                            &dims[..count],
+                            0,
+                            Crop {
+                                percent: 400,
+                                x: pan,
+                                y: pan,
+                            },
+                            align_height,
+                        );
+                        assert!(spread.iter().any(Option::is_some));
+                        for placement in spread.iter().flatten() {
+                            assert_eq!(placement.screen.intersection(pane), placement.screen);
+                            assert!(placement.window.iter().all(|v| (0. ..=1.).contains(v)));
+                        }
+                    }
+                }
             }
         }
     }

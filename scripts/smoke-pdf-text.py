@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """PDF text selection, persisted ranges and shared editor in an isolated terminal."""
-import importlib.util, json, os, tempfile, time, subprocess, xml.etree.ElementTree as ET
+import importlib.util, json, os, re, tempfile, time, subprocess, xml.etree.ElementTree as ET
 from pathlib import Path
 spec=importlib.util.spec_from_file_location('shelf',Path(__file__).with_name('smoke-shelf.py'))
 s=importlib.util.module_from_spec(spec);spec.loader.exec_module(s)
@@ -31,6 +31,111 @@ def copied(d,expected):
 
 def start(d,file):
     return s.Terminal(d,Path('/usr/bin/env'),args=['TERM=xterm','COLORTERM=',str(BINARY),str(file)])
+
+def check_frame_hit(d, mode):
+    """Locate the word from the drawn raster, independently of botui's hit map."""
+    d.mkdir()
+    file = d / 'frame-words.pdf'
+    file.write_bytes(pdf())
+    config = d / 'config/botui/config.toml'
+    config.parent.mkdir(parents=True)
+    config.write_text('zen = true\nzen_progress = false\nborders = "rounded"\nreading_layout = "single"\n')
+    xml = ET.fromstring(subprocess.check_output(['pdftotext', '-f', '1', '-l', '1', '-bbox-layout', str(file), '-']))
+    word = next(w.attrib for w in xml.iter() if w.tag.endswith('word') and w.text == 'bravo')
+    term = start(d, file)
+
+    def framed(frame):
+        return bool(re.search(r'[╭┌]─+[╮┐]', frame))
+
+    def raster(frame, spread=False):
+        # White pixels are rendered as white-background spaces. Measuring only
+        # ▀/▄ would measure the ink, not the sheet, and miscalibrate scrolling.
+        ansi = term.run('capture-pane', '-p', '-e', '-t', 'shelf').stdout
+        points = []
+        for y, line in enumerate(ansi.splitlines()):
+            x, background = 0, None
+            for token in re.finditer(r'\x1b\[([0-9;]*)m|([^\x1b]+)', line):
+                if token[1] is not None:
+                    codes = [int(v or 0) for v in token[1].split(';')]
+                    i = 0
+                    while i < len(codes):
+                        code = codes[i]
+                        if code in (0, 49):
+                            background = None
+                        elif code in (47, 107):
+                            background = (255, 255, 255)
+                        elif code in (38, 48) and codes[i + 1:i + 2] == [2]:
+                            if code == 48:
+                                background = tuple(codes[i + 2:i + 5])
+                            i += 4
+                        elif code in (38, 48) and codes[i + 1:i + 2] == [5]:
+                            if code == 48:
+                                background = None
+                            i += 2
+                        i += 1
+                else:
+                    if background == (255, 255, 255):
+                        points.extend((col, y) for col in range(x, x + len(token[2]))
+                                      if not spread or col < pane_width // 2)
+                    x += len(token[2])
+        assert points, frame
+        return (min(x for x, _ in points), min(y for _, y in points),
+                max(x for x, _ in points) + 1, max(y for _, y in points) + 1)
+
+    def click_word(frame):
+        x0, y0, x1, y1 = raster(frame, mode == 'spread')
+        # In scroll mode the page continues below the viewport. Derive its full
+        # height from the fitted raster's measured cell aspect, not the clipped edge.
+        height = (x1 - x0) * page_ratio if mode == 'scroll' else y1 - y0
+        x = round(x0 + (float(word['xMin']) + float(word['xMax'])) / 2 / 300 * (x1 - x0)) + 1
+        y = int(y0 + (float(word['yMin']) + float(word['yMax'])) / 2 / 400 * height) + 1
+        seq = f'\033[<0;{x};{y}M\033[<0;{x};{y}m'
+        term.run('set-buffer', '-b', 'frame-mouse', seq)
+        paste = ['paste-buffer', '-d', '-r', '-b', 'frame-mouse', '-t', 'shelf']
+        if term.run(*paste, '-S', required=False).returncode:
+            term.run(*paste)
+        term.wait('Source word is selected on the rendered page', lambda f: 'SELECT' in f and 'Loading text' not in f)
+
+    def copy_word():
+        (d / 'copied').unlink(missing_ok=True)
+        term.keys('Space', 'a', 'y')
+        copied(d, 'bravo')
+        term.keys('Escape')  # Copy cleared the range; Esc now closes the cursor.
+
+    try:
+        pane_width = int(term.run('display-message', '-p', '-t', 'shelf', '#{pane_width}').stdout)
+        frame = term.wait('Fitted calibration page', lambda f: '▀' in f or '▄' in f)
+        x0, y0, x1, y1 = raster(frame)
+        page_ratio = (y1 - y0) / (x1 - x0)
+        fitted_width = x1 - x0
+        term.keys('Space', 'l', {'single': '1', 'spread': '2', 'scroll': '3'}[mode])
+        def layout_ready(frame):
+            if framed(frame) or not any(c in frame for c in '▀▄'):
+                return False
+            if mode == 'spread':
+                mid = pane_width // 2
+                return (any(c in row[:mid] for row in frame.splitlines() for c in '▀▄')
+                        and any(c in row[mid:] for row in frame.splitlines() for c in '▀▄')
+                        and not any(c in row[mid - 1:mid + 2] for row in frame.splitlines() for c in '▀▄'))
+            if mode == 'scroll':
+                left, _, right, _ = raster(frame)
+                return right - left > fitted_width
+            return True
+        frame = term.wait('Unframed PDF layout', layout_ready)
+        click_word(frame)
+        term.keys('Space', 'p')
+        term.wait('Selection survives the new frame', lambda f: framed(f) and 'SELECT' in f)
+        copy_word()
+        for visible in (True, False):
+            if not visible:
+                term.keys('Space', 'p')
+            frame = term.wait('Raster ready for a fresh word hit', lambda f: framed(f) == visible
+                              and 'SELECT' not in f and ('▀' in f or '▄' in f))
+            click_word(frame)
+            copy_word()
+        term.keys('Space', 'q')
+    finally:
+        term.run('kill-server', required=False)
 
 with tempfile.TemporaryDirectory(prefix='botui-pdf-text-') as tmp:
     d=Path(tmp);file=d/'words.pdf';file.write_bytes(pdf())
@@ -138,4 +243,6 @@ with tempfile.TemporaryDirectory(prefix='botui-pdf-text-') as tmp:
         t.keys('Delete');t.see('Delete annotation?');t.keys('Down','Enter');t.see('No annotations');assert notes(d)==[]
         t.keys('Escape','Space','q')
     finally:t.run('kill-server',required=False)
-print('PASS: PDF ranges, copy, colors, editing, clearing, export and reopen')
+    for mode in ('single', 'spread', 'scroll'):
+        check_frame_hit(d / ('frame-' + mode), mode)
+print('PASS: PDF ranges, copy, colors, editing, clearing, export, reopen and frame hit mapping')

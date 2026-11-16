@@ -297,7 +297,13 @@ pub(super) fn read_pages(
             Rect::new(0, 0, screen.width, screen.height),
             !zen && screen.width >= 78,
         );
-        let available = body.width;
+        let content = Rect {
+            height: body.height.saturating_sub(u16::from(!zen)),
+            ..body
+        };
+        let reading_frame = crate::appearance::ReadingFrame::new(content, zen, zen_progress);
+        let area = reading_frame.inner;
+        let available = area.width;
         let cols = if !scrolling && spread && total != Some(1) && available >= 68 {
             2u16
         } else {
@@ -310,7 +316,7 @@ pub(super) fn read_pages(
         }
         let side = (available / cols)
             .saturating_mul(size.width)
-            .max(screen.height.saturating_mul(size.height))
+            .max(area.height.saturating_mul(size.height))
             .clamp(240, 1600);
         let side = (u32::from(side) * u32::from(crop.percent.max(100)) / 100).min(1920) as u16;
         let mut appearance = checkpoint.scan_appearance;
@@ -335,8 +341,6 @@ pub(super) fn read_pages(
             let dimensions: Vec<_> = (0..cols)
                 .map(|i| pages.dimensions(n + u32::from(i)).unwrap_or((600, 800)))
                 .collect();
-            let mut area = body;
-            area.height = area.height.saturating_sub(u16::from(!zen || show_progress));
             crop = layout::reveal(
                 area,
                 ratatui::layout::Size::new(size.width, size.height),
@@ -349,10 +353,8 @@ pub(super) fn read_pages(
         }
         let view = flow::Viewport {
             side,
-            width: crop.fit(body, false).width,
-            height: screen
-                .height
-                .saturating_sub(u16::from(!zen || show_progress)),
+            width: crop.fit(area, false).width,
+            height: area.height,
             picker: &picker,
             crop,
             count: total.unwrap_or(0),
@@ -456,10 +458,23 @@ pub(super) fn read_pages(
         let rendered = term.draw_frame(|f| {
             let screen = f.area();
             sidebar.draw(f, sidebar_area, shown, total.unwrap_or(0));
-            let area = Rect {
-                height: body.height.saturating_sub(u16::from(!zen || show_progress)),
-                ..body
+            let caption = if show_progress {
+                total.filter(|count| *count > 0).map(|count| {
+                    crate::appearance::progress_label(
+                        Some((shown as usize, count as usize)),
+                        scan_percent(
+                            shown,
+                            shown_offset,
+                            count,
+                            scrolling,
+                            finished && end_visible && shown == n,
+                        ),
+                    )
+                })
+            } else {
+                None
             };
+            reading_frame.draw(f, Default::default(), caption);
             if !zen && screen.height > 0 {
                 let y = screen.bottom() - 1;
                 let mut status =
@@ -501,20 +516,6 @@ pub(super) fn read_pages(
                     status.push_str(hints);
                 }
                 f.render_widget(Paragraph::new(status).dim(), Rect::new(area.x, y, space, 1));
-            }
-            if show_progress && let Some(count) = total.filter(|n| *n > 0) {
-                crate::appearance::zen_progress(
-                    f,
-                    Some((shown as usize, count as usize)),
-                    scan_percent(
-                        shown,
-                        shown_offset,
-                        count,
-                        scrolling,
-                        finished && end_visible && shown == n,
-                    ),
-                    Default::default(),
-                );
             }
             if scrolling {
                 strip.draw(f, area, shown, shown_offset, sixel.as_mut());
@@ -694,10 +695,6 @@ pub(super) fn read_pages(
             && crop.percent <= 100
             && let Some(cache) = &mut sixel
         {
-            let area = Rect {
-                height: view.height,
-                ..body
-            };
             for first in [
                 n.saturating_add(u32::from(cols)),
                 n.saturating_sub(u32::from(cols)),

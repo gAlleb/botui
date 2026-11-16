@@ -12,10 +12,11 @@ pub(super) fn panes(
     mut screen: Rect,
     splitter: &mut crate::splitter::Splitter,
     zen: bool,
+    controls_height: u16,
 ) -> (Rect, Rect) {
-    if !zen {
-        screen.height = screen.height.saturating_sub(1);
-    }
+    screen.height = screen
+        .height
+        .saturating_sub(controls_height.max(u16::from(!zen)));
     splitter.layout(screen, !zen && screen.width >= 78)
 }
 
@@ -41,12 +42,9 @@ pub(super) fn geometry(
         width.min(available)
     };
     let vertical = (area.height / 13).min(2).saturating_sub(u16::from(zen));
-    // The progress/back-link footer uses the bottom margin, even when hidden.
-    // Toggling it must neither repaginate the book nor move the saved passage.
-    let bottom = if zen { vertical.max(1) } else { vertical };
     let mut text = crate::centered(area, used, area.height);
     text.y += vertical;
-    text.height = area.height.saturating_sub(vertical + bottom);
+    text.height = area.height.saturating_sub(vertical * 2);
     (
         text,
         if spread {
@@ -198,8 +196,8 @@ mod tests {
             let (normal, _, _) = geometry(screen, LayoutMode::Spread, 70, 8, false);
             let (zen, _, gap) = geometry(screen, LayoutMode::Spread, 70, 8, true);
             assert_eq!((zen.x, zen.width, gap), (normal.x, normal.width, 8));
-            assert_eq!((zen.y, screen.bottom() - zen.bottom()), (top, top.max(1)));
-            assert_eq!(zen.height, height - top - top.max(1));
+            assert_eq!((zen.y, screen.bottom() - zen.bottom()), (top, top));
+            assert_eq!(zen.height, height - top * 2);
         }
     }
 }

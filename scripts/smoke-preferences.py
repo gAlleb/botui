@@ -71,7 +71,7 @@ def check(tmp):
             'Indent the first line',
             '0, 1 or 2 blank lines between paragraphs',
             'divider between the contents sidebar',
-            'Show the page and reading percentage',
+            'Show the reading frame, page and percentage',
         )):
             if index:
                 t.keys('Down')
@@ -85,7 +85,7 @@ def check(tmp):
         t.click('Paragraph spacing', t.see('Paragraph spacing'))
         t.click('From book', t.see('From book'))
         t.wait('Book spacing restored', lambda f: 'First-line indent' in f and 'paragraph_spacing' not in cfg())
-        t.click('Zen progress',t.see('Zen progress'))
+        t.click('Zen frame & progress',t.see('Zen frame & progress'))
         t.wait('Zen progress enabled',lambda _:cfg()['zen_progress'])
         t.keys('Tab', 'End', 'Up')
         t.see('divider between the navigation sidebar')

@@ -1,5 +1,7 @@
 use ratatui::{
+    layout::{Margin, Rect},
     style::{Color, Style},
+    text::Line,
     widgets::{Block, BorderType, Padding},
 };
 use serde::{Deserialize, Serialize};
@@ -53,25 +55,75 @@ pub fn block<'a>() -> Block<'a> {
     }
     .border_style(border_style(false))
 }
-pub fn zen_progress(
-    frame: &mut ratatui::Frame,
-    pages: Option<(usize, usize)>,
-    percent: f64,
-    style: Style,
-) {
-    let screen = frame.area();
-    let row =
-        ratatui::layout::Rect::new(screen.x, screen.bottom().saturating_sub(1), screen.width, 1);
-    let label = pages.map_or_else(
+pub fn progress_label(pages: Option<(usize, usize)>, percent: f64) -> String {
+    pages.map_or_else(
         || format!("{percent:.0}%"),
         |(page, total)| format!("{page} / {total}  ·  {percent:.0}%"),
-    );
-    frame.render_widget(
-        ratatui::widgets::Paragraph::new(label)
-            .centered()
-            .style(style.dim()),
-        row,
-    );
+    )
+}
+
+/// Both readers lay out content inside the same frame. Hidden Zen chrome takes
+/// no space: resizing the content keeps the document position, not old pages.
+pub struct ReadingFrame {
+    pub inner: Rect,
+    area: Rect,
+    borders: BordersStyle,
+}
+
+impl ReadingFrame {
+    pub fn new(area: Rect, zen: bool, zen_progress: bool) -> Self {
+        Self::with_borders(area, zen, zen_progress, BordersStyle::current())
+    }
+
+    fn with_borders(area: Rect, zen: bool, zen_progress: bool, style: BordersStyle) -> Self {
+        let borders = if (!zen || zen_progress) && area.width >= 3 && area.height >= 3 {
+            style
+        } else {
+            BordersStyle::None
+        };
+        let inner = if borders != BordersStyle::None {
+            area.inner(Margin::new(1, 1))
+        } else {
+            Rect {
+                height: area.height.saturating_sub(u16::from(zen && zen_progress)),
+                ..area
+            }
+        };
+        Self {
+            inner,
+            area,
+            borders,
+        }
+    }
+
+    pub fn draw(&self, frame: &mut ratatui::Frame, style: Style, caption: Option<String>) {
+        if self.borders != BordersStyle::None {
+            let mut block = Block::bordered()
+                .border_type(if self.borders == BordersStyle::Rounded {
+                    BorderType::Rounded
+                } else {
+                    BorderType::Plain
+                })
+                .border_style(border_style(false))
+                .title_style(style.dim());
+            if let Some(label) = caption {
+                block = block.title_bottom(Line::from(format!(" {label} ")).centered());
+            }
+            frame.render_widget(block, self.area);
+        } else if let Some(label) = caption {
+            frame.render_widget(
+                ratatui::widgets::Paragraph::new(label)
+                    .centered()
+                    .style(style.dim()),
+                Rect::new(
+                    self.area.x,
+                    self.area.bottom().saturating_sub(1),
+                    self.area.width,
+                    self.area.height.min(1),
+                ),
+            );
+        }
+    }
 }
 
 pub fn border_style(focused: bool) -> Style {
@@ -135,4 +187,69 @@ pub fn outline_style(base: Style, depth: usize) -> Style {
         _ => Color::Reset,
     };
     base.fg(ink)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn zen_reclaims_the_frame_and_disabled_borders_only_reserve_visible_progress() {
+        let area = Rect::new(23, 4, 100, 30);
+        for borders in [
+            BordersStyle::Rounded,
+            BordersStyle::Square,
+            BordersStyle::None,
+        ] {
+            let clean = ReadingFrame::with_borders(area, true, false, borders);
+            assert_eq!(clean.inner, area);
+            let shown = ReadingFrame::with_borders(area, true, true, borders);
+            let normal = ReadingFrame::with_borders(area, false, false, borders);
+            if borders == BordersStyle::None {
+                assert_eq!(normal.inner, area);
+                assert_eq!(shown.inner, Rect::new(23, 4, 100, 29));
+            } else {
+                assert_eq!(shown.inner, Rect::new(24, 5, 98, 28));
+                assert_eq!(normal.inner, shown.inner);
+            }
+        }
+        // Even a very small terminal must not produce content outside its pane.
+        for width in 0..5 {
+            for height in 0..5 {
+                let area = Rect::new(3, 2, width, height);
+                for zen in [false, true] {
+                    let frame = ReadingFrame::with_borders(area, zen, true, BordersStyle::Rounded);
+                    assert_eq!(frame.inner.intersection(area), frame.inner);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn frame_caption_uses_the_border_without_repainting_highlights_in_the_book() {
+        use ratatui::{Terminal, backend::TestBackend, widgets::Paragraph};
+        let mut term = Terminal::new(TestBackend::new(50, 8)).unwrap();
+        let area = Rect::new(10, 0, 40, 8);
+        let chrome = ReadingFrame::with_borders(area, true, true, BordersStyle::Rounded);
+        let highlight = Style::new().fg(Color::Red).bg(Color::Yellow);
+        term.draw(|frame| {
+            frame.render_widget(Paragraph::new("selected").style(highlight), chrome.inner);
+            chrome.draw(
+                frame,
+                Style::new().fg(Color::White),
+                Some(progress_label(Some((4, 12)), 25.)),
+            );
+        })
+        .unwrap();
+        let buffer = term.backend().buffer();
+        assert_eq!(buffer[(area.x, area.y)].symbol(), "╭");
+        assert_eq!(buffer[(area.right() - 1, area.bottom() - 1)].symbol(), "╯");
+        assert_eq!(buffer[(chrome.inner.x, chrome.inner.y)].fg, Color::Red);
+        assert_eq!(buffer[(chrome.inner.x, chrome.inner.y)].bg, Color::Yellow);
+        let bottom: String = (area.x..area.right())
+            .map(|x| buffer[(x, 7)].symbol())
+            .collect();
+        assert!(bottom.contains("4 / 12  ·  25%"));
+        assert_eq!(buffer[(0, 0)].symbol(), " ");
+    }
 }

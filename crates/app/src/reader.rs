@@ -261,9 +261,11 @@ impl Reader {
             crate::splitter::Pane::Contents,
             settings.contents_width,
         );
-        let (_, page) = layout::panes(area, &mut splitter, settings.zen);
+        let (_, page) = layout::panes(area, &mut splitter, settings.zen, 0);
+        let reading_frame =
+            crate::appearance::ReadingFrame::new(page, settings.zen, settings.zen_progress);
         let (text, mode_for_size, actual_gap) =
-            layout::geometry(page, mode, page_width, gap, settings.zen);
+            layout::geometry(reading_frame.inner, mode, page_width, gap, settings.zen);
         let image_cell = if doc.image_sizes.is_empty() {
             (1, 2)
         } else {
@@ -361,18 +363,31 @@ impl Reader {
         self.pager.is_paginating() || self.illustrations.as_ref().is_some_and(|p| p.busy())
     }
 
+    fn reading_panes(&mut self, screen: Rect) -> (Rect, crate::appearance::ReadingFrame, Rect) {
+        let controls = self.study.controls_area(screen);
+        let footer_height = controls.height.max(u16::from(self.links.visiting()));
+        let (sidebar, page) = layout::panes(screen, &mut self.splitter, self.zen, footer_height);
+        let frame = crate::appearance::ReadingFrame::new(page, self.zen, self.zen_progress);
+        (sidebar, frame, controls)
+    }
+
     fn draw(&mut self, frame: &mut Frame, notice: Option<&str>) {
         let screen = frame.area();
         self.links.clear();
         let show_progress =
             self.zen && self.zen_progress && screen.height > 1 && !self.links.visiting();
-        let (sidebar, page) = layout::panes(screen, &mut self.splitter, self.zen);
+        let (sidebar, reading_frame, controls) = self.reading_panes(screen);
         self.sidebar_rect = sidebar;
         if self.sidebar_rect.is_empty() {
             self.sidebar_focus = false;
         }
-        let (text, actual, gap) =
-            layout::geometry(page, self.mode, self.page_width, self.gap, self.zen);
+        let (text, actual, gap) = layout::geometry(
+            reading_frame.inner,
+            self.mode,
+            self.page_width,
+            self.gap,
+            self.zen,
+        );
         self.text_rect = text;
         self.study.begin_frame();
         if !self.doc.image_sizes.is_empty() {
@@ -594,9 +609,11 @@ impl Reader {
                 Rect::new(foot.x, foot.y, right - cw - foot.x, foot.height),
             );
         }
-        if show_progress {
-            crate::appearance::zen_progress(frame, pages, self.reading_percent(), style);
-        }
+        reading_frame.draw(
+            frame,
+            style,
+            show_progress.then(|| crate::appearance::progress_label(pages, self.reading_percent())),
+        );
         if self.links.visiting() {
             let footer = Rect::new(
                 screen.x,
@@ -607,7 +624,7 @@ impl Reader {
             frame.render_widget(Clear, footer);
             self.links.controls(frame, footer, style);
         }
-        self.study.controls(frame, style);
+        self.study.controls(frame, controls, style);
         let context = self.leader_context();
         self.leader.draw(frame, context);
         if let Some(panel) = &mut self.layout_panel {
@@ -695,7 +712,7 @@ impl Reader {
                 Action::Layout => ("Page width & column gap".into(), "Space l w"),
                 Action::ZenProgress => (
                     format!(
-                        "Zen progress · {}",
+                        "Zen frame & progress · {}",
                         if self.zen_progress { "On" } else { "Off" }
                     )
                     .into(),
@@ -1730,9 +1747,9 @@ pub fn read_server(
                 {
                     let size = term.size()?;
                     let screen = Rect::new(0, 0, size.width, size.height);
-                    let (_, page) = layout::panes(screen, &mut reader.splitter, reader.zen);
+                    let (_, reading_frame, _) = reader.reading_panes(screen);
                     let (text, mode, gap) = layout::geometry(
-                        page,
+                        reading_frame.inner,
                         reader.mode,
                         reader.page_width,
                         reader.gap,

@@ -45,7 +45,7 @@ pub(super) struct Study {
     preferred_column: Option<usize>,
     dragged: bool,
     link: Option<super::Action>,
-    clicks: Option<(Instant, Position, u8)>,
+    clicks: Option<(Instant, Position, u8, TextRange)>,
     keys: crate::vim::Keys,
     previous_selection: Option<TextRange>,
     search_backward: bool,
@@ -194,23 +194,27 @@ impl Study {
                         action(Command::ContextMenu(p))
                     }
                     MouseEventKind::Down(MouseButton::Left) => {
-                        if let Some((_, command)) = self.buttons.iter().find(|(r, _)| r.contains(p))
-                        {
-                            return action(*command);
-                        }
-                        let hit = self.hit(p, false)?;
+                        // A footer can reflow the book after the first click. The
+                        // rest of that click series still belongs to its source.
+                        let continued = self.clicks.filter(|(at, pos, count, _)| {
+                            *pos == p && *count < 3 && at.elapsed() < Duration::from_millis(450)
+                        });
+                        let (clicks, hit) = if let Some((_, _, count, source)) = continued {
+                            (count + 1, source)
+                        } else {
+                            if let Some((_, command)) =
+                                self.buttons.iter().find(|(r, _)| r.contains(p))
+                            {
+                                return action(*command);
+                            }
+                            (1, self.hit(p, false)?)
+                        };
                         self.normal = false;
                         self.preferred_column = None;
                         self.pointer = None;
                         self.visual = None;
                         self.message = None;
-                        let clicks = self
-                            .clicks
-                            .filter(|(at, pos, _)| {
-                                *pos == p && at.elapsed() < Duration::from_millis(450)
-                            })
-                            .map_or(1, |(_, _, n)| n % 3 + 1);
-                        self.clicks = Some((Instant::now(), p, clicks));
+                        self.clicks = Some((Instant::now(), p, clicks, hit));
                         self.cursor = Some(hit.start);
                         let range = match clicks {
                             2 => doc.word_at(hit.start),
@@ -533,11 +537,7 @@ impl Study {
             }
         }
     }
-    pub fn controls(&mut self, f: &mut Frame, style: Style) {
-        if self.cursor.is_none() && self.message.is_none() {
-            return;
-        }
-        let area = f.area();
+    fn control_actions(&self) -> [(&'static str, Option<Command>); 7] {
         let label = if self.keys.pending() {
             "NORMAL · command…"
         } else if self.visual.is_some() {
@@ -549,7 +549,7 @@ impl Study {
         } else {
             "TEXT"
         };
-        let actions = [
+        [
             (label, None),
             ("[Space a y Copy]", Some(Command::Copy)),
             ("[Space a h Highlight]", Some(Command::Highlight)),
@@ -564,7 +564,39 @@ impl Study {
                 },
                 Some(Command::Clear),
             ),
-        ];
+        ]
+    }
+    fn control_body(&self) -> Option<&str> {
+        self.message
+            .as_deref()
+            .or_else(|| {
+                self.show_notes
+                    .then(|| self.active_note())
+                    .flatten()
+                    .map(|n| n.body.as_str())
+            })
+            .filter(|body| !body.is_empty())
+    }
+    pub fn controls_area(&self, area: Rect) -> Rect {
+        let height = if self.cursor.is_none() && self.message.is_none() {
+            0
+        } else {
+            let (_, rows) = super::controls::layout(area, &self.control_actions().map(|a| a.0));
+            rows.saturating_add(u16::from(self.control_body().is_some()))
+                .min(area.height)
+        };
+        Rect::new(
+            area.x,
+            area.bottom().saturating_sub(height),
+            area.width,
+            height,
+        )
+    }
+    pub fn controls(&mut self, f: &mut Frame, area: Rect, style: Style) {
+        if area.is_empty() || (self.cursor.is_none() && self.message.is_none()) {
+            return;
+        }
+        let actions = self.control_actions();
         let (rects, height) = super::controls::layout(area, &actions.map(|a| a.0));
         let foot = Rect::new(area.x, area.bottom() - height, area.width, height);
         f.render_widget(Clear, foot);
@@ -577,13 +609,7 @@ impl Study {
                 self.buttons.push((rect, cmd));
             }
         }
-        let body = self.message.as_deref().or_else(|| {
-            self.show_notes
-                .then(|| self.active_note())
-                .flatten()
-                .map(|n| n.body.as_str())
-        });
-        if let Some(body) = body.filter(|s| !s.is_empty())
+        if let Some(body) = self.control_body()
             && foot.y > area.y
         {
             let row = Rect::new(area.x, foot.y - 1, area.width, 1);
@@ -603,6 +629,131 @@ fn highlight(color: HighlightColor) -> Style {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn mouse_click_series_keeps_its_source_across_footer_reflow() {
+        use crossterm::event::MouseEvent;
+        let doc = Document {
+            blocks: vec![
+                botui_core::Block {
+                    text: "Alpha bravo charlie.".into(),
+                    heading: false,
+                },
+                botui_core::Block {
+                    text: "Another paragraph.".into(),
+                    heading: false,
+                },
+            ],
+            ..Default::default()
+        };
+        let mut pager = Pager::new(&doc, 30, 10, botui_core::LayoutMode::Single);
+        let mut study = Study::default();
+        let at = Anchor { block: 0, byte: 6 };
+        let other = Anchor { block: 1, byte: 0 };
+        let rect = Rect::new(4, 2, 1, 1);
+        study.map.push(Cell {
+            rect,
+            source: doc.character_at(at).unwrap(),
+        });
+        let down = Event::Mouse(MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: rect.x,
+            row: rect.y,
+            modifiers: KeyModifiers::NONE,
+        });
+        let up = Event::Mouse(MouseEvent {
+            kind: MouseEventKind::Up(MouseButton::Left),
+            column: rect.x,
+            row: rect.y,
+            modifiers: KeyModifiers::NONE,
+        });
+        let click = |study: &mut Study, pager: &mut Pager| {
+            assert_eq!(
+                study.input(&down, &doc, pager, None),
+                Some(super::super::Action::Resize)
+            );
+            study.input(&up, &doc, pager, None);
+        };
+        click(&mut study, &mut pager);
+        assert_eq!(study.cursor, Some(at));
+        assert!(study.selection.is_none());
+
+        // The next frame can put blank space or a toolbar under the pointer.
+        study.map.clear();
+        study.buttons.push((rect, Command::Copy));
+        click(&mut study, &mut pager);
+        assert_eq!(doc.text_range(study.selection.unwrap()), "bravo");
+
+        // A changed page split may instead put a different paragraph there.
+        study.map.push(Cell {
+            rect,
+            source: doc.character_at(other).unwrap(),
+        });
+        click(&mut study, &mut pager);
+        assert_eq!(
+            doc.text_range(study.selection.unwrap()),
+            "Alpha bravo charlie."
+        );
+
+        // Outside a text-click series, visible toolbar buttons retain priority.
+        study.clicks = None;
+        assert_eq!(
+            study.input(&down, &doc, &mut pager, None),
+            Some(super::super::Action::Study(Command::Copy)),
+        );
+        study.buttons.clear();
+        click(&mut study, &mut pager);
+        assert_eq!(study.cursor, Some(other));
+        assert!(study.selection.is_none());
+    }
+    #[test]
+    fn wrapped_controls_and_feedback_leave_the_last_book_row_visible_in_clean_zen() {
+        use botui_core::LayoutMode;
+        use ratatui::{Terminal, backend::TestBackend};
+        for width in [40, 80, 160] {
+            for height in [8, 24] {
+                let screen = Rect::new(0, 0, width, height);
+                assert_eq!(Study::default().controls_area(screen).height, 0);
+                for feedback in [false, true] {
+                    let mut study = Study {
+                        cursor: Some(Anchor { block: 0, byte: 0 }),
+                        normal: true,
+                        message: feedback.then(|| "Saved".into()),
+                        ..Default::default()
+                    };
+                    let controls = study.controls_area(screen);
+                    if width == 40 {
+                        assert!(controls.height > 1, "narrow controls must wrap");
+                    }
+                    let mut splitter =
+                        crate::splitter::Splitter::new(crate::splitter::Pane::Contents, None);
+                    let (_, page) =
+                        super::super::layout::panes(screen, &mut splitter, true, controls.height);
+                    let (text, _, _) =
+                        super::super::layout::geometry(page, LayoutMode::Single, 78, 4, true);
+                    assert!(text.height > 0);
+                    assert!(text.bottom() <= controls.y);
+                    let mut term = Terminal::new(TestBackend::new(width, height)).unwrap();
+                    term.draw(|frame| {
+                        frame.render_widget(
+                            Paragraph::new("book row\n".repeat(usize::from(text.height))),
+                            text,
+                        );
+                        study.controls(frame, controls, Style::default());
+                    })
+                    .unwrap();
+                    let buffer = term.backend().buffer();
+                    assert_eq!(buffer[(text.x, text.bottom() - 1)].symbol(), "b");
+                    if feedback {
+                        assert_eq!(buffer[(controls.x, controls.y)].symbol(), "S");
+                    }
+                    for (rect, _) in &study.buttons {
+                        assert_eq!(rect.intersection(controls), *rect);
+                        assert!(rect.intersection(text).is_empty());
+                    }
+                }
+            }
+        }
+    }
     #[test]
     fn word_inside_highlight_edits_it_but_crossing_selection_does_not() {
         let mut study = Study::default();

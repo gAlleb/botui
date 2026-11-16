@@ -23,7 +23,7 @@ pub(super) const ITEMS: &[(&str, &str, usize)] = &[
     ("Pan up", "↑", 12),
     ("Pan down", "↓", 13),
     ("Toggle zen mode", "Space z", 14),
-    ("Toggle zen progress", "Space p", 45),
+    ("Zen frame & progress", "Space p", 45),
     ("Find in text layer", "Space f", 16),
     ("Search results", "F5", 38),
     ("Next match", "n / F3", 17),

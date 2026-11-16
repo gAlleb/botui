@@ -186,9 +186,9 @@ fn rows(tab: usize, s: &Settings) -> Vec<SettingRow> {
                 "Enter a width in cells, or drag the divider between the contents sidebar and the book text.",
             ),
             pair(
-                "Zen progress",
+                "Zen frame & progress",
                 if s.zen_progress { "On" } else { "Off" },
-                "Show the page and reading percentage at the bottom of zen mode. Toggle with %.",
+                "Show the reading frame, page and percentage in zen mode. Toggle with Space p.",
             ),
             pair(
                 "Mouse wheel step",

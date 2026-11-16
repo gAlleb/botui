@@ -186,4 +186,55 @@ with tempfile.TemporaryDirectory(prefix="botui-scan-search-") as tmp:
         subprocess.run(["djvused", "-s", "-e", "select 2; set-txt text", djvu], cwd=root, check=True)
         check_search(root, djvu, 2)
 
+
+def check_frame_position(root, mode):
+    """A changed viewport must not reinterpret the saved page or scroll fraction."""
+    config = root / "config/botui/config.toml"
+    config.parent.mkdir(parents=True)
+    config.write_text(f'zen = true\nzen_progress = false\nborders = "rounded"\n'
+                      f'reading_layout = "{mode}"\nleader_delay_ms = 1\n')
+    book = root / "frame.pdf"
+    book.write_bytes(scroll.s.pdf(True, shades=(.3, .5, .7, .8)))
+    pixels = re.compile(r"([.:%#*=+@-])\1{14,}")
+
+    def has_frame(frame):
+        return bool(re.search(r"[╭┌]─+[╮┐]", frame))
+
+    def position():
+        state = scroll.saved(root) or {}
+        return tuple(state.get(k, 0) for k in ("block", "scan_offset", "spread", "scrolling"))
+
+    term = scroll.start(root, book)
+    try:
+        term.wait("Clean Zen PDF is rendered", lambda f: pixels.search(f) and not has_frame(f))
+        term.keys("Space", "r", "p")
+        term.see("Go to page")
+        term.keys("C-u", "2", "Enter")
+        term.wait("Second PDF page is saved", lambda f: "Go to page" not in f
+                  and pixels.search(f) and position()[0] == 1)
+        if mode == "scroll":
+            term.keys("Down", "Down", "Down")
+            term.wait("Nonzero position within the physical page", lambda _: position()[1] > 0)
+        scroll.stop(term)
+        original = position()
+        assert original[0] == 1 and bool(original[2]) == (mode == "spread"), original
+        assert bool(original[3]) == (mode == "scroll"), original
+        for visible in (True, False):
+            term = scroll.start(root, book)
+            term.wait("PDF reopens with the saved frame setting", lambda f:
+                      pixels.search(f) and has_frame(f) != visible)
+            term.keys("Space", "p")
+            term.wait("Frame toggles around the rendered page", lambda f:
+                      pixels.search(f) and has_frame(f) == visible
+                      and (not visible or "2 / 4" in f))
+            scroll.stop(term)
+            assert position() == original, (mode, visible, original, position())
+    finally:
+        term.run("kill-server", required=False)
+
+
+for mode in ("single", "spread", "scroll"):
+    with tempfile.TemporaryDirectory(prefix=f"botui-pdf-frame-{mode}-") as tmp:
+        check_frame_position(Path(tmp), mode)
+
 print("Passed physical zoom, page jump and editable text search over rendered sheets.")

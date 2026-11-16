@@ -192,7 +192,7 @@ Kitty displays covers and pages as images, including inside tmux with graphics p
 
 ### Layout and text size
 
-Use **1 / 2 / 3** for a single page, a two-page spread or continuous scroll. In Vim these digits are counts; use **Space l 1 / 2 / 3** to change layout. **Space o** opens contents, **Space z** toggles zen mode, and **Space p** toggles its progress footer.
+Use **1 / 2 / 3** for a single page, a two-page spread or continuous scroll. In Vim these digits are counts; use **Space l 1 / 2 / 3** to change layout. **Space o** opens contents, **Space z** toggles zen mode, and **Space p** toggles its frame and progress. Hiding them frees their space for reading; text reflows while keeping your place in the document.
 
 **Space l w** adjusts text page width and the gap between columns. For PDF, DjVu, comics and image-only EPUBs, the same panel controls zoom and spread spacing. Its gap buttons or **[ / ]** set **0–32 terminal cells**; zero joins facing pages. `scan_gap` saves this independently of text spacing. **+ / −** zoom fixed pages, arrows pan, and **Space r 0** restores Fit page (Fit width in scroll mode). Enlarged pages fill the available margins and are clipped only at the reading pane edge.
 
@@ -241,7 +241,7 @@ Commands depend on the document: text actions need selectable text; page zoom, r
 | `Space m` | Reading menu |
 | `Space o` | Contents |
 | `Space z` | Zen mode |
-| `Space p` | Dim progress footer in zen |
+| `Space p` | Show/hide frame and progress in zen |
 | `Space f` | Find in book |
 | `Space b a` | Add/remove bookmark |
 | `Space b l` | Bookmark list |
@@ -429,7 +429,7 @@ interface_theme = "catppuccin-mocha"
 # Optional override. By default, solid Terminal paper follows the active terminal background.
 # opaque_color = "#1f2125"
 zen = false
-# Show a dim page count and percentage in zen mode. Toggle with Space p.
+# Show frame and progress in zen; hiding them frees space for reading. Toggle with Space p.
 zen_progress = false
 # PDF/DjVu zoom in percent. In scroll mode 100 fits the reading pane.
 scan_zoom = 100

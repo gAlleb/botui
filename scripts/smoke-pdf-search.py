@@ -45,8 +45,9 @@ def check(root, mode, fallback=False, zoom=100, rotate=False):
     path = str(helpers) + ('' if fallback else os.pathsep + os.environ['PATH'])
     t = s.Terminal(d, Path('/usr/bin/env'), args=['TERM=xterm', 'COLORTERM=', 'PATH=' + path, str(BINARY), str(book)])
     def raster():
-        # The last two rows contain feedback/footer, even over the scroll canvas.
-        return '\n'.join(row for row in t.run('capture-pane', '-p', '-e', '-t', 'shelf').stdout.splitlines()[:-2] if '▀' in row or '▄' in row)
+        # Feedback sits inside the content frame, above its border and the footer.
+        # It can disappear after a key press without changing the PDF highlight.
+        return '\n'.join(row for row in t.run('capture-pane', '-p', '-e', '-t', 'shelf').stdout.splitlines()[:-3] if '▀' in row or '▄' in row)
     def match(i):
         t.see(f'Match {i} / 4')
         t.wait('Rendered found word', lambda f: ('▀' in f or '▄' in f) and 'Rendering' not in f)

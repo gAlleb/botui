@@ -141,13 +141,15 @@ Kitty показывает обложки и страницы картинкам
 
 Набор команд зависит от документа: действия со словами требуют доступного текста; масштаб, поворот и заметки на страницу относятся к PDF, DjVu, комиксам и EPUB из изображений. Команды текстового ридера ниже относятся и к Markdown, если явно не указан формат. В обычном чтении q/Q возвращает к источнику; в Vim используйте Space q.
 
+В дзене **Space p** показывает или скрывает рамку чтения и прогресс. При их скрытии освободившееся место используется для чтения; текст перевёрстывается с сохранением позиции в книге.
+
 | Клавиши | Действие |
 | --- | --- |
 | `Space c` | Включить курсор Vim / вернуться в чтение |
 | `Space m` | Меню чтения |
 | `Space o` | Оглавление |
 | `Space z` | Дзен-режим |
-| `Space p` | Тусклая строка прогресса в дзене |
+| `Space p` | Показать/скрыть рамку и прогресс в дзене |
 | `Space f` | Поиск в книге |
 | `Space b a` | Поставить/снять закладку |
 | `Space b l` | Список закладок |
@@ -350,7 +352,7 @@ interface_theme = "catppuccin-mocha"
 # Optional override. By default, solid Terminal paper follows the active terminal background.
 # opaque_color = "#1f2125"
 zen = false
-# Show a dim page count and percentage in zen mode. Toggle with Space p.
+# Show frame and progress in zen; hiding them frees space for reading. Toggle with Space p.
 zen_progress = false
 # PDF/DjVu zoom in percent. In scroll mode 100 fits the reading pane.
 scan_zoom = 100
