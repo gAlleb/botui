@@ -63,6 +63,14 @@ The table records how each reading or navigation scenario was checked. See the [
 
 Compare release binaries on the same machine, book and terminal dimensions, with separate temporary profiles. Include the last release before a rendering change, not just the broken build. Measure zen progress, sidebar, page modes, width, gap, themes, page turns and contents. Let image loading finish before measuring steady-state input; record cold image loading separately.
 
+For a local EPUB or FB2, choose a word from a prose paragraph in a book with at least two spreads. The check uses a temporary copy, reader profile and clipboard.
+
+```sh
+python3 scripts/smoke-reader-frame.py --book "/path/to/book.epub" --word "lighthouse"
+```
+
+It finds the word, saves and reopens, turns away and back, resizes with a Vim selection, compares the copied paragraph, and checks the saved source address on reopen.
+
 The core benchmark reports the time until the visible spread is laid out and the total time until the page count is ready. Terminal drawing and image decoding are measured separately.
 
 When changing the release profile, compare uncompressed executables built for the same architecture and C library. Check page-width changes and sidebar opening on a novel and an illustrated textbook, and compare the rendered table and equation in a technical EPUB.

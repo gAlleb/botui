@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """A reader frame may reflow pages, but must preserve source positions and selections."""
+import argparse
 import hashlib
 import importlib.util
 import json
 import os
 from pathlib import Path
 import re
+import shutil
 import tempfile
 import time
 import zipfile
@@ -16,7 +18,7 @@ spec.loader.exec_module(shelf)
 BINARY = Path(os.environ.get("BOTUI_BINARY", shelf.ROOT / "target/debug/botui")).resolve()
 PARAGRAPH = " ".join(f"word{i:03}" for i in range(900))
 TARGET = "word173"
-PROGRESS = re.compile(r"\d+ / \d+  ·  \d+%")
+PROGRESS = re.compile(r"(\d+) / (\d+)  ·  \d+%")
 
 
 def fixture(path):
@@ -80,14 +82,10 @@ def close(term):
     term.run("kill-server", required=False)
 
 
-def check(root, mode):
-    config = root / "config/botui/config.toml"
-    config.parent.mkdir(parents=True)
-    config.write_text(f'zen = true\nzen_progress = false\nborders = "rounded"\n'
-                      f'reading_layout = "{mode}"\npage_width = 160\nleader_delay_ms = 1\n')
-    book = root / "frame.epub"
-    fixture(book)
-    record = root / "state/botui/positions" / (hashlib.sha256(book.read_bytes()).hexdigest() + ".json")
+def isolated_reader(root, book):
+    with book.open("rb") as handle:
+        digest = hashlib.file_digest(handle, "sha256").hexdigest()
+    record = root / "state/botui/positions" / (digest + ".json")
     helpers = root / "bin"
     helpers.mkdir()
     for name in ("wl-copy", "xclip", "xsel", "pbcopy"):
@@ -103,6 +101,18 @@ def check(root, mode):
     def saved_position():
         data = json.loads(record.read_text())
         return data["block"], data["byte"], data.get("illustration")
+
+    return start, saved_position
+
+
+def check(root, mode):
+    config = root / "config/botui/config.toml"
+    config.parent.mkdir(parents=True)
+    config.write_text(f'zen = true\nzen_progress = false\nborders = "rounded"\n'
+                      f'reading_layout = "{mode}"\npage_width = 160\nleader_delay_ms = 1\n')
+    book = root / "frame.epub"
+    fixture(book)
+    start, saved_position = isolated_reader(root, book)
 
     term = start()
     try:
@@ -172,8 +182,88 @@ def check(root, mode):
         term.run("kill-server", required=False)
 
 
+def check_real_book(root, source, word):
+    book = root / ("edition" + source.suffix)
+    shutil.copyfile(source, book)
+    config = root / "config/botui/config.toml"
+    config.parent.mkdir(parents=True)
+    config.write_text('zen=true\nzen_progress=true\nreading_layout="spread"\npage_width=42\n')
+    start, position = isolated_reader(root, book)
+
+    def reading(frame):
+        return PROGRESS.search(frame) and "Find:" not in frame
+
+    def matched(frame):
+        return reading(frame) and word.casefold() in frame.casefold()
+
+    def copy_paragraph(term):
+        clipboard = root / "copied"
+        clipboard.unlink(missing_ok=True)
+        term.keys("Space", "a", "y")
+        term.wait("Selected paragraph reached the private clipboard",
+                  lambda _: clipboard.exists() and word.casefold() in clipboard.read_text().casefold())
+        return clipboard.read_text()
+
+    term = start()
+    try:
+        term.wait("Open the external edition", reading, timeout=60)
+        term.keys("Space", "f"); term.see("Find:")
+        term.type(word)
+        term.wait("Find the control word in the book",
+                  lambda f: re.search(r"▏\s+[1-9]\d* (?:matches|· refine)", f), timeout=30)
+        term.keys("Enter")
+        term.wait("Open the selected occurrence", matched)
+        close(term)
+        source_address = position()
+
+        term = start()
+        first = term.wait("Restore the search position", matched, timeout=60)
+        pages = PROGRESS.search(first)
+        page, total = map(int, pages.groups())
+        assert total > 1, "Use a book that fills more than one spread"
+        forward, back = ("Right", "Left") if page < total else ("Left", "Right")
+        term.keys(forward)
+        term.wait("Move to a different spread", lambda f: reading(f) and pages.group() not in f)
+        term.keys(back)
+        term.wait("Recover the spread after a round trip", lambda f: f == first)
+
+        term.keys("Space", "c", "V"); term.see("VISUAL")
+        before = copy_paragraph(term)
+        term.keys("V"); term.see("VISUAL")
+        term.run("resize-window", "-t", "shelf", "-x", "79", "-y", "23")
+        term.wait("Resize while the selection is active",
+                  lambda f: len(f.splitlines()) == 23 and "VISUAL" in f and matched(f))
+        assert copy_paragraph(term) == before, "Resize changed the selected source paragraph"
+        term.keys("Escape")
+        term.wait("Return to reading", lambda f: matched(f) and "NORMAL" not in f and "VISUAL" not in f)
+        term.run("resize-window", "-t", "shelf", "-x", "115", "-y", "30")
+        term.wait("Restore the original size", lambda f: len(f.splitlines()) == 30 and matched(f))
+        close(term)
+        assert position() == source_address, "Reading position changed during turn, selection or resize"
+
+        term = start()
+        term.wait("Reopen on the original word", matched, timeout=60)
+        close(term)
+        assert position() == source_address, "Reopening changed the saved source address"
+    finally:
+        term.run("kill-server", required=False)
+
+
 if __name__ == "__main__":
-    for mode in ("single", "spread"):
-        with tempfile.TemporaryDirectory(prefix=f"botui-reader-frame-{mode}-") as tmp:
-            check(Path(tmp), mode)
-        print(f"PASS {mode}: frame reflow, saved source address, Vim paragraph and illustration round trip", flush=True)
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--book", type=Path, help="exercise a copy of this EPUB or FB2")
+    parser.add_argument("--word", help="visible word in a prose paragraph of the book")
+    args = parser.parse_args()
+    if args.book or args.word is not None:
+        if not args.book or args.book.suffix.lower() not in (".epub", ".fb2") or not args.book.is_file():
+            parser.error("--book requires a readable EPUB or FB2 file")
+        if not args.word or len(args.word.split()) != 1:
+            parser.error("--word requires one word from the book")
+        with tempfile.TemporaryDirectory(prefix="botui-real-reading-") as tmp:
+            check_real_book(Path(tmp), args.book, args.word.strip())
+        print(f"PASS {args.book.name}: search, page round trip, selection, resize and reopen")
+    else:
+        for mode in ("single", "spread"):
+            with tempfile.TemporaryDirectory(prefix=f"botui-reader-frame-{mode}-") as tmp:
+                check(Path(tmp), mode)
+            print(f"PASS {mode}: frame reflow, saved source address, Vim paragraph and illustration round trip", flush=True)
