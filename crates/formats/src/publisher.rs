@@ -3,7 +3,7 @@
 use crate::xhtml::TextOrigins;
 use botui_core::{
     Block, Locations, Run,
-    publisher::{Chapter, SourceText, Stylesheets},
+    publisher::{Chapter, DataTable, SourceText, Stylesheets},
 };
 use scraper::{ElementRef, Html};
 use std::sync::Arc;
@@ -106,6 +106,7 @@ pub(super) fn chapter(
                         | "data-botui-centered"
                         | "data-botui-prose-spacing"
                         | "data-botui-data-table"
+                        | "data-botui-table-hidden"
                 )
             });
         }
@@ -149,7 +150,7 @@ pub(super) fn chapter(
             }
         }
     }
-    mark_data_tables(dom);
+    let tables = mark_data_tables(dom, &origins);
     normalize_spans(dom);
     let preserve_structure = dom.tree.nodes().filter_map(ElementRef::wrap).any(|e| {
         matches!(
@@ -164,16 +165,18 @@ pub(super) fn chapter(
     let html = format!("<!doctype html>\n{}", dom.root_element().html());
     let mut chapter = Chapter::new(end, html, member, sheets, sources);
     chapter.images = images;
+    chapter.tables = tables;
     chapter.preserve_structure = preserve_structure;
     chapter
 }
 
 /// Some EPUBs use italic or bold td labels in place of th. Require evidence
 /// of a header before decorating an otherwise unmarked table used for layout.
-fn mark_data_tables(dom: &mut Html) {
+fn mark_data_tables(dom: &mut Html, origins: &TextOrigins) -> Vec<DataTable> {
     let rows =
         scraper::Selector::parse(":scope > tr, :scope > :is(thead, tbody, tfoot) > tr").unwrap();
     let mut tables = Vec::new();
+    let mut ids = Vec::new();
     for table in dom
         .tree
         .nodes()
@@ -214,14 +217,86 @@ fn mark_data_tables(dom: &mut Html) {
             || body.clone().any(header)
             || (labelled && body.next().is_some())
         {
-            tables.push(table.id());
+            let range = |el: ElementRef<'_>| {
+                let mut spans = el.descendants().filter_map(|n| origins.get(&n.id()));
+                let &(start, first_end) = spans.next()?;
+                let &(last, end) = spans.last().unwrap_or(&(start, first_end));
+                Some(
+                    start..botui_core::Anchor {
+                        block: last.block,
+                        byte: end,
+                    },
+                )
+            };
+            let Some(source) = range(table) else { continue };
+            let head = table.child_elements().find(|e| e.value().name() == "thead");
+            let column_labels = !cells.is_empty()
+                && cells.iter().all(|c| {
+                    c.value().name() == "th" && !matches!(c.attr("scope"), Some("row" | "rowgroup"))
+                });
+            let heading = head
+                .or_else(|| (column_labels || labelled).then_some(first))
+                .and_then(range);
+            let caption = table
+                .child_elements()
+                .find(|e| e.value().name() == "caption");
+            let previous_heading = table
+                .prev_siblings()
+                .find_map(ElementRef::wrap)
+                .filter(|e| matches!(e.value().name(), "h1" | "h2" | "h3" | "h4" | "h5" | "h6"));
+            let title = caption
+                .or(previous_heading)
+                .map(|e| crate::xhtml::clean(&e.text().collect::<String>()))
+                .filter(|s| !s.is_empty())
+                .unwrap_or_else(|| {
+                    cells
+                        .iter()
+                        .take(4)
+                        .map(|e| crate::xhtml::clean(&e.text().collect::<String>()))
+                        .filter(|s| !s.is_empty())
+                        .collect::<Vec<_>>()
+                        .join(" · ")
+                });
+            let columns = table
+                .select(&rows)
+                .map(|row| {
+                    let mut slot = 0u16;
+                    let mut used = 0;
+                    for c in row
+                        .child_elements()
+                        .filter(|c| matches!(c.value().name(), "td" | "th"))
+                    {
+                        let span = c
+                            .attr("colspan")
+                            .and_then(|n| n.parse::<u16>().ok())
+                            .unwrap_or(1)
+                            .clamp(1, 1000);
+                        slot = slot.saturating_add(span);
+                        if c.text().any(|t| !t.trim().is_empty())
+                            || c.child_elements().next().is_some()
+                        {
+                            used = slot;
+                        }
+                    }
+                    used
+                })
+                .max()
+                .unwrap_or(1);
+            ids.push(table.id());
+            tables.push(DataTable {
+                source,
+                heading,
+                title: title.chars().take(96).collect(),
+                columns,
+            });
         }
     }
-    for id in tables {
+    for (index, id) in ids.into_iter().enumerate() {
         if let scraper::Node::Element(el) = dom.tree.get_mut(id).unwrap().value() {
-            set_attr(el, "data-botui-data-table", "1");
+            set_attr(el, "data-botui-data-table", &index.to_string());
         }
     }
+    tables
 }
 
 pub(super) fn set_attr(el: &mut scraper::node::Element, name: &str, value: &str) {

@@ -3,6 +3,7 @@
 //! Actual glyphs are drawn by the user's terminal.
 mod canvas;
 mod spacing;
+mod table;
 use super::{Anchor, Block, PageLine};
 use blitz_dom::{DocumentConfig, UserAgentStylesheet, build_single_font_ctx};
 use blitz_html::HtmlDocument;
@@ -15,6 +16,7 @@ use std::{
     ops::Range,
     sync::{Arc, LazyLock},
 };
+pub use table::{DataTable, TableView};
 
 const CELL: f32 = 8.0;
 const ROW: f32 = 16.0;
@@ -270,6 +272,7 @@ pub struct Chapter {
     /// Raw reference indices are resolved after all spine items have been parsed.
     pub images: Vec<Option<usize>>,
     pub preserve_structure: bool,
+    pub tables: Vec<DataTable>,
     html: Arc<str>,
     url: String,
     sheets: Arc<Stylesheets>,
@@ -290,6 +293,7 @@ impl Chapter {
             sheets,
             sources,
             images: Vec::new(),
+            tables: Vec::new(),
             preserve_structure: false,
         }
     }
@@ -300,6 +304,15 @@ impl Chapter {
         blocks: &[Block],
         resume: Option<Anchor>,
     ) -> HtmlDocument {
+        let mut doc = self.build_document(viewport, options);
+        if let Some(at) = resume {
+            self.break_at(&mut doc, blocks, at);
+        }
+        spacing::resolve(&mut doc, options);
+        doc
+    }
+
+    fn build_document(&self, viewport: Viewport, options: super::ReflowOptions) -> HtmlDocument {
         thread_local! {
             static FONT: parley::FontContext = build_single_font_ctx(include_bytes!("cells.ttf"));
         }
@@ -333,10 +346,6 @@ impl Chapter {
         // construction. Parsing the reusable sheet earlier drops those rules.
         doc.add_user_agent_stylesheet(SHEET.clone());
         doc.add_user_agent_stylesheet(UserAgentStylesheet::parse(&settings));
-        if let Some(at) = resume {
-            self.break_at(&mut doc, blocks, at);
-        }
-        spacing::resolve(&mut doc, options);
         doc
     }
 }

@@ -11,6 +11,7 @@ pub(crate) mod notes;
 mod resources;
 mod search;
 mod study;
+mod table_view;
 pub(crate) mod theme_picker;
 use navigation::{Edit, Kind};
 
@@ -54,6 +55,7 @@ enum Action {
     Resources,
     Cover,
     VisibleLinks,
+    OpenTable,
     Source,
     Follow(usize),
     ReturnLink,
@@ -82,7 +84,7 @@ enum Action {
     Resize,
 }
 
-const COMMANDS: [Action; 32] = [
+const COMMANDS: [Action; 33] = [
     Action::Resume,
     Action::Previous,
     Action::Next,
@@ -109,6 +111,7 @@ const COMMANDS: [Action; 32] = [
     Action::Export,
     Action::Statistics,
     Action::Resources,
+    Action::OpenTable,
     Action::Cover,
     Action::JumpBack,
     Action::JumpForward,
@@ -463,29 +466,7 @@ impl Reader {
                 }
                 frame.render_widget(para, rect);
                 // Paragraph paints the whole row. Apply book decoration afterwards.
-                for surface in &line.surfaces {
-                    match *surface {
-                        botui_core::Surface::Background { x, width, role } => {
-                            let area = Rect::new(rect.x.saturating_add(x), rect.y, width, 1)
-                                .intersection(rect);
-                            frame.buffer_mut().set_style(
-                                area,
-                                ratatui::style::Style::new()
-                                    .bg(markdown_style::background(role, reading_theme)),
-                            );
-                        }
-                        botui_core::Surface::TableDivider { x } => {
-                            if x < rect.width
-                                && let Some(cell) =
-                                    frame.buffer_mut().cell_mut((rect.x + x, rect.y))
-                                && cell.symbol() == " "
-                            {
-                                cell.set_symbol("│")
-                                    .set_style(style.add_modifier(Modifier::DIM));
-                            }
-                        }
-                    }
-                }
+                paint_surfaces(frame, line, rect, 0, reading_theme, style);
                 self.links.mark_line(frame, &self.doc, line, rect);
                 if self.study.mapping() {
                     self.study.map_line(&self.doc, line, rect);
@@ -769,6 +750,7 @@ impl Reader {
                 Action::Settings => ("Settings".into(), "F2"),
                 Action::Help => ("Keyboard shortcuts".into(), "F1"),
                 Action::Cover => ("View cover".into(), "Space r c"),
+                Action::OpenTable => ("Open table on this page".into(), "Space r t"),
                 Action::Resources => (
                     format!("Links & illustrations ({})", self.doc.references.len()).into(),
                     "Space r i",
@@ -1272,6 +1254,7 @@ impl Reader {
             }
             Action::Resources
             | Action::Cover
+            | Action::OpenTable
             | Action::VisibleLinks
             | Action::Follow(_)
             | Action::Bookmarks
@@ -1326,6 +1309,41 @@ impl Reader {
     }
 }
 
+/// Apply source decorations after Paragraph has painted the row. A table
+/// viewer may show a horizontally scrolled slice of the same layout.
+fn paint_surfaces(
+    frame: &mut Frame,
+    line: &botui_core::PageLine,
+    rect: Rect,
+    left: u16,
+    theme: crate::theme::Theme,
+    style: ratatui::style::Style,
+) {
+    for &surface in &line.surfaces {
+        match surface {
+            botui_core::Surface::Background { x, width, role } => {
+                let start = x.max(left);
+                let end = x.saturating_add(width).min(left.saturating_add(rect.width));
+                if end > start {
+                    frame.buffer_mut().set_style(
+                        Rect::new(rect.x + (start - left), rect.y, end - start, 1),
+                        ratatui::style::Style::new().bg(markdown_style::background(role, theme)),
+                    );
+                }
+            }
+            botui_core::Surface::TableDivider { x } => {
+                if let Some(x) = x.checked_sub(left).filter(|&x| x < rect.width)
+                    && let Some(cell) = frame.buffer_mut().cell_mut((rect.x + x, rect.y))
+                    && cell.symbol() == " "
+                {
+                    cell.set_symbol("│")
+                        .set_style(style.add_modifier(Modifier::DIM));
+                }
+            }
+        }
+    }
+}
+
 fn bindings() -> io::Result<std::collections::HashMap<char, Action>> {
     let raw = crate::settings::Settings::load()?.keys;
     raw.into_iter()
@@ -1340,6 +1358,7 @@ fn bindings() -> io::Result<std::collections::HashMap<char, Action>> {
                 "borders" => Action::Borders,
                 "cover" => Action::Cover,
                 "resources" => Action::Resources,
+                "open-table" => Action::OpenTable,
                 "statistics" => Action::Statistics,
                 "note" => Action::Note,
                 "notes" => Action::Navigate(Kind::Notes),
@@ -1616,6 +1635,7 @@ pub fn read_server(
                     let action = match command {
                         Some(L::Key(KeyCode::F(10))) => Some(Action::AnnotationSync),
                         Some(L::Key(KeyCode::Char('N'))) => Some(Action::Note),
+                        Some(L::OpenTable) => Some(Action::OpenTable),
                         Some(L::Dictionary) => Some(Action::Study(study::Command::Lookup)),
                         Some(L::Translate) => Some(Action::Study(study::Command::Translate)),
                         Some(L::Key(KeyCode::F(7))) => Some(Action::Study(study::Command::Normal)),
@@ -1822,6 +1842,11 @@ pub fn read_server(
                         }
                     }
                 }
+                continue;
+            }
+            if action == Action::OpenTable {
+                reader.menu = None;
+                table_view::open(term, &reader)?;
                 continue;
             }
             if action == Action::Statistics {

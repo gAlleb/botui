@@ -328,6 +328,10 @@ pub struct Pager {
 }
 
 impl Pager {
+    pub fn reflow_options(&self) -> ReflowOptions {
+        self.book.options
+    }
+
     /// Width and height refer to the area available after the frontend's margins.
     pub fn new(doc: &Document, width: u16, height: u16, mode: LayoutMode) -> Self {
         Self::with_reflow(doc, width, height, mode, true)

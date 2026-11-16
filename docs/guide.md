@@ -180,6 +180,7 @@ In zen mode, **Space p** shows or hides the reading frame and progress. Hiding t
 | `Space r ]` | Jump forward |
 | `Space r i` | Links and illustrations (text reader) |
 | `Space r f` | Follow visible links (text reader) |
+| `Space r t` | Open a data table on this page (EPUB) |
 | `Space r p` | Go to page (PDF/DjVu/comics) |
 | `Space r +` | Zoom in (PDF/DjVu/comics) |
 | `Space r -` | Zoom out (PDF/DjVu/comics) |
@@ -248,7 +249,7 @@ PDF search highlights each occurrence and brings it into view, including multipl
 
 In EPUB data tables with column labels, thin vertical dividers use the space between columns. Merged cells stay intact and tables with publisher borders keep their own rules.
 
-Open a technical EPUB as you would a novel. The reader applies styles packaged with the edition, including merged table cells, side-by-side columns, lists and preformatted code. Equations in presentation MathML and TeX explicitly marked as math appear in the passage. A fraction has its numerator above its denominator. Change the page width with **Space l w** to give a wide table more room.
+Open a technical EPUB as you would a novel. The reader applies styles packaged with the edition, including merged table cells, side-by-side columns, lists and preformatted code. Equations in presentation MathML and TeX explicitly marked as math appear in the passage. A fraction has its numerator above its denominator. Press **Space r t** to open a table across the full window. Use the arrow keys or the buttons below the table to pan. **PgUp/PgDn** scroll by a screen and **Esc** returns to the same place in the book. Recognized column headings stay visible while scrolling.
 
 The terminal supplies the typeface and cell size. Justified paragraphs keep natural spaces between words. Headings and right-aligned passages keep their alignment. The reader theme supplies the ink and paper colors.
 

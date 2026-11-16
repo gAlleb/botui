@@ -22,6 +22,7 @@ pub enum Command {
     Key(KeyCode),
     Dictionary,
     Translate,
+    OpenTable,
 }
 impl Command {
     pub fn event(self) -> Option<Event> {
@@ -117,6 +118,12 @@ fn entries(context: Context, path: &str) -> Vec<Entry> {
             key('i', "Links & illustrations", Char('I')),
             key('c', "Open cover", Char('C')),
             key('s', "Reading statistics", Char('S')),
+            Entry {
+                key: 't',
+                label: "Open table on this page",
+                command: Some(Command::OpenTable),
+                group: "",
+            },
             key('f', "Visible links", F(6)),
             key('[', "Jump back", Char(',')),
             key(']', "Jump forward", Char('.')),

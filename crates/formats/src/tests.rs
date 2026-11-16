@@ -482,6 +482,51 @@ fn epub_table_dividers_leave_page_turns_and_illustrated_positions_unchanged() {
 }
 
 #[test]
+fn full_width_epub_table_keeps_header_styles_and_source_positions() {
+    use botui_core::{LayoutMode, Pager};
+    let doc = styled_fixture(
+        "<section><p>outside first</p><table><caption>First table</caption>         <thead><tr><th rowspan='2'>Name</th><th colspan='2'>Values</th></tr>         <tr><th>Left</th><th>Right</th></tr></thead>         <tbody><tr><td>漢字</td><td>eleven</td><td>twelve</td></tr></tbody></table>         <table><tr><th scope='row'>Row label</th><td>unrelated</td></tr></table></section>",
+        "section table:first-of-type td {font-style:italic}",
+    );
+    let pager = Pager::new(&doc, 32, 9, LayoutMode::Spread);
+    let chapter = doc.styled.values().next().unwrap();
+    assert_eq!(chapter.tables.len(), 2);
+    assert_eq!(chapter.tables[0].title, "First table");
+    assert!(
+        chapter.tables[1].heading.is_none(),
+        "a row header is not a column heading"
+    );
+    let table = chapter
+        .table_view(0, &doc.blocks, 32, 8, pager.reflow_options())
+        .unwrap();
+    assert!(table.width > 32);
+    let body = table.rows.iter().find(|l| l.text.contains("漢字")).unwrap();
+    let cell = body
+        .spans
+        .iter()
+        .find(|s| body.text[s.bytes.clone()].contains("漢字"))
+        .unwrap();
+    assert!(cell.face.italic);
+    let address = cell.source.unwrap();
+    assert_eq!(doc.resolve_cfi(&doc.cfi(address).unwrap()), Some(address));
+    let heading = table.rows[table.header]
+        .iter()
+        .map(|l| l.text.as_str())
+        .collect::<Vec<_>>()
+        .join(" ");
+    for label in ["Name", "Values", "Left", "Right"] {
+        assert!(heading.contains(label), "{heading}");
+    }
+    assert!(!heading.contains("漢字"));
+    assert!(
+        table
+            .rows
+            .iter()
+            .all(|l| !l.text.contains("outside") && !l.text.contains("unrelated"))
+    );
+}
+
+#[test]
 fn epub_table_dividers_respect_presentation_tables_and_publisher_borders() {
     use botui_core::{LayoutMode, Pager};
     let doc = styled_fixture(
