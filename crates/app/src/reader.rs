@@ -579,6 +579,11 @@ impl Reader {
             } else {
                 ""
             };
+            let position = crate::appearance::chapter_progress(
+                position,
+                self.pager.screens_left_in_chapter(),
+                foot.width,
+            );
             let count = format!(" {prefix}{position} ");
             let source = self.doc.markdown.as_ref().map_or("", |md| {
                 if md.show_source {
@@ -614,7 +619,13 @@ impl Reader {
         reading_frame.draw(
             frame,
             style,
-            show_progress.then(|| crate::appearance::progress_label(pages, self.reading_percent())),
+            show_progress.then(|| {
+                crate::appearance::chapter_progress(
+                    crate::appearance::progress_label(pages, self.reading_percent()),
+                    self.pager.screens_left_in_chapter(),
+                    reading_frame.inner.width,
+                )
+            }),
         );
         if self.links.visiting() {
             let footer = Rect::new(

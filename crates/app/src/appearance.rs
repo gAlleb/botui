@@ -62,6 +62,23 @@ pub fn progress_label(pages: Option<(usize, usize)>, percent: f64) -> String {
     )
 }
 
+/// The book position always comes first when a narrow terminal clips the footer.
+pub fn chapter_progress(mut position: String, remaining: Option<usize>, width: u16) -> String {
+    if let Some(remaining) = remaining {
+        let detail = if remaining == 0 {
+            " · Chapter end".to_owned()
+        } else {
+            format!(" · {remaining} left in chapter")
+        };
+        if Line::from(position.as_str()).width() + Line::from(detail.as_str()).width() + 4
+            <= usize::from(width)
+        {
+            position.push_str(&detail);
+        }
+    }
+    position
+}
+
 /// Both readers lay out content inside the same frame. Hidden Zen chrome takes
 /// no space: resizing the content keeps the document position, not old pages.
 pub struct ReadingFrame {

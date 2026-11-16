@@ -17,6 +17,43 @@ fn forward_breaks(pager: &mut Pager) -> Vec<usize> {
     }
 }
 
+#[test]
+fn chapter_remainder_matches_actual_page_turns_after_jumps_and_reflow() {
+    let doc = Document {
+        blocks: (0..72)
+            .map(|i| Block {
+                heading: matches!(i, 5 | 23 | 50),
+                text: format!("Passage {i} in the book."),
+            })
+            .collect(),
+        chapter_starts: [5, 23, 50].into(),
+        ..Default::default()
+    };
+    let mut pager = Pager::new(&doc, 90, 7, LayoutMode::Spread);
+    for mode in [LayoutMode::Single, LayoutMode::Spread, LayoutMode::Scroll] {
+        for height in [6, 13] {
+            pager.relayout(&doc, 90, height, mode);
+            pager.seek(Anchor::default());
+            assert_eq!(pager.screens_left_in_chapter(), None);
+            for block in [5, 9, 21, 23, 49, 50, 67] {
+                pager.seek(Anchor { block, byte: 0 });
+                let expected = pager.screens_left_in_chapter().unwrap();
+                let end = (pager.first + 1..pager.lines.len())
+                    .find(|&row| pager.lines[row].chapter_start)
+                    .unwrap_or(pager.lines.len());
+                let mut turns = 0;
+                while pager.complete_view().end() < end {
+                    let before = pager.first;
+                    pager.next();
+                    assert!(pager.first > before);
+                    turns += 1;
+                }
+                assert_eq!(turns, expected, "{mode:?} at {block}, height {height}");
+            }
+        }
+    }
+}
+
 fn check_direction_changes(pager: &mut Pager, breaks: &[usize]) {
     let columns = pager.columns();
     let end = breaks.len() - 1;

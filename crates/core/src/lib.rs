@@ -318,6 +318,8 @@ pub struct Pager {
     source_lines: Vec<(Anchor, usize)>,
     /// Column starts, paginated forward from the start of the book.
     page_starts: Vec<usize>,
+    /// First laid-out row of each chapter, including in scroll mode.
+    chapter_rows: Vec<usize>,
     /// Spread starts for paging in either direction from an exact search or resume position.
     positioned_spreads: Vec<usize>,
     figure_starts: Vec<(usize, Figure)>,
@@ -484,6 +486,7 @@ impl Pager {
             figure_starts: Self::index_figures(&lines),
             lines,
             page_starts: Vec::new(),
+            chapter_rows: Vec::new(),
             positioned_spreads: Vec::new(),
             first: 0,
             focus: Anchor::default(),

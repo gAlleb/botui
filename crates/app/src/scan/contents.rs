@@ -9,6 +9,7 @@ use ratatui::{
 #[derive(Default)]
 pub struct Contents {
     items: Vec<botui_fixed::OutlineEntry>,
+    section_pages: Vec<u32>,
     visible: Vec<usize>,
     folded: std::collections::HashSet<usize>,
     selected: usize,
@@ -17,6 +18,18 @@ pub struct Contents {
     focus: bool,
 }
 impl Contents {
+    /// Physical pages after the displayed page or pair, up to the next outline destination.
+    pub fn pages_left_in_section(&self, first: u32, shown: u32, total: u32) -> Option<usize> {
+        let next = self.section_pages.partition_point(|&page| page <= first);
+        if next == 0 || total == 0 {
+            return None;
+        }
+        let last = self
+            .section_pages
+            .get(next)
+            .map_or(total, |&page| (page - 1).min(total));
+        Some(last.saturating_sub(first.saturating_add(shown.saturating_sub(1))) as usize)
+    }
     fn count(&self, total: u32) -> usize {
         if self.items.is_empty() {
             total as usize
@@ -49,6 +62,9 @@ impl Contents {
         // A page selected while the outline was loading now belongs to a chapter.
         let selected_page = self.page(self.selected);
         self.items = items;
+        self.section_pages = self.items.iter().map(|e| e.page).collect();
+        self.section_pages.sort_unstable();
+        self.section_pages.dedup();
         self.folded.clear();
         self.rebuild();
         self.selected = self.index_for_page(selected_page).unwrap_or(0);
@@ -276,6 +292,9 @@ mod tests {
             })
             .into(),
         );
+        assert_eq!(toc.pages_left_in_section(7, 2, 12), Some(1));
+        assert_eq!(toc.pages_left_in_section(9, 2, 12), Some(0));
+        assert_eq!(toc.pages_left_in_section(10, 1, 12), Some(2));
         let mut draw = |toc: &mut Contents| {
             term.draw(|f| toc.draw(f, Rect::new(0, 0, 50, 30), 7, 12))
                 .unwrap();

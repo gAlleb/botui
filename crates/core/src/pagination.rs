@@ -361,6 +361,15 @@ impl Drop for Pending {
 impl Pager {
     pub(super) fn index_pages(&mut self) {
         self.page_starts.clear();
+        self.chapter_rows.clear();
+        if self.book.has_chapters {
+            self.chapter_rows.extend(
+                self.lines
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(row, line)| line.chapter_start.then_some(row)),
+            );
+        }
         if self.layout.scrolling
             || (!self.book.has_figures && !self.book.has_chapters)
             || self.layout.height == 0
@@ -425,6 +434,38 @@ impl Pager {
 
     fn view_at(&self, first: usize) -> Viewport<'_> {
         Viewport::new(self.layout, &self.lines, first)
+    }
+
+    /// Further screenfuls needed to see the end of the chapter at the top left.
+    pub fn screens_left_in_chapter(&self) -> Option<usize> {
+        if self.is_paginating() {
+            return None;
+        }
+        let chapter = self.chapter_rows.partition_point(|&row| row <= self.first);
+        if chapter == 0 {
+            return None;
+        }
+        let end = self
+            .chapter_rows
+            .get(chapter)
+            .copied()
+            .unwrap_or(self.lines.len());
+        let visible_end = self.complete_view().end();
+        if visible_end >= end {
+            return Some(0);
+        }
+        if self.layout.scrolling {
+            return Some((end - visible_end).div_ceil(self.viewport()));
+        }
+        if !self.positioned_spreads.is_empty() {
+            let starts = &self.positioned_spreads;
+            return Some(
+                starts.partition_point(|&r| r < end) - starts.partition_point(|&r| r <= self.first),
+            );
+        }
+        let columns_left = self.page_starts.partition_point(|&r| r < end)
+            - self.page_starts.partition_point(|&r| r < visible_end);
+        Some(columns_left.div_ceil(self.columns()))
     }
 
     pub(super) fn complete_view(&self) -> Viewport<'_> {

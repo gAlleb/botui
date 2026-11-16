@@ -471,6 +471,11 @@ pub(super) fn read_pages(
         let rendered = term.draw_frame(|f| {
             let screen = f.area();
             sidebar.draw(f, sidebar_area, shown, total.unwrap_or(0));
+            let remaining = if (!zen || show_progress) && !image_only && !comic {
+                sidebar.pages_left_in_section(shown, u32::from(cols), total.unwrap_or(0))
+            } else {
+                None
+            };
             let caption = if show_progress {
                 total.filter(|count| *count > 0).map(|count| {
                     crate::appearance::progress_label(
@@ -487,6 +492,9 @@ pub(super) fn read_pages(
             } else {
                 None
             };
+            let caption = caption.map(|label| {
+                crate::appearance::chapter_progress(label, remaining, reading_frame.inner.width)
+            });
             reading_frame.draw(f, Default::default(), caption);
             if !zen && screen.height > 0 {
                 let y = screen.bottom() - 1;
@@ -503,6 +511,7 @@ pub(super) fn read_pages(
                         status.push_str(&format!(" · {}%", crop.percent));
                     }
                 }
+                let status = crate::appearance::chapter_progress(status, remaining, screen.width);
                 let foot = Rect::new(screen.x, y, screen.width, 1);
                 if menu {
                     f.render_widget(Paragraph::new(status).dim(), foot);

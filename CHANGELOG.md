@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Show how much of the current chapter remains in the reading progress.
 - Reload edited local PDFs at the current page and zoom.
 - Find any whole word from a query in the text reader.
 - Preview the surrounding passage when selecting text search results.
