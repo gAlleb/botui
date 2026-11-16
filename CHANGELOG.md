@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.1.19 — 2026-11-16
+
 ### Reading
 
 - Show the book title, section number, title and progress above, with total book progress below.

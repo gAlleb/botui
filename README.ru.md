@@ -641,6 +641,10 @@ GitHub Actions запускает обе проверки перед сборк�
 
 [История изменений](CHANGELOG.md)
 
+## Благодарности
+
+Спасибо авторам [Bookokrat](https://github.com/bugzmanov/bookokrat) и [BookOrbit](https://github.com/bookorbit/bookorbit) за идеи и отличные программы.
+
 ## Лицензия
 
 BOTUI и собственные обложки-заглушки распространяются под [GPL-3.0-or-later](LICENSE). Права на обложки из книг и каталогов сохраняются за их правообладателями.

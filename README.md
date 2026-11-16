@@ -641,6 +641,10 @@ GitHub Actions runs both checks before building the Linux binaries for branches 
 
 [Release notes](CHANGELOG.md)
 
+## Acknowledgments
+
+Thanks to [Bookokrat](https://github.com/bugzmanov/bookokrat) and [BookOrbit](https://github.com/bookorbit/bookorbit) for their ideas and great software.
+
 ## License
 
 BOTUI and its generated book jackets use [GPL-3.0-or-later](LICENSE). Covers supplied by books and catalogs retain their original rights.
