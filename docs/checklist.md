@@ -71,6 +71,10 @@ python3 scripts/smoke-reader-frame.py --book "/path/to/book.epub" --word "lighth
 
 It finds the word, saves and reopens, turns away and back, resizes with a Vim selection, compares the copied paragraph, and checks the saved source address on reopen.
 
+On Linux, add `--metrics` to run once with inline illustrations and once without them. Each run gets a fresh BOTUI profile. Choose an illustrated passage to exercise its cache. The script prints one JSON record per run with the executable and book hashes, time in milliseconds, reader RSS and process peak RSS in KiB, and bytes in the private disk cache. Decoded illustrations live in process memory. Compare RSS at the same steps with `--images on` and `--images off`; the difference includes reflow and rendering allocations.
+
+For comparisons between machines, set `BOTUI_BINARY` to the same release, use identical book bytes and the same search word, run three times on each machine and compare medians per step. If comparing illustration modes, alternate which runs first. The terminal is 115×30 cells and shrinks to 79×23. Timings include tmux input, redraw and two matching screen captures polled 40 ms apart. Opening allows 60 s, search 30 s and individual turns/resizes 8 s. These are test timeouts. The first open uses an empty application profile with the regular OS page cache.
+
 The core benchmark reports the time until the visible spread is laid out and the total time until the page count is ready. Terminal drawing and image decoding are measured separately.
 
 When changing the release profile, compare uncompressed executables built for the same architecture and C library. Check page-width changes and sidebar opening on a novel and an illustrated textbook, and compare the rendered table and equation in a technical EPUB.

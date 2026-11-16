@@ -5,6 +5,7 @@ import hashlib
 import importlib.util
 import json
 import os
+import platform
 from pathlib import Path
 import re
 import shutil
@@ -182,12 +183,47 @@ def check(root, mode):
         term.run("kill-server", required=False)
 
 
-def check_real_book(root, source, word):
+def file_digest(path):
+    with path.open("rb") as handle:
+        return hashlib.file_digest(handle, "sha256").hexdigest()
+
+
+class Metrics:
+    def __init__(self, book, images):
+        self.report = {
+            "host": platform.node(), "kernel": platform.release(), "arch": platform.machine(),
+            "binary_sha256": file_digest(BINARY), "book_sha256": file_digest(book),
+            "inline_images": images, "geometry": "115x30 -> 79x23", "steps": {},
+        }
+
+    def record(self, name, started, term):
+        elapsed = round((time.monotonic() - started) * 1000, 1)
+        pane = term.run("display-message", "-p", "-t", "shelf", "#{pane_pid}").stdout.strip()
+        # tmux may run the reader through a shell. Only sample the exact executable.
+        pids = [int(pane)]
+        while pids:
+            pid = pids.pop()
+            proc = Path("/proc") / str(pid)
+            try:
+                if (proc / "exe").samefile(BINARY):
+                    status = (proc / "status").read_text()
+                    rss = int(re.search(r"^VmRSS:\s+(\d+)", status, re.M)[1])
+                    hwm = int(re.search(r"^VmHWM:\s+(\d+)", status, re.M)[1])
+                    self.report["steps"][name] = {"ms": elapsed, "rss_kib": rss, "peak_rss_kib": hwm}
+                    return
+                pids.extend(map(int, (proc / "task" / str(pid) / "children").read_text().split()))
+            except (FileNotFoundError, ProcessLookupError):
+                pass
+        raise RuntimeError("Cannot locate the running reader under /proc for its memory sample")
+
+
+def check_real_book(root, source, word, metrics=None, images=True):
     book = root / ("edition" + source.suffix)
     shutil.copyfile(source, book)
     config = root / "config/botui/config.toml"
     config.parent.mkdir(parents=True)
-    config.write_text('zen=true\nzen_progress=true\nreading_layout="spread"\npage_width=42\n')
+    config.write_text('zen=true\nzen_progress=true\nreading_layout="spread"\npage_width=42\n'
+                      + ('hide_inline_images=false\n' if images else 'hide_inline_images=true\n'))
     start, position = isolated_reader(root, book)
 
     def reading(frame):
@@ -204,40 +240,60 @@ def check_real_book(root, source, word):
                   lambda _: clipboard.exists() and word.casefold() in clipboard.read_text().casefold())
         return clipboard.read_text()
 
+    def measure(name, started):
+        if metrics:
+            metrics.record(name, started, term)
+
+    started = time.monotonic()
     term = start()
     try:
         term.wait("Open the external edition", reading, timeout=60)
+        measure("first_open", started)
         term.keys("Space", "f"); term.see("Find:")
+        started = time.monotonic()
         term.type(word)
         term.wait("Find the control word in the book",
                   lambda f: re.search(r"▏\s+[1-9]\d* (?:matches|· refine)", f), timeout=30)
+        measure("word_results", started)
+        started = time.monotonic()
         term.keys("Enter")
         term.wait("Open the selected occurrence", matched)
+        measure("open_result", started)
         close(term)
         source_address = position()
 
+        started = time.monotonic()
         term = start()
         first = term.wait("Restore the search position", matched, timeout=60)
+        measure("resume", started)
         pages = PROGRESS.search(first)
         page, total = map(int, pages.groups())
         assert total > 1, "Use a book that fills more than one spread"
         forward, back = ("Right", "Left") if page < total else ("Left", "Right")
+        started = time.monotonic()
         term.keys(forward)
         term.wait("Move to a different spread", lambda f: reading(f) and pages.group() not in f)
+        measure("turn_" + forward.lower(), started)
+        started = time.monotonic()
         term.keys(back)
         term.wait("Recover the spread after a round trip", lambda f: f == first)
+        measure("turn_" + back.lower(), started)
 
         term.keys("Space", "c", "V"); term.see("VISUAL")
         before = copy_paragraph(term)
         term.keys("V"); term.see("VISUAL")
+        started = time.monotonic()
         term.run("resize-window", "-t", "shelf", "-x", "79", "-y", "23")
         term.wait("Resize while the selection is active",
                   lambda f: len(f.splitlines()) == 23 and "VISUAL" in f and matched(f))
+        measure("resize_narrow", started)
         assert copy_paragraph(term) == before, "Resize changed the selected source paragraph"
         term.keys("Escape")
         term.wait("Return to reading", lambda f: matched(f) and "NORMAL" not in f and "VISUAL" not in f)
+        started = time.monotonic()
         term.run("resize-window", "-t", "shelf", "-x", "115", "-y", "30")
         term.wait("Restore the original size", lambda f: len(f.splitlines()) == 30 and matched(f))
+        measure("resize_wide", started)
         close(term)
         assert position() == source_address, "Reading position changed during turn, selection or resize"
 
@@ -245,6 +301,9 @@ def check_real_book(root, source, word):
         term.wait("Reopen on the original word", matched, timeout=60)
         close(term)
         assert position() == source_address, "Reopening changed the saved source address"
+        if metrics:
+            disk_cache = root / "cache/botui"
+            metrics.report["disk_cache_bytes"] = sum(p.stat().st_size for p in disk_cache.rglob("*") if p.is_file())
     finally:
         term.run("kill-server", required=False)
 
@@ -253,14 +312,25 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--book", type=Path, help="exercise a copy of this EPUB or FB2")
     parser.add_argument("--word", help="visible word in a prose paragraph of the book")
+    parser.add_argument("--metrics", action="store_true", help="report Linux terminal timings, botui RSS and cache bytes as JSON")
+    parser.add_argument("--images", choices=["on", "off", "both"], help="inline illustrations for metrics (default: both)")
     args = parser.parse_args()
+    if args.images and not args.metrics:
+        parser.error("--images requires --metrics")
+    if args.metrics and (not args.book or platform.system() != "Linux"):
+        parser.error("--metrics requires --book on Linux")
     if args.book or args.word is not None:
         if not args.book or args.book.suffix.lower() not in (".epub", ".fb2") or not args.book.is_file():
             parser.error("--book requires a readable EPUB or FB2 file")
         if not args.word or len(args.word.split()) != 1:
             parser.error("--word requires one word from the book")
-        with tempfile.TemporaryDirectory(prefix="botui-real-reading-") as tmp:
-            check_real_book(Path(tmp), args.book, args.word.strip())
+        modes = [True, False] if args.metrics and args.images in (None, "both") else [args.images != "off"]
+        for images in modes:
+            metrics = Metrics(args.book, images) if args.metrics else None
+            with tempfile.TemporaryDirectory(prefix="botui-real-reading-") as tmp:
+                check_real_book(Path(tmp), args.book, args.word.strip(), metrics, images)
+            if metrics:
+                print(json.dumps(metrics.report, ensure_ascii=False), flush=True)
         print(f"PASS {args.book.name}: search, page round trip, selection, resize and reopen")
     else:
         for mode in ("single", "spread"):
