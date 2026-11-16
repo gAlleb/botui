@@ -68,7 +68,10 @@ pub(super) fn read_pages(
     let count_job = album
         .is_none()
         .then(|| worker.start(move |cancel| botui_fixed::page_info(&p, kind, cancel)));
-    let prefs = crate::settings::Settings::load()?;
+    let mut store = LocalState::for_file(path)
+        .map_err(|e| notices.push(e.to_string()))
+        .ok();
+    let prefs = crate::settings::book::BookSettings::effective(store.as_ref())?;
     let comic = matches!(kind, FileKind::Cbz | FileKind::Cbr);
     let mut reading_theme = prefs.fixed_theme(comic);
     let mut exit = crate::BookExit::Close;
@@ -114,9 +117,6 @@ pub(super) fn read_pages(
     let mut reveal: Option<botui_store::PdfRegion> = None;
     let mut gap = prefs.scan_gap.unwrap_or(2).min(32);
     let mut dialog: Option<controls::Dialog> = None;
-    let mut store = LocalState::for_file(path)
-        .map_err(|e| notices.push(e.to_string()))
-        .ok();
     let saved = store.as_ref().and_then(|s| {
         s.load()
             .map_err(|e| notices.push(e.to_string()))
@@ -858,6 +858,10 @@ pub(super) fn read_pages(
                     let next = edition.state.map_err(|e| notices.push(e.to_string())).ok();
                     let (updated, marks) = next.unzip();
                     store = updated;
+                    let prefs = crate::settings::book::BookSettings::effective(store.as_ref())?;
+                    reading_theme = prefs.fixed_theme(comic);
+                    page_colors = prefs.page_colors();
+                    prefs.apply_fixed_theme(&mut checkpoint.scan_appearance, comic);
                     checkpoint.marks = marks.unwrap_or_default();
                     finished &= total == Some(edition.count);
                     n = n.min(edition.count);
@@ -902,14 +906,20 @@ pub(super) fn read_pages(
                 match edit {
                     Edit::Cancel => palette = None,
                     Edit::Accept(theme) => {
-                        match crate::settings::Settings::update(|s| {
-                            if comic {
-                                s.comic_background = Some(theme.id());
-                            } else {
-                                s.scan_page_colors = p.colors;
-                                s.scan_theme = Some(theme.id());
-                            }
-                        }) {
+                        let updated = if comic {
+                            crate::settings::Settings::update(|s| {
+                                s.comic_background = Some(theme.id())
+                            })
+                        } else {
+                            crate::settings::book::save_pdf_palette(
+                                store.as_ref(),
+                                theme,
+                                p.colors.unwrap_or(page_colors),
+                                reading_theme,
+                                page_colors,
+                            )
+                        };
+                        match updated {
                             Ok(updated) => {
                                 reading_theme = theme;
                                 page_colors = updated.page_colors();
@@ -1393,7 +1403,7 @@ pub(super) fn read_pages(
             }
             26 | 27 => {
                 let before = crate::settings::Settings::load()?.reading_layout;
-                crate::preferences::show(
+                crate::preferences::show_book(
                     term,
                     if action == 26 {
                         crate::preferences::Open::Settings
@@ -1401,8 +1411,12 @@ pub(super) fn read_pages(
                         crate::preferences::Open::Help
                     },
                     crate::preferences::Context::Scan,
+                    store
+                        .as_ref()
+                        .filter(|_| !comic)
+                        .map(|s| (s, crate::preferences::BookKind::Pdf)),
                 )?;
-                let updated = crate::settings::Settings::load()?;
+                let updated = crate::settings::book::BookSettings::effective(store.as_ref())?;
                 reading_theme = updated.fixed_theme(comic);
                 page_colors = updated.page_colors();
                 updated.apply_fixed_theme(&mut checkpoint.scan_appearance, comic);

@@ -1,5 +1,7 @@
 //! One settings and help surface for every source, including direct-file launches.
 mod about;
+mod book;
+pub(crate) use book::Kind as BookKind;
 mod edit;
 mod help;
 use crate::{AppTerminal, appearance, settings::Settings, shell_theme};
@@ -311,6 +313,15 @@ fn rows(tab: usize, s: &Settings) -> Vec<SettingRow> {
     }
 }
 pub fn show(term: &mut AppTerminal, start: Open, ctx: Context) -> io::Result<()> {
+    show_book(term, start, ctx, None)
+}
+
+pub fn show_book(
+    term: &mut AppTerminal,
+    start: Open,
+    ctx: Context,
+    edition: Option<(&botui_store::LocalState, BookKind)>,
+) -> io::Result<()> {
     let _palette = crate::settings::interface_dialogs();
     let mut tab = if start == Open::Help { 4 } else { 0 };
     let mut state = ListState::default().with_selected(Some(0));
@@ -328,6 +339,7 @@ pub fn show(term: &mut AppTerminal, start: Open, ctx: Context) -> io::Result<()>
         let mut tabs = [Rect::default(); TABS.len()];
         let mut about_max = 0;
         let mut back = Rect::default();
+        let mut book_button = Rect::default();
         let mut body = Rect::default();
         term.draw(|f| {
             let area = crate::centered(f.area(), 106, 34);
@@ -337,6 +349,8 @@ pub fn show(term: &mut AppTerminal, start: Open, ctx: Context) -> io::Result<()>
                 " About BOTUI "
             } else if tab == 6 {
                 " Legal notices "
+            } else if tab == 1 && edition.is_some() {
+                " Settings · defaults for all books "
             } else {
                 " Settings "
             });
@@ -438,6 +452,16 @@ pub fn show(term: &mut AppTerminal, start: Open, ctx: Context) -> io::Result<()>
                 1,
             );
             f.render_widget(Paragraph::new(back_label).cyan(), back);
+            let mut footer_x = back.right();
+            let book_label = "[S This book]";
+            if tab == 1
+                && edition.is_some()
+                && inner.right().saturating_sub(footer_x) > book_label.len() as u16
+            {
+                book_button = Rect::new(footer_x + 1, back.y, book_label.len() as u16, 1);
+                f.render_widget(Paragraph::new(book_label).cyan(), book_button);
+                footer_x = book_button.right();
+            }
             f.render_widget(
                 Paragraph::new(if matches!(tab, 5 | 6) {
                     "  Tab Sections   ↑↓ Scroll"
@@ -451,13 +475,24 @@ pub fn show(term: &mut AppTerminal, start: Open, ctx: Context) -> io::Result<()>
                     "  Tab Sections   ↑↓ Choose   Enter Edit"
                 })
                 .dim(),
-                Rect::new(back.right(), back.y, inner.right() - back.right(), 1),
+                Rect::new(footer_x, back.y, inner.right() - footer_x, 1),
             );
             crate::settings::paint_interface(f);
         })?;
         let mut select = None;
         let mut opened = None;
         let event = crate::settings::read_event()?;
+        if tab == 1
+            && let Some((store, kind)) = edition
+            && (matches!(&event, Event::Key(k) if k.kind != KeyEventKind::Release && k.code == KeyCode::Char('s'))
+                || matches!(&event, Event::Mouse(m) if m.kind == MouseEventKind::Down(MouseButton::Left) && book_button.contains((m.column,m.row).into())))
+        {
+            status = book::edit(term, store, kind)
+                .err()
+                .map(|e| e.to_string())
+                .unwrap_or_default();
+            continue;
+        }
         if tab == 4 && guide_view.filter_input(&event) {
             continue;
         }

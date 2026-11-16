@@ -241,8 +241,8 @@ impl Reader {
         saved: Option<Saved>,
         source: &Path,
         remote: Option<botui_core::Anchor>,
+        settings: &crate::settings::Settings,
     ) -> Self {
-        let settings = crate::settings::Settings::load().unwrap_or_default();
         let mode = if saved.is_none() && settings.reading_layout.as_deref() == Some("single") {
             LayoutMode::Single
         } else if (saved.is_none() && settings.reading_layout.as_deref() == Some("scroll"))
@@ -346,7 +346,38 @@ impl Reader {
         }
     }
 
-    fn save_appearance(&self, action: Action, notices: &mut Vec<String>) {
+    fn save_appearance(
+        &self,
+        action: Action,
+        store: Option<&LocalState>,
+        notices: &mut Vec<String>,
+    ) {
+        if matches!(action, Action::Margin(_))
+            && let Some(store) = store
+        {
+            let local = (|| -> io::Result<bool> {
+                if crate::settings::book::BookSettings::load(Some(store))?
+                    .page_width
+                    .is_some()
+                {
+                    store.update_book_preferences(
+                        |p: &mut crate::settings::book::BookSettings| {
+                            p.page_width = Some(self.page_width)
+                        },
+                    )?;
+                    return Ok(true);
+                }
+                Ok(false)
+            })();
+            match local {
+                Ok(true) => return,
+                Err(e) => {
+                    notices.push(e.to_string());
+                    return;
+                }
+                Ok(false) => (),
+            }
+        }
         let result = crate::settings::Settings::update(|s| match action {
             Action::Gap(_) => s.column_gap = Some(self.gap),
             Action::Margin(_) => s.page_width = Some(self.page_width),
@@ -1467,6 +1498,7 @@ pub fn read_server(
         saved,
         path,
         resume_anchor,
+        &crate::settings::book::BookSettings::effective(state.as_ref())?,
     );
     let mut annotation_sync = live
         .as_ref()
@@ -1524,7 +1556,7 @@ pub fn read_server(
             reader.pager.start_pagination();
             // Publish the new geometry before syncing its settings file to disk.
             if let Some(action) = save_after_draw.take() {
-                reader.save_appearance(action, notices);
+                reader.save_appearance(action, state.as_ref(), notices);
             }
             frame_result?;
             if can_sync && let Some(sync) = live.as_deref_mut() {
@@ -1737,8 +1769,17 @@ pub fn read_server(
                 continue;
             }
             if matches!(action, Action::Settings | Action::Help) {
-                let old = crate::settings::Settings::load()?;
-                crate::preferences::show(
+                let old = crate::settings::book::BookSettings::effective(state.as_ref())?;
+                let kind = if reader.doc.markdown.is_some() {
+                    crate::preferences::BookKind::Markdown
+                } else if botui_formats::FileKind::from_path(path)
+                    == Some(botui_formats::FileKind::Epub)
+                {
+                    crate::preferences::BookKind::Epub
+                } else {
+                    crate::preferences::BookKind::Text
+                };
+                crate::preferences::show_book(
                     term,
                     if action == Action::Help {
                         crate::preferences::Open::Help
@@ -1746,8 +1787,9 @@ pub fn read_server(
                         crate::preferences::Open::Settings
                     },
                     crate::preferences::Context::Text,
+                    state.as_ref().map(|s| (s, kind)),
                 )?;
-                let new = crate::settings::Settings::load()?;
+                let new = crate::settings::book::BookSettings::effective(state.as_ref())?;
                 reader.zen = new.zen;
                 reader.scroll_lines = new.scroll_lines.unwrap_or(1).clamp(1, 12) as i8;
                 reader.zen_progress = new.zen_progress;
@@ -1767,8 +1809,12 @@ pub fn read_server(
                     reader.theme = Theme::from_id(new.theme.as_deref().unwrap_or("terminal"));
                     reader.dirty = true;
                 }
-                if let Some(w) = new.page_width {
-                    reader.page_width = w.clamp(32, 240);
+                if old.page_width != new.page_width {
+                    reader.page_width = new.page_width.unwrap_or(78).clamp(32, 240);
+                    if new.page_width.is_none() {
+                        reader.margin = 0;
+                        reader.dirty = true;
+                    }
                 }
                 if let Some(g) = new.column_gap {
                     reader.gap = g.min(32);
@@ -1896,7 +1942,7 @@ pub fn read_server(
                     save_after_draw = Some(action)
                 }
                 Action::Background | Action::Pick(theme_picker::Edit::Accept(_)) => {
-                    reader.save_appearance(action, notices)
+                    reader.save_appearance(action, state.as_ref(), notices)
                 }
                 _ => (),
             }

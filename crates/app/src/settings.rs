@@ -1,4 +1,5 @@
 //! One editable TOML document. UI changes patch individual values to retain user comments.
+pub(crate) mod book;
 mod legacy;
 mod lookup_migration;
 mod scan_theme;

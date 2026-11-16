@@ -24,6 +24,25 @@ fn choose(
 fn edit(term: &mut AppTerminal, name: &str, value: &str) -> io::Result<Option<String>> {
     prompt::edit(term, name, "[ Save ↵ ]", value, |_| {})
 }
+pub(super) fn choose_theme(
+    term: &mut AppTerminal,
+    initial: Theme,
+    title: &str,
+) -> io::Result<Option<Theme>> {
+    use crate::reader::theme_picker::{Edit, Picker};
+    let mut picker = Picker::new(initial);
+    loop {
+        term.draw(|f| picker.draw_named(f, title))?;
+        if let Some(e) = picker.input(crate::settings::read_event()?) {
+            match e {
+                Edit::Cancel => return Ok(None),
+                Edit::Accept(t) => return Ok(Some(t)),
+                _ => picker.edit(e),
+            }
+        }
+    }
+}
+
 pub(super) fn setting(
     term: &mut AppTerminal,
     tab: usize,
@@ -95,47 +114,28 @@ pub(super) fn setting(
             }
         }
         (1, 0) | (1, 14) | (1, 16) => {
-            use crate::reader::theme_picker::{Edit, Picker};
             let comic = i == 16;
-            let mut picker = Picker::new(if comic {
-                p.comic_theme()
+            let (initial, title) = if comic {
+                (p.comic_theme(), " Comic background ")
             } else if i == 14 {
-                p.page_theme()
+                (p.page_theme(), " PDF reading theme ")
             } else {
-                Theme::from_id(p.theme.as_deref().unwrap_or("terminal"))
-            });
-            loop {
-                term.draw(|f| {
-                    picker.draw_named(
-                        f,
-                        if comic {
-                            " Comic background "
-                        } else if i == 14 {
-                            " PDF reading theme "
-                        } else {
-                            " Reading theme "
-                        },
-                    )
-                })?;
-                if let Some(e) = picker.input(crate::settings::read_event()?) {
-                    match e {
-                        Edit::Cancel => break,
-                        Edit::Accept(t) => {
-                            Settings::update(|s| {
-                                if comic {
-                                    s.comic_background = Some(t.id());
-                                } else if i == 14 {
-                                    s.scan_page_colors = Some(s.page_colors());
-                                    s.scan_theme = Some(t.id());
-                                } else {
-                                    s.theme = Some(t.id());
-                                }
-                            })?;
-                            break;
-                        }
-                        _ => picker.edit(e),
+                (
+                    Theme::from_id(p.theme.as_deref().unwrap_or("terminal")),
+                    " Reading theme ",
+                )
+            };
+            if let Some(t) = choose_theme(term, initial, title)? {
+                Settings::update(|s| {
+                    if comic {
+                        s.comic_background = Some(t.id());
+                    } else if i == 14 {
+                        s.scan_page_colors = Some(s.page_colors());
+                        s.scan_theme = Some(t.id());
+                    } else {
+                        s.theme = Some(t.id());
                     }
-                }
+                })?;
             }
         }
         (1, 11) => {

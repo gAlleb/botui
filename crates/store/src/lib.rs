@@ -2,6 +2,7 @@
 #[cfg(unix)]
 mod fingerprint;
 mod notes;
+mod preferences;
 mod stats;
 use botui_core::{Anchor, IllustrationPosition};
 pub use notes::{HighlightColor, LibraryNotes, Note, PdfRegion};
