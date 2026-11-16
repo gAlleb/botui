@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Distinguish selected rows, current sections and actions in library screens and dialogs.
 - Show how much of the current chapter remains in the reading progress.
 - Reload edited local PDFs at the current page and zoom.
 - Find any whole word from a query in the text reader.

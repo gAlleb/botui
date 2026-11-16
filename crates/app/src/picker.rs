@@ -19,7 +19,7 @@ use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, 
 use ratatui::{
     Frame,
     layout::{Position, Rect},
-    style::{Color, Modifier, Style, Stylize},
+    style::{Color, Stylize},
     widgets::{Clear, List, ListItem, ListState, Paragraph},
 };
 
@@ -335,9 +335,9 @@ impl Picker {
                 );
                 frame.render_widget(
                     Paragraph::new(format!(" {label} ")).style(if selected {
-                        Style::new().reversed()
+                        crate::appearance::CURRENT_SECTION
                     } else {
-                        Style::new().fg(Color::Cyan)
+                        crate::appearance::ACTION
                     }),
                     rect,
                 );
@@ -378,7 +378,7 @@ impl Picker {
                 })
             });
             frame.render_stateful_widget(
-                List::new(items).highlight_style(Style::new().add_modifier(Modifier::REVERSED)),
+                List::new(items).highlight_style(crate::appearance::SELECTION),
                 self.rows,
                 &mut self.list,
             );
@@ -481,8 +481,7 @@ impl Picker {
                 continue;
             }
             if let Some(label) = label {
-                let text = Paragraph::new(label);
-                frame.render_widget(if rect == back { text } else { text.cyan() }, rect);
+                frame.render_widget(Paragraph::new(label).style(crate::appearance::ACTION), rect);
             }
         }
         height

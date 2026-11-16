@@ -331,7 +331,7 @@ impl Rail {
             let n = count.map(|c| c.to_string());
             let cap = n.as_ref().map_or(0, |n| n.len() as u16 + 2).min(r.width);
             let style = if self.focused && self.cursor == i {
-                Style::new().cyan().reversed()
+                crate::appearance::SELECTION
             } else if on {
                 Style::new().fg(Color::Cyan).bold()
             } else if heading {
@@ -347,7 +347,13 @@ impl Rail {
             f.render_widget(Paragraph::new(format!("{prefix}{label}")).style(style), r);
             if let Some(n) = n {
                 f.render_widget(
-                    Paragraph::new(n).right_aligned().style(style.dim()),
+                    Paragraph::new(n)
+                        .right_aligned()
+                        .style(if self.focused && self.cursor == i {
+                            style
+                        } else {
+                            crate::appearance::SECONDARY
+                        }),
                     Rect::new(r.right() - cap, r.y, cap.saturating_sub(1), 1),
                 );
             }

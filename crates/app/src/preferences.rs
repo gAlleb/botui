@@ -7,7 +7,7 @@ use crossterm::event::{Event, KeyCode, KeyEventKind, MouseButton, MouseEventKind
 use ratatui::{
     Frame,
     layout::{Position, Rect},
-    style::{Style, Stylize},
+    style::Stylize,
     widgets::{List, ListState, Paragraph},
 };
 use std::io;
@@ -369,9 +369,9 @@ pub fn show(term: &mut AppTerminal, start: Open, ctx: Context) -> io::Result<()>
                 let r = Rect::new(x, y, w, 1);
                 tabs[i] = r;
                 let style = if i == tab {
-                    Style::new().cyan().reversed().bold()
+                    appearance::CURRENT_SECTION
                 } else {
-                    Style::new().cyan()
+                    appearance::ACTION
                 };
                 f.render_widget(Paragraph::new(format!(" {s} ")).style(style), r);
                 x += w;
@@ -398,7 +398,7 @@ pub fn show(term: &mut AppTerminal, start: Open, ctx: Context) -> io::Result<()>
                                 .collect::<Vec<_>>(),
                             body.width,
                         ))
-                        .highlight_style(Style::new().reversed()),
+                        .highlight_style(appearance::SELECTION),
                         body,
                         &mut state,
                     );

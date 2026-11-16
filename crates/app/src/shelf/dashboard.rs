@@ -268,7 +268,7 @@ impl Shelf {
                     let rect = Rect::new(area.x, y + 1 + col as u16, area.width, 1);
                     let mut line = Paragraph::new(super::view::book_line(Some(book), rect.width));
                     if active {
-                        line = line.reversed();
+                        line = line.style(crate::appearance::SELECTION);
                     }
                     frame.render_widget(line, rect);
                     cells.push((index, rect));

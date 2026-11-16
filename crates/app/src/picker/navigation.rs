@@ -211,7 +211,7 @@ impl Navigation {
                 style = style.cyan().bold();
             }
             if self.focused && index == self.cursor {
-                style = style.reversed();
+                style = style.patch(crate::appearance::SELECTION);
             }
             let row = Rect::new(
                 self.viewport.x,

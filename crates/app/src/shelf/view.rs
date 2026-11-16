@@ -3,12 +3,12 @@ use crate::centered;
 use ratatui::{
     Frame,
     layout::Rect,
-    style::{Color, Modifier, Style},
+    style::{Color, Style},
     widgets::{Clear, List, ListItem, Paragraph, Wrap},
 };
 
 fn heading() -> Style {
-    Style::new().fg(Color::Cyan).add_modifier(Modifier::BOLD)
+    crate::appearance::ACTION.bold()
 }
 
 impl Shelf {
@@ -23,13 +23,13 @@ impl Shelf {
             if (self.session.is_some() || self.feed_search().is_some()) && left.width >= 30 {
                 self.search_button = Rect::new(left.right() - w - 12, left.y, 11, 1);
                 frame.render_widget(
-                    Paragraph::new("[/ Search]").style(Style::new().fg(Color::Cyan)),
+                    Paragraph::new("[/ Search]").style(crate::appearance::ACTION),
                     self.search_button,
                 );
             }
             self.view_button = Rect::new(left.right() - w, left.y, w, 1);
             frame.render_widget(
-                Paragraph::new(label).style(Style::new().fg(Color::Cyan)),
+                Paragraph::new(label).style(crate::appearance::ACTION),
                 self.view_button,
             );
         }
@@ -376,7 +376,7 @@ impl Shelf {
                 _ => ListItem::new(format!(" {}", row.label)),
             });
             frame.render_stateful_widget(
-                List::new(rows).highlight_style(Style::new().add_modifier(Modifier::REVERSED)),
+                List::new(rows).highlight_style(crate::appearance::SELECTION),
                 list_area,
                 &mut pane.selection,
             );
@@ -451,9 +451,9 @@ impl Shelf {
                 let rect = Rect::new(x, area.y + row as u16, width, 1);
                 self.tab_buttons[i] = rect;
                 let style = if active == Tab::ALL[i] {
-                    heading().reversed()
+                    crate::appearance::CURRENT_SECTION
                 } else {
-                    Style::new().fg(Color::Cyan)
+                    crate::appearance::ACTION
                 };
                 frame.render_widget(Paragraph::new(format!(" {label} ")).style(style), rect);
                 x = rect.right();
@@ -469,7 +469,10 @@ impl Shelf {
         let y = inner.bottom() - 1;
         let back_width = (back.chars().count() as u16).min(inner.width);
         self.back_button = Rect::new(inner.x, y, back_width, 1);
-        frame.render_widget(Paragraph::new(back), self.back_button);
+        frame.render_widget(
+            Paragraph::new(back).style(crate::appearance::ACTION),
+            self.back_button,
+        );
         if local {
             let label = "[ Local library ]";
             let x = self.back_button.right().saturating_add(2);
@@ -479,7 +482,10 @@ impl Shelf {
                 (label.chars().count() as u16).min(inner.right().saturating_sub(x)),
                 1,
             );
-            frame.render_widget(Paragraph::new(label), self.file_button);
+            frame.render_widget(
+                Paragraph::new(label).style(crate::appearance::ACTION),
+                self.file_button,
+            );
         }
         if self.info.is_none() && self.pending.is_none() {
             let mut x = if local {
@@ -559,9 +565,12 @@ pub(super) fn book_line(b: Option<&super::Book>, width: u16) -> ratatui::text::L
     };
     Line::from(vec![
         Span::raw(" "),
-        Span::styled(cell(&ext, format), Style::new().fg(Color::Cyan)),
+        Span::styled(cell(&ext, format), crate::appearance::SECONDARY),
         Span::raw(cell(&name, title)),
         Span::raw(cell(&by, author)),
-        Span::raw(if progress > 0 { pct } else { String::new() }),
+        Span::styled(
+            if progress > 0 { pct } else { String::new() },
+            crate::appearance::SECONDARY,
+        ),
     ])
 }

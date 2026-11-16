@@ -207,7 +207,12 @@ impl Shelf {
                 break;
             }
             let rect = Rect::new(x, footer.y, width, 1);
-            f.render_widget(Paragraph::new(label).dim(), rect);
+            let style = if command.is_some() {
+                crate::appearance::ACTION
+            } else {
+                crate::appearance::SECONDARY
+            };
+            f.render_widget(Paragraph::new(label).style(style), rect);
             if let Some(c) = command {
                 self.home_controls.push((rect, c));
             }

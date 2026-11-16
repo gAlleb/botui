@@ -82,11 +82,20 @@ impl FileInfo {
             inner.width.min(15),
             inner.height.min(1),
         );
-        frame.render_widget(Paragraph::new("[ Back · Esc ]").reversed(), back);
+        frame.render_widget(
+            Paragraph::new("[ Back · Esc ]").style(crate::appearance::ACTION),
+            back,
+        );
         let open = open_button(back, inner.right());
-        frame.render_widget(Paragraph::new("[ P Read ]"), open);
+        frame.render_widget(
+            Paragraph::new("[ P Read ]").style(crate::appearance::ACTION),
+            open,
+        );
         let external = external_button(open, inner.right());
-        frame.render_widget(Paragraph::new("[ X External viewer ]"), external);
+        frame.render_widget(
+            Paragraph::new("[ X External viewer ]").style(crate::appearance::ACTION),
+            external,
+        );
         back
     }
 }

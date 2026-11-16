@@ -53,7 +53,10 @@ pub fn field(
                     1,
                 );
                 f.render_widget(Paragraph::new(submit).cyan(), accept);
-                f.render_widget(Paragraph::new("[ Cancel ]"), cancel);
+                f.render_widget(
+                    Paragraph::new("[ Cancel ]").style(crate::appearance::ACTION),
+                    cancel,
+                );
             }
             crate::settings::paint_dialog(f);
         })?;
@@ -136,7 +139,6 @@ fn choose_rows(
     removable: bool,
     mut refresh: Option<Refresh<'_>>,
 ) -> io::Result<Option<(usize, bool)>> {
-    use ratatui::style::Style;
     use ratatui::widgets::{List, ListState};
     let mut list = ListState::default().with_selected(
         (!labels.is_empty()).then_some(selected.min(labels.len().saturating_sub(1))),
@@ -166,7 +168,7 @@ fn choose_rows(
             } else {
                 f.render_stateful_widget(
                     List::new(labels.iter().map(String::as_str))
-                        .highlight_style(Style::new().reversed()),
+                        .highlight_style(crate::appearance::SELECTION),
                     rows,
                     &mut list,
                 );
@@ -176,7 +178,7 @@ fn choose_rows(
                     .min(labels.len().saturating_sub(list.offset()))
                 {
                     f.render_widget(
-                        Paragraph::new("[×]").dim(),
+                        Paragraph::new("[×]").style(crate::appearance::ACTION),
                         Rect::new(delete_rows.x, delete_rows.y + row as u16, 3, 1),
                     );
                 }
@@ -289,7 +291,6 @@ fn document_panel(
     body: &str,
     action: Option<&str>,
 ) -> io::Result<bool> {
-    use ratatui::style::Stylize;
     use ratatui::widgets::{Paragraph, Wrap};
     let reset = action.is_some();
     let mut offset = 0u16;
@@ -321,13 +322,21 @@ fn document_panel(
                 let label = if reset { "[ Cancel ]" } else { "[ Close ]" };
                 let y = r.bottom() - 1;
                 back = Rect::new(r.x, y, r.width.min(label.len() as u16), 1);
-                let p = Paragraph::new(label);
-                f.render_widget(if !danger { p.reversed() } else { p }, back);
+                let style = if reset && !danger {
+                    crate::appearance::SELECTION
+                } else {
+                    crate::appearance::ACTION
+                };
+                f.render_widget(Paragraph::new(label).style(style), back);
                 if let Some(l) = action {
                     let x = back.right() + 1;
                     accept = Rect::new(x, y, r.right().saturating_sub(x).min(l.len() as u16), 1);
-                    let p = Paragraph::new(l);
-                    f.render_widget(if danger { p.reversed() } else { p }, accept);
+                    let style = if danger {
+                        crate::appearance::SELECTION
+                    } else {
+                        crate::appearance::ACTION
+                    };
+                    f.render_widget(Paragraph::new(l).style(style), accept);
                 }
             }
             crate::settings::paint_dialog(f);

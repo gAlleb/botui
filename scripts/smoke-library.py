@@ -2,6 +2,7 @@
 """Select a folder in the UI, find a nested book, read it and reopen the saved library."""
 import importlib.util
 import tomllib
+import re
 from pathlib import Path
 import shutil
 import zipfile
@@ -121,7 +122,63 @@ def check(tmp):
         t.run("kill-server", required=False)
 
 
+def check_roles(root, binary):
+    # A selection and an open tab are both visible even when a narrow shell hides its rail.
+    for palette, accent in [("catppuccin-mocha", (203, 166, 247)),
+                            ("catppuccin-latte", (136, 57, 239))]:
+        tmp = root / palette
+        library = tmp / "library"
+        (library / "Alpha").mkdir(parents=True)
+        (library / "Bravo").mkdir()
+        config = tmp / "config/botui/config.toml"
+        config.parent.mkdir(parents=True)
+        config.write_text(f'interface_theme = "{palette}"\nopaque_background = true\nlocal_grid = false\n')
+        term = shelf.Terminal(tmp, binary, args=["--local", str(library)])
+        try:
+            term.run("resize-window", "-x", "46", "-y", "16")
+            term.see("1 Folders")
+
+            def role(word):
+                ansi = term.run("capture-pane", "-p", "-e", "-t", "shelf").stdout
+                flags, color = set(), None
+                for token in re.finditer(r"\x1b\[([0-9;]*)m|([^\x1b]+)", ansi):
+                    if token[2] is not None:
+                        if word in token[2]:
+                            return flags, color
+                        continue
+                    codes = iter(int(c or 0) for c in token[1].split(";"))
+                    for c in codes:
+                        if c == 0:
+                            flags, color = set(), None
+                        elif c in (1, 2, 4, 7):
+                            flags.add(c)
+                        elif c in (22, 24, 27):
+                            flags.difference_update({22: (1, 2), 24: (4,), 27: (7,)}[c])
+                        elif c in (38, 48):
+                            mode = next(codes)
+                            rgb = tuple(next(codes) for _ in range(3 if mode == 2 else 1))
+                            if c == 38:
+                                color = rgb
+                        elif c == 39:
+                            color = None
+                raise AssertionError((word, ansi))
+
+            assert role("1 Folders") == ({1, 4}, accent)
+            assert role("Alpha/") == ({7}, accent)
+            assert role("Bravo/")[0] == set()
+            assert role(" Q Back ") == (set(), accent)
+            term.keys("Down")
+            term.wait("Cursor moves off the first folder", lambda _: role("Bravo/") == ({7}, accent))
+            term.keys("F2")
+            term.see("Style")
+            assert role("Style") == ({1, 4}, accent)
+            assert role("Esc Back") == (set(), accent)
+        finally:
+            term.run("kill-server", required=False)
+
+
 if __name__ == "__main__":
     with tempfile.TemporaryDirectory(prefix="botui-library-") as folder:
         check(Path(folder))
+        check_roles(Path(folder), ROOT / "target/debug/botui")
     print("Passed direct folder entry, nested search, grid, reading history, recent files and saved root.")

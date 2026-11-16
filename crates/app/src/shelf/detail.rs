@@ -8,7 +8,7 @@ use crossterm::event::{Event, KeyCode, KeyEventKind, MouseButton, MouseEventKind
 use ratatui::{
     Frame,
     layout::{Position, Rect},
-    style::{Style, Stylize},
+    style::Stylize,
     widgets::{List, ListItem, Paragraph, Wrap},
 };
 use std::{
@@ -340,7 +340,7 @@ impl Shelf {
             .iter()
             .map(|r| ListItem::new(format!(" {}", r.label)));
         f.render_stateful_widget(
-            List::new(items).highlight_style(Style::new().reversed()),
+            List::new(items).highlight_style(crate::appearance::SELECTION),
             list,
             &mut pane.selection,
         );

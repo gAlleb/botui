@@ -7,6 +7,12 @@ use ratatui::{
 use serde::{Deserialize, Serialize};
 use std::sync::atomic::{AtomicU8, Ordering};
 
+// ANSI roles are resolved by the existing interface or reading palette when the frame is painted.
+pub const ACTION: Style = Style::new().fg(Color::Cyan);
+pub const SELECTION: Style = ACTION.reversed().not_dim();
+pub const CURRENT_SECTION: Style = ACTION.bold().underlined();
+pub const SECONDARY: Style = Style::new().dim();
+
 #[derive(Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 #[repr(u8)]
@@ -151,7 +157,7 @@ impl ReadingFrame {
 }
 
 pub fn border_style(focused: bool) -> Style {
-    let accent = Style::new().fg(Color::Cyan);
+    let accent = ACTION;
     if focused { accent.bold() } else { accent.dim() }
 }
 pub fn outline_block(title: &str, focused: bool) -> Block<'_> {
@@ -170,11 +176,7 @@ pub fn card<'a>(active: bool) -> Block<'a> {
 
 pub fn card_title(selected: bool) -> Style {
     let title = Style::new().bold();
-    if selected {
-        title.fg(Color::Cyan).reversed()
-    } else {
-        title
-    }
+    if selected { SELECTION.bold() } else { title }
 }
 
 /// Depth ink stays inside the active palette; terminal mode keeps live ANSI colors.
