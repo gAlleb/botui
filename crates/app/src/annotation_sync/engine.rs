@@ -1,4 +1,4 @@
-use super::mapping::Mapper;
+use super::mapping::{LocalOnly, Mapper};
 use botui_bookorbit::{
     Result,
     annotations::{Annotation, New},
@@ -34,11 +34,11 @@ struct State {
 pub struct Report {
     pub conflicts: usize,
     pub unlocated: usize,
-    pub local_only: usize,
+    pub local_only: BTreeMap<LocalOnly, usize>,
     pub uncertain: usize,
 }
 impl Report {
-    pub fn message(&self) -> String {
+    pub fn lines(&self) -> Vec<String> {
         let mut parts = vec!["BookOrbit annotations synchronized".to_owned()];
         if self.conflicts > 0 {
             parts.push(format!("{} conflicts: both versions kept", self.conflicts));
@@ -49,11 +49,8 @@ impl Report {
                 self.unlocated
             ));
         }
-        if self.local_only > 0 {
-            parts.push(format!(
-                "{} local-only marks (unsupported position)",
-                self.local_only
-            ));
+        for (reason, count) in &self.local_only {
+            parts.push(format!("Local only · {}: {count}", reason.label()));
         }
         if self.uncertain > 0 {
             parts.push(format!(
@@ -61,7 +58,7 @@ impl Report {
                 self.uncertain
             ));
         }
-        parts.join(" · ")
+        parts
     }
 }
 fn load(v: serde_json::Value) -> std::io::Result<State> {
@@ -206,7 +203,10 @@ pub fn sync(
                             || local.pdf_regions != link.local.pdf_regions
                             || local.quote != link.local.quote
                         {
-                            report.local_only += 1;
+                            *report
+                                .local_only
+                                .entry(LocalOnly::ChangedPassage)
+                                .or_default() += 1;
                             continue;
                         }
                         let color = Mapper::edit_color(local, &link.local, &current);
@@ -277,9 +277,12 @@ pub fn sync(
         {
             continue;
         }
-        let Some(new) = mapper.export(&local, file) else {
-            report.local_only += 1;
-            continue;
+        let new = match mapper.export(&local, file) {
+            Ok(new) => new,
+            Err(reason) => {
+                *report.local_only.entry(reason).or_default() += 1;
+                continue;
+            }
         };
         let pending = Pending {
             local: local.clone(),

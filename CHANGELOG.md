@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Show why annotations stay local in BookOrbit sync status.
 - Override text layout and fixed-page colors per edition in Reader settings.
 - Jump between LaTeX source lines and local PDFs with SyncTeX.
 - Start each text chapter on a new two-page spread.

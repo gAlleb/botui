@@ -362,3 +362,103 @@ fn all_palette_and_custom_colors_round_trip_without_nearest_color_loss() {
     assert_eq!(server.items.borrow()[0].color, "#FF3300");
     assert_eq!(server.creates.get(), 1);
 }
+
+#[test]
+fn status_counts_local_pdf_page_notes_and_cross_page_ranges_without_uploading_them() {
+    use super::mapping::LocalOnly;
+    use botui_store::PdfRegion;
+
+    let (_dir, store, _, server) = fixture();
+    let mut mapper = Mapper::Pdf {
+        path: "unused".into(),
+        pages: Default::default(),
+    };
+    store
+        .edit_note(Anchor { block: 0, byte: 0 }, "Whole page".into())
+        .unwrap();
+    let across = TextRange::new(Anchor { block: 0, byte: 12 }, Anchor { block: 1, byte: 8 });
+    store
+        .annotate_regions(
+            None,
+            across,
+            "End and beginning".into(),
+            Some(HighlightColor::Blue),
+            "One comment".into(),
+            [1, 2]
+                .into_iter()
+                .map(|page| PdfRegion {
+                    page,
+                    bounds: [0.1, 0.2, 0.6, 0.25],
+                })
+                .collect(),
+        )
+        .unwrap();
+    let before = store.notes().unwrap();
+    let report = sync(&store, &mut mapper, &server);
+    assert_eq!(
+        report.local_only,
+        [
+            (LocalOnly::PdfPageNote, 1),
+            (LocalOnly::MultiplePdfPages, 1)
+        ]
+        .into()
+    );
+    let lines = report.lines();
+    assert!(lines.iter().any(|l| l.contains("whole-page PDF notes: 1")));
+    assert!(
+        lines
+            .iter()
+            .any(|l| l.contains("selections across PDF pages: 1"))
+    );
+    assert_eq!(server.creates.get(), 0);
+    assert_eq!(store.notes().unwrap(), before);
+}
+
+#[test]
+fn syncs_epub_ranges_across_blocks_in_one_document_and_explains_other_ranges() {
+    use super::mapping::LocalOnly;
+    let (_dir, store, _, server) = fixture();
+    let mut doc = document();
+    for path in [Some("/6/2!/4/4/1"), Some("/6/4!/4/2/1"), None] {
+        let block = doc.blocks.len();
+        doc.blocks.push(Block {
+            text: "x".into(),
+            heading: false,
+        });
+        if let Some(path) = path {
+            doc.locations.0.insert(
+                block,
+                vec![Run {
+                    byte: 0,
+                    end: 1,
+                    utf16: 0,
+                    path: path.into(),
+                }],
+            );
+        }
+        let range = TextRange::new(Anchor { block: 0, byte: 1 }, Anchor { block, byte: 1 });
+        store
+            .annotate(
+                None,
+                range,
+                doc.text_range(range),
+                Some(HighlightColor::Blue),
+                format!("range {block}"),
+            )
+            .unwrap();
+    }
+    let mut mapper = Mapper::Text(Arc::new(doc));
+    let before = store.notes().unwrap();
+    let report = sync(&store, &mut mapper, &server);
+    assert_eq!(
+        report.local_only,
+        [
+            (LocalOnly::MultipleEpubDocuments, 1),
+            (LocalOnly::NoExactLocation, 1)
+        ]
+        .into()
+    );
+    assert_eq!(server.creates.get(), 1);
+    assert_eq!(server.items.borrow()[0].note.as_deref(), Some("range 1"));
+    assert_eq!(store.notes().unwrap(), before);
+}

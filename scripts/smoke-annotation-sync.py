@@ -51,7 +51,7 @@ def notes(tmp):
     _,v=state(tmp);return v.get('notes',[]) if isinstance(v,dict) else v or []
 def sync_now(t):
     t.keys('Escape','Space','a','s');t.see('BookOrbit annotations')
-    t.keys('Home','Down','Enter')
+    t.keys('End','Up','Enter')
 with tempfile.TemporaryDirectory(prefix='botui-annotation-sync-') as temp,s.Fixture(False) as server:
     tmp=Path(temp);server.RequestHandlerClass=Handler;server.annotations=[];server.next_id=0;server.offline=False;server.annotation_reads=0
     threading.Thread(target=server.serve_forever,daemon=True).start()
@@ -117,6 +117,14 @@ with tempfile.TemporaryDirectory(prefix='botui-annotation-sync-') as temp,s.Fixt
         wait('PDF browser comment imported',lambda:any(n['body']=='PDF browser comment' for n in pdf_notes()))
         t.keys('Space','a','a');t.see('Highlights & notes');t.see('PDF browser comment')
         t.keys('Escape','Escape');t.wait('PDF note list closed',lambda f:'Highlights & notes' not in f and 'Space r p' in f)
+        t.keys('Space','a','p');t.see('Page note');t.type('My whole-page note');t.keys('Enter')
+        wait('local PDF page note saved',lambda:any(n['body']=='My whole-page note' for n in pdf_notes()))
+        reads=server.annotation_reads;sync_now(t)
+        wait('PDF details refreshed',lambda:server.annotation_reads>reads)
+        time.sleep(.4)
+        t.keys('Space','a','s');frame=t.see('whole-page PDF notes: 1')
+        assert 'BookOrbit annotations synchronized' in frame and len(server.annotations)==1,frame
+        t.keys('Escape')
         t.keys('Space','q');s.formats(t)
         print('PASS reader selection → BookOrbit, browser comment/color → reader, offline retry, remote delete and PDF geometry/comment round trip')
     finally:t.run('kill-server',required=False)

@@ -281,7 +281,7 @@ The highlight and comment editor offers all ten BookOrbit preset colors, with co
 
 From the start screen, press **A** for **Highlights & notes**. Type a book filename, quote or comment to find annotations saved on this device. Enter or click a result to open its passage in the matching edition. Annotations from unavailable files can still be read in the list.
 
-Concurrent edits keep both versions. A lost upload response is reconciled against the server before another create is attempted. Marks that cannot be located exactly stay on their original side; status reports them. Whole-page notes, selections spanning PDF pages or EPUB spine documents, and formats without a usable CFI stay local. Browser styles and colors outside BOTUI’s five-color palette are preserved on the server when only the comment is edited; BOTUI displays the closest available highlight color.
+Concurrent edits keep both versions. A lost upload response is reconciled against the server before another create is attempted. An EPUB selection can span reader screens within one spine document. A PDF selection can span lines on one physical page. Whole-page PDF notes, selections across PDF pages or EPUB spine documents, and marks without an exact location stay local. **Space a s** shows their counts by reason. BOTUI displays BookOrbit `#RRGGBB` colors exactly and preserves the original color and style on the server when editing a comment.
 
 **Define** and **Translate** use the connections selected in [Configuration](#dictionaries-translation-and-saved-catalogs). They send the chosen text only when requested. Keyboard equivalents and Vim motions are listed below.
 

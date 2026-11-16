@@ -1,11 +1,31 @@
 use botui_bookorbit::annotations::{Annotation, New, Pdf, Rect};
-use botui_core::{Anchor, Document, TextRange};
+use botui_core::{Anchor, Document, RangeCfiError, TextRange};
 use botui_store::{HighlightColor, Note, PdfRegion};
 use std::{
     collections::BTreeMap,
     path::PathBuf,
     sync::{Arc, atomic::AtomicBool},
 };
+
+#[derive(Clone, Copy, Debug, Ord, PartialOrd, Eq, PartialEq)]
+pub enum LocalOnly {
+    PdfPageNote,
+    MultiplePdfPages,
+    MultipleEpubDocuments,
+    NoExactLocation,
+    ChangedPassage,
+}
+impl LocalOnly {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::PdfPageNote => "whole-page PDF notes",
+            Self::MultiplePdfPages => "selections across PDF pages",
+            Self::MultipleEpubDocuments => "selections across EPUB documents",
+            Self::NoExactLocation => "marks without an exact location or passage",
+            Self::ChangedPassage => "edits to an already synced passage's location or text",
+        }
+    }
+}
 
 pub enum Mapper {
     Text(Arc<Document>),
@@ -34,7 +54,7 @@ impl Mapper {
         }
         pages.get(&n)
     }
-    pub fn export(&mut self, note: &Note, file: u64) -> Option<New> {
+    pub fn export(&mut self, note: &Note, file: u64) -> Result<New, LocalOnly> {
         let mut new = New {
             book_file_id: file,
             cfi: None,
@@ -47,25 +67,37 @@ impl Mapper {
         match self {
             Self::Text(doc) => {
                 new.cfi = Some(if let Some(range) = note.range() {
-                    doc.range_cfi(range)?
+                    doc.try_range_cfi(range).map_err(|reason| match reason {
+                        RangeCfiError::NoExactLocation => LocalOnly::NoExactLocation,
+                        RangeCfiError::MultipleDocuments => LocalOnly::MultipleEpubDocuments,
+                    })?
                 } else {
                     new.text = doc
                         .blocks
-                        .get(note.anchor().block)?
+                        .get(note.anchor().block)
+                        .ok_or(LocalOnly::NoExactLocation)?
                         .text
-                        .get(note.anchor().byte..)?
+                        .get(note.anchor().byte..)
+                        .ok_or(LocalOnly::NoExactLocation)?
                         .chars()
                         .take(160)
                         .collect();
-                    doc.cfi(note.anchor())?
+                    doc.cfi(note.anchor()).ok_or(LocalOnly::NoExactLocation)?
                 });
             }
             Self::Pdf { .. } => {
-                let first = note.pdf_regions.first()?;
+                let first = note.pdf_regions.first().ok_or(if note.range().is_none() {
+                    LocalOnly::PdfPageNote
+                } else {
+                    LocalOnly::NoExactLocation
+                })?;
                 if note.pdf_regions.iter().any(|r| r.page != first.page) {
-                    return None;
+                    return Err(LocalOnly::MultiplePdfPages);
                 }
-                let [w, h] = self.page(first.page)?.size;
+                let [w, h] = self
+                    .page(first.page)
+                    .ok_or(LocalOnly::NoExactLocation)?
+                    .size;
                 let rects: Vec<_> = note
                     .pdf_regions
                     .iter()
@@ -92,7 +124,11 @@ impl Mapper {
                 });
             }
         }
-        (!new.text.trim().is_empty()).then_some(new)
+        if new.text.trim().is_empty() {
+            Err(LocalOnly::NoExactLocation)
+        } else {
+            Ok(new)
+        }
     }
     pub fn import(&mut self, remote: &Annotation, id: String, file: u64) -> Option<Note> {
         if remote.jump_file_id != Some(file) {

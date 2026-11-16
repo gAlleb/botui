@@ -47,7 +47,7 @@ impl Remote for Context {
             .with_token(|a, t| a.remove_annotation(t, self.book, id))
     }
 }
-type Job = JoinHandle<(Mapper, Result<String, String>)>;
+type Job = JoinHandle<(Mapper, Result<engine::Report, String>)>;
 pub struct Live {
     context: Context,
     path: PathBuf,
@@ -56,7 +56,7 @@ pub struct Live {
     next: Instant,
     remote_at: Instant,
     observed: Vec<Note>,
-    pub message: String,
+    status: Vec<String>,
 }
 impl Live {
     pub fn text(context: Context, path: &Path, doc: Arc<botui_core::Document>) -> Self {
@@ -81,7 +81,7 @@ impl Live {
             next: Instant::now(),
             remote_at: Instant::now(),
             observed: vec![],
-            message: "BookOrbit annotations: connecting…".into(),
+            status: vec!["BookOrbit annotations: connecting…".into()],
         }
     }
     pub fn timeout(&self) -> Duration {
@@ -98,11 +98,14 @@ impl Live {
         match job.join() {
             Ok((mapper, result)) => {
                 self.mapper = Some(mapper);
-                self.message =
-                    result.unwrap_or_else(|e| format!("Annotations pending locally: {e}"));
+                self.status = match result {
+                    Ok(report) => report.lines(),
+                    Err(e) => vec![format!("Annotations pending locally: {e}")],
+                };
             }
             Err(_) => {
-                self.message = "Annotation worker interrupted; reopen this book to retry".into()
+                self.status =
+                    vec!["Annotation worker interrupted; reopen this book to retry".into()]
             }
         }
         self.next = Instant::now() + Duration::from_secs(2);
@@ -123,7 +126,7 @@ impl Live {
                 self.observed = notes;
                 self.start(false);
             }
-            Err(e) => self.message = format!("Cannot read annotations: {e}"),
+            Err(e) => self.status = vec![format!("Cannot read annotations: {e}")],
             _ => (),
         }
         false
@@ -135,17 +138,16 @@ impl Live {
         let context = self.context.clone();
         let path = self.path.clone();
         self.job = Some(thread::spawn(move || {
-            let result = (|| -> botui_bookorbit::Result<String> {
+            let result = (|| -> botui_bookorbit::Result<engine::Report> {
                 let store = LocalState::for_file(&path)?;
-                Ok(engine::sync(
+                engine::sync(
                     &store,
                     &context.scope(),
                     context.file,
                     &mut mapper,
                     &context,
                     retry,
-                )?
-                .message())
+                )
             })()
             .map_err(|e| e.to_string());
             (mapper, result)
@@ -155,12 +157,12 @@ impl Live {
         if self.job.as_ref().is_some_and(|j| j.is_finished()) {
             self.collect();
         }
-        let labels = vec![
-            self.message.clone(),
-            "Sync now / retry unconfirmed uploads".into(),
-            "Close".into(),
-        ];
-        if crate::prompt::choose(term, "BookOrbit annotations", &labels, 2)? == Some(1) {
+        let mut labels = self.status.clone();
+        let retry = labels.len();
+        labels.push("Sync now / retry unconfirmed uploads".into());
+        labels.push("Close".into());
+        if crate::prompt::choose(term, "BookOrbit annotations", &labels, retry + 1)? == Some(retry)
+        {
             // An explicit retry can resend a missing POST; always reconcile its journal first.
             if self.job.is_some() {
                 self.collect();
@@ -180,12 +182,8 @@ impl Live {
             self.start(false);
             self.collect();
         }
-        if !self
-            .message
-            .starts_with("BookOrbit annotations synchronized")
-            || self.message.contains(" · ")
-        {
-            notices.push(self.message.clone());
+        if self.status != ["BookOrbit annotations synchronized"] {
+            notices.push(self.status.join(" · "));
         }
     }
 }

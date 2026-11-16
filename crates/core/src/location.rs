@@ -10,23 +10,40 @@ pub struct Run {
 }
 #[derive(Default, Clone, Debug)]
 pub struct Locations(pub BTreeMap<usize, Vec<Run>>);
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RangeCfiError {
+    NoExactLocation,
+    MultipleDocuments,
+}
 impl Document {
     /// A CFI range shares its DOM prefix; offsets are UTF-16, not UTF-8.
     pub fn range_cfi(&self, range: TextRange) -> Option<String> {
+        self.try_range_cfi(range).ok()
+    }
+
+    pub fn try_range_cfi(&self, range: TextRange) -> Result<String, RangeCfiError> {
+        use RangeCfiError::*;
         if range.start >= range.end {
-            return None;
+            return Err(NoExactLocation);
         }
-        let a = self.cfi(range.start)?;
-        let b = self.cfi(range.end)?;
-        let a = a.strip_prefix("epubcfi(")?.strip_suffix(')')?;
-        let b = b.strip_prefix("epubcfi(")?.strip_suffix(')')?;
-        // A browser range cannot cross spine documents.
-        if a.split_once('!')?.0 != b.split_once('!')?.0 {
-            return None;
+        let a = self.cfi(range.start).ok_or(NoExactLocation)?;
+        let b = self.cfi(range.end).ok_or(NoExactLocation)?;
+        fn inner(cfi: &str) -> Option<&str> {
+            cfi.strip_prefix("epubcfi(")?.strip_suffix(')')
+        }
+        let a = inner(&a).ok_or(NoExactLocation)?;
+        let b = inner(&b).ok_or(NoExactLocation)?;
+        if a.split_once('!').ok_or(NoExactLocation)?.0
+            != b.split_once('!').ok_or(NoExactLocation)?.0
+        {
+            return Err(MultipleDocuments);
         }
         let common = a.bytes().zip(b.bytes()).take_while(|(a, b)| a == b).count();
-        let split = a[..common].rfind('/')?;
-        Some(format!(
+        let split = a.as_bytes()[..common]
+            .iter()
+            .rposition(|&byte| byte == b'/')
+            .ok_or(NoExactLocation)?;
+        Ok(format!(
             "epubcfi({},{},{})",
             &a[..split],
             &a[split..],
