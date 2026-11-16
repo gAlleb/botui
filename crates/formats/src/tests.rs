@@ -691,6 +691,55 @@ fn paragraph_spacing_keeps_centered_addresses_and_authored_blank_rows() {
 }
 
 #[test]
+fn centered_paragraphs_keep_the_book_indent_across_settings_and_resizes() {
+    use botui_core::{LayoutMode, Pager, ReflowOptions};
+    let doc = styled_fixture(
+        "<section><p>Centered</p><p class='offset'><b>Indented</b></p></section>\
+         <p class='offset'>Ordinary</p>",
+        "section {text-align:center} .offset {text-indent:48px} \
+         @media(min-width:500px) {section {text-align:left}}",
+    );
+    for paragraph_spacing in [None, Some(1)] {
+        for compact_spacing in [true, false] {
+            for paragraph_indent in [0, 4] {
+                let options = ReflowOptions {
+                    repair_printed: true,
+                    inline_images: true,
+                    paragraph_spacing,
+                    compact_spacing,
+                    paragraph_indent,
+                };
+                let mut pager = Pager::with_options(&doc, 48, 30, LayoutMode::Single, options);
+                // A second narrow width reuses the DOM after the wide layout.
+                for width in [48, 80, 52] {
+                    pager.relayout(&doc, width, 30, LayoutMode::Single);
+                    let column = |word: &str| {
+                        let line = pager
+                            .lines(0)
+                            .iter()
+                            .find(|l| l.text.trim() == word)
+                            .unwrap();
+                        usize::from(line.indent) + line.text.find(word).unwrap()
+                    };
+                    let reader_indent = usize::from(paragraph_indent);
+                    assert_eq!(column("Ordinary"), reader_indent);
+                    if width == 80 {
+                        assert_eq!(column("Centered"), reader_indent);
+                        assert_eq!(column("Indented"), reader_indent);
+                    } else {
+                        // Both words occupy eight cells. A six-cell author indent
+                        // moves the center of the indented line three cells right.
+                        let centered = (usize::from(width) - 8) / 2;
+                        assert_eq!(column("Centered"), centered);
+                        assert_eq!(column("Indented"), centered + 3);
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
 fn compact_blocks_and_paragraph_spacing_are_independent() {
     use botui_core::{LayoutMode, Pager, ReflowOptions};
     let doc = styled_fixture(

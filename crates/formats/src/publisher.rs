@@ -103,6 +103,7 @@ pub(super) fn chapter(
                         | "data-botui-image"
                         | "data-botui-equation"
                         | "data-botui-raised-link"
+                        | "data-botui-centered"
                         | "data-botui-prose-spacing"
                 )
             });

@@ -1,34 +1,48 @@
-//! Reader spacing belongs to prose, not to an address or a publisher's spacer.
+//! Apply reader paragraph settings after the book's alignment has been resolved.
+use crate::ReflowOptions;
 use blitz_dom::{BaseDocument, ElementData, Node, qual_name};
 use style::computed_values::{text_align::T as TextAlign, white_space_collapse::T as WhiteSpace};
 
-const MARKER: &str = "data-botui-prose-spacing";
-
-/// Run after resolve: inherited alignment and media queries must reflect the
-/// current viewport. Only the private layout DOM changes, never source/CFI nodes.
-pub(super) fn apply(doc: &mut BaseDocument, compact: bool) {
-    let changes: Vec<_> = doc
-        .tree()
-        .iter()
-        .filter_map(|(id, node)| {
-            let element = node.element_data()?;
-            if &*element.name.local != "p" {
-                return None;
+/// Reading settings follow inherited styles and viewport-dependent media queries.
+/// Only the private layout DOM changes, never the source/CFI nodes.
+pub(super) fn resolve(doc: &mut BaseDocument, options: ReflowOptions) {
+    doc.resolve(0.0);
+    let mut changes = Vec::new();
+    for (id, node) in doc.tree().iter() {
+        let Some(element) = node.element_data() else {
+            continue;
+        };
+        if &*element.name.local != "p" {
+            continue;
+        }
+        let mut mark = |name: &'static str, enabled| {
+            if element.attrs().iter().any(|a| &*a.name.local == name) != enabled {
+                changes.push((id, name, enabled));
             }
-            let marked = element.attrs().iter().any(|a| &*a.name.local == MARKER);
-            let prose = uses_reader_spacing(doc, node, compact);
-            (marked != prose).then_some((id, prose))
-        })
-        .collect();
+        };
+        let centered = node.primary_styles().is_some_and(|s| {
+            matches!(
+                s.clone_text_align(),
+                TextAlign::Center | TextAlign::MozCenter
+            )
+        });
+        mark("data-botui-centered", centered);
+        if options.paragraph_spacing.is_some() {
+            mark(
+                "data-botui-prose-spacing",
+                uses_reader_spacing(doc, node, options.compact_spacing),
+            );
+        }
+    }
     if changes.is_empty() {
         return;
     }
     {
         let mut dom = doc.mutate();
-        for (id, prose) in changes {
+        for (id, marker, enabled) in changes {
             let mut name = qual_name!("class");
-            name.local = MARKER.into();
-            if prose {
+            name.local = marker.into();
+            if enabled {
                 dom.set_attribute(id, name, "");
             } else {
                 dom.clear_attribute(id, name);

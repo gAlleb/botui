@@ -145,10 +145,7 @@ impl Worker {
         );
         if let Some(doc) = self.documents.get_mut(&start) {
             doc.set_viewport(viewport);
-            doc.resolve(0.0);
-            if options.paragraph_spacing.is_some() {
-                spacing::apply(doc, options.compact_spacing);
-            }
+            spacing::resolve(doc, options);
             return canvas::lines(doc, layout.width, &chapter.sources, blocks, &chapter.images);
         }
         let mut doc = chapter.document(viewport, options, blocks, resume);
@@ -339,10 +336,7 @@ impl Chapter {
         if let Some(at) = resume {
             self.break_at(&mut doc, blocks, at);
         }
-        doc.resolve(0.0);
-        if options.paragraph_spacing.is_some() {
-            spacing::apply(&mut doc, options.compact_spacing);
-        }
+        spacing::resolve(&mut doc, options);
         doc
     }
 }

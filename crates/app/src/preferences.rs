@@ -172,7 +172,7 @@ fn rows(tab: usize, s: &Settings) -> Vec<SettingRow> {
             pair(
                 "First-line indent",
                 &format!("{} cells", s.paragraph_indent.min(8)),
-                "Indent the first line of a text paragraph by 0–8 cells. Wrapped lines keep their left edge.",
+                "Indent the first line by 0–8 cells. Centered EPUB paragraphs keep the book's indent.",
             ),
             pair(
                 "Compact blocks",

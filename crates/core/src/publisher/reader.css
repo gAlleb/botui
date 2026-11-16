@@ -10,7 +10,7 @@ a[epub\:type~="noteref"] *, sup[data-botui-raised-link], sup a[href], a[href] su
 body { overflow-wrap: anywhere; }
 p, blockquote, pre, figure, table, h1, h2, h3, h4, h5, h6 { margin: 0 0 16px; }
 h1, h2, h3, h4, h5, h6 { font-size: 1em; line-height: 1; text-align: center; }
-p { text-indent: var(--botui-indent, 0px) !important; }
+p:not([data-botui-centered]) { text-indent: var(--botui-indent, 0px) !important; }
 blockquote { margin-inline: 2ch; }
 table { border-spacing: 1ch 0; }
 td, th { padding: 0; }
