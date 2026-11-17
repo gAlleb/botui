@@ -24,6 +24,43 @@ fn key(p: &Profile, text: &str, source: &str, target: &str) -> Key {
 fn start(p: Profile, text: String, source: String, target: String) -> Ticket<io::Result<String>> {
     WORKER.with(|w| w.start(move |cancel| providers::request(&p, &text, &source, &target, cancel)))
 }
+fn caption(profile: &Profile, source: &str, target: &str) -> String {
+    match (profile.uses_language(true), profile.uses_language(false)) {
+        (true, true) => format!("{} · {} → {}", profile.name, source, target),
+        (true, false) => format!("{} · from {}", profile.name, source),
+        (false, true) => format!("{} · into {}", profile.name, target),
+        (false, false) => profile.name.clone(),
+    }
+}
+fn actions(profile: &Profile) -> Vec<(&'static str, KeyCode)> {
+    let mut actions = vec![("[P Connection]", KeyCode::Char('p'))];
+    if profile.uses_language(false) {
+        actions.push(("[L Target language]", KeyCode::Char('l')));
+    }
+    if profile.uses_language(true) {
+        actions.push(("[S Source language]", KeyCode::Char('s')));
+    }
+    actions.extend([
+        ("[Y Copy]", KeyCode::Char('y')),
+        ("[N Save note]", KeyCode::Char('n')),
+        ("[R Retry]", KeyCode::Char('r')),
+        ("[Esc Back]", KeyCode::Esc),
+    ]);
+    actions
+}
+fn panel(screen: Rect, body: &Paragraph, labels: &[&str]) -> Rect {
+    let limit = centered(screen, 88, 24);
+    let inner = appearance::block().inner(limit);
+    let (_, button_height) = crate::reader::controls::layout(inner, labels);
+    let lines = body
+        .line_count(inner.width.saturating_sub(2))
+        .min(u16::MAX as usize) as u16;
+    let chrome = limit.height.saturating_sub(inner.height);
+    let height = lines
+        .saturating_add(button_height + 3 + chrome)
+        .clamp(10, 24);
+    centered(screen, 88, height)
+}
 pub fn test(term: &mut AppTerminal, p: Profile) -> io::Result<()> {
     let target = if p.target_language.is_empty() {
         Settings::load()?.lookup.target_language
@@ -133,35 +170,21 @@ fn run(
                 }
             }
         }
-        let actions = [
-            "[P Connection]",
-            if profile.uses_language(false) {
-                "[L Target language]"
-            } else {
-                "[L Not used by profile]"
-            },
-            if profile.uses_language(true) {
-                "[S Source language]"
-            } else {
-                "[S Not used by profile]"
-            },
-            "[Y Copy]",
-            "[N Save note]",
-            "[R Retry]",
-            "[Esc Back]",
-        ];
+        let actions = actions(profile);
+        let labels: Vec<_> = actions.iter().map(|(label, _)| *label).collect();
+        let body = Paragraph::new(format!("{}\n\n{}", text, result)).wrap(Wrap { trim: false });
         let mut buttons = vec![];
         let mut max_scroll = 0;
         term.draw(|f| {
             underneath(f);
-            let area = centered(f.area(), 88, 24);
+            let area = panel(f.area(), &body, &labels);
             crate::overlay::modal(f, area, |f| {
                 f.render_widget(Clear, area);
-                let block = appearance::block()
-                    .title(format!(" {} · {} → {} ", profile.name, source, target));
+                let block =
+                    appearance::block().title(format!(" {} ", caption(profile, &source, &target)));
                 let inner = block.inner(area);
                 f.render_widget(block, area);
-                let (rects, height) = crate::reader::controls::layout(inner, &actions);
+                let (rects, height) = crate::reader::controls::layout(inner, &labels);
                 buttons = rects;
                 let content = Rect::new(
                     inner.x + 1,
@@ -169,21 +192,19 @@ fn run(
                     inner.width.saturating_sub(2),
                     inner.height.saturating_sub(height + 3),
                 );
-                let body = format!("{}\n\n{}", text, result);
-                let paragraph = Paragraph::new(body).wrap(Wrap { trim: false });
-                max_scroll = paragraph
+                max_scroll = body
                     .line_count(content.width)
                     .saturating_sub(usize::from(content.height))
                     .min(u16::MAX as usize) as u16;
                 offset = offset.min(max_scroll);
-                f.render_widget(paragraph.scroll((offset, 0)), content);
+                f.render_widget(body.scroll((offset, 0)), content);
                 if content.bottom() < inner.bottom() {
                     f.render_widget(
                         Paragraph::new(status.as_str()).dim(),
                         Rect::new(inner.x, content.bottom(), inner.width, 1),
                     );
                 }
-                for (s, r) in actions.iter().zip(&buttons) {
+                for ((s, _), r) in actions.iter().zip(&buttons) {
                     f.render_widget(Paragraph::new(*s).cyan(), *r);
                 }
                 crate::settings::paint_dialog(f);
@@ -199,17 +220,7 @@ fn run(
             Event::Mouse(m) if m.kind == MouseEventKind::Down(MouseButton::Left) => buttons
                 .iter()
                 .position(|r| r.contains(Position::new(m.column, m.row)))
-                .map(|i| {
-                    [
-                        KeyCode::Char('p'),
-                        KeyCode::Char('l'),
-                        KeyCode::Char('s'),
-                        KeyCode::Char('y'),
-                        KeyCode::Char('n'),
-                        KeyCode::Char('r'),
-                        KeyCode::Esc,
-                    ][i]
-                })
+                .map(|i| actions[i].1)
                 .unwrap_or(KeyCode::Null),
             Event::Mouse(m) if m.kind == MouseEventKind::ScrollDown => KeyCode::Down,
             Event::Mouse(m) if m.kind == MouseEventKind::ScrollUp => KeyCode::Up,
@@ -258,8 +269,9 @@ fn run(
             }
             KeyCode::Char('n' | 'N') if good => {
                 return Ok(Some(format!(
-                    "{} ({} → {})\n\n{}",
-                    profile.name, source, target, result
+                    "{}\n\n{}",
+                    caption(profile, &source, &target),
+                    result
                 )));
             }
             KeyCode::Char('r' | 'R') => {
@@ -270,6 +282,70 @@ fn run(
                 requested = None;
             }
             _ => (),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn language_controls_and_saved_caption_follow_the_connection_parameters() {
+        for (args, languages, title) in [
+            (vec!["{text}"], vec![], "Fixture"),
+            (vec!["{text}", "{source}"], vec!['s'], "Fixture · from en"),
+            (vec!["{text}", "{target}"], vec!['l'], "Fixture · into ru"),
+            (
+                vec!["{text}", "{source?}", "{target}"],
+                vec!['l', 's'],
+                "Fixture · en → ru",
+            ),
+        ] {
+            let profile = Profile {
+                name: "Fixture".into(),
+                command: args.into_iter().map(str::to_owned).collect(),
+                ..Default::default()
+            };
+            assert_eq!(caption(&profile, "en", "ru"), title);
+            let buttons = actions(&profile);
+            let expected: Vec<_> = [KeyCode::Char('p')]
+                .into_iter()
+                .chain(languages.into_iter().map(KeyCode::Char))
+                .chain([
+                    KeyCode::Char('y'),
+                    KeyCode::Char('n'),
+                    KeyCode::Char('r'),
+                    KeyCode::Esc,
+                ])
+                .collect();
+            assert_eq!(
+                buttons.iter().map(|(_, key)| *key).collect::<Vec<_>>(),
+                expected
+            );
+            for (label, key) in buttons {
+                if let KeyCode::Char(key) = key {
+                    assert!(label.starts_with(&format!("[{} ", key.to_ascii_uppercase())));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn short_lookup_leaves_the_page_visible_and_long_answers_keep_a_scrollable_viewport() {
+        let actions = actions(&Profile::default());
+        let labels: Vec<_> = actions.iter().map(|(label, _)| *label).collect();
+        let short = Paragraph::new("word\n\nShort definition.").wrap(Wrap { trim: false });
+        let long = Paragraph::new("Long definition.\n".repeat(80)).wrap(Wrap { trim: false });
+        let screen = Rect::new(3, 5, 120, 40);
+        assert_eq!(panel(screen, &short, &labels).height, 10);
+        assert_eq!(panel(screen, &long, &labels).height, 24);
+        for (width, height) in [(120, 40), (60, 16), (24, 10), (4, 3), (0, 0)] {
+            let screen = Rect::new(3, 5, width, height);
+            for body in [&short, &long] {
+                let area = panel(screen, body, &labels);
+                assert_eq!(area.intersection(screen), area);
+            }
         }
     }
 }

@@ -13,6 +13,12 @@ use std::sync::atomic::{AtomicU8, Ordering};
 // ANSI roles are resolved by the existing interface or reading palette when the frame is painted.
 pub const ACTION: Style = Style::new().fg(Color::Cyan);
 pub const SELECTION: Style = ACTION.reversed().not_dim();
+// Text selection must not inherit the terminal's ANSI black (which may be pale).
+pub const TEXT_SELECTION: Style = Style::new()
+    .fg(Color::Rgb(0, 0, 0))
+    .bg(Color::Rgb(203, 214, 247))
+    .not_dim()
+    .not_reversed();
 pub const CURRENT_SECTION: Style = ACTION.bold().underlined();
 pub const SECONDARY: Style = Style::new().dim();
 
@@ -277,6 +283,68 @@ pub fn outline_style(base: Style, depth: usize) -> Style {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn text_selection_stays_readable_after_palette_resolution_and_modal_dimming() {
+        use ratatui::{
+            Terminal,
+            backend::TestBackend,
+            style::{Modifier, Stylize},
+            widgets::Paragraph,
+        };
+        fn luminance(color: Color) -> f64 {
+            let Color::Rgb(r, g, b) = color else {
+                panic!("selection depends on the terminal palette: {color:?}");
+            };
+            let [r, g, b] = [r, g, b].map(|v| {
+                let v = f64::from(v) / 255.;
+                if v <= 0.04045 {
+                    v / 12.92
+                } else {
+                    ((v + 0.055) / 1.055).powf(2.4)
+                }
+            });
+            0.2126 * r + 0.7152 * g + 0.0722 * b
+        }
+        for row in 0..crate::theme::Theme::COUNT {
+            for dark in [false, true] {
+                if row == 0 && dark {
+                    continue;
+                }
+                let theme = crate::theme::Theme::at(row, dark);
+                let _context = crate::settings::reader_dialogs(theme);
+                for modal in [false, true] {
+                    let mut term = Terminal::new(TestBackend::new(40, 12)).unwrap();
+                    term.draw(|frame| {
+                        frame.render_widget(
+                            Paragraph::new("Selected").dim().reversed(),
+                            frame.area(),
+                        );
+                        for x in 0..8 {
+                            frame.buffer_mut()[(x, 0)].set_style(TEXT_SELECTION);
+                        }
+                        crate::settings::paint_book(frame, theme);
+                        if modal {
+                            crate::overlay::modal(frame, Rect::new(20, 2, 15, 8), |_| {});
+                        }
+                    })
+                    .unwrap();
+                    let cell = &term.backend().buffer()[(0, 0)];
+                    assert!(!cell.modifier.intersects(Modifier::DIM | Modifier::REVERSED));
+                    let fg = luminance(cell.fg);
+                    let bg = luminance(cell.bg);
+                    let contrast = (fg.max(bg) + 0.05) / (fg.min(bg) + 0.05);
+                    assert!(contrast >= 7., "{theme:?} modal={modal}: {contrast}");
+                    if std::env::var_os("BOTUI_COLOR_AUDIT").is_some() {
+                        println!(
+                            "selection_rgb,{theme:?},modal={modal},{:?},{:?},{contrast:.3}",
+                            cell.fg, cell.bg
+                        );
+                    }
+                }
+            }
+        }
+    }
 
     #[test]
     fn zen_reclaims_the_frame_and_disabled_borders_only_reserve_visible_progress() {

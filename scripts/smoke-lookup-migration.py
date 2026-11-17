@@ -48,10 +48,15 @@ endpoint = "http://127.0.0.1:{server.server_port}/translate"
         c=tomllib.loads(config.read_text());assert all(p['provider']=='http' for p in c['lookup']['profiles'])
         assert c['lookup']['dictionary']=='English dictionary' and c['lookup']['translation']=='Google Translate'
         assert '# Keep personal settings' in config.read_text()
-        t.keys('Space','c','Space','d','d');t.see('Dictionary fixture');t.see('Not used by profile')
+        t.keys('Space','c','Space','d','d');frame=t.see('Dictionary fixture')
+        assert 'Not used by profile' not in frame and 'Target language' not in frame and 'Source language' not in frame,frame
+        assert 'auto → ru' not in frame,frame
         t.keys('l');t.see('does not use a target-language');assert len(requests)==1
+        t.click('R Retry',t.see('Dictionary fixture'))
+        t.wait('Retry uses the visible button action',lambda f:len(requests)==2 and 'Dictionary fixture' in f)
         t.keys('Escape');t.wait('Definition window closed',lambda f:'Dictionary fixture' not in f)
-        t.keys('Space','d','t');t.see('Перевод фикстуры');assert len(requests)==2
+        t.keys('Space','d','t');frame=t.see('Перевод фикстуры');assert len(requests)==3
+        assert 'Target language' in frame and 'Source language' in frame and 'auto → ru' in frame,frame
         t.keys('Escape','Space','q')
     finally:t.run('kill-server',required=False)
 finally:server.shutdown();server.server_close()

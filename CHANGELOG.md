@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Keep text selections readable and hide unused language controls in compact lookup dialogs.
+
 ## 0.1.20 — 2026-11-17
 
 - Preserve key presses while detecting terminal image support.

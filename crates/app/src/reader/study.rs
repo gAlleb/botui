@@ -5,7 +5,7 @@ use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, 
 use ratatui::{
     Frame,
     layout::{Position, Rect},
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
 };
 use std::time::{Duration, Instant};
 
@@ -529,10 +529,7 @@ impl Study {
                 }
             }
             if selected {
-                style = Style::default()
-                    .fg(Color::Black)
-                    .bg(Color::Rgb(203, 214, 247))
-                    .remove_modifier(Modifier::REVERSED);
+                style = crate::appearance::TEXT_SELECTION;
             }
             if cursor {
                 style = style.add_modifier(Modifier::REVERSED | Modifier::UNDERLINED);
