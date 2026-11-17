@@ -104,7 +104,7 @@ with tempfile.TemporaryDirectory(prefix='botui-annotation-sync-') as temp,s.Fixt
         time.sleep(.4)
         assert 'BookOrbit annotations synchronized' not in t.run('capture-pane','-p','-t','shelf').stdout
         t.keys('Space','c');t.wait('PDF text ready',lambda f:'NORMAL' in f and 'Loading text' not in f)
-        t.keys('v','Space','a','h');t.see('Highlight');t.keys('3','Enter');t.see('Annotation saved')
+        t.keys('v','i','w','Space','a','h');t.see('Highlight');t.keys('3','Enter');t.see('Annotation saved')
         wait('PDF highlight uploaded',lambda:len(server.annotations)==1)
         a=server.annotations[0];assert a['pdf']['page']==1 and a['cfi'] is None and a['text']=='Lighthouse',a
         assert a['pdf']['rect']['width']>0 and a['pdf']['rect']['height']>0

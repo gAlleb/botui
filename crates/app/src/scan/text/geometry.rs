@@ -1,5 +1,19 @@
 use ratatui::layout::{Position, Rect};
 
+#[derive(Clone, Copy, Debug)]
+pub(super) struct Pointer {
+    pub cell: Position,
+    pub fractions: [f32; 2],
+}
+impl From<Position> for Pointer {
+    fn from(cell: Position) -> Self {
+        Self {
+            cell,
+            fractions: crate::terminal_input::pixel_mouse::fractions(cell),
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(super) struct View {
     pub page: u32,
@@ -17,14 +31,23 @@ pub(in crate::scan) fn rotate(mut r: [f32; 4], turns: u8) -> [f32; 4] {
 }
 impl View {
     pub fn point(&self, p: Position) -> Option<(f32, f32)> {
+        self.pointer(Pointer {
+            cell: p,
+            fractions: [0.5, 0.5],
+        })
+    }
+    pub fn pointer(&self, pointer: Pointer) -> Option<(f32, f32)> {
+        let p = pointer.cell;
         if !self.screen.contains(p) {
             return None;
         }
         let mut x = self.window[0]
-            + (f32::from(p.x - self.screen.x) + 0.5) / f32::from(self.screen.width)
+            + (f32::from(p.x - self.screen.x) + pointer.fractions[0])
+                / f32::from(self.screen.width)
                 * (self.window[2] - self.window[0]);
         let mut y = self.window[1]
-            + (f32::from(p.y - self.screen.y) + 0.5) / f32::from(self.screen.height)
+            + (f32::from(p.y - self.screen.y) + pointer.fractions[1])
+                / f32::from(self.screen.height)
                 * (self.window[3] - self.window[1]);
         for _ in 0..self.turns % 4 {
             (x, y) = (y, 1. - x);

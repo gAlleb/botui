@@ -1,6 +1,7 @@
 //! PDF text interaction is independent of page rendering and saved reading progress.
 mod dialogs;
 mod geometry;
+mod motions;
 use crate::{
     cover::{Crop, Picture},
     shelf::background::{Ticket, Worker},
@@ -9,8 +10,8 @@ use botui_core::{Anchor, TextRange};
 use botui_fixed::text::PageText;
 use botui_store::{HighlightColor, LocalState, Note, PdfRegion};
 use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind};
-use geometry::View;
 pub(super) use geometry::rotate;
+use geometry::{Pointer, View};
 use ratatui::{
     Frame,
     layout::{Position, Rect},
@@ -39,6 +40,7 @@ pub(super) enum Action {
     Comment,
     Highlight,
     Clear,
+    Follow,
     None,
 }
 type ColoredBounds = ([f32; 4], [u8; 3]);
@@ -84,12 +86,13 @@ pub(super) struct Text {
     drag: bool,
     dragged: bool,
     note_pending: bool,
-    clicks: Option<(Position, Instant, u8)>,
-    pending: Option<Position>,
-    pending_end: Option<Position>,
+    clicks: Option<(Pointer, Instant, u8)>,
+    pending: Option<Pointer>,
+    pending_end: Option<Pointer>,
     auto_cursor: bool,
     pending_visual: bool,
     context_pending: Option<Position>,
+    follow_link: bool,
     search_forward: bool,
     search_regions: Vec<PdfRegion>,
     search_at: Option<(WordAt, usize)>,
@@ -125,6 +128,7 @@ impl Text {
             auto_cursor: false,
             pending_visual: false,
             context_pending: None,
+            follow_link: false,
             search_forward: true,
             search_regions: vec![],
             search_at: None,
@@ -169,7 +173,7 @@ impl Text {
             return self
                 .views
                 .iter()
-                .find_map(|v| v.point(p).map(|(x, y)| (v.page, [x, y])));
+                .find_map(|v| v.pointer(p.into()).map(|(x, y)| (v.page, [x, y])));
         }
         let focus = self
             .cursor
@@ -195,8 +199,15 @@ impl Text {
         hit: &botui_fixed::PageMatch,
         page: &PageText,
     ) -> Option<PdfRegion> {
+        let page = self
+            .cache
+            .get(&hit.page)
+            .and_then(|p| p.as_ref().ok())
+            .filter(|p| p.interactive && p.text == page.text)
+            .cloned()
+            .unwrap_or_else(|| page.clone());
         self.search_regions = page
-            .words
+            .units()
             .iter()
             .filter(|w| w.bytes.start < hit.bytes.end && hit.bytes.start < w.bytes.end)
             .map(|w| PdfRegion {
@@ -204,21 +215,22 @@ impl Text {
                 bounds: w.bounds,
             })
             .collect();
+        self.search_at = page
+            .units()
+            .iter()
+            .position(|w| w.bytes.end > hit.bytes.start)
+            .map(|index| WordAt {
+                page: hit.page,
+                index,
+            })
+            .map(|at| (at, hit.bytes.start));
+        self.cache.insert(hit.page, Ok(page));
         if self.normal {
-            self.cursor = page
-                .words
-                .iter()
-                .position(|w| w.bytes.end > hit.bytes.start)
-                .map(|index| WordAt {
-                    page: hit.page,
-                    index,
-                });
-            self.search_at = self.cursor.map(|at| (at, hit.bytes.start));
+            self.cursor = self.search_at.map(|(at, _)| at);
             self.search_cursor_pending = true;
             self.start = None;
             self.pending = None;
             self.pending_visual = false;
-            self.cache.insert(hit.page, Ok(page.clone()));
             self.reveal = None;
         }
         self.search_regions.first().cloned()
@@ -235,7 +247,7 @@ impl Text {
         self.search_forward
     }
     pub fn expects_mark(&self) -> bool {
-        self.keys.expects_mark()
+        self.keys.expects_literal()
     }
     pub fn normal(&self) -> bool {
         self.normal
@@ -248,19 +260,24 @@ impl Text {
             cache.poll();
         }
         if let Some((page, job)) = &self.job {
+            let page = *page;
             match job.receiver.try_recv() {
                 Ok(text) => {
-                    self.cache.insert(*page, text.map_err(|e| e.to_string()));
+                    if let Ok(new) = &text {
+                        self.remap_units(page, new);
+                    }
+                    self.cache.insert(page, text.map_err(|e| e.to_string()));
                     self.job = None;
                 }
                 Err(std::sync::mpsc::TryRecvError::Disconnected) => {
                     self.cache
-                        .insert(*page, Err("PDF text extraction interrupted".into()));
+                        .insert(page, Err("PDF text extraction interrupted".into()));
                     self.job = None;
                 }
                 Err(_) => (),
             }
         }
+        self.trim_cache();
         if !self.enabled {
             return;
         }
@@ -287,7 +304,7 @@ impl Text {
                 self.cache
                     .get(&at.page)
                     .and_then(|t| t.as_ref().ok())
-                    .and_then(|t| t.words.get(at.index))
+                    .and_then(|t| t.units().get(at.index))
                     .is_some_and(|w| {
                         !self
                             .views
@@ -299,10 +316,10 @@ impl Text {
             self.cursor = None;
         }
         if let Some(p) = self.pending {
-            if let Some(view) = self.views.iter().find(|v| v.screen.contains(p)) {
+            if let Some(view) = self.views.iter().find(|v| v.screen.contains(p.cell)) {
                 if let Some(result) = self.cache.get(&view.page) {
                     self.message = match result {
-                        Ok(t) if t.words.is_empty() => {
+                        Ok(t) if t.units().is_empty() => {
                             "This page has no embedded text layer".into()
                         }
                         Err(e) => e.clone(),
@@ -314,6 +331,13 @@ impl Text {
                         && let Some(end) = self.pending_end.take()
                     {
                         self.cursor = self.hit(end, true).or(self.cursor);
+                    }
+                    if !self.dragged
+                        && !self.drag
+                        && self.cursor.is_some()
+                        && self.active_note().is_none()
+                    {
+                        self.select_word();
                     }
                     self.pending = None;
                 }
@@ -327,7 +351,7 @@ impl Text {
                     .get(&v.page)?
                     .as_ref()
                     .ok()?
-                    .words
+                    .units()
                     .iter()
                     .position(|w| v.rect(w.bounds).is_some())
                     .map(|index| WordAt {
@@ -340,7 +364,7 @@ impl Text {
                     .views
                     .iter()
                     .find_map(|v| match self.cache.get(&v.page)? {
-                        Ok(t) if t.words.is_empty() => {
+                        Ok(t) if t.units().is_empty() => {
                             Some("This page has no embedded text layer".into())
                         }
                         Err(e) => Some(e.clone()),
@@ -361,19 +385,57 @@ impl Text {
             self.job = None;
         }
         if self.job.is_none()
-            && let Some(page) = self
-                .views
-                .iter()
-                .map(|v| v.page)
-                .find(|p| !self.cache.contains_key(p))
+            && let Some(page) = self.views.iter().map(|v| v.page).find(|p| {
+                self.cache
+                    .get(p)
+                    .is_none_or(|v| v.as_ref().is_ok_and(|t| !t.interactive))
+            })
         {
             let path = path.to_owned();
             self.job = Some((
                 page,
                 self.worker
-                    .start(move |cancel| botui_fixed::text::page_text(&path, page, cancel)),
+                    .start(move |cancel| botui_fixed::text::interactive_page(&path, page, cancel)),
             ));
         }
+        self.trim_cache();
+    }
+    fn remap_units(&mut self, page: u32, new: &PageText) {
+        let Some(Ok(old)) = self.cache.get(&page) else {
+            return;
+        };
+        let map = |at: WordAt, end: bool| -> WordAt {
+            if at.page != page {
+                return at;
+            }
+            let Some(old) = old.units().get(at.index) else {
+                return at;
+            };
+            let byte = if end {
+                old.bytes.end.saturating_sub(1)
+            } else {
+                old.bytes.start
+            };
+            new.units()
+                .iter()
+                .position(|u| u.bytes.end > byte)
+                .map_or(at, |index| WordAt { index, ..at })
+        };
+        let forward = self.start.zip(self.cursor).is_some_and(|(a, b)| a <= b);
+        self.cursor = self
+            .cursor
+            .map(|at| map(at, self.start.is_some() && forward));
+        self.start = self.start.map(|at| map(at, !forward));
+        self.yank_origin = self.yank_origin.map(|at| map(at, false));
+        self.previous = self.previous.map(|(a, b)| (map(a, a > b), map(b, a <= b)));
+        if let Some((at, byte)) = &mut self.search_at
+            && at.page == page
+            && let Some(index) = new.units().iter().position(|u| u.bytes.end > *byte)
+        {
+            at.index = index;
+        }
+    }
+    fn trim_cache(&mut self) {
         // Only the current viewport and a small neighbourhood remain resident.
         if self.cache.len() > 8 {
             let visible: Vec<_> = self.views.iter().map(|v| v.page).collect();
@@ -381,6 +443,7 @@ impl Text {
                 visible.contains(p)
                     || self.start.is_some_and(|a| a.page == *p)
                     || self.cursor.is_some_and(|a| a.page == *p)
+                    || self.search_at.is_some_and(|(a, _)| a.page == *p)
             });
         }
     }
@@ -425,13 +488,19 @@ impl Text {
         });
     }
     fn word(&self, at: WordAt) -> Option<&botui_fixed::text::Word> {
-        self.cache.get(&at.page)?.as_ref().ok()?.words.get(at.index)
+        self.cache
+            .get(&at.page)?
+            .as_ref()
+            .ok()?
+            .units()
+            .get(at.index)
     }
-    fn hit(&self, p: Position, nearest: bool) -> Option<WordAt> {
+    fn hit(&self, pointer: Pointer, nearest: bool) -> Option<WordAt> {
+        let p = pointer.cell;
         let view = self.views.iter().find(|v| v.screen.contains(p))?;
-        let (x, y) = view.point(p)?;
+        let (x, y) = view.pointer(pointer)?;
         let text = self.cache.get(&view.page)?.as_ref().ok()?;
-        text.words
+        text.units()
             .iter()
             .enumerate()
             .filter(|(_, w)| view.rect(w.bounds).is_some())
@@ -465,17 +534,43 @@ impl Text {
             let last = if page == b.page {
                 b.index
             } else {
-                text.words.len().checked_sub(1)?
+                text.units().len().checked_sub(1)?
             };
-            let words = text.words.get(first..=last)?;
+            let words = text.units().get(first..=last)?;
             if !quote.is_empty() {
                 quote.push_str("\n\n");
             }
             quote.push_str(&text.text[words.first()?.bytes.start..words.last()?.bytes.end]);
-            regions.extend(words.iter().map(|w| PdfRegion {
-                page,
-                bounds: w.bounds,
-            }));
+            let bytes = words.first()?.bytes.start..words.last()?.bytes.end;
+            // Keep the established word rectangles for complete words. Only
+            // partial words use their measured glyph boxes, so old saved marks
+            // and BookOrbit geometry remain compatible.
+            regions.extend(
+                text.words
+                    .iter()
+                    .filter(|w| w.bytes.start < bytes.end && w.bytes.end > bytes.start)
+                    .filter_map(|w| {
+                        let bounds = if bytes.start <= w.bytes.start && bytes.end >= w.bytes.end {
+                            w.bounds
+                        } else {
+                            words
+                                .iter()
+                                .filter(|c| {
+                                    c.bytes.start < w.bytes.end && c.bytes.end > w.bytes.start
+                                })
+                                .map(|c| c.bounds)
+                                .reduce(|a, b| {
+                                    [
+                                        a[0].min(b[0]),
+                                        a[1].min(b[1]),
+                                        a[2].max(b[2]),
+                                        a[3].max(b[3]),
+                                    ]
+                                })?
+                        };
+                        Some(PdfRegion { page, bounds })
+                    }),
+            );
         }
         let range = TextRange::new(
             Anchor {
@@ -491,13 +586,20 @@ impl Text {
     }
     pub fn active_note(&self) -> Option<&Note> {
         let (_, _, regions) = self.selection()?;
+        if regions.is_empty() {
+            return None;
+        }
         self.notes
             .iter()
             .filter(|n| {
                 regions.iter().all(|r| {
-                    n.pdf_regions
-                        .iter()
-                        .any(|saved| saved.page == r.page && saved.bounds == r.bounds)
+                    n.pdf_regions.iter().any(|saved| {
+                        saved.page == r.page
+                            && saved.bounds[0] <= r.bounds[0] + 0.0001
+                            && saved.bounds[1] <= r.bounds[1] + 0.0001
+                            && saved.bounds[2] + 0.0001 >= r.bounds[2]
+                            && saved.bounds[3] + 0.0001 >= r.bounds[3]
+                    })
                 })
             })
             .min_by_key(|n| n.pdf_regions.len())
@@ -511,6 +613,7 @@ impl Text {
     pub fn clear(&mut self) {
         self.note_pending = false;
         self.context_pending = None;
+        self.follow_link = false;
         self.enabled = false;
         self.search_cursor_pending = false;
         self.normal = false;
@@ -542,6 +645,10 @@ impl Text {
         self.enabled = true;
         self.normal = true;
         self.auto_cursor = true;
+        if self.cursor.is_none() && !self.search_regions.is_empty() {
+            self.cursor = self.search_at.map(|(at, _)| at);
+            self.search_cursor_pending = self.cursor.is_some();
+        }
         self.message.clear();
     }
     pub fn input(&mut self, e: &Event) -> Option<Action> {
@@ -557,19 +664,19 @@ impl Text {
                         self.enabled = true;
                         self.keys.reset();
                         self.context_pending = Some(p);
-                        if let Some(hit) = self.hit(p, false) {
+                        if let Some(hit) = self.hit(p.into(), false) {
                             let inside = self
                                 .start
                                 .zip(self.cursor)
                                 .is_some_and(|(a, b)| hit >= a.min(b) && hit <= a.max(b));
                             if !inside {
                                 self.cursor = Some(hit);
-                                self.start = Some(hit);
+                                self.select_word();
                             }
                         } else {
                             self.cursor = None;
                             self.start = None;
-                            self.pending = Some(p);
+                            self.pending = Some(p.into());
                         }
                         Some(Action::None)
                     }
@@ -595,37 +702,45 @@ impl Text {
                         let count = self
                             .clicks
                             .filter(|(old, t, _)| {
-                                *old == p && t.elapsed() < Duration::from_millis(450)
+                                old.cell == p && t.elapsed() < Duration::from_millis(450)
                             })
                             .map_or(1, |(_, _, n)| n % 3 + 1);
-                        self.clicks = Some((p, Instant::now(), count));
-                        self.cursor = self.hit(p, false);
+                        self.clicks = Some((p.into(), Instant::now(), count));
+                        self.cursor = self.hit(p.into(), false);
                         self.start = self.cursor;
                         if let Some(at) = self.cursor {
                             if count == 3 {
                                 self.select_block(at);
+                            } else if count == 2 {
+                                self.select_word();
                             }
                         } else {
-                            self.pending = Some(p);
+                            self.pending = Some(p.into());
                         }
                         Some(Action::None)
                     }
                     MouseEventKind::Drag(MouseButton::Left) if self.drag => {
                         self.dragged = true;
                         if self.pending.is_some() {
-                            self.pending_end = Some(p);
+                            self.pending_end = Some(p.into());
                         }
-                        if let Some(at) = self.hit(p, true) {
+                        if let Some(at) = self.hit(p.into(), true) {
                             self.cursor = Some(at);
                         }
                         Some(Action::None)
                     }
                     MouseEventKind::Up(MouseButton::Left) if self.drag => {
                         self.drag = false;
+                        if !self.dragged
+                            && self.clicks.is_some_and(|(_, _, count)| count < 3)
+                            && self.active_note().is_none()
+                        {
+                            self.select_word();
+                        }
                         self.note_pending = !self.dragged
                             && self
                                 .clicks
-                                .is_some_and(|(at, _, count)| at == p && count == 1);
+                                .is_some_and(|(at, _, count)| at.cell == p && count == 1);
                         Some(Action::None)
                     }
                     _ => None,
@@ -651,7 +766,14 @@ impl Text {
                             _ => None,
                         };
                     }
-                    if k.code == KeyCode::Char('y') && self.start.is_some() {
+                    if k.code == KeyCode::Enter && !self.keys.expects_literal() {
+                        self.follow_link = true;
+                        return Some(Action::None);
+                    }
+                    if k.code == KeyCode::Char('y')
+                        && self.start.is_some()
+                        && !self.keys.expects_literal()
+                    {
                         return Some(Action::Copy);
                     }
                     if let Some(edit) = self.keys.input(k.code, self.start.is_some()) {
@@ -680,6 +802,10 @@ impl Text {
                         Some(Action::Copy)
                     }
                     KeyCode::Char('H') => Some(Action::Highlight),
+                    KeyCode::Enter if self.cursor_link().is_some() => {
+                        self.follow_link = true;
+                        Some(Action::None)
+                    }
                     KeyCode::Enter if self.active_note().is_some() => Some(Action::Comment),
                     _ => None,
                 }
@@ -695,6 +821,76 @@ impl Text {
         } else {
             None
         }
+    }
+    pub fn take_link(&mut self) -> Option<botui_fixed::text::LinkTarget> {
+        if self.pending.is_some() {
+            return None;
+        }
+        let target = if std::mem::take(&mut self.follow_link) {
+            self.cursor_link().cloned()
+        } else if self.note_pending {
+            let (p, _, _) = self.clicks?;
+            let v = self.views.iter().find(|v| v.screen.contains(p.cell))?;
+            let (x, y) = v.pointer(p)?;
+            self.cache
+                .get(&v.page)?
+                .as_ref()
+                .ok()?
+                .links
+                .iter()
+                .find(|l| {
+                    l.bounds[0] <= x && x <= l.bounds[2] && l.bounds[1] <= y && y <= l.bounds[3]
+                })
+                .map(|l| l.target.clone())
+        } else {
+            None
+        };
+        if target.is_some() {
+            self.clear();
+        }
+        target
+    }
+    fn cursor_link(&self) -> Option<&botui_fixed::text::LinkTarget> {
+        let at = self.cursor?;
+        let b = self.word(at)?.bounds;
+        self.cache
+            .get(&at.page)?
+            .as_ref()
+            .ok()?
+            .links
+            .iter()
+            .find(|l| {
+                l.bounds[0] <= (b[0] + b[2]) / 2.
+                    && (b[0] + b[2]) / 2. <= l.bounds[2]
+                    && l.bounds[1] <= (b[1] + b[3]) / 2.
+                    && (b[1] + b[3]) / 2. <= l.bounds[3]
+            })
+            .map(|l| &l.target)
+    }
+    fn select_word(&mut self) {
+        let Some(at) = self.cursor else { return };
+        let Some(Ok(page)) = self.cache.get(&at.page) else {
+            return;
+        };
+        let Some(unit) = page.units().get(at.index) else {
+            return;
+        };
+        let Some(word) = page
+            .words
+            .iter()
+            .find(|w| w.bytes.contains(&unit.bytes.start))
+        else {
+            return;
+        };
+        let start = page
+            .units()
+            .partition_point(|c| c.bytes.end <= word.bytes.start);
+        let end = page
+            .units()
+            .partition_point(|c| c.bytes.start < word.bytes.end)
+            .saturating_sub(1);
+        self.start = Some(WordAt { index: start, ..at });
+        self.cursor = Some(WordAt { index: end, ..at });
     }
     pub fn leader_action(&mut self, c: crate::leader::Command) -> Option<Action> {
         use crate::leader::Command as C;
@@ -760,6 +956,17 @@ impl Text {
             V::Move(m, count) | V::Yank(m, count) => {
                 let origin = self.cursor;
                 let yank = matches!(edit, V::Yank(..));
+                if self
+                    .cursor
+                    .and_then(|at| self.cache.get(&at.page))
+                    .is_some_and(|t| t.as_ref().is_ok_and(|t| !t.characters.is_empty()))
+                {
+                    return self.precise_motion(m, count, yank);
+                }
+                if matches!(m, M::Find { .. } | M::Delimited { .. }) {
+                    self.message = "Exact character selection requires Python Poppler GI".into();
+                    return Action::None;
+                }
                 if yank {
                     self.yank_origin = origin;
                     self.start = self.cursor;
@@ -768,7 +975,7 @@ impl Text {
                         && let Some(Ok(page)) = self.cache.get(&at.page)
                     {
                         self.cursor = Some(WordAt {
-                            index: (at.index + count - 1).min(page.words.len().saturating_sub(1)),
+                            index: (at.index + count - 1).min(page.units().len().saturating_sub(1)),
                             ..at
                         });
                         return Action::Copy;
@@ -777,7 +984,7 @@ impl Text {
                 let mut object_start = None;
                 for step in 0..count {
                     match m {
-                        M::InnerWord | M::AroundWord => {
+                        M::InnerWord | M::AroundWord | M::InnerBigWord | M::AroundBigWord => {
                             self.start = self.cursor;
                         }
                         M::Paragraph | M::Line => {
@@ -800,14 +1007,14 @@ impl Text {
                                     index: if m == M::Top {
                                         0
                                     } else {
-                                        t.words.len().saturating_sub(1)
+                                        t.units().len().saturating_sub(1)
                                     },
                                     ..at
                                 });
                             }
                         }
                         _ => self.move_word(KeyCode::Char(match m {
-                            M::Left | M::BackWord => 'b',
+                            M::Left | M::BackWord | M::BackBigWord => 'b',
                             M::NextParagraph => '}',
                             M::PreviousParagraph => '{',
                             M::Down | M::ScreenDown => 'j',
@@ -835,9 +1042,9 @@ impl Text {
     }
     fn select_block(&mut self, at: WordAt) {
         if let Some(Ok(text)) = self.cache.get(&at.page) {
-            let block = text.words[at.index].block;
+            let block = text.units()[at.index].block;
             self.start = text
-                .words
+                .units()
                 .iter()
                 .position(|w| w.block == block)
                 .map(|index| WordAt {
@@ -845,7 +1052,7 @@ impl Text {
                     index,
                 });
             self.cursor = text
-                .words
+                .units()
                 .iter()
                 .rposition(|w| w.block == block)
                 .map(|index| WordAt {
@@ -861,28 +1068,28 @@ impl Text {
         let Some(Ok(text)) = self.cache.get(&at.page) else {
             return;
         };
-        let w = &text.words[at.index];
+        let w = &text.units()[at.index];
         let index = match key {
             KeyCode::Char('}') => text
-                .words
+                .units()
                 .iter()
                 .enumerate()
                 .skip(at.index + 1)
                 .find(|(_, v)| v.block != w.block)
                 .map_or(at.index, |(i, _)| i),
-            KeyCode::Char('{') => text.words[..at.index]
+            KeyCode::Char('{') => text.units()[..at.index]
                 .iter()
                 .rfind(|v| v.block != w.block)
-                .and_then(|prev| text.words.iter().position(|v| v.block == prev.block))
+                .and_then(|prev| text.units().iter().position(|v| v.block == prev.block))
                 .unwrap_or(at.index),
             KeyCode::Char('b' | 'h') | KeyCode::Left => at.index.saturating_sub(1),
             KeyCode::Char('0') => text
-                .words
+                .units()
                 .iter()
                 .position(|v| v.line == w.line)
                 .unwrap_or(at.index),
             KeyCode::Char('$') => text
-                .words
+                .units()
                 .iter()
                 .rposition(|v| v.line == w.line)
                 .unwrap_or(at.index),
@@ -893,7 +1100,7 @@ impl Text {
                 } else {
                     w.line + 1
                 };
-                text.words
+                text.units()
                     .iter()
                     .enumerate()
                     .filter(|(_, v)| v.line == line)
@@ -904,9 +1111,9 @@ impl Text {
                     })
                     .map_or(at.index, |(i, _)| i)
             }
-            _ => (at.index + 1).min(text.words.len() - 1),
+            _ => (at.index + 1).min(text.units().len() - 1),
         };
-        let bounds = text.words[index].bounds;
+        let bounds = text.units()[index].bounds;
         if !self
             .views
             .iter()
@@ -1001,7 +1208,7 @@ impl Text {
         if !self.enabled || area.is_empty() {
             return false;
         }
-        let label = if self.busy() && self.cursor.is_none() {
+        let label = if self.job.is_some() || (self.busy() && self.cursor.is_none()) {
             "Loading text layer…"
         } else if self.cursor.is_none() {
             "No text at this position"
@@ -1012,7 +1219,7 @@ impl Text {
         } else {
             "TEXT"
         };
-        let actions = [
+        let mut actions = vec![
             (label, None),
             ("[Space a y Copy]", Some(Action::Copy)),
             ("[Space a h Highlight]", Some(Action::Highlight)),
@@ -1026,6 +1233,9 @@ impl Text {
                 Some(Action::Clear),
             ),
         ];
+        if self.cursor_link().is_some() {
+            actions.insert(1, ("[Enter Follow link]", Some(Action::Follow)));
+        }
         self.toolbar.draw(
             f,
             area,
@@ -1073,7 +1283,7 @@ mod tests {
         };
         let mut text = Text::new(None);
         let region = text.show_search(&hit, &page).unwrap();
-        assert_eq!(region.bounds, page.words[1].bounds);
+        assert_eq!(region.bounds, page.units()[1].bounds);
         assert_eq!(region.page, 3);
         assert!(!text.enabled);
         assert!(text.cursor.is_none());
@@ -1156,6 +1366,8 @@ mod tests {
             size: [100., 100.],
             text: value.into(),
             words,
+            interactive: true,
+            ..Default::default()
         }
     }
     #[test]
@@ -1212,7 +1424,7 @@ mod tests {
             window: [0., 0., 1., 1.],
             turns: 0,
         });
-        let hit = text.hit(Position::new(45, 8), false).unwrap();
+        let hit = text.hit(Position::new(45, 8).into(), false).unwrap();
         assert_eq!(hit, WordAt { page: 8, index: 1 });
     }
     #[test]

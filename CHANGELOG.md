@@ -2,7 +2,9 @@
 
 ## Unreleased
 
+- Add Vim character searches, WORD motions and quote/bracket text objects.
 - Bound disk caches and release unused Kitty images.
+- Select PDF characters precisely, including rotated pages, and follow PDF links.
 - Keep text selections readable and hide unused language controls in compact lookup dialogs.
 
 ## 0.1.20 — 2026-11-17

@@ -222,11 +222,26 @@ pub(super) fn entries(ctx: Context, p: &Settings) -> Vec<Entry> {
             ("{ / }", "Previous / next paragraph (PDF: text block)"),
             ("w b e / 0 ^ $", "Words / logical line edges"),
             (
+                "W B E",
+                "Next / previous / end of whitespace-separated WORD",
+            ),
+            (
+                "f F t T + character",
+                "Find on this line; t/T stop before/after the character",
+            ),
+            ("; / ,", "Repeat character search / reverse direction"),
+            (
                 "gj gk / g0 g$",
                 "Wrapped screen lines / their edges (EPUB & FB2)",
             ),
             ("gg / G", "Start / end (PDF: current page)"),
             ("yiw / yaw / yip", "Copy word / word with space / paragraph"),
+            ("yiW / yaW", "Copy WORD / WORD with adjacent space"),
+            ("yf… yt… yF… yT…", "Copy through a character motion"),
+            (
+                "i… / a… after y or v",
+                "Inner / around quotes or () [] {} <>; b/B = ()/{}",
+            ),
             (
                 "yw / ye / yy / y$",
                 "Copy through a motion; yy copies a logical line",

@@ -53,8 +53,8 @@ pub(super) struct Study {
     pub toolbar: super::controls::ActionRow,
 }
 impl Study {
-    pub fn expects_mark(&self) -> bool {
-        self.keys.expects_mark()
+    pub fn expects_literal(&self) -> bool {
+        self.keys.expects_literal()
     }
 
     pub fn clear(&mut self) -> bool {
@@ -274,7 +274,10 @@ impl Study {
                             _ => None,
                         };
                     }
-                    if k.code == KeyCode::Char('y') && self.selection.is_some() {
+                    if k.code == KeyCode::Char('y')
+                        && self.selection.is_some()
+                        && !self.keys.expects_literal()
+                    {
                         return action(Command::Copy);
                     }
                     if let Some(edit) = self.keys.input(k.code, self.visual.is_some()) {
@@ -374,7 +377,12 @@ impl Study {
                 }
                 let mut to = at;
                 let mut object = None;
-                for _ in 0..count {
+                let iterations = if matches!(m, M::Find { .. } | M::Delimited { .. }) {
+                    1
+                } else {
+                    count
+                };
+                for _ in 0..iterations {
                     to = match m {
                         M::Left => doc.move_text(to, false, false),
                         M::Right => doc.move_text(to, true, false),
@@ -388,6 +396,37 @@ impl Study {
                         }
                         M::BackWord => doc.move_text(to, false, true),
                         M::EndWord => doc.word_end(to),
+                        M::BigWord | M::BackBigWord | M::EndBigWord => {
+                            crate::vim::document::big_word(
+                                doc,
+                                to,
+                                m != M::BackBigWord,
+                                m == M::EndBigWord,
+                            )
+                            .unwrap_or_else(|| {
+                                if yank && m == M::BigWord {
+                                    doc.paragraph_at(to).map_or(to, |r| r.end)
+                                } else {
+                                    to
+                                }
+                            })
+                        }
+                        M::Find {
+                            ch,
+                            forward,
+                            till,
+                            repeat,
+                        } => {
+                            let next = pager.text_line_range(doc, to).and_then(|line| {
+                                crate::vim::document::find_char(
+                                    doc, line, to, ch, forward, till, repeat, count,
+                                )
+                            });
+                            let Some(next) = next else {
+                                return Some(Action::Resize);
+                            };
+                            next
+                        }
                         M::Start if doc.markdown.is_some() => {
                             doc.paragraph_at(to).map_or(to, |r| r.start)
                         }
@@ -449,8 +488,14 @@ impl Study {
                             .iter()
                             .rposition(|b| !b.text.is_empty())
                             .map_or(at, |block| botui_core::Anchor { block, byte: 0 }),
-                        M::InnerWord | M::AroundWord => {
-                            if let Some(mut r) = doc.word_at(to) {
+                        M::InnerWord | M::AroundWord | M::InnerBigWord | M::AroundBigWord => {
+                            let big = matches!(m, M::InnerBigWord | M::AroundBigWord);
+                            let range = if big {
+                                crate::vim::document::big_word_at(doc, to, m == M::AroundBigWord)
+                            } else {
+                                doc.word_at(to)
+                            };
+                            if let Some(mut r) = range {
                                 if m == M::AroundWord {
                                     let text = &doc.blocks[to.block].text;
                                     let tail = &text[r.end.byte..];
@@ -464,10 +509,28 @@ impl Study {
                                 }
                                 object = Some(object.map_or(r, |o: TextRange| o.union(r)));
                                 to = doc.move_text(r.end, false, false);
-                                doc.move_text(to, true, true)
+                                if big {
+                                    crate::vim::document::big_word(doc, to, true, false)
+                                        .unwrap_or(to)
+                                } else {
+                                    doc.move_text(to, true, true)
+                                }
                             } else {
                                 to
                             }
+                        }
+                        M::Delimited {
+                            open,
+                            close,
+                            around,
+                        } => {
+                            let Some(range) = crate::vim::document::delimited(
+                                doc, to, open, close, around, count,
+                            ) else {
+                                return Some(Action::Resize);
+                            };
+                            object = Some(range);
+                            range.start
                         }
                         M::Paragraph | M::Line => {
                             if let Some(r) = doc.paragraph_at(to) {
@@ -479,7 +542,14 @@ impl Study {
                 }
                 if yank {
                     let range = object.unwrap_or_else(|| {
-                        let inclusive = matches!(m, M::EndWord | M::End | M::ScreenEnd);
+                        if matches!(m, M::Find { .. }) {
+                            return TextRange::new(
+                                at.min(to),
+                                doc.character_at(at.max(to)).map_or(at.max(to), |r| r.end),
+                            );
+                        }
+                        let inclusive =
+                            matches!(m, M::EndWord | M::EndBigWord | M::End | M::ScreenEnd);
                         let end = if inclusive {
                             doc.character_at(to).map_or(to, |r| r.end)
                         } else {
@@ -625,6 +695,120 @@ fn highlight(color: HighlightColor) -> Style {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn vim_document(paragraphs: &[&str]) -> Document {
+        Document {
+            blocks: paragraphs
+                .iter()
+                .map(|text| botui_core::Block {
+                    text: (*text).into(),
+                    heading: false,
+                })
+                .collect(),
+            ..Default::default()
+        }
+    }
+    fn vim_run(doc: &Document, at: Anchor, command: &str, width: u16) -> Study {
+        let mut study = Study::default();
+        let mut pager = Pager::new(doc, width, 12, botui_core::LayoutMode::Single);
+        study.toggle_normal(at);
+        for c in command.chars() {
+            study.input(
+                &Event::Key(crossterm::event::KeyEvent::new(
+                    KeyCode::Char(c),
+                    KeyModifiers::NONE,
+                )),
+                doc,
+                &mut pager,
+                None,
+            );
+        }
+        study
+    }
+    #[test]
+    fn vim_character_find_repeats_counts_and_yanks_on_current_row() {
+        let doc = vim_document(&["alpha,beta,gamma"]);
+        let start = Anchor::default();
+        assert_eq!(vim_run(&doc, start, "f,;", 60).cursor.unwrap().byte, 10);
+        assert_eq!(vim_run(&doc, start, "f,;,", 60).cursor.unwrap().byte, 5);
+        assert_eq!(vim_run(&doc, start, "f,2;", 60).cursor.unwrap().byte, 5);
+        assert_eq!(
+            doc.text_range(vim_run(&doc, start, "yf,", 60).selection.unwrap()),
+            "alpha,"
+        );
+        assert_eq!(
+            doc.text_range(
+                vim_run(&doc, Anchor { block: 0, byte: 15 }, "yF,", 60)
+                    .selection
+                    .unwrap()
+            ),
+            ",gamma"
+        );
+        let wrapped = vim_document(&["one two three four five six seven eight Z"]);
+        assert_eq!(vim_run(&wrapped, start, "fZ", 16).cursor, Some(start));
+    }
+    #[test]
+    fn vim_literal_y_in_visual_mode_moves_instead_of_copying() {
+        let doc = vim_document(&["abycy"]);
+        let study = vim_run(&doc, Anchor::default(), "vfy", 60);
+        assert_eq!(study.cursor.unwrap().byte, 2);
+        assert_eq!(doc.text_range(study.selection.unwrap()), "aby");
+    }
+    #[test]
+    fn vim_big_words_and_objects_cross_paragraphs_without_losing_source_offsets() {
+        let doc = vim_document(&["one-two Привет,мир!", "(outer", "inner [value] tail)"]);
+        let study = vim_run(&doc, Anchor::default(), "W", 60);
+        assert_eq!(study.cursor.unwrap(), Anchor { block: 0, byte: 8 });
+        assert_eq!(
+            doc.text_range(
+                vim_run(&doc, Anchor::default(), "yE", 60)
+                    .selection
+                    .unwrap()
+            ),
+            "one-two"
+        );
+        assert_eq!(
+            doc.text_range(
+                vim_run(&doc, Anchor { block: 0, byte: 8 }, "yiW", 60)
+                    .selection
+                    .unwrap()
+            ),
+            "Привет,мир!"
+        );
+        let at = Anchor { block: 2, byte: 8 };
+        assert_eq!(
+            doc.text_range(vim_run(&doc, at, "yi[", 60).selection.unwrap()),
+            "value"
+        );
+        assert_eq!(
+            doc.text_range(vim_run(&doc, at, "ya(", 60).selection.unwrap()),
+            "(outer\n\ninner [value] tail)"
+        );
+        let mut chapter = doc.clone();
+        chapter.chapter_starts.insert(2);
+        assert!(vim_run(&chapter, at, "yi(", 60).selection.is_none());
+    }
+    #[test]
+    fn vim_objects_keep_markdown_formatting_out_of_the_copied_text() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("vim.md");
+        std::fs::write(&path, "one **two-three** (four *five* six)\n").unwrap();
+        let doc = botui_formats::open_document(&path).unwrap();
+        let at = Anchor {
+            block: 0,
+            byte: doc.blocks[0].text.find("five").unwrap(),
+        };
+        let study = vim_run(&doc, at, "yi(", 60);
+        assert_eq!(doc.text_range(study.selection.unwrap()), "four five six");
+        let at = Anchor {
+            block: 0,
+            byte: doc.blocks[0].text.find("two-three").unwrap(),
+        };
+        assert_eq!(
+            doc.text_range(vim_run(&doc, at, "yiW", 60).selection.unwrap()),
+            "two-three"
+        );
+    }
     #[test]
     fn mouse_click_series_keeps_its_source_across_footer_reflow() {
         use crossterm::event::MouseEvent;

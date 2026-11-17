@@ -119,7 +119,7 @@ Positions and notes are local.
 | --- | --- | --- |
 | EPUB / FB2 | Reflowing text, contents, illustrations, search and passage annotations. EPUB also renders styled tables, MathML/marked TeX and static SVG. | Built in |
 | Markdown (`.md`, `.markdown`) | Headings, lists, quotes, task lists, tables, code highlighting and local images. **F9** switches formatted/source views; selection and notes work in both. | Built in |
-| PDF | Fixed pages, contents, zoom, rotation and page notes. A text layer enables occurrence search, word selection and highlights. | Poppler utilities (`pdfinfo`, `pdftoppm`, `pdftotext`), or Python 3 with Poppler GI and Cairo |
+| PDF | Fixed pages, contents, zoom, rotation, search, selection, highlights and links. | Poppler utilities (`pdfinfo`, `pdftoppm`, `pdftotext`), or Python 3 with Poppler GI and Cairo |
 | DjVu | Fixed pages, contents, zoom, rotation and page notes; search when a text layer is available. | DjVuLibre (`djvused`, `ddjvu`, `djvutxt`) |
 | CBZ / CBR | Image pages in natural filename order, contents, zoom, rotation, bookmarks and page notes. | Built-in ZIP/RAR decoders; no external unpacker |
 
@@ -131,7 +131,7 @@ For LaTeX, compile with `-synctex=1` and open the local PDF in BOTUI. With the o
 
 Under **F2 → Reader → SyncTeX editor command**, enter the command that opens your editor. For example, `kitty nvim +{line} -- "{file}"` opens Neovim at the source line. You can use `{file}`, `{line}` and `{column}`. Quote arguments that contain spaces. Press **Enter** to apply the command to the open PDF. Clear the field to have **F8** show just the source location. The field also displays commands already saved in `synctex_editor` in your configuration.
 
-PDF contents require Python 3, PyGObject and the Poppler GI bindings. Image-only EPUBs use the fixed-page reader. There is no OCR: scans and comic images do not provide word selection, definitions or translation.
+PDF contents, exact character selection and links require Python 3, PyGObject and the Poppler GI bindings. Without them, Poppler utilities still provide word selection and search. In Kitty and Ghostty, PDF mouse selection uses pixel coordinates. Click a PDF link, or move the Vim cursor onto it and press **Enter**; external links ask before opening the browser. Image-only EPUBs use the fixed-page reader. There is no OCR: scans and comic images do not provide word selection, definitions or translation.
 
 Comic pages may be JPEG, PNG or WebP, up to 16 MiB each. Password-protected and multi-volume RAR archives are not supported. Files with a `.cbz` or `.cbr` extension are recognized as ZIP or RAR by their contents, so mislabeled archives also open without renaming.
 
@@ -231,6 +231,9 @@ PDF search highlights each occurrence and brings it into view, including multipl
 | `Esc` | Cancel pending command or Visual; idle Normal → reading |
 | `h j k l` | Cursor left/down/up/right; j/k follow visible lines |
 | `w b e` | Next word / previous word / word end |
+| `W B E` | Next / previous / end of a whitespace-separated WORD, keeping punctuation |
+| `f / F / t / T` + character | Find forward/backward on the visible line, or stop just before/after the character |
+| `; / ,` | Repeat the character search / repeat in the opposite direction |
 | `0 ^ $` | Logical line start / first text / end |
 | `{ }` | Previous/next paragraph (PDF: text block) |
 | `gj gk / g0 g$` | Screen rows / screen row edges (text reader) |
@@ -238,6 +241,9 @@ PDF search highlights each occurrence and brings it into view, including multipl
 | `y` | Copy selection in Visual; begin copy operator in Normal |
 | `yw ye yy y$` | Copy to next word / word end / logical line / line end |
 | `yiw yaw yip yap` | Copy inner word / word with space / paragraph |
+| `yiW / yaW` | Copy a WORD / WORD with adjacent space |
+| `yf… / yt… / yF… / yT…` | Copy through a character motion |
+| `i… / a…` after `y` or `v` | Inner / around quotes (`"`, `'`, backtick) or brackets (`()`, `[]`, `{}`, `<>`); `b / B` mean `() / {}` |
 | `3j / 3yw / y3w` | Repeat a motion or copy operation; counts can precede the operator or motion |
 | `viw / vaw / vip / vap / gv` | Select inner word / word with space / paragraph / restore previous selection |
 | `/ ? / n N` | Search forward/backward / next/previous match |

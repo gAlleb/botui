@@ -287,6 +287,7 @@ fn pdf_geometry_round_trips_points_and_normalized_boxes() {
                 block: 0,
             },
         ],
+        ..Default::default()
     };
     let mut mapper = Mapper::Pdf {
         path: "unused".into(),
@@ -318,6 +319,85 @@ fn pdf_geometry_round_trips_points_and_normalized_boxes() {
     assert_eq!(note.body, "PDF web comment");
     assert_eq!(note.range(), Some(range));
     assert_eq!(note.pdf_regions[0].bounds, [0.1, 0.2, 0.6, 0.25]);
+}
+
+#[test]
+fn pdf_partial_word_round_trip_keeps_exact_bytes_quote_and_server_rectangle() {
+    use botui_fixed::text::{PageText, Word};
+    use botui_store::PdfRegion;
+    let (_dir, store, _, server) = fixture();
+    let value = "interoperability";
+    let page = PageText {
+        size: [200., 400.],
+        text: value.into(),
+        interactive: true,
+        words: vec![Word {
+            bytes: 0..16,
+            bounds: [0.1, 0.2, 0.6, 0.25],
+            line: 0,
+            block: 0,
+        }],
+        characters: value
+            .char_indices()
+            .map(|(i, c)| Word {
+                bytes: i..i + c.len_utf8(),
+                bounds: [0.1 + i as f32 / 32., 0.2, 0.1 + (i + 1) as f32 / 32., 0.25],
+                line: 0,
+                block: 0,
+            })
+            .collect(),
+        ..Default::default()
+    };
+    let mut mapper = Mapper::Pdf {
+        path: "unused".into(),
+        pages: [(1, page)].into(),
+    };
+    let range = TextRange::new(Anchor { block: 0, byte: 0 }, Anchor { block: 0, byte: 5 });
+    let bounds = [0.1, 0.2, 0.25625, 0.25];
+    store
+        .annotate_regions(
+            None,
+            range,
+            "inter".into(),
+            Some(HighlightColor::Yellow),
+            "partial".into(),
+            vec![PdfRegion { page: 1, bounds }],
+        )
+        .unwrap();
+    sync(&store, &mut mapper, &server);
+    assert_eq!(server.items.borrow().len(), 1);
+    // Import onto another device: this rectangle excludes the full word's centre.
+    let (_second_dir, second, _, _) = fixture();
+    sync(&second, &mut mapper, &server);
+    let note = second.notes().unwrap().remove(0);
+    assert_eq!(note.range(), Some(range));
+    assert_eq!(note.quote, "inter");
+    for (a, b) in note.pdf_regions[0].bounds.into_iter().zip(bounds) {
+        assert!((a - b).abs() < 0.00001);
+    }
+    server.items.borrow_mut()[0].note = Some("edited in BookOrbit".into());
+    sync(&second, &mut mapper, &server);
+    let note = second.notes().unwrap().remove(0);
+    assert_eq!(note.range(), Some(range));
+    assert_eq!(note.body, "edited in BookOrbit");
+    assert_eq!(server.items.borrow().len(), 1);
+    // A client without optional GI keeps the exact server rectangle and finds
+    // the unique quoted bytes inside its intersecting word, without widening it.
+    let Mapper::Pdf { pages, .. } = &mut mapper else {
+        unreachable!()
+    };
+    pages.get_mut(&1).unwrap().characters.clear();
+    let (_third_dir, third, _, _) = fixture();
+    sync(&third, &mut mapper, &server);
+    let imported = third.notes().unwrap().remove(0);
+    assert_eq!(imported.range(), Some(range));
+    assert_eq!(imported.quote, "inter");
+    assert_eq!(imported.pdf_regions, note.pdf_regions);
+    // "er" occurs twice inside this word. Word geometry cannot prove which
+    // occurrence was selected, so leave it remote rather than guess an anchor.
+    let mut ambiguous = server.items.borrow()[0].clone();
+    ambiguous.text = "er".into();
+    assert!(mapper.import(&ambiguous, "ambiguous".into(), 9).is_none());
 }
 
 #[test]

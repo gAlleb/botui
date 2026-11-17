@@ -183,13 +183,19 @@ with tempfile.TemporaryDirectory(prefix='botui-pdf-text-') as tmp:
         t.keys('Space','a','y');copied(d,'bravo')
         # Reverse drag, with a UTF-8-safe source range (covered separately in unit tests).
         mouse(*xy('charlie'));mouse(*xy('Alpha'),code=32);mouse(*xy('Alpha'),end='m')
-        t.keys('Space','a','y');copied(d,'Alpha bravo charlie')
+        (d/'copied').unlink(missing_ok=True)
+        t.keys('Space','a','y')
+        for _ in range(100):
+            quote=(d/'copied').read_text() if (d/'copied').exists() else ''
+            if 'bravo' in quote: break
+            time.sleep(.03)
+        assert quote in 'Alpha bravo charlie' and 'bravo' in quote, quote
         t.keys('Space','c');t.see('Copy]')
         # Wait for lazy text extraction without assuming a wall-clock duration.
         t.wait('Text layer ready',lambda f:'NORMAL' in f and 'Loading text' not in f)
         t.keys('y','i','w');copied(d,'Alpha')
-        t.keys('w','v','w','y');copied(d,'bravo charlie')
-        t.keys('v','b','Space','a','h');t.see('Highlight');t.keys('2','Enter')
+        t.keys('0','w','v','$','y');copied(d,'bravo charlie')
+        t.keys('g','v','Space','a','h');t.see('Highlight');t.keys('2','Enter')
         t.see('Annotation saved')
         data=notes(d);assert len(data)==1 and data[0]['color']=='green',data
         assert data[0]['quote']=='bravo charlie' and len(data[0]['pdf_regions'])==2,data

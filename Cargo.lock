@@ -267,6 +267,7 @@ dependencies = [
  "terminput-crossterm",
  "toml_edit",
  "unicode-normalization",
+ "unicode-segmentation",
  "unicode-truncate",
 ]
 

@@ -49,6 +49,7 @@ impl Text {
     ) -> io::Result<()> {
         match action {
             Action::None | Action::Key(_) => (),
+            Action::Follow => self.follow_link = true,
             Action::Lookup(purpose) => {
                 let (range, quote, regions) = self.selection().ok_or_else(|| {
                     io::Error::other("Enable the text cursor with Space c, or select a passage")
@@ -137,6 +138,9 @@ impl Text {
             self.selection()
                 .ok_or_else(|| io::Error::other("Select some PDF text first"))?
         };
+        if regions.is_empty() || quote.trim().is_empty() {
+            return Err(io::Error::other("Select some PDF text first"));
+        }
         let Some(edit) = crate::annotation_editor::edit(
             term,
             |f| background(f, saved),

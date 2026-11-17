@@ -40,6 +40,37 @@ fn color(c: Option<HighlightColor>) -> String {
 fn same_text(a: &str, b: &str) -> bool {
     a.split_whitespace().eq(b.split_whitespace())
 }
+fn unique_pdf_quote(
+    text: &botui_fixed::text::PageText,
+    regions: &[PdfRegion],
+    quote: &str,
+) -> Option<std::ops::Range<usize>> {
+    if quote.trim().is_empty() {
+        return None;
+    }
+    // Without glyph geometry a server's partial-word rectangle can still be
+    // located by its unique exact quote inside the intersecting source words.
+    // Preserve the server rectangle: this does not estimate character boxes.
+    let mut words = text.words.iter().filter(|w| {
+        regions.iter().any(|r| {
+            w.bounds[0] < r.bounds[2]
+                && w.bounds[2] > r.bounds[0]
+                && w.bounds[1] < r.bounds[3]
+                && w.bounds[3] > r.bounds[1]
+        })
+    });
+    let first = words.next()?;
+    let last = words.next_back().unwrap_or(first);
+    let candidate = &text.text[first.bytes.start..last.bytes.end];
+    let mut matches = candidate
+        .char_indices()
+        .filter_map(|(i, _)| candidate[i..].starts_with(quote).then_some(i));
+    let start = first.bytes.start + matches.next()?;
+    matches
+        .next()
+        .is_none()
+        .then_some(start..start + quote.len())
+}
 impl Mapper {
     pub fn local_color(remote: &Annotation) -> HighlightColor {
         HighlightColor::from_hex(&remote.color).unwrap_or(HighlightColor::Yellow)
@@ -49,8 +80,14 @@ impl Mapper {
         let Self::Pdf { path, pages } = self else {
             return None;
         };
+        if !pages.contains_key(&n)
+            && pages.len() >= 8
+            && let Some(stale) = pages.keys().max_by_key(|p| p.abs_diff(n)).copied()
+        {
+            pages.remove(&stale);
+        }
         if let std::collections::btree_map::Entry::Vacant(e) = pages.entry(n) {
-            e.insert(botui_fixed::text::page_text(path, n, &AtomicBool::new(false)).ok()?);
+            e.insert(botui_fixed::text::interactive_page(path, n, &AtomicBool::new(false)).ok()?);
         }
         pages.get(&n)
     }
@@ -173,7 +210,7 @@ impl Mapper {
                     return None;
                 }
                 let words: Vec<_> = text
-                    .words
+                    .units()
                     .iter()
                     .filter(|word| {
                         regions.iter().any(|r| {
@@ -186,13 +223,19 @@ impl Mapper {
                         })
                     })
                     .collect();
+                let bytes = words
+                    .first()
+                    .zip(words.last())
+                    .map(|(a, b)| a.bytes.start..b.bytes.end)
+                    .filter(|r| same_text(&text.text[r.clone()], &remote.text))
+                    .or_else(|| unique_pdf_quote(text, &regions, &remote.text))?;
                 let at = Anchor {
                     block: pdf.page as usize,
-                    byte: words.first()?.bytes.start,
+                    byte: bytes.start,
                 };
                 let end = Anchor {
                     block: at.block,
-                    byte: words.last()?.bytes.end,
+                    byte: bytes.end,
                 };
                 (Some(TextRange::new(at, end)), at, regions)
             }

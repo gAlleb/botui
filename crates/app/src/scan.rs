@@ -49,6 +49,7 @@ pub(super) fn read_pages(
     crate::BookExit,
 )> {
     let base = at.server;
+    let pixel_mouse = crate::terminal_input::pixel_mouse::Session::new(kind == FileKind::Pdf);
     let _uploads = crate::cover::ScanGraphics;
     let mut watch = (matches!(source, Source::Local) && kind == FileKind::Pdf)
         .then(|| reload::Watch::new(path));
@@ -351,6 +352,7 @@ pub(super) fn read_pages(
         };
         let mut picker = graphics();
         let size = picker.font_size();
+        pixel_mouse.size(size.width, size.height);
         if picker.protocol_type() == ratatui_image::picker::ProtocolType::Sixel {
             sixel.get_or_insert_with(sixel::Cache::new).poll();
         }
@@ -792,6 +794,56 @@ pub(super) fn read_pages(
                 }
             }
         }
+        if selectable && let Some(target) = text.take_link() {
+            match target {
+                botui_fixed::text::LinkTarget::Page {
+                    page,
+                    point: [x, y],
+                } => {
+                    let region = botui_store::PdfRegion {
+                        page,
+                        bounds: [x, y, (x + 0.001).min(1.), (y + 0.001).min(1.)],
+                    };
+                    let target = text::location(&region, crop, appearance.quarter_turns, scrolling);
+                    history.record(
+                        Location {
+                            page: n,
+                            offset,
+                            crop,
+                        },
+                        target,
+                    );
+                    n = target.page;
+                    offset = target.offset;
+                    crop = target.crop;
+                    reveal = (!scrolling).then_some(region);
+                    dirty = true;
+                }
+                botui_fixed::text::LinkTarget::Uri(uri) => {
+                    let labels = vec![format!(" Open in browser: {uri}"), " Cancel".to_owned()];
+                    if crate::prompt::choose(term, "External website", &labels, 1)? == Some(0) {
+                        use std::process::{Command, Stdio};
+                        match Command::new("xdg-open")
+                            .arg(uri)
+                            .stdin(Stdio::null())
+                            .stdout(Stdio::null())
+                            .stderr(Stdio::null())
+                            .spawn()
+                        {
+                            Ok(mut child) => {
+                                std::thread::spawn(move || {
+                                    let _ = child.wait();
+                                });
+                            }
+                            Err(e) => {
+                                message = e.to_string();
+                            }
+                        }
+                    }
+                }
+            }
+            continue;
+        }
         if selectable && text.take_note_click() {
             let background = rendered.buffer.clone();
             if let Err(e) = text.run(text::Action::Comment, term, store.as_ref(), &background) {
@@ -1034,7 +1086,10 @@ pub(super) fn read_pages(
         if menu && matches!(&e, Event::Key(k) if k.code == KeyCode::Char(' ')) {
             menu = false;
         }
-        if !menu && let Some(command) = leader.input(&e, leader_context) {
+        if !menu
+            && !text.expects_mark()
+            && let Some(command) = leader.input(&e, leader_context)
+        {
             let Some(c) = command else {
                 continue;
             };

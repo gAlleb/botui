@@ -118,8 +118,10 @@ pub fn text_layer(path: &Path, kind: FileKind, cancel: &AtomicBool) -> io::Resul
         _ => return Err(io::ErrorKind::InvalidInput.into()),
     };
     let limit = 32 << 20;
+    let mut glib = false;
     let bytes = match output(cmd, cancel, limit) {
         Err(e) if e.kind() == io::ErrorKind::NotFound && kind == FileKind::Pdf => {
+            glib = true;
             cmd = Command::new("python3");
             cmd.args(["-I", "-c", include_str!("poppler.py")])
                 .arg(&path)
@@ -131,7 +133,11 @@ pub fn text_layer(path: &Path, kind: FileKind, cancel: &AtomicBool) -> io::Resul
     let text = String::from_utf8_lossy(&bytes);
     let mut pages = Vec::new();
     if kind == FileKind::Pdf {
-        pages = super::text::parse_pages(&text)?;
+        pages = if glib {
+            super::text::parse_pages(&text)?
+        } else {
+            super::text::parse_document_pages(&text, &path, 1, cancel)?
+        };
     } else {
         // miniexp prints one root expression per physical page. Quoted strings
         // can span lines and contain escaped quotes and parentheses.

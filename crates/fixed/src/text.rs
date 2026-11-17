@@ -1,6 +1,8 @@
 //! The embedded PDF text, in reading order, with page-relative word boxes.
 //! Extract only requested pages; neither rasterization nor OCR is involved.
 use std::{io, ops::Range, path::Path, process::Command, sync::atomic::AtomicBool};
+mod interaction;
+pub use interaction::{Link, LinkTarget};
 
 #[derive(Clone, Debug)]
 pub struct Word {
@@ -17,6 +19,29 @@ pub struct PageText {
     pub size: [f32; 2],
     pub text: String,
     pub words: Vec<Word>,
+    /// Exact character boxes when Poppler GLib agrees with the canonical text.
+    /// Empty means word-level interaction; never guess a glyph's width.
+    pub characters: Vec<Word>,
+    pub links: Vec<Link>,
+    pub interactive: bool,
+}
+
+impl PageText {
+    pub fn units(&self) -> &[Word] {
+        if self.characters.is_empty() {
+            &self.words
+        } else {
+            &self.characters
+        }
+    }
+}
+
+/// Load interaction geometry only for visited pages, not for a whole-book search.
+pub fn interactive_page(path: &Path, page: u32, cancel: &AtomicBool) -> io::Result<PageText> {
+    let mut result = page_text(path, page, cancel)?;
+    interaction::enrich(path, page, cancel, &mut result);
+    result.interactive = true;
+    Ok(result)
 }
 
 pub fn page_text(path: &Path, page: u32, cancel: &AtomicBool) -> io::Result<PageText> {
@@ -24,6 +49,7 @@ pub fn page_text(path: &Path, page: u32, cancel: &AtomicBool) -> io::Result<Page
         return Err(io::ErrorKind::InvalidInput.into());
     }
     let mut cmd = Command::new("pdftotext");
+    let mut glib = false;
     cmd.args([
         "-f",
         &page.to_string(),
@@ -37,6 +63,7 @@ pub fn page_text(path: &Path, page: u32, cancel: &AtomicBool) -> io::Result<Page
     .arg("-");
     let output = match super::output(cmd, cancel, 8 << 20) {
         Err(e) if e.kind() == io::ErrorKind::NotFound => {
+            glib = true;
             let mut fallback = Command::new("python3");
             fallback
                 .args(["-I", "-c", include_str!("poppler.py")])
@@ -47,7 +74,15 @@ pub fn page_text(path: &Path, page: u32, cancel: &AtomicBool) -> io::Result<Page
         }
         result => result?,
     };
-    parse(&String::from_utf8_lossy(&output))
+    let xml = String::from_utf8_lossy(&output);
+    if glib {
+        parse(&xml)
+    } else {
+        parse_document_pages(&xml, path, page, cancel)?
+            .into_iter()
+            .next()
+            .ok_or_else(|| io::Error::other("PDF text page is missing"))
+    }
 }
 
 fn parse(xml: &str) -> io::Result<PageText> {
@@ -58,6 +93,22 @@ fn parse(xml: &str) -> io::Result<PageText> {
 }
 
 pub(crate) fn parse_pages(xml: &str) -> io::Result<Vec<PageText>> {
+    parse_rotated_pages(xml, None)
+}
+
+pub(crate) fn parse_document_pages(
+    xml: &str,
+    path: &Path,
+    first: u32,
+    cancel: &AtomicBool,
+) -> io::Result<Vec<PageText>> {
+    parse_rotated_pages(xml, Some((path, first, cancel)))
+}
+
+fn parse_rotated_pages(
+    xml: &str,
+    source: Option<(&Path, u32, &AtomicBool)>,
+) -> io::Result<Vec<PageText>> {
     let doc = roxmltree::Document::parse_with_options(
         xml,
         roxmltree::ParsingOptions {
@@ -66,21 +117,67 @@ pub(crate) fn parse_pages(xml: &str) -> io::Result<Vec<PageText>> {
         },
     )
     .map_err(io::Error::other)?;
-    doc.descendants()
+    let pages: Vec<_> = doc
+        .descendants()
         .filter(|n| n.has_tag_name("page"))
-        .map(parse_page)
+        .collect();
+    let rotations = source
+        .and_then(|(path, first, cancel)| {
+            let mut cmd = Command::new("pdfinfo");
+            cmd.args([
+                "-f",
+                &first.to_string(),
+                "-l",
+                &(first + pages.len().saturating_sub(1) as u32).to_string(),
+            ])
+            .arg(path);
+            crate::output(cmd, cancel, 1 << 20).ok()
+        })
+        .map(|bytes| {
+            String::from_utf8_lossy(&bytes)
+                .lines()
+                .filter_map(|line| {
+                    let mut parts = line.split_whitespace();
+                    if parts.next()? != "Page" {
+                        return None;
+                    }
+                    let page = parts.next()?.parse::<u32>().ok()?;
+                    if parts.next()? != "rot:" {
+                        return None;
+                    }
+                    Some((page, parts.next()?.parse::<i32>().ok()?.rem_euclid(360)))
+                })
+                .collect::<std::collections::BTreeMap<_, _>>()
+        })
+        .unwrap_or_default();
+    pages
+        .into_iter()
+        .enumerate()
+        .map(|(i, page)| {
+            parse_page(
+                page,
+                source
+                    .and_then(|(_, first, _)| rotations.get(&(first + i as u32)).copied())
+                    .unwrap_or(0),
+            )
+        })
         .collect()
 }
 
-fn parse_page(page: roxmltree::Node<'_, '_>) -> io::Result<PageText> {
+fn parse_page(page: roxmltree::Node<'_, '_>, rotation: i32) -> io::Result<PageText> {
     let number = |node: roxmltree::Node<'_, '_>, name| -> io::Result<f32> {
         node.attribute(name)
             .and_then(|v| v.parse::<f32>().ok())
             .filter(|v| v.is_finite())
             .ok_or_else(|| io::Error::other("Invalid PDF text coordinates"))
     };
-    let width = number(page, "width")?;
-    let height = number(page, "height")?;
+    let mut width = number(page, "width")?;
+    let mut height = number(page, "height")?;
+    // pdftotext reports MediaBox dimensions but has already rotated every bbox.
+    // Match the rendered sheet before normalizing; clamping first loses words.
+    if rotation == 90 || rotation == 270 {
+        std::mem::swap(&mut width, &mut height);
+    }
     if width <= 0. || height <= 0. {
         return Err(io::Error::other("Empty PDF page"));
     }
@@ -161,5 +258,39 @@ mod tests {
                 .is_empty()
         );
         assert!(parse(r#"<page width="NaN" height="300"/>"#).is_err());
+    }
+    #[test]
+    fn intrinsic_quarter_turns_normalize_before_clipping() {
+        for rotation in [0, 90, 180, 270] {
+            let (x, y) = if rotation % 180 == 0 {
+                (100, 400)
+            } else {
+                (440, 100)
+            };
+            let xml = format!(
+                r#"<page width="360" height="500"><block><line><word xMin="{x}" yMin="{y}" xMax="{}" yMax="{}">Привет</word></line></block></page>"#,
+                x + 15,
+                y + 20
+            );
+            let doc = roxmltree::Document::parse(&xml).unwrap();
+            let p = parse_page(doc.root_element(), rotation).unwrap();
+            assert_eq!(p.text, "Привет");
+            assert_eq!(p.words[0].bytes, 0..12);
+            let size = if rotation % 180 == 0 {
+                [360., 500.]
+            } else {
+                [500., 360.]
+            };
+            assert_eq!(p.size, size);
+            assert_eq!(
+                p.words[0].bounds,
+                [
+                    x as f32 / size[0],
+                    y as f32 / size[1],
+                    (x + 15) as f32 / size[0],
+                    (y + 20) as f32 / size[1]
+                ]
+            );
+        }
     }
 }

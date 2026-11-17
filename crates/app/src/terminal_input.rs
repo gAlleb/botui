@@ -3,6 +3,7 @@
 mod graphics_probe;
 mod graphics_replies;
 mod keyboard;
+pub(crate) mod pixel_mouse;
 
 use crate::shell_theme::TerminalPaper;
 use crossterm::event::Event;
@@ -34,6 +35,7 @@ struct Input {
     registration: signal_hook::SigId,
     replies: GraphicsReplies,
     keyboard: Keyboard,
+    cell_events: usize,
     graphics_requested: bool,
     escape_deadline: Option<Instant>,
     next_color_query: Option<Instant>,
@@ -71,6 +73,18 @@ pub(crate) fn read(
     with_input(|input| input.read(paper, deadline, watch))
 }
 
+// A mode switch must not reinterpret mouse events already decoded under the
+// previous mode (for example a queued click after Q returns to the library).
+fn settle_mouse_coordinates() {
+    let _ = with_input(|input| {
+        for event in input.keyboard.queued.iter_mut().skip(input.cell_events) {
+            pixel_mouse::normalize(event);
+        }
+        input.cell_events = input.keyboard.queued.len();
+        Ok(())
+    });
+}
+
 impl Input {
     fn new() -> io::Result<Self> {
         let tty = if io::stdin().is_terminal() {
@@ -87,6 +101,7 @@ impl Input {
             registration,
             replies: Default::default(),
             keyboard: Default::default(),
+            cell_events: 0,
             graphics_requested: false,
             escape_deadline: None,
             next_color_query: None,
@@ -114,7 +129,13 @@ impl Input {
                     self.queue_resize()?;
                 }
             }
-            if let Some(event) = self.keyboard.queued.pop_front() {
+            if let Some(mut event) = self.keyboard.queued.pop_front() {
+                if self.cell_events > 0 {
+                    self.cell_events -= 1;
+                    pixel_mouse::clear_last();
+                } else {
+                    pixel_mouse::normalize(&mut event);
+                }
                 return Ok(Some(event));
             }
             let now = Instant::now();

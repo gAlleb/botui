@@ -1718,6 +1718,7 @@ pub fn read_server(
                     && reader.nav.is_none()
                     && reader.palette.is_none()
                     && reader.layout_panel.is_none()
+                    && !reader.study.expects_literal()
                     && let Some(command) = reader.leader.input(&e, reader.leader_context())
                 {
                     use crate::leader::Command as L;
@@ -1753,7 +1754,7 @@ pub fn read_server(
                 {
                     Scope::Dialogs.event(e)
                 } else if reader.study.normal {
-                    if reader.study.expects_mark() {
+                    if reader.study.expects_literal() {
                         e
                     } else {
                         Scope::Vim.event(e)

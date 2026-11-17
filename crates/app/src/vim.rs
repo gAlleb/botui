@@ -1,6 +1,9 @@
 //! Input grammar shared by text and fixed-page readers. No layout or I/O here.
 use crossterm::event::KeyCode;
 
+pub mod document;
+pub mod text;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Motion {
     Left,
@@ -10,6 +13,15 @@ pub enum Motion {
     Word,
     BackWord,
     EndWord,
+    BigWord,
+    BackBigWord,
+    EndBigWord,
+    Find {
+        ch: char,
+        forward: bool,
+        till: bool,
+        repeat: bool,
+    },
     Start,
     First,
     End,
@@ -23,6 +35,13 @@ pub enum Motion {
     Bottom,
     InnerWord,
     AroundWord,
+    InnerBigWord,
+    AroundBigWord,
+    Delimited {
+        open: char,
+        close: char,
+        around: bool,
+    },
     Paragraph,
     Line,
 }
@@ -46,13 +65,17 @@ pub struct Keys {
     operator: bool,
     operator_count: usize,
     prefix: Option<char>,
+    last_find: Option<(char, bool, bool)>,
 }
 impl Keys {
     pub fn reset(&mut self) {
-        *self = Self::default();
+        *self = Self {
+            last_find: self.last_find,
+            ..Self::default()
+        };
     }
-    pub fn expects_mark(&self) -> bool {
-        matches!(self.prefix, Some('m' | '\'' | '`'))
+    pub fn expects_literal(&self) -> bool {
+        matches!(self.prefix, Some('m' | '\'' | '`' | 'f' | 'F' | 't' | 'T'))
     }
     pub fn pending(&self) -> bool {
         self.operator || self.prefix.is_some() || self.count > 0
@@ -72,7 +95,7 @@ impl Keys {
             KeyCode::End => '$',
             _ => return None,
         };
-        if self.expects_mark() {
+        if matches!(self.prefix, Some('m' | '\'' | '`')) {
             let prefix = self.prefix.take().unwrap();
             self.reset();
             return Some(if c.is_ascii_alphabetic() {
@@ -102,7 +125,37 @@ impl Keys {
                 }
                 ('i', 'w') => Some(Motion::InnerWord),
                 ('a', 'w') => Some(Motion::AroundWord),
+                ('i', 'W') => Some(Motion::InnerBigWord),
+                ('a', 'W') => Some(Motion::AroundBigWord),
                 ('i' | 'a', 'p') => Some(Motion::Paragraph),
+                (
+                    'i' | 'a',
+                    '"' | '\'' | '`' | '(' | ')' | '[' | ']' | '{' | '}' | '<' | '>' | 'b' | 'B',
+                ) => {
+                    let (open, close) = match c {
+                        '(' | ')' | 'b' => ('(', ')'),
+                        '[' | ']' => ('[', ']'),
+                        '{' | '}' | 'B' => ('{', '}'),
+                        '<' | '>' => ('<', '>'),
+                        c => (c, c),
+                    };
+                    Some(Motion::Delimited {
+                        open,
+                        close,
+                        around: prefix == 'a',
+                    })
+                }
+                ('f' | 'F' | 't' | 'T', _) if matches!(code, KeyCode::Char(_)) => {
+                    let forward = matches!(prefix, 'f' | 't');
+                    let till = matches!(prefix, 't' | 'T');
+                    self.last_find = Some((c, forward, till));
+                    Some(Motion::Find {
+                        ch: c,
+                        forward,
+                        till,
+                        repeat: false,
+                    })
+                }
                 _ => {
                     self.reset();
                     return Some(Edit::Cancel);
@@ -122,6 +175,22 @@ impl Keys {
                     self.prefix = Some(c);
                     return Some(Edit::Wait);
                 }
+                'f' | 'F' | 't' | 'T' => {
+                    self.prefix = Some(c);
+                    return Some(Edit::Wait);
+                }
+                ';' | ',' => self
+                    .last_find
+                    .map(|(ch, forward, till)| Motion::Find {
+                        ch,
+                        forward: if c == ';' { forward } else { !forward },
+                        till,
+                        repeat: true,
+                    })
+                    .or_else(|| {
+                        self.reset();
+                        None
+                    }),
                 'i' | 'a' if self.operator || visual => {
                     self.prefix = Some(c);
                     return Some(Edit::Wait);
@@ -139,6 +208,9 @@ impl Keys {
                 'w' => Some(Motion::Word),
                 'b' => Some(Motion::BackWord),
                 'e' => Some(Motion::EndWord),
+                'W' => Some(Motion::BigWord),
+                'B' => Some(Motion::BackBigWord),
+                'E' => Some(Motion::EndBigWord),
                 '0' => Some(Motion::Start),
                 '^' => Some(Motion::First),
                 '$' => Some(Motion::End),
@@ -169,7 +241,7 @@ impl Keys {
             }
         }?;
         let count = self.count.max(1) * self.operator_count.max(1);
-        let yank = self.operator || (visual && c == 'y');
+        let yank = self.operator || (visual && c == 'y' && motion == Motion::Line);
         self.reset();
         Some(if yank {
             Edit::Yank(motion, count.min(9999))
@@ -201,5 +273,118 @@ mod tests {
     fn cancel_never_replays_suffix() {
         assert_eq!(parse("yq"), Edit::Cancel);
         assert_eq!(parse("gq"), Edit::Cancel);
+    }
+    #[test]
+    fn find_targets_are_literal_and_counts_compose_with_yank() {
+        for ch in [' ', '0', 'y', '?', 'Я'] {
+            let mut keys = Keys::default();
+            assert_eq!(keys.input(KeyCode::Char('f'), false), Some(Edit::Wait));
+            assert!(keys.expects_literal());
+            assert_eq!(
+                keys.input(KeyCode::Char(ch), false),
+                Some(Edit::Move(
+                    Motion::Find {
+                        ch,
+                        forward: true,
+                        till: false,
+                        repeat: false,
+                    },
+                    1
+                ))
+            );
+            assert!(!keys.expects_literal());
+        }
+        assert_eq!(
+            parse("2y3F,"),
+            Edit::Yank(
+                Motion::Find {
+                    ch: ',',
+                    forward: false,
+                    till: false,
+                    repeat: false,
+                },
+                6
+            )
+        );
+        assert_eq!(
+            parse("t,;"),
+            Edit::Move(
+                Motion::Find {
+                    ch: ',',
+                    forward: true,
+                    till: true,
+                    repeat: true,
+                },
+                1
+            )
+        );
+        assert_eq!(
+            parse("t,,;"),
+            Edit::Move(
+                Motion::Find {
+                    ch: ',',
+                    forward: true,
+                    till: true,
+                    repeat: true,
+                },
+                1
+            ),
+            "reverse repeat must not replace the remembered direction"
+        );
+        assert_eq!(
+            parse("t,,"),
+            Edit::Move(
+                Motion::Find {
+                    ch: ',',
+                    forward: false,
+                    till: true,
+                    repeat: true,
+                },
+                1
+            )
+        );
+    }
+    #[test]
+    fn big_words_and_delimiters_share_operator_and_visual_grammar() {
+        assert_eq!(parse("yE"), Edit::Yank(Motion::EndBigWord, 1));
+        assert_eq!(parse("2B"), Edit::Move(Motion::BackBigWord, 2));
+        assert_eq!(parse("yiW"), Edit::Yank(Motion::InnerBigWord, 1));
+        for command in ["yi(", "yi)", "yib"] {
+            assert_eq!(
+                parse(command),
+                Edit::Yank(
+                    Motion::Delimited {
+                        open: '(',
+                        close: ')',
+                        around: false
+                    },
+                    1
+                )
+            );
+        }
+        assert_eq!(
+            parse("2ya\""),
+            Edit::Yank(
+                Motion::Delimited {
+                    open: '"',
+                    close: '"',
+                    around: true
+                },
+                2
+            )
+        );
+        let mut keys = Keys::default();
+        keys.input(KeyCode::Char('i'), true);
+        assert_eq!(
+            keys.input(KeyCode::Char(']'), true),
+            Some(Edit::Move(
+                Motion::Delimited {
+                    open: '[',
+                    close: ']',
+                    around: false,
+                },
+                1
+            ))
+        );
     }
 }
