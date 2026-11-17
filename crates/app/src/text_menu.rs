@@ -17,6 +17,7 @@ pub enum Action {
     Translate,
     Define,
     AddNote,
+    Source,
 }
 const ITEMS: [(&str, Action); 6] = [
     ("Copy", Action::Copy),
@@ -26,9 +27,9 @@ const ITEMS: [(&str, Action); 6] = [
     ("Define", Action::Define),
     ("Add note", Action::AddNote),
 ];
-fn placement(screen: Rect, at: Position) -> Rect {
+fn placement(screen: Rect, at: Position, count: usize) -> Rect {
     let width = 15.min(screen.width);
-    let height = 8.min(screen.height);
+    let height = (count as u16 + 2).min(screen.height);
     let x = if at.x.saturating_add(1 + width) <= screen.right() {
         at.x.saturating_add(1)
     } else {
@@ -49,6 +50,32 @@ fn placement(screen: Rect, at: Position) -> Rect {
 pub fn choose(
     term: &mut AppTerminal,
     at: Position,
+    underneath: impl FnMut(&mut Frame),
+) -> io::Result<Option<Action>> {
+    choose_items(term, at, &ITEMS, underneath)
+}
+
+pub fn choose_pdf(
+    term: &mut AppTerminal,
+    at: Position,
+    text: bool,
+    source: bool,
+    underneath: impl FnMut(&mut Frame),
+) -> io::Result<Option<Action>> {
+    let mut items = if text { ITEMS.to_vec() } else { vec![] };
+    if source {
+        items.push(("Go to source", Action::Source));
+    }
+    if items.is_empty() {
+        return Ok(None);
+    }
+    choose_items(term, at, &items, underneath)
+}
+
+fn choose_items(
+    term: &mut AppTerminal,
+    at: Position,
+    items: &[(&str, Action)],
     mut underneath: impl FnMut(&mut Frame),
 ) -> io::Result<Option<Action>> {
     let mut selected = 0usize;
@@ -58,14 +85,14 @@ pub fn choose(
         let mut offset = 0;
         term.draw(|f| {
             underneath(f);
-            panel = placement(f.area(), at);
+            panel = placement(f.area(), at, items.len());
             crate::overlay::modal(f, panel, |f| {
                 f.render_widget(Clear, panel);
                 let block = crate::appearance::block();
                 rows = block.inner(panel);
                 f.render_widget(block, panel);
                 offset = (selected + 1).saturating_sub(usize::from(rows.height));
-                for (row, (label, _)) in ITEMS
+                for (row, (label, _)) in items
                     .iter()
                     .enumerate()
                     .skip(offset)
@@ -83,13 +110,13 @@ pub fn choose(
         match crate::settings::read_dialog()? {
             Event::Key(k) if k.kind != KeyEventKind::Release => match k.code {
                 KeyCode::Esc | KeyCode::Char('q') => return Ok(None),
-                KeyCode::Enter => return Ok(Some(ITEMS[selected].1)),
+                KeyCode::Enter => return Ok(Some(items[selected].1)),
                 KeyCode::Up | KeyCode::Char('k') => selected = selected.saturating_sub(1),
                 KeyCode::Down | KeyCode::Char('j') => {
-                    selected = (selected + 1).min(ITEMS.len() - 1)
+                    selected = (selected + 1).min(items.len() - 1)
                 }
                 KeyCode::Home => selected = 0,
-                KeyCode::End => selected = ITEMS.len() - 1,
+                KeyCode::End => selected = items.len() - 1,
                 _ => (),
             },
             Event::Mouse(m) => {
@@ -101,16 +128,16 @@ pub fn choose(
                         }
                         if rows.contains(p) {
                             let i = offset + usize::from(m.row - rows.y);
-                            if let Some((_, action)) = ITEMS.get(i) {
+                            if let Some((_, action)) = items.get(i) {
                                 return Ok(Some(*action));
                             }
                         }
                     }
                     MouseEventKind::Moved if rows.contains(p) => {
-                        selected = (offset + usize::from(m.row - rows.y)).min(ITEMS.len() - 1)
+                        selected = (offset + usize::from(m.row - rows.y)).min(items.len() - 1)
                     }
                     MouseEventKind::ScrollUp => selected = selected.saturating_sub(1),
-                    MouseEventKind::ScrollDown => selected = (selected + 1).min(ITEMS.len() - 1),
+                    MouseEventKind::ScrollDown => selected = (selected + 1).min(items.len() - 1),
                     _ => (),
                 }
             }
@@ -125,17 +152,19 @@ mod tests {
     fn popup_is_small_adjacent_and_stays_visible() {
         let screen = Rect::new(0, 0, 120, 40);
         assert_eq!(
-            placement(screen, Position::new(30, 10)),
+            placement(screen, Position::new(30, 10), ITEMS.len()),
             Rect::new(31, 11, 15, 8)
         );
         assert_eq!(
-            placement(screen, Position::new(119, 39)),
+            placement(screen, Position::new(119, 39), ITEMS.len()),
             Rect::new(104, 31, 15, 8)
         );
         for size in [(120, 40), (24, 10), (10, 4)] {
             let screen = Rect::new(0, 0, size.0, size.1);
-            let popup = placement(screen, Position::new(119, 39));
-            assert_eq!(popup.intersection(screen), popup);
+            for count in [1, ITEMS.len(), ITEMS.len() + 1] {
+                let popup = placement(screen, Position::new(119, 39), count);
+                assert_eq!(popup.intersection(screen), popup);
+            }
         }
     }
 }

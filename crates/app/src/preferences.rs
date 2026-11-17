@@ -87,6 +87,7 @@ const PARAGRAPH_SPACING: [&str; 4] = [
     "1 blank line",
     "2 blank lines",
 ];
+const SYNCTEX_MODES: [&str; 2] = ["Custom command", "Neovim · reuse window"];
 fn spacing_index(prefs: &Settings) -> usize {
     prefs
         .paragraph_spacing
@@ -131,111 +132,143 @@ fn rows(tab: usize, s: &Settings) -> Vec<SettingRow> {
                 "Auto uses your terminal’s background. Set a hex color to override Terminal paper.",
             ),
         ],
-        1 => vec![
-            pair(
-                "Reading theme",
-                &crate::theme::Theme::from_id(s.theme.as_deref().unwrap_or("terminal")).name(),
-                "Preview light and dark book paper separately from the library interface.",
-            ),
-            pair(
-                "Reader view",
-                if s.zen { "Zen" } else { "Contents sidebar" },
-                "Zen shows just the page. Press Z while reading to bring the controls back.",
-            ),
-            pair(
-                "Page width",
-                &format!("{} cells", s.page_width.unwrap_or(78)),
-                "Preferred width of each text column, in terminal cells. A narrow window uses one page.",
-            ),
-            pair(
-                "Column gap",
-                &format!("{} cells", s.column_gap.unwrap_or(4)),
-                "Space between facing text pages. The Space l w panel also lets you adjust this while reading.",
-            ),
-            pair(
-                "Printed line breaks",
-                if s.preserve_printed_lines {
-                    "Preserve"
-                } else {
-                    "Reflow"
-                },
-                "Reflow repairs words split across printed lines. Preserve keeps the book’s original breaks.",
-            ),
-            pair(
-                "Illustrations",
-                if s.hide_inline_images {
-                    "Viewer only"
-                } else {
-                    "In text"
-                },
-                "Display embedded illustrations on the page or open them from I when you need them.",
-            ),
-            pair(
-                "Default page layout",
-                s.reading_layout.as_deref().unwrap_or("auto"),
-                "Choose one page, a spread or continuous scroll for newly opened books.",
-            ),
-            pair(
-                "First-line indent",
-                &format!("{} cells", s.paragraph_indent.min(8)),
-                "Indent the first line by 0–8 cells. Centered EPUB paragraphs keep the book's indent.",
-            ),
-            pair(
-                "Compact blocks",
-                if s.compact_spacing() { "On" } else { "Off" },
-                "On keeps book spacing in addresses, centered/right-aligned and blank paragraphs. Off applies Paragraph spacing there too.",
-            ),
-            pair(
-                "Paragraph spacing",
-                PARAGRAPH_SPACING[spacing_index(s)],
-                "Use the book’s spacing or choose 0, 1 or 2 blank lines between paragraphs.",
-            ),
-            pair(
-                "Contents width",
-                &s.contents_width
-                    .map_or_else(|| "Auto".into(), |n| format!("{n} cells")),
-                "Enter a width in cells, or drag the divider between the contents sidebar and the book text.",
-            ),
-            pair(
-                "Zen frame & progress",
-                if s.zen_progress { "On" } else { "Off" },
-                "Show the reading frame, page and percentage in zen mode. Toggle with Space p.",
-            ),
-            pair(
-                "Mouse wheel step",
-                &format!("{} line(s)", s.scroll_lines.unwrap_or(1).clamp(1, 12)),
-                "Lines per wheel tick in continuous scroll, for text and PDF/DjVu. Arrow keys always move one line.",
-            ),
-            pair(
-                "Space menu delay",
-                &format!("{} ms", s.leader_delay_ms.unwrap_or(150)),
-                "Delay before command hints appear. Space combinations always execute immediately. Set 0 for instant hints.",
-            ),
-            pair(
-                "PDF reading theme",
-                &s.page_theme().name(),
-                "Palette for PDF, DjVu and image-only EPUB margins and dialogs.",
-            ),
-            pair(
-                "PDF page colors",
-                s.page_colors().label(),
-                "Keep document colors, invert the original page, or apply the reading theme to paper and ink.",
-            ),
-            pair(
-                "Comic background",
-                &s.comic_theme().name(),
-                "Background around CBZ/CBR pages. Artwork always keeps its original colors. Space t previews and saves this choice.",
-            ),
-            pair(
-                "SyncTeX editor command",
-                &if s.synctex_editor.is_empty() {
-                    "Show source location".into()
-                } else {
-                    crate::synctex::editor_command(&s.synctex_editor)
-                },
-                "F8 opens a local PDF’s LaTeX source. Use {file}, {line} and optionally {column}. Leave blank to show the location.",
-            ),
-        ],
+        1 => {
+            let mut rows = vec![
+                pair(
+                    "Reading theme",
+                    &crate::theme::Theme::from_id(s.theme.as_deref().unwrap_or("terminal")).name(),
+                    "Preview light and dark book paper separately from the library interface.",
+                ),
+                pair(
+                    "Reader view",
+                    if s.zen { "Zen" } else { "Contents sidebar" },
+                    "Zen shows just the page. Press Z while reading to bring the controls back.",
+                ),
+                pair(
+                    "Page width",
+                    &format!("{} cells", s.page_width.unwrap_or(78)),
+                    "Preferred width of each text column, in terminal cells. A narrow window uses one page.",
+                ),
+                pair(
+                    "Column gap",
+                    &format!("{} cells", s.column_gap.unwrap_or(4)),
+                    "Space between facing text pages. The Space l w panel also lets you adjust this while reading.",
+                ),
+                pair(
+                    "Printed line breaks",
+                    if s.preserve_printed_lines {
+                        "Preserve"
+                    } else {
+                        "Reflow"
+                    },
+                    "Reflow repairs words split across printed lines. Preserve keeps the book’s original breaks.",
+                ),
+                pair(
+                    "Illustrations",
+                    if s.hide_inline_images {
+                        "Viewer only"
+                    } else {
+                        "In text"
+                    },
+                    "Display embedded illustrations on the page or open them from I when you need them.",
+                ),
+                pair(
+                    "Default page layout",
+                    s.reading_layout.as_deref().unwrap_or("auto"),
+                    "Choose one page, a spread or continuous scroll for newly opened books.",
+                ),
+                pair(
+                    "First-line indent",
+                    &format!("{} cells", s.paragraph_indent.min(8)),
+                    "Indent the first line by 0–8 cells. Centered EPUB paragraphs keep the book's indent.",
+                ),
+                pair(
+                    "Compact blocks",
+                    if s.compact_spacing() { "On" } else { "Off" },
+                    "On keeps book spacing in addresses, centered/right-aligned and blank paragraphs. Off applies Paragraph spacing there too.",
+                ),
+                pair(
+                    "Paragraph spacing",
+                    PARAGRAPH_SPACING[spacing_index(s)],
+                    "Use the book’s spacing or choose 0, 1 or 2 blank lines between paragraphs.",
+                ),
+                pair(
+                    "Contents width",
+                    &s.contents_width
+                        .map_or_else(|| "Auto".into(), |n| format!("{n} cells")),
+                    "Enter a width in cells, or drag the divider between the contents sidebar and the book text.",
+                ),
+                pair(
+                    "Zen frame & progress",
+                    if s.zen_progress { "On" } else { "Off" },
+                    "Show the reading frame, page and percentage in zen mode. Toggle with Space p.",
+                ),
+                pair(
+                    "Mouse wheel step",
+                    &format!("{} line(s)", s.scroll_lines.unwrap_or(1).clamp(1, 12)),
+                    "Lines per wheel tick in continuous scroll, for text and PDF/DjVu. Arrow keys always move one line.",
+                ),
+                pair(
+                    "Space menu delay",
+                    &format!("{} ms", s.leader_delay_ms.unwrap_or(150)),
+                    "Delay before command hints appear. Space combinations always execute immediately. Set 0 for instant hints.",
+                ),
+                pair(
+                    "PDF reading theme",
+                    &s.page_theme().name(),
+                    "Palette for PDF, DjVu and image-only EPUB margins and dialogs.",
+                ),
+                pair(
+                    "PDF page colors",
+                    s.page_colors().label(),
+                    "Keep document colors, invert the original page, or apply the reading theme to paper and ink.",
+                ),
+                pair(
+                    "Comic background",
+                    &s.comic_theme().name(),
+                    "Background around CBZ/CBR pages. Artwork always keeps its original colors. Space t previews and saves this choice.",
+                ),
+                pair(
+                    "SyncTeX mode",
+                    SYNCTEX_MODES
+                        [usize::from(matches!(s.synctex_mode, crate::synctex::Mode::Neovim))],
+                    "Custom runs your editor command. Neovim opens source and PDF windows when needed, then reuses them for jumps both ways.",
+                ),
+            ];
+            if matches!(s.synctex_mode, crate::synctex::Mode::Neovim) {
+                rows.extend([
+                    pair(
+                        "SyncTeX Neovim terminal",
+                        &if s.synctex_nvim_terminal.is_empty() {
+                            "Auto".into()
+                        } else {
+                            crate::synctex::editor_command(&s.synctex_nvim_terminal)
+                        },
+                        "Neovim mode: terminal for the first editor window only, e.g. kitty, alacritty -e or foot. Leave blank for Auto.",
+                    ),
+                    pair(
+                        "SyncTeX BOTUI terminal",
+                        &if s.synctex_botui_terminal.is_empty() {
+                            "Auto".into()
+                        } else {
+                            crate::synctex::editor_command(&s.synctex_botui_terminal)
+                        },
+                        "Neovim mode: terminal for the first PDF window only. Set independently from Neovim; blank means Auto. Open windows are reused.",
+                    ),
+                ]);
+            } else {
+                rows.push(pair(
+                    "SyncTeX editor command",
+                    &if s.synctex_editor.is_empty() {
+                        "Show source location".into()
+                    } else {
+                        crate::synctex::editor_command(&s.synctex_editor)
+                    },
+                    "Used in Custom command mode; kept when switching modes. Use {file}, {line} and optionally {column}. Blank shows the source location.",
+                ));
+            }
+            rows
+        }
         2 => vec![
             pair(
                 "Local folder",

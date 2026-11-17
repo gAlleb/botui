@@ -138,7 +138,7 @@ def check(tmp):
         t.click('Server', t.see('Password command'))
         t.see('BookOrbit server URL')
         t.type('invalid-address')
-        t.see('invalid-address▏')
+        t.see('invalid-address')
         t.keys('Enter')
         rejected = t.see('Invalid BookOrbit server address.')
         assert not cfg()['bookorbit']['server']
@@ -146,21 +146,21 @@ def check(tmp):
         t.see('BookOrbit server URL')
         server = 'https://example.invalid'
         t.type(server)
-        t.see(server + '▏')
+        t.see(server)
         t.keys('Enter')
         account = t.wait('Saved server and returned to account settings',
                          lambda f: 'Password command' in f and server in f and cfg()['bookorbit']['server'] == server)
         t.click('Username', account)
         t.see('BookOrbit username')
         t.type('tester')
-        t.see('tester▏')
+        t.see('tester')
         t.keys('Enter')
         account = t.wait('Saved username and returned to account settings',
                          lambda f: 'Password command' in f and 'tester' in f and cfg()['bookorbit']['username'] == 'tester')
         t.click('Password ', account)
         t.see('Replace saved password')
         t.type('masked-test')
-        assert 'masked-test' not in t.see('•••••••••••▏')
+        assert 'masked-test' not in t.see('•••••••••••')
         t.keys('Enter')
         t.see('Stored · replace or clear')
         t.keys('Escape');t.see('Your TUI book reader.');t.keys('q')

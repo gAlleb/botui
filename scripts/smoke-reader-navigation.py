@@ -78,7 +78,7 @@ def check(home, kind):
             term.keys('Space', 't'); term.see('Theme')
             term.keys('q'); term.wait('Palette closed', lambda f: 'Choose a theme' not in f and 'Local library' not in f)
         term.keys('Space', 'f'); term.see('Find')
-        term.keys('q'); term.see('q▏')
+        term.keys('q'); term.see('│ q ' if kind == 'pdf' else 'q▏')
         term.keys('Escape'); term.wait('Search closed', lambda f: 'Local library' not in f and 'Search PDF' not in f)
         term.keys('Space', 'a', 'a'); term.see('notes')
         term.keys('Escape')

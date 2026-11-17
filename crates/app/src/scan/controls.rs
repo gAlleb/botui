@@ -62,12 +62,13 @@ impl Dialog {
                     format!("Enter 1–{total}: {value}▏")
                 } else {
                     format!("{value}▏")
-                },
+                }
+                .into(),
                 vec![("[ Go ↵ ]", Command::Go(0)), ("[ Cancel ]", Command::Close)],
             ),
             Self::Width => (
                 " Page width / zoom ".into(),
-                format!("{percent}%  ·  100% = {fit}"),
+                format!("{percent}%  ·  100% = {fit}").into(),
                 vec![
                     ("[ − ]", Command::Zoom(false)),
                     (

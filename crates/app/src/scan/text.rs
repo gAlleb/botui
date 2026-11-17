@@ -44,6 +44,14 @@ pub(super) enum Action {
     None,
 }
 type ColoredBounds = ([f32; 4], [u8; 3]);
+pub(super) struct ContextPoint {
+    at: Position,
+    source: Option<(u32, [f32; 2])>,
+}
+pub(super) enum ContextAction {
+    Search(String),
+    Source(u32, [f32; 2]),
+}
 pub(super) fn location(
     region: &PdfRegion,
     mut crop: Crop,
@@ -91,7 +99,7 @@ pub(super) struct Text {
     pending_end: Option<Pointer>,
     auto_cursor: bool,
     pending_visual: bool,
-    context_pending: Option<Position>,
+    context_pending: Option<ContextPoint>,
     follow_link: bool,
     search_forward: bool,
     search_regions: Vec<PdfRegion>,
@@ -168,7 +176,11 @@ impl Text {
         self.start = None;
         self.search_regions = vec![region];
     }
-    pub fn source_point(&self, click: Option<Position>) -> Option<(u32, [f32; 2])> {
+    pub fn source_point(
+        &self,
+        click: Option<Position>,
+        active_page: Option<u32>,
+    ) -> Option<(u32, [f32; 2])> {
         if let Some(p) = click {
             return self
                 .views
@@ -180,14 +192,17 @@ impl Text {
             .and_then(|at| self.word(at).map(|w| (at.page, w.bounds)))
             .or_else(|| self.search_regions.first().map(|r| (r.page, r.bounds)));
         if let Some((page, b)) = focus
-            && self
-                .views
-                .iter()
-                .any(|v| v.page == page && v.rect(b).is_some())
+            && (self.views.iter().any(|v| v.page == page && v.rect(b).is_some())
+                // A forward jump already supplies valid PDF coordinates before
+                // the first raster arrives. F8 can use that known target now.
+                || (active_page == Some(page) && !self.views.iter().any(|v| v.page == page)))
         {
             return Some((page, [(b[0] + b[2]) * 0.5, (b[1] + b[3]) * 0.5]));
         }
-        let v = self.views.first()?;
+        let v = self
+            .views
+            .iter()
+            .find(|v| active_page.is_none_or(|page| v.page == page))?;
         let (x, y) = v.point(Position::new(
             v.screen.x + v.screen.width / 2,
             v.screen.y + v.screen.height / 2,
@@ -663,7 +678,12 @@ impl Text {
                         }
                         self.enabled = true;
                         self.keys.reset();
-                        self.context_pending = Some(p);
+                        // Keep the original PDF point, including sub-cell mouse precision.
+                        // Selecting a menu row later must not replace it with that row's position.
+                        self.context_pending = Some(ContextPoint {
+                            at: p,
+                            source: self.source_point(Some(p), None),
+                        });
                         if let Some(hit) = self.hit(p.into(), false) {
                             let inside = self
                                 .start
@@ -813,11 +833,9 @@ impl Text {
             _ => None,
         }
     }
-    pub fn take_context_menu(&mut self) -> Option<Position> {
+    pub fn take_context_menu(&mut self) -> Option<ContextPoint> {
         if self.pending.is_none() {
-            self.context_pending
-                .take()
-                .filter(|_| self.cursor.is_some())
+            self.context_pending.take()
         } else {
             None
         }
@@ -1251,7 +1269,77 @@ impl Text {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn forward_target_is_available_before_the_first_raster_but_not_after_leaving_its_page() {
+        let mut text = Text::new(None);
+        text.show_source(PdfRegion {
+            page: 2,
+            bounds: [0.2, 0.3, 0.4, 0.5],
+        });
+        let (page, point) = text.source_point(None, Some(2)).unwrap();
+        assert_eq!(page, 2);
+        assert!((point[0] - 0.3).abs() < 0.00001);
+        assert!((point[1] - 0.4).abs() < 0.00001);
+        assert!(text.source_point(None, Some(3)).is_none());
+        assert!(
+            text.source_point(Some(Position::new(10, 10)), Some(2))
+                .is_none()
+        );
+        // A stale raster from the previous page must not replace the known target.
+        text.page(1, Rect::new(0, 0, 100, 100), [0., 0., 1., 1.], 0);
+        assert_eq!(text.source_point(None, Some(2)).unwrap().0, 2);
+        assert!(text.source_point(None, Some(3)).is_none());
+    }
     use botui_fixed::text::Word;
+
+    #[test]
+    fn context_on_a_textless_page_keeps_its_original_rotated_point() {
+        let mut text = Text::new(None);
+        text.page(3, Rect::new(0, 0, 100, 100), [0., 0., 1., 1.], 1);
+        text.cache.insert(3, Ok(PageText::default()));
+        let event = Event::Mouse(crossterm::event::MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Right),
+            column: 20,
+            row: 30,
+            modifiers: KeyModifiers::NONE,
+        });
+        assert!(matches!(text.input(&event), Some(Action::None)));
+        assert!(text.take_context_menu().is_none());
+        text.poll(Path::new("/nonexistent-context-test.pdf"));
+        assert!(text.selection().is_none());
+        // A menu redraw or a later mouse event must not change the source point.
+        text.begin_frame();
+        let context = text.take_context_menu().unwrap();
+        assert_eq!(context.at, Position::new(20, 30));
+        let (page, [x, y]) = context.source.unwrap();
+        assert_eq!(page, 3);
+        assert!((x - 0.305).abs() < 0.00001);
+        assert!((y - 0.795).abs() < 0.00001);
+        assert!(text.take_context_menu().is_none());
+    }
+
+    #[test]
+    fn context_preserves_a_selected_range_and_uses_the_clicked_source_point() {
+        let mut text = Text::new(None);
+        text.page(1, Rect::new(0, 0, 100, 100), [0., 0., 1., 1.], 0);
+        text.cache.insert(1, Ok(page("Alpha bravo charlie")));
+        text.start = Some(WordAt { page: 1, index: 0 });
+        text.cursor = Some(WordAt { page: 1, index: 2 });
+        text.input(&Event::Mouse(crossterm::event::MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Right),
+            column: 35,
+            row: 22,
+            modifiers: KeyModifiers::NONE,
+        }));
+        assert_eq!(text.selection().unwrap().1, "Alpha bravo charlie");
+        let context = text.take_context_menu().unwrap();
+        let (page, [x, y]) = context.source.unwrap();
+        assert_eq!(page, 1);
+        assert!((x - 0.355).abs() < 0.00001);
+        assert!((y - 0.225).abs() < 0.00001);
+    }
+
     #[test]
     fn ordinary_selection_keeps_search_keys_and_leader_note_separate() {
         let mut text = Text::new(None);

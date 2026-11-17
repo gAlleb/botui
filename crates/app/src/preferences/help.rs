@@ -163,14 +163,14 @@ pub(super) fn entries(ctx: Context, p: &Settings) -> Vec<Entry> {
                     ),
                     ("Home / End", "First / last page"),
                     (
-                        "F8 / Alt+click",
+                        "F8 / Ctrl+left click",
                         "Local PDF: find the LaTeX source with SyncTeX",
                     ),
                     ("+ / = / −", "Zoom in / zoom in / zoom out"),
                     ("Mouse wheel", "Scroll; F2 → Reader sets lines per tick"),
                     (
                         "Right click",
-                        "PDF text: Copy, Highlight, Search, Translate, Define, Add note",
+                        "PDF text actions; Go to source when local SyncTeX data is available",
                     ),
                     (
                         "1 / 2 / 3",

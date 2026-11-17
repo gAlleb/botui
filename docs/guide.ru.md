@@ -129,11 +129,13 @@ botui --config-path                         # создать конфиг и в�
 
 Если редактор пересобрал открытый локальный PDF, читалка покажет новую версию на той же странице, с прежним масштабом и прокруткой. Если страниц стало меньше и прежней страницы уже нет, откроется последняя. У каждой версии свои закладки и заметки.
 
-Для работы с LaTeX соберите документ с параметром `-synctex=1` и откройте локальный PDF в BOTUI. Если в PATH есть утилита `synctex`, команда редактора `botui --synctex-forward 42:0:chapter.tex book.pdf` подсветит строку 42 в открытом PDF. Путь к PDF определяет книгу. Если она открыта дважды, переход получит последнее открытое окно.
+Для работы с LaTeX соберите документ с параметром `-synctex=1` и оставьте соответствующий `.synctex` или `.synctex.gz` рядом с PDF. Утилита `synctex` должна быть в PATH, который получили BOTUI и редактор. Команда `botui --synctex-forward 42:0:chapter.tex book.pdf` подсветит строку 42 исходника в указанном PDF. Если он открыт дважды, переход получит последнее открытое окно.
 
-**Alt + левый щелчок** находит исходник в указанной точке. **F8** использует видимый Vim-курсор, подсвеченную строку или центр первой видимой страницы. Файл разметки `.synctex` или `.synctex.gz` должен лежать рядом с PDF.
+**Ctrl + левая кнопка мыши** или **правая кнопка → Go to source** находит исходник в указанной точке, в том числе на участке без выделяемого текста. **F8** использует видимый Vim-курсор, подсвеченную строку или центр первой видимой страницы.
 
-В **F2 → Reader → SyncTeX editor command** введите команду своего редактора. Например, `kitty nvim +{line} -- "{file}"` откроет Neovim на нужной строке. Можно подставить путь `{file}`, строку `{line}` и столбец `{column}`. Аргументы с пробелами заключайте в кавычки. Нажмите **Enter**, и команда начнёт действовать в уже открытом PDF. Если очистить поле, **F8** покажет путь и номер строки. Команда, ранее заданная в параметре `synctex_editor` в конфиге, тоже видна в этом поле.
+В **F2 → Reader → SyncTeX mode** есть **Custom command** (по умолчанию) и **Neovim · reuse window**. Режим Neovim при первом переходе открывает недостающее окно редактора или PDF, затем использует те же окна в обоих направлениях. Поля **SyncTeX Neovim terminal** и **SyncTeX BOTUI terminal** настраиваются независимо: например, `kitty`, `alacritty -e` или `foot`; пустое поле означает Auto. Вручную заводить именованный сокет не нужно. [Полная настройка VimTeX и примеры](../README.ru.md#synctex-и-vimtex).
+
+В Custom сохраняется поле **SyncTeX editor command**, в том числе прежнее значение `synctex_editor`. Например, `kitty nvim +{line} -- "{file}"` открывает новое окно редактора. Шаблоны: путь `{file}`, строка `{line}` и столбец `{column}`; аргументы с пробелами заключайте в кавычки. Пустое поле означает только показ адреса исходника. В Custom для перехода из исходника PDF должен быть уже открыт. Переключение режима сохраняет свою команду.
 
 Для оглавления PDF, точного выделения символов и ссылок нужны Python 3, PyGObject и привязки Poppler GI. Без них утилиты Poppler сохраняют выделение слов и поиск. В Kitty и Ghostty мышь в PDF использует координаты пикселей. Нажмите на ссылку мышью либо поставьте на неё курсор Vim и нажмите **Enter**; перед открытием внешней ссылки BOTUI спросит подтверждение. EPUB, состоящие из изображений, открываются в ридере фиксированных страниц. OCR нет: сканы и картинки комиксов не дают выделения слов, словаря и перевода.
 
@@ -395,6 +397,12 @@ zen = false
 zen_progress = false
 # PDF/DjVu zoom in percent. In scroll mode 100 fits the reading pane.
 scan_zoom = 100
+# Custom uses synctex_editor; Neovim opens missing windows and reuses them for jumps both ways.
+synctex_mode = "custom" # custom | neovim
+# Independent terminal prefixes for new Neovim/PDF windows in Neovim mode. [] means Auto.
+# Examples: ["kitty"], ["alacritty", "-e"], ["foot"]. Existing windows are reused.
+synctex_nvim_terminal = []
+synctex_botui_terminal = []
 # Local PDF to LaTeX source: executable and separate arguments. Line/column start at 1.
 # synctex_editor = ["code", "--goto", "{file}:{line}:{column}"]
 # Space between PDF/DjVu/comic pages in a spread (0–32 terminal cells).

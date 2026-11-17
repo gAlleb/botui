@@ -56,6 +56,9 @@ pub struct Settings {
     pub keymap: crate::keymap::Keymap,
     /// Executable and arguments; {text} is replaced without invoking a shell.
     pub lookup_command: Vec<String>,
+    pub synctex_mode: crate::synctex::Mode,
+    pub synctex_nvim_terminal: Vec<String>,
+    pub synctex_botui_terminal: Vec<String>,
     pub synctex_editor: Vec<String>,
     pub lookup: crate::lookup::Config,
     pub leader_delay_ms: Option<u16>,
@@ -314,6 +317,9 @@ fn extend_config(doc: &mut DocumentMut) -> io::Result<bool> {
         "scan_theme",
         "comic_background",
         "scan_gap",
+        "synctex_mode",
+        "synctex_nvim_terminal",
+        "synctex_botui_terminal",
     ] {
         if !doc.contains_key(name) {
             doc.insert(name, example[name].clone());
@@ -539,6 +545,35 @@ mod dialog_tests {
                 .profiles
                 .is_empty()
         );
+    }
+
+    #[test]
+    fn synctex_mode_preserves_custom_command_and_independent_terminals() {
+        use crate::synctex::Mode;
+        let original = "synctex_editor = [\"kitty\", \"nvim\", \"+{line}\", \"--\", \"{file}\"] # keep my command\n";
+        let mut doc = document(original).unwrap();
+        extend_config(&mut doc).unwrap();
+        let mut settings = decode(&doc.to_string()).unwrap();
+        assert!(matches!(settings.synctex_mode, Mode::Custom));
+        assert!(settings.synctex_nvim_terminal.is_empty());
+        assert!(settings.synctex_botui_terminal.is_empty());
+        let command = settings.synctex_editor.clone();
+        apply(&mut doc, &mut settings, |s| {
+            s.synctex_mode = Mode::Neovim;
+            s.synctex_nvim_terminal = vec!["kitty".into()];
+            s.synctex_botui_terminal = vec!["alacritty".into(), "-e".into()];
+        })
+        .unwrap();
+        let mut settings = decode(&doc.to_string()).unwrap();
+        assert!(matches!(settings.synctex_mode, Mode::Neovim));
+        assert_eq!(settings.synctex_editor, command);
+        apply(&mut doc, &mut settings, |s| s.synctex_mode = Mode::Custom).unwrap();
+        let settings = decode(&doc.to_string()).unwrap();
+        assert!(matches!(settings.synctex_mode, Mode::Custom));
+        assert_eq!(settings.synctex_editor, command);
+        assert_eq!(settings.synctex_nvim_terminal, ["kitty"]);
+        assert_eq!(settings.synctex_botui_terminal, ["alacritty", "-e"]);
+        assert!(doc.to_string().contains(original.trim()));
     }
 
     #[test]

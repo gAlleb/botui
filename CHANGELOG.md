@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.1.23 — 2026-11-17
+
+- Add optional Neovim/PDF window reuse with separate terminal launch commands.
+- Open LaTeX source from the PDF context menu or Ctrl-click.
+- Keep input text in place when moving the cursor.
+
 ## 0.1.22 — 2026-11-17
 
 - Wait for terminal test processes before cleaning up temporary files.

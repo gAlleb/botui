@@ -125,11 +125,13 @@ Positions and notes are local.
 
 An open local PDF refreshes after an editor or typesetter finishes writing it. The reader keeps your page, zoom and scroll position. If the new PDF is shorter, it opens its last page. Each edition keeps its own bookmarks and annotations.
 
-For LaTeX, compile with `-synctex=1` and open the local PDF in BOTUI. With the optional `synctex` utility on your PATH, run `botui --synctex-forward 42:0:chapter.tex book.pdf` from the editor to highlight line 42 in the open PDF. An explicit PDF path picks the document; if it is open twice, the most recently opened copy receives the jump.
+For LaTeX, compile with `-synctex=1` and keep the matching `.synctex` or `.synctex.gz` beside the PDF. The `synctex` utility must be on the PATH inherited by BOTUI and the editor. `botui --synctex-forward 42:0:chapter.tex book.pdf` highlights source line 42 in that PDF; if it is open twice, the most recently opened copy receives the jump.
 
-**Alt + left click** finds the source at the clicked point. **F8** uses the visible Vim cursor, highlighted line, or center of the first visible page. Keep the matching `.synctex` or `.synctex.gz` beside the PDF.
+**Ctrl + left click** or **right click → Go to source** finds the source at the clicked point, including page areas without selectable text. **F8** uses the visible Vim cursor, highlighted line, or center of the first visible page.
 
-Under **F2 → Reader → SyncTeX editor command**, enter the command that opens your editor. For example, `kitty nvim +{line} -- "{file}"` opens Neovim at the source line. You can use `{file}`, `{line}` and `{column}`. Quote arguments that contain spaces. Press **Enter** to apply the command to the open PDF. Clear the field to have **F8** show just the source location. The field also displays commands already saved in `synctex_editor` in your configuration.
+**F2 → Reader → SyncTeX mode** offers **Custom command** (the default) and **Neovim · reuse window**. Neovim mode opens the missing editor or PDF window on the first jump, then reuses it in both directions. Set **SyncTeX Neovim terminal** and **SyncTeX BOTUI terminal** independently, for example `kitty`, `alacritty -e` or `foot`; blank means Auto. No manually named socket is needed. [Complete VimTeX setup and examples](../README.md#synctex-and-vimtex).
+
+Custom mode retains **SyncTeX editor command**, including an existing `synctex_editor` setting. For example, `kitty nvim +{line} -- "{file}"` opens a new editor window. The placeholders are `{file}`, `{line}` and `{column}`; quote arguments containing spaces. Clearing this field shows the source location only. In Custom mode, forward search requires the PDF to be already open. Switching modes preserves the custom command.
 
 PDF contents, exact character selection and links require Python 3, PyGObject and the Poppler GI bindings. Without them, Poppler utilities still provide word selection and search. In Kitty and Ghostty, PDF mouse selection uses pixel coordinates. Click a PDF link, or move the Vim cursor onto it and press **Enter**; external links ask before opening the browser. Image-only EPUBs use the fixed-page reader. There is no OCR: scans and comic images do not provide word selection, definitions or translation.
 
@@ -395,6 +397,12 @@ zen = false
 zen_progress = false
 # PDF/DjVu zoom in percent. In scroll mode 100 fits the reading pane.
 scan_zoom = 100
+# Custom uses synctex_editor; Neovim opens missing windows and reuses them for jumps both ways.
+synctex_mode = "custom" # custom | neovim
+# Independent terminal prefixes for new Neovim/PDF windows in Neovim mode. [] means Auto.
+# Examples: ["kitty"], ["alacritty", "-e"], ["foot"]. Existing windows are reused.
+synctex_nvim_terminal = []
+synctex_botui_terminal = []
 # Local PDF to LaTeX source: executable and separate arguments. Line/column start at 1.
 # synctex_editor = ["code", "--goto", "{file}:{line}:{column}"]
 # Space between PDF/DjVu/comic pages in a spread (0–32 terminal cells).

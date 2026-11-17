@@ -25,7 +25,7 @@ def check(root):
     # Control the model TeX output so CI can exercise the integration without installing a typesetter.
     helper = root / "synctex"
     helper.write_text("""#!/usr/bin/env python3
-import os, sys
+import json, os, sys
 from pathlib import Path
 if sys.argv[1] == "view":
     assert sys.argv[2] == "-i" and sys.argv[4] == "-o"
@@ -36,6 +36,8 @@ else:
     assert sys.argv[1:3] == ["edit", "-o"]
     page, x, y, pdf = sys.argv[3].split(":", 3)
     assert Path(pdf).exists() and float(x) >= 0 and float(y) >= 0
+    point = Path(os.environ["HOME"]) / "inverse-point"
+    point.write_text(json.dumps([int(page), float(x), float(y)]))
     print(f"Input:{os.environ['TEST_SOURCE']}\\nLine:{page}\\nColumn:-1")
 """)
     helper.chmod(0o755)
@@ -70,8 +72,41 @@ pending.replace(dest)
         term.keys("Right", "End")
         return term.see("SyncTeX editor command")
 
+    def mouse(x, y, button):
+        seq = f"\033[<{button};{x + 1};{y + 1}M\033[<{button};{x + 1};{y + 1}m"
+        term.run("send-keys", "-t", "shelf", "-H", *[f"{b:02x}" for b in seq.encode()])
+
+    def source_reply():
+        term.wait("Inverse request reached the configured editor", lambda _:
+                  (root / "last-jump").exists())
+        assert json.loads((root / "last-jump").read_text()) == ["1", "1", str(source)]
+        return json.loads((root / "inverse-point").read_text())
+
     try:
         term.see("1 / 3")
+        # Page one has graphics but no text. Source navigation must still be
+        # available there and must use the original click, not the menu row.
+        frame = term.wait("PDF raster for source context menu", lambda f: "@@@@" in f)
+        points = [(x, y) for y, row in enumerate(frame.splitlines())
+                  for x, char in enumerate(row) if char == "@"]
+        x, y = points[len(points) // 2]
+        mouse(x, y, 2)
+        menu = term.see("Go to source")
+        assert "│ Add note" not in menu and "│ Highlight" not in menu, menu
+        term.click("Go to source", menu)
+        first = source_reply()
+        assert first[0] == 1
+        (root / "last-jump").unlink()
+        mouse(x, y, 2)
+        term.see("Go to source")
+        term.keys("End", "Enter")
+        assert source_reply() == first
+        (root / "last-jump").unlink()
+        # Ctrl-left uses the same point without opening the context menu.
+        mouse(x, y, 16)
+        assert source_reply() == first
+        assert "Go to source" not in term.run("capture-pane", "-p", "-t", "shelf").stdout
+
         jump(2)
         term.see("SyncTeX · page 2")
         term.keys("F8")

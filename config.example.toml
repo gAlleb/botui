@@ -25,6 +25,12 @@ zen = false
 zen_progress = false
 # PDF/DjVu zoom in percent. In scroll mode 100 fits the reading pane.
 scan_zoom = 100
+# Custom uses synctex_editor; Neovim opens missing windows and reuses them for jumps both ways.
+synctex_mode = "custom" # custom | neovim
+# Independent terminal prefixes for new Neovim/PDF windows in Neovim mode. [] means Auto.
+# Examples: ["kitty"], ["alacritty", "-e"], ["foot"]. Existing windows are reused.
+synctex_nvim_terminal = []
+synctex_botui_terminal = []
 # Local PDF to LaTeX source: executable and separate arguments. Line/column start at 1.
 # synctex_editor = ["code", "--goto", "{file}:{line}:{column}"]
 # Space between PDF/DjVu/comic pages in a spread (0–32 terminal cells).

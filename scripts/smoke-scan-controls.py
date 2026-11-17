@@ -153,15 +153,15 @@ def check_search(root, book, page_count):
         paste = "\x1b[200~Lightouse atlas\x1b[201~"
         term.keys("-H", *[f"{b:02x}" for b in paste.encode()])
         term.keys("Home", *["Right"] * 5, "h", "Home", "Delete", "L", "End", "x", "BSpace")
-        term.click("[ Search ↵ ]", term.see("Lighthouse atlas▏"))
+        term.click("[ Search ↵ ]", term.see("Lighthouse atlas"))
         term.wait("Search reaches the matching sheet", lambda f:
                   f"2 / {page_count}" in f and "Match 1 / 1" in f)
 
         term.keys("Space", "f")
-        term.see("Lighthouse atlas▏")
+        term.see("Lighthouse atlas")
         term.keys("C-u")
         term.type("discard this")
-        term.click("[ Cancel ]", term.see("discard this▏"))
+        term.click("[ Cancel ]", term.see("discard this"))
         term.keys("F5")
         term.see("Lighthouse atlas")
         term.keys("Escape")

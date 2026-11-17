@@ -51,6 +51,46 @@ pub(super) fn setting(
 ) -> io::Result<()> {
     match (tab, i) {
         (1, 17) => {
+            if let Some(i) = choose(
+                term,
+                "SyncTeX mode",
+                &super::SYNCTEX_MODES,
+                usize::from(matches!(p.synctex_mode, crate::synctex::Mode::Neovim)),
+            )? {
+                Settings::update(|s| {
+                    s.synctex_mode = if i == 1 {
+                        crate::synctex::Mode::Neovim
+                    } else {
+                        crate::synctex::Mode::Custom
+                    };
+                })?;
+            }
+        }
+        (1, 18 | 19) if matches!(p.synctex_mode, crate::synctex::Mode::Neovim) => {
+            let neovim = i == 18;
+            let (title, args) = if neovim {
+                (
+                    "SyncTeX Neovim terminal · blank = Auto",
+                    &p.synctex_nvim_terminal,
+                )
+            } else {
+                (
+                    "SyncTeX BOTUI terminal · blank = Auto",
+                    &p.synctex_botui_terminal,
+                )
+            };
+            if let Some(command) = edit(term, title, &crate::synctex::editor_command(args))? {
+                let args = crate::synctex::parse_editor_command(&command)?;
+                Settings::update(|s| {
+                    if neovim {
+                        s.synctex_nvim_terminal = args;
+                    } else {
+                        s.synctex_botui_terminal = args;
+                    }
+                })?;
+            }
+        }
+        (1, 18) => {
             if let Some(command) = edit(
                 term,
                 "SyncTeX editor command · e.g. kitty nvim +{line} -- {file}",

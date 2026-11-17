@@ -84,6 +84,10 @@ pub(super) struct Watch {
 }
 
 impl Watch {
+    pub fn editor(&self) -> Option<crate::synctex::EditorTarget> {
+        self.inbox.as_ref().map(|i| i.editor())
+    }
+
     pub fn new(path: &Path) -> Self {
         Self {
             inbox: crate::synctex::Inbox::open(path).ok(),

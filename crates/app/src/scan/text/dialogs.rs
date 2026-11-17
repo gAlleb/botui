@@ -17,17 +17,38 @@ pub(super) fn background(f: &mut Frame, saved: &Buffer) {
 impl Text {
     pub fn context_menu(
         &mut self,
-        at: Position,
+        context: ContextPoint,
+        source_available: bool,
         term: &mut AppTerminal,
         store: Option<&LocalState>,
         saved: &Buffer,
-    ) -> io::Result<Option<String>> {
+    ) -> io::Result<Option<ContextAction>> {
         use crate::text_menu::Action as M;
-        let Some(action) = crate::text_menu::choose(term, at, |f| background(f, saved))? else {
+        let has_text = self.selection().is_some();
+        let chosen = crate::text_menu::choose_pdf(
+            term,
+            context.at,
+            has_text,
+            source_available && context.source.is_some(),
+            |f| background(f, saved),
+        )?;
+        if source_available && !has_text {
+            // Opening a source-only menu on graphics must not leave an empty
+            // text selection toolbar behind after choosing or cancelling it.
+            self.clear();
+        }
+        let Some(action) = chosen else {
             return Ok(None);
         };
+        if matches!(action, M::Source) {
+            return Ok(context
+                .source
+                .map(|(page, point)| ContextAction::Source(page, point)));
+        }
         if matches!(action, M::Search) {
-            return Ok(self.selection().map(|(_, quote, _)| quote));
+            return Ok(self
+                .selection()
+                .map(|(_, quote, _)| ContextAction::Search(quote)));
         }
         let action = match action {
             M::Copy => Action::Copy,
@@ -35,7 +56,7 @@ impl Text {
             M::Translate => Action::Lookup(crate::lookup::Purpose::Translation),
             M::Define => Action::Lookup(crate::lookup::Purpose::Dictionary),
             M::AddNote => Action::Comment,
-            M::Search => unreachable!(),
+            M::Search | M::Source => unreachable!(),
         };
         self.run(action, term, store, saved)?;
         Ok(None)

@@ -5,6 +5,7 @@ use ratatui::{
     Frame,
     layout::Rect,
     style::Stylize,
+    text::Span,
     widgets::{Clear, Padding, Paragraph},
 };
 use std::{borrow::Cow, collections::HashMap, hash::Hash, io, time::Duration};
@@ -112,14 +113,9 @@ impl<S: Source> Search<S> {
         if h < 3 || w == 0 {
             return (Rect::default(), Rect::default());
         }
-        f.render_widget(
-            Paragraph::new(format!(
-                " / {}",
-                self.input.display(w.saturating_sub(3), false)
-            ))
-            .cyan(),
-            Rect::new(x, y, w, 1),
-        );
+        let mut input = self.input.display(w.saturating_sub(3), false);
+        input.spans.insert(0, Span::raw(" / "));
+        f.render_widget(Paragraph::new(input).cyan(), Rect::new(x, y, w, 1));
         let status = if self.source.busy() {
             " · indexing…"
         } else {

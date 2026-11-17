@@ -183,7 +183,7 @@ Offline copies are available through **D BookOrbit offline** and **O OPDS downlo
 
 PDF contents, exact character selection and links require Python 3, PyGObject and the Poppler GI bindings. Without them, Poppler utilities still provide word selection and search. In Kitty and Ghostty, PDF mouse selection uses pixel coordinates. Click a PDF link, or move the Vim cursor onto it and press **Enter**; external links ask before opening the browser. Image-only EPUBs use the fixed-page reader. There is no OCR: scans and comic images do not provide word selection, definitions or translation.
 
-When a local PDF is rebuilt, BOTUI reloads it at the current page and zoom. With the optional `synctex` utility and a PDF built with `-synctex=1`, your editor can jump to a source line in the PDF. **Alt + left click** in the PDF finds the corresponding location in the source. Set **F2 → Reader → SyncTeX editor command** to open it in your editor. [SyncTeX example](docs/guide.md#formats)
+When a local PDF is rebuilt, BOTUI reloads it at the current page and zoom. SyncTeX links the PDF to its LaTeX source. [Setup and editor commands](#synctex-and-vimtex)
 
 Formatted Markdown distinguishes heading levels with numbers and colors, preserves list numbering and nesting, and uses reading-theme panels for code, quotes and table headers. NOTE/TIP/IMPORTANT/WARNING/CAUTION blocks have their own labels and colors. **F9** opens the source with Markdown highlighting.
 
@@ -192,6 +192,76 @@ Markdown reads local images within the document’s directory or its subdirector
 Comic pages may be JPEG, PNG or WebP, up to 16 MiB each. Password-protected and multi-volume RAR archives are not supported. Files with a `.cbz` or `.cbr` extension are recognized as ZIP or RAR by their contents, so mislabeled archives also open without renaming.
 
 Kitty displays covers and pages as images, including inside tmux with graphics passthrough. Terminals without an image protocol can use colored half-blocks. [Detailed format limits](docs/checklist.md#coverage-limits)
+
+### SyncTeX and VimTeX
+
+The `synctex` executable must be on the `PATH` inherited by BOTUI and your editor. With a standalone TeX Live installation, add its binary directory to your shell's PATH before starting either application; for example:
+
+```sh
+export PATH="/opt/texlive/2026/bin/x86_64-linux:$PATH"
+```
+
+Compile from the document directory and keep the matching `.synctex.gz` beside the PDF:
+
+```sh
+pdflatex -synctex=1 hello.tex
+```
+
+**PDF → source:** right-click the page and choose **Go to source**, or hold **Ctrl** and click the left mouse button. Both use the clicked point, including diagrams without selectable text. **F8** uses the visible Vim cursor, highlighted line, or center of the first visible page. The context-menu item appears when the local PDF has a matching `.synctex` or `.synctex.gz` file.
+
+**Neovim: open and reuse windows.** In **F2 → Reader → SyncTeX mode**, select **Neovim · reuse window**. You can start from either application:
+
+- Open `botui hello.pdf` and use **Go to source**, **Ctrl + left click** or **F8**. BOTUI opens Neovim at the source location; later jumps reuse that editor.
+- Open `nvim hello.tex` and use VimTeX's **`\lv`** with the configuration below. BOTUI opens the PDF if needed; later jumps reuse its window. Going back to the source returns to the Neovim that sent the jump.
+
+No named socket or manual launch of the second application is needed in this mode. **SyncTeX Neovim terminal** and **SyncTeX BOTUI terminal** in F2 set the launch commands independently. Enter only a terminal prefix, such as `kitty`, `alacritty -e` or `foot`; BOTUI appends the application and its arguments. Leave a field blank for **Auto**, which chooses an available supported terminal. These settings affect new windows only.
+
+**VimTeX setup, for either mode:** put these settings in the VimTeX plugin configuration, before VimTeX initializes:
+
+```lua
+vim.g.vimtex_view_method = "general"
+vim.g.vimtex_view_general_viewer = "botui"
+vim.g.vimtex_view_general_options = "--synctex-forward @line:@col:@tex @pdf"
+```
+
+Use **`\lv`** with the default local leader, or `:VimtexView`, to jump from the source cursor to the PDF. With `latexmk` installed, **`\ll`** starts VimTeX's continuous compilation: saving the source updates the PDF and SyncTeX map, and BOTUI reloads the PDF. `\lv` navigates; it does not compile the document. The forward command also works without VimTeX:
+
+```sh
+botui --synctex-forward 11:1:hello.tex hello.pdf
+```
+
+**Custom command, the default mode:** the existing command remains available under **F2 → Reader → SyncTeX editor command**. Switching to Neovim mode does not erase it. In Custom mode, forward search requires the PDF to be already open in BOTUI; inverse search runs your command:
+
+| Desired behavior | Command to enter in F2 |
+| --- | --- |
+| Open Neovim in a new Kitty window | `kitty nvim +{line} -- "{file}"` |
+| Open Neovim in a new Alacritty window | `alacritty -e nvim +{line} -- "{file}"` |
+| Open a graphical editor, such as VS Code | `code --goto "{file}:{line}:{column}"` |
+
+These commands can open the source without an existing editor window. BOTUI launches the configured command in the background; plain `nvim +{line} {file}` does **not** create a terminal or take over BOTUI's terminal. `{file}`, `{line}` and `{column}` are substituted by BOTUI. Leave the setting empty to show the source location only.
+
+To reuse an existing Neovim window **in Custom mode**, start it in another terminal with a named socket:
+
+```sh
+nvim --listen /tmp/nvim.sock hello.tex
+```
+
+Then use this command in BOTUI's F2 field, without a `kitty` or `alacritty` prefix:
+
+```text
+nvim --server /tmp/nvim.sock --remote-send '<C-\><C-n>:execute "edit " . fnameescape("{file}")<CR>:{line}<CR>'
+```
+
+This connects to that editor and opens the source at the requested line. It does not start Neovim if the socket is absent. Installing VimTeX alone does not create `/tmp/nvim.sock`. This example handles spaces in paths; it is not intended for filenames containing double quotes or literal Neovim key notation.
+
+SyncTeX maps typeset regions, not every source word individually. For example, a title or author printed by `\maketitle` can lead back to that command rather than to `\title` or `\author`. Several source lines can share one PDF line; a displayed formula may point to its closing command. BOTUI currently uses the first region when SyncTeX returns multiple forward matches.
+
+If a jump does nothing:
+
+- Check `:echo g:vimtex_view_method` — it must be `general`. A later plugin setting such as `zathura` overrides the earlier value. Use `general_viewer` and `general_options`, not `general_cmd`.
+- Check `:echo executable('synctex')` — it must return `1`. An editor started before a PATH change retains the old environment.
+- In Neovim mode, check the two terminal commands in F2. They should contain a terminal prefix, not `nvim`, `botui` or source placeholders. In Custom mode, check your editor command with a real path and line substituted.
+- For the Custom mode named-socket setup, run `nvim --server /tmp/nvim.sock --remote-expr '1'` in a terminal. A connection error means that editor is not listening there.
 
 ## Reading
 
@@ -451,6 +521,12 @@ zen = false
 zen_progress = false
 # PDF/DjVu zoom in percent. In scroll mode 100 fits the reading pane.
 scan_zoom = 100
+# Custom uses synctex_editor; Neovim opens missing windows and reuses them for jumps both ways.
+synctex_mode = "custom" # custom | neovim
+# Independent terminal prefixes for new Neovim/PDF windows in Neovim mode. [] means Auto.
+# Examples: ["kitty"], ["alacritty", "-e"], ["foot"]. Existing windows are reused.
+synctex_nvim_terminal = []
+synctex_botui_terminal = []
 # Local PDF to LaTeX source: executable and separate arguments. Line/column start at 1.
 # synctex_editor = ["code", "--goto", "{file}:{line}:{column}"]
 # Space between PDF/DjVu/comic pages in a spread (0–32 terminal cells).

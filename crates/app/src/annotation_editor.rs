@@ -171,7 +171,7 @@ pub(crate) fn edit(
                         let text = if index == current {
                             line.display(inner.width.saturating_sub(2), false)
                         } else {
-                            line.value().into()
+                            line.value().to_owned().into()
                         };
                         f.render_widget(
                             Paragraph::new(text),

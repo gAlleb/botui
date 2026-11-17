@@ -58,6 +58,7 @@ pub(super) fn read_pages(
         _ => None,
     };
     let worker = Worker::new();
+    let editor_worker = Worker::new();
     let file_title = path.file_stem().unwrap_or_default().to_string_lossy();
     let mut book_title = album
         .as_ref()
@@ -115,9 +116,7 @@ pub(super) fn read_pages(
         ..Crop::default()
     };
     let initial_zoom = crop.percent;
-    let mut source_job: Option<
-        crate::shelf::background::Ticket<io::Result<botui_fixed::synctex::Source>>,
-    > = None;
+    let mut source_job: Option<crate::shelf::background::Ticket<io::Result<String>>> = None;
     let mut reveal: Option<botui_store::PdfRegion> = None;
     let mut gap = prefs.scan_gap.unwrap_or(2).min(32);
     let mut dialog: Option<controls::Dialog> = None;
@@ -241,12 +240,7 @@ pub(super) fn read_pages(
         if let Some(job) = &source_job {
             match job.receiver.try_recv() {
                 Ok(result) => {
-                    message = result
-                        .and_then(|source| {
-                            let editor = crate::settings::Settings::load()?.synctex_editor;
-                            crate::synctex::open_editor(&editor, source)
-                        })
-                        .unwrap_or_else(|e| format!("SyncTeX: {e}"));
+                    message = result.unwrap_or_else(|e| format!("SyncTeX: {e}"));
                     text.message.clone_from(&message);
                     source_job = None;
                 }
@@ -853,10 +847,20 @@ pub(super) fn read_pages(
         }
         if selectable && let Some(at) = text.take_context_menu() {
             let background = rendered.buffer.clone();
-            match text.context_menu(at, term, store.as_ref(), &background) {
-                Ok(Some(query)) => {
+            let source_available = watch.is_some()
+                && (path.with_extension("synctex").is_file()
+                    || path.with_extension("synctex.gz").is_file());
+            match text.context_menu(at, source_available, term, store.as_ref(), &background) {
+                Ok(Some(text::ContextAction::Search(query))) => {
                     text.clear_search();
                     search.start(&worker, path, kind, query);
+                }
+                Ok(Some(text::ContextAction::Source(page, point))) => {
+                    let pdf = path.to_owned();
+                    let target = watch.as_ref().and_then(|w| w.editor());
+                    source_job = Some(editor_worker.start(move |cancel| {
+                        crate::synctex::inverse(&pdf, page, point, target, cancel)
+                    }));
                 }
                 Ok(None) => (),
                 Err(e) => text.message = e.to_string(),
@@ -1137,7 +1141,7 @@ pub(super) fn read_pages(
         let source_click = match &e {
             Event::Mouse(m)
                 if m.kind == MouseEventKind::Down(MouseButton::Left)
-                    && m.modifiers.contains(KeyModifiers::ALT) =>
+                    && m.modifiers.contains(KeyModifiers::CONTROL) =>
             {
                 Some(Position::new(m.column, m.row))
             }
@@ -1345,10 +1349,11 @@ pub(super) fn read_pages(
                 continue;
             }
             46 => {
-                if let Some((page, point)) = text.source_point(source_click) {
+                if let Some((page, point)) = text.source_point(source_click, Some(n)) {
                     let pdf = path.to_owned();
-                    source_job = Some(worker.start(move |cancel| {
-                        botui_fixed::synctex::inverse(&pdf, page, point, cancel)
+                    let target = watch.as_ref().and_then(|w| w.editor());
+                    source_job = Some(editor_worker.start(move |cancel| {
+                        crate::synctex::inverse(&pdf, page, point, target, cancel)
                     }));
                 }
             }

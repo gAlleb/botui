@@ -5,6 +5,7 @@ use crossterm::event::{Event, KeyCode, KeyEventKind, MouseButton, MouseEventKind
 use ratatui::{
     layout::{Constraint, Position, Rect},
     style::Modifier,
+    text::Span,
     widgets::{Clear, Paragraph, Row, Table, TableState, Wrap},
 };
 use std::io;
@@ -39,7 +40,7 @@ pub(super) fn run(
                     M::Translate => Command::Translate,
                     M::Define => Command::Lookup,
                     M::AddNote => Command::Comment,
-                    M::Search => unreachable!(),
+                    M::Search | M::Source => unreachable!(),
                 };
                 run(term, reader, store().ok(), command)?;
             }
@@ -214,15 +215,14 @@ fn list(term: &mut AppTerminal, reader: &mut Reader, store: &LocalState) -> io::
                 f.render_widget(Paragraph::new(label), rect);
                 buttons.push((rect, key));
             }
+            let mut input = if filtering {
+                query.display(inner.width.saturating_sub(8), false)
+            } else {
+                query.value().to_owned().into()
+            };
+            input.spans.insert(0, Span::raw(" Find: "));
             f.render_widget(
-                Paragraph::new(format!(
-                    " Find: {}",
-                    if filtering {
-                        query.display(inner.width.saturating_sub(8), false)
-                    } else {
-                        query.value().into()
-                    }
-                )),
+                Paragraph::new(input),
                 Rect::new(inner.x, inner.y, inner.width, 1),
             );
             let preview_height = inner.height.saturating_sub(3 + footer_height).min(6);
