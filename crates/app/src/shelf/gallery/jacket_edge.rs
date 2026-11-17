@@ -1,5 +1,6 @@
 //! Keep jacket lettering as terminal text. Only the four little arcs need pixels.
 use crate::appearance::BordersStyle;
+use crate::cover::kitty_lifetime::{self, Managed};
 use image::{DynamicImage, Rgba, RgbaImage};
 use lru::LruCache;
 use ratatui::{
@@ -18,7 +19,7 @@ use std::{cell::RefCell, num::NonZeroUsize};
 type Ink = (u8, u8, u8);
 type Key = (Ink, u16, u16, u8);
 thread_local! {
-    static CORNERS: RefCell<LruCache<Key, Protocol>> = RefCell::new(LruCache::new(NonZeroUsize::new(48).unwrap()));
+    static CORNERS: RefCell<LruCache<Key, Managed<Protocol>>> = RefCell::new(LruCache::new(NonZeroUsize::new(48).unwrap()));
 }
 
 fn corner((r, g, b): Ink, w: u16, h: u16, i: u8) -> DynamicImage {
@@ -60,7 +61,8 @@ pub(super) fn paper(f: &mut Frame, area: Rect, cloth: Style, ink: Ink, graphics:
             for i in 0..4 {
                 let key = (ink, size.width, size.height, i);
                 if !c.contains(&key) {
-                    let Ok(p) = graphics.new_protocol(
+                    let Ok(p) = kitty_lifetime::new_protocol(
+                        graphics,
                         corner(ink, size.width, size.height, i),
                         Size::new(1, 1),
                         Resize::Fit(None),

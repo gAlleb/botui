@@ -113,16 +113,19 @@ impl Viewer {
 }
 
 fn cache_image(data: &[u8], folder: &str) -> Result<PathBuf> {
+    cache_image_in(data, &crate::cache::cache_dir()?.join(folder))
+}
+
+fn cache_image_in(data: &[u8], dir: &Path) -> Result<PathBuf> {
     let format = image::guess_format(data)?;
     let ext = format
         .extensions_str()
         .first()
         .ok_or("Unknown image extension")?;
-    let dir = crate::cache::cache_dir()?.join(folder);
-    std::fs::create_dir_all(&dir)?;
+    std::fs::create_dir_all(dir)?;
     let path = dir.join(format!("{:x}.{ext}", Sha256::digest(data)));
     if !path.exists() {
-        let mut file = tempfile::NamedTempFile::new_in(&dir)?;
+        let mut file = tempfile::NamedTempFile::new_in(dir)?;
         file.write_all(data)?;
         if let Err(e) = file.persist_noclobber(&path)
             && e.error.kind() != io::ErrorKind::AlreadyExists
@@ -130,5 +133,30 @@ fn cache_image(data: &[u8], folder: &str) -> Result<PathBuf> {
             return Err(e.error.into());
         }
     }
+    botui_store::cache::touch(&path);
+    botui_store::cache::trim(dir, &path, 256, 128 << 20, |name| {
+        name.rsplit_once('.').is_some_and(|(key, ext)| {
+            key.len() == 64
+                && key.bytes().all(|b| b.is_ascii_hexdigit())
+                && image::ImageFormat::from_extension(ext).is_some()
+        })
+    });
     Ok(path)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn repeated_external_viewer_exports_reuse_the_same_complete_image() {
+        let dir = tempfile::tempdir().unwrap();
+        let bytes = png(&image::DynamicImage::new_rgb8(3, 2)).unwrap();
+        let first = cache_image_in(&bytes, dir.path()).unwrap();
+        for _ in 0..12 {
+            assert_eq!(cache_image_in(&bytes, dir.path()).unwrap(), first);
+        }
+        assert_eq!(std::fs::read(&first).unwrap(), bytes);
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 1);
+    }
 }

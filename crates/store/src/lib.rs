@@ -1,4 +1,5 @@
 //! Device-local resume points. A display anchor is never a BookOrbit CFI.
+pub mod cache;
 #[cfg(unix)]
 mod fingerprint;
 mod notes;

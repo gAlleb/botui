@@ -37,6 +37,13 @@ The official client and server define the BookOrbit contracts for [collections](
 
 ## Verification and limitations
 
+Reproducible files in `fingerprints` are limited to 4,096 entries / 4 MiB.
+The `covers` and `illustrations` directories used by the external viewer each
+retain up to 256 exports / 128 MiB. Old recognized regular files are evicted
+first; the requested export remains available even if it exceeds the byte
+budget on its own. Unknown files, directories and symlinks are left alone.
+These limits never apply to offline downloads, positions or annotations.
+
 Terminal tests using tmux and local HTTP fixtures cover the native catalog, OPDS 1.x/Atom and OPDS 2/JSON with separate authentication, accounts with no collections, edition selection, covers and placeholders, position conflicts, and PDF/DjVu spreads. A Kitty session on an isolated desktop verified covers from local EPUBs. The `cfi-probe` example and `scripts/check-foliate.mjs` checked Rust ↔ Foliate position conversion on the Itorra collection. All 11 sampled positions in each of EPUB and FB2 returned to the same block and byte.
 
 Additional cases cover remote search beyond the first result page, the current and recent shelves, bookmarks without an address and creating and deleting server bookmarks. An offline scenario saves a book, signs out, reads without a server request and checks the conditional update after signing in. A local scenario sets the library root from the UI, finds a file several levels below it and restores the root after restart. A Gesar EPUB was used to check NCX navigation, reflow in both columns, joining a split word and restoring the layout. Scan search requires a text layer. Scan bookmarks, notes and Markdown exports identify the physical page. In every format, `S` shows local sessions and time spent with the book open.

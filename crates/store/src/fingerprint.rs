@@ -54,6 +54,7 @@ pub(super) fn digest(file: &mut File, cache: Option<&Path>) -> io::Result<String
         && c.sha256.len() == 64
         && c.sha256.bytes().all(|b| b.is_ascii_hexdigit())
     {
+        crate::cache::touch(&entry);
         return Ok(c.sha256);
     }
     let sha256 = super::hash_file(file)?;
@@ -73,8 +74,17 @@ pub(super) fn digest(file: &mut File, cache: Option<&Path>) -> io::Result<String
             },
         )
         .is_ok()
+        && tmp.persist(&entry).is_ok()
     {
-        let _ = tmp.persist(&entry);
+        crate::cache::trim(cache, &entry, 4096, 4 << 20, |name| {
+            name.strip_suffix(".json")
+                .and_then(|s| s.split_once('-'))
+                .is_some_and(|(device, inode)| {
+                    [device, inode].iter().all(|s| {
+                        !s.is_empty() && s.len() <= 16 && s.bytes().all(|b| b.is_ascii_hexdigit())
+                    })
+                })
+        });
     }
     Ok(sha256)
 }

@@ -26,8 +26,10 @@ impl Drop for Update {
 impl AppTerminal {
     pub fn new() -> io::Result<Self> {
         let output = io::BufWriter::with_capacity(64 * 1024, io::stdout());
-        Terminal::new(CrosstermBackend::new(output))
-            .map(|terminal| Self(terminal, SixelFrame::default()))
+        Terminal::new(CrosstermBackend::new(output)).map(|terminal| {
+            crate::cover::kitty_lifetime::open();
+            Self(terminal, SixelFrame::default())
+        })
     }
 
     pub fn size(&self) -> io::Result<ratatui::layout::Size> {
@@ -74,6 +76,7 @@ impl AppTerminal {
         update: &mut Option<Update>,
     ) -> io::Result<ratatui::CompletedFrame<'_>> {
         let sixel = &mut self.1;
+        let retired = crate::cover::kitty_lifetime::take_retired();
         self.0.try_draw(|frame| -> io::Result<()> {
             // Capability queries and image preparation happen before holding
             // the display. Only publishing the finished frame is synchronized.
@@ -85,8 +88,15 @@ impl AppTerminal {
                 *update = Some(Update);
                 execute!(io::stdout(), BeginSynchronizedUpdate)?;
             }
+            retired.write(&mut io::stdout().lock())?;
             Ok(())
         })
+    }
+}
+
+impl Drop for AppTerminal {
+    fn drop(&mut self) {
+        let _ = crate::cover::kitty_lifetime::close(&mut io::stdout().lock());
     }
 }
 

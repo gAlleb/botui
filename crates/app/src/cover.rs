@@ -1,4 +1,5 @@
 //! Terminal image rendering shared by the shelf and fixed-page reader.
+pub(crate) mod kitty_lifetime;
 pub(crate) mod sixel;
 mod text_overlay;
 use image::{DynamicImage, ImageReader, Limits};
@@ -202,12 +203,12 @@ pub(crate) struct Picture {
     pub(crate) identity: u64,
     epoch: Cell<u64>,
     cell_pixels: Cell<Size>,
-    sliced: RefCell<Option<(CellStrip, SlicedProtocol)>>,
+    sliced: RefCell<Option<(CellStrip, kitty_lifetime::Managed<SlicedProtocol>)>>,
     source: DynamicImage,
     is_cover: bool,
     strip: RefCell<Option<(StripKey, Box<Picture>)>>,
     strip_cells: RefCell<Option<(CellStrip, image::RgbImage)>>,
-    ready: RefCell<Vec<(Rendition, Protocol)>>,
+    ready: RefCell<Vec<(Rendition, kitty_lifetime::Managed<Protocol>)>>,
     page_window: RefCell<Option<PageWindow>>,
 }
 
@@ -369,34 +370,7 @@ impl Picture {
         let x = (w - cw) * u32::from(key.x) / 255;
         let source = self.source.crop_imm(x, 0, cw, h);
         let size = Size::new(key.width, key.rows as u16);
-        let protocol = if key.scan && picker.protocol_type() == ProtocolType::Kitty {
-            // Kitty scales the bounded source raster into a virtual placement. Do not
-            // allocate a screen-sized bitmap or re-encode every moving viewport slice.
-            // Like ratatui-image's picker, use a randomly seeded 32-bit image ID.
-            use ratatui_image::{picker::Capability, protocol::kitty::Kitty};
-            use std::hash::BuildHasher;
-            let id = std::collections::hash_map::RandomState::new().hash_one((w, h)) as u32;
-            Kitty::new(
-                source,
-                size,
-                id.max(1),
-                picker.tmux_detected(),
-                picker
-                    .capabilities()
-                    .contains(&Capability::KittyCompression),
-                picker
-                    .capabilities()
-                    .contains(&Capability::KittySharedMemory),
-            )
-            .map(SlicedProtocol::Kitty)
-        } else {
-            SlicedProtocol::new_with_resize(
-                picker,
-                source,
-                size,
-                Resize::Scale(Some(image::imageops::FilterType::Triangle)),
-            )
-        };
+        let protocol = kitty_lifetime::new_sliced(picker, source, size, key.scan);
         *cache = protocol.ok().map(|p| (key, p));
     }
 
@@ -627,7 +601,8 @@ impl Picture {
         } else {
             let source = source();
             let result = match placement {
-                ImagePlacement::Fit => picker.new_protocol(
+                ImagePlacement::Fit => kitty_lifetime::new_protocol(
+                    picker,
                     source,
                     size,
                     Resize::Scale(Some(image::imageops::FilterType::Triangle)),
@@ -636,7 +611,7 @@ impl Picture {
                     let font = picker.font_size();
                     let (image, cells) =
                         card_raster(&source, size, Size::new(font.width, font.height));
-                    picker.new_protocol(image, cells, Resize::Fit(None))
+                    kitty_lifetime::new_protocol(picker, image, cells, Resize::Fit(None))
                 }
             };
             let Ok(protocol) = result else {

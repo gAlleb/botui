@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Bound disk caches and release unused Kitty images.
 - Keep text selections readable and hide unused language controls in compact lookup dialogs.
 
 ## 0.1.20 — 2026-11-17
