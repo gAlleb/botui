@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Wait for terminal test processes before cleaning up temporary files.
+
 ## 0.1.21 — 2026-11-17
 
 - Add Vim character searches, WORD motions and quote/bracket text objects.

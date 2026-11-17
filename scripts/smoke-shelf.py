@@ -9,6 +9,8 @@ import tomllib
 import json
 import os
 import re
+import select
+import signal
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 import shlex
@@ -373,7 +375,86 @@ class Terminal:
                  shlex.join([str(binary), *(args if args is not None else ["--server",url])]))
 
     def run(self, *args, required=True):
-        return subprocess.run(self.base + list(args), env=self.env, text=True, capture_output=True, check=required)
+        if args == ("kill-server",):
+            # tmux acknowledges this command before its pane and helpers have
+            # exited. Keep the test directory alive until all its writers stop.
+            handles = self._owned_processes()
+            try:
+                result = subprocess.run(self.base + list(args), env=self.env, text=True,
+                                        capture_output=True, check=False)
+                self._wait_closed(handles)
+                if required:
+                    result.check_returncode()
+                return result
+            finally:
+                for fd in handles:
+                    os.close(fd)
+                if self.server_fd is not None:
+                    os.close(self.server_fd)
+                    self.server_fd = None
+        command = list(args)
+        if command[0] == "new-session":
+            command[1:1] = ["-P", "-F", "#{pid}"]
+        result = subprocess.run(self.base + command, env=self.env, text=True, capture_output=True, check=required)
+        if command[0] == "new-session" and result.returncode == 0:
+            self.server_pid = int(result.stdout.strip())
+            try:
+                self.server_fd = os.pidfd_open(self.server_pid)
+            except ProcessLookupError:
+                self.server_fd = None
+        return result
+
+    def _owned_processes(self):
+        """Pin this Linux smoke terminal's process tree, including worker children."""
+        if self.server_fd is None or select.select([self.server_fd], [], [], 0)[0]:
+            return {}
+        handles, seen, pending = {}, set(), [self.server_pid]
+        try:
+            while pending:
+                pid = pending.pop()
+                if pid in seen:
+                    continue
+                seen.add(pid)
+                try:
+                    handles[os.pidfd_open(pid)] = pid
+                except ProcessLookupError:
+                    continue
+                # A renderer can be parented to a worker thread, not the main one.
+                for children in Path(f"/proc/{pid}/task").glob("*/children"):
+                    try:
+                        pending.extend(map(int, children.read_text().split()))
+                    except FileNotFoundError:
+                        pass
+            return handles
+        except BaseException:
+            for fd in handles:
+                os.close(fd)
+            raise
+
+    @staticmethod
+    def _wait_closed(handles):
+        poller = select.poll()
+        pending = set(handles)
+        for fd in pending:
+            poller.register(fd, select.POLLIN)
+        deadline = time.monotonic() + 10
+        while pending:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                stuck = [handles[fd] for fd in pending]
+                # Fail explicitly, but don't leave writers behind to mask the
+                # failure with a second exception from TemporaryDirectory.
+                for fd in pending:
+                    try:
+                        signal.pidfd_send_signal(fd, signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
+                for fd in pending:
+                    select.select([fd], [], [], 3)
+                raise AssertionError(f"Test terminal processes did not exit: {stuck}")
+            for fd, _ in poller.poll(max(1, int(remaining * 1000))):
+                pending.remove(fd)
+                poller.unregister(fd)
 
     def keys(self, *args):
         self.run("send-keys", "-t", "shelf", *args)
