@@ -311,7 +311,10 @@ def check_real_book(root, source, word, metrics=None, images=True):
         started = time.monotonic()
         term.run("resize-window", "-t", "shelf", "-x", "79", "-y", "23")
         term.wait("Resize while the selection is active",
-                  lambda f: len(f.splitlines()) == 23 and "VISUAL" in f and matched(f))
+                  # Zen's selection commands temporarily cover the bottom
+                  # progress row without changing the book's viewport.
+                  lambda f: len(f.splitlines()) == 23 and "VISUAL" in f
+                  and word.casefold() in f.casefold() and framed(f))
         measure("resize_narrow", started)
         assert copy_paragraph(term) == before, "Resize changed the selected source paragraph"
         term.keys("Escape")

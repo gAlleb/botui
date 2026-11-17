@@ -1,0 +1,320 @@
+[
+  {
+    "host": "omvoid-thinkpad-x13",
+    "kernel": "6.18.62_1",
+    "arch": "x86_64",
+    "binary_sha256": "6798b2a09a80b988973c96629224c62a364092b2c38bb9b2252cf5a24ffb5883",
+    "book_sha256": "281ad4f801f4932e20e3391a1bf3bc59bdc2016f203440c5796748c459c341f9",
+    "inline_images": true,
+    "geometry": "115x30 -> 79x23",
+    "steps": {
+      "first_open": {
+        "ms": 485.8,
+        "rss_kib": 115976,
+        "peak_rss_kib": 115976
+      },
+      "word_results": {
+        "ms": 109.4,
+        "rss_kib": 126160,
+        "peak_rss_kib": 126160
+      },
+      "open_result": {
+        "ms": 60.4,
+        "rss_kib": 132292,
+        "peak_rss_kib": 132292
+      },
+      "resume": {
+        "ms": 355.9,
+        "rss_kib": 115884,
+        "peak_rss_kib": 115884
+      },
+      "turn_right": {
+        "ms": 60.3,
+        "rss_kib": 118448,
+        "peak_rss_kib": 118448
+      },
+      "turn_left": {
+        "ms": 57.8,
+        "rss_kib": 124580,
+        "peak_rss_kib": 124580
+      },
+      "resize_narrow": {
+        "ms": 115.0,
+        "rss_kib": 143548,
+        "peak_rss_kib": 143548
+      },
+      "resize_wide": {
+        "ms": 60.6,
+        "rss_kib": 143548,
+        "peak_rss_kib": 143548
+      }
+    },
+    "repeat": 0,
+    "disk_cache_bytes": 197
+  },
+  {
+    "host": "omvoid-thinkpad-x13",
+    "kernel": "6.18.62_1",
+    "arch": "x86_64",
+    "binary_sha256": "6798b2a09a80b988973c96629224c62a364092b2c38bb9b2252cf5a24ffb5883",
+    "book_sha256": "281ad4f801f4932e20e3391a1bf3bc59bdc2016f203440c5796748c459c341f9",
+    "inline_images": false,
+    "geometry": "115x30 -> 79x23",
+    "steps": {
+      "first_open": {
+        "ms": 437.9,
+        "rss_kib": 108784,
+        "peak_rss_kib": 109008
+      },
+      "word_results": {
+        "ms": 108.1,
+        "rss_kib": 116680,
+        "peak_rss_kib": 116680
+      },
+      "open_result": {
+        "ms": 59.0,
+        "rss_kib": 116680,
+        "peak_rss_kib": 116680
+      },
+      "resume": {
+        "ms": 355.0,
+        "rss_kib": 108724,
+        "peak_rss_kib": 108792
+      },
+      "turn_right": {
+        "ms": 60.5,
+        "rss_kib": 108852,
+        "peak_rss_kib": 108852
+      },
+      "turn_left": {
+        "ms": 60.4,
+        "rss_kib": 108852,
+        "peak_rss_kib": 108852
+      },
+      "resize_narrow": {
+        "ms": 109.2,
+        "rss_kib": 122040,
+        "peak_rss_kib": 123024
+      },
+      "resize_wide": {
+        "ms": 60.5,
+        "rss_kib": 122040,
+        "peak_rss_kib": 123024
+      }
+    },
+    "repeat": 0,
+    "disk_cache_bytes": 197
+  },
+  {
+    "host": "omvoid-thinkpad-x13",
+    "kernel": "6.18.62_1",
+    "arch": "x86_64",
+    "binary_sha256": "6798b2a09a80b988973c96629224c62a364092b2c38bb9b2252cf5a24ffb5883",
+    "book_sha256": "281ad4f801f4932e20e3391a1bf3bc59bdc2016f203440c5796748c459c341f9",
+    "inline_images": false,
+    "geometry": "115x30 -> 79x23",
+    "steps": {
+      "first_open": {
+        "ms": 436.1,
+        "rss_kib": 108768,
+        "peak_rss_kib": 109196
+      },
+      "word_results": {
+        "ms": 109.7,
+        "rss_kib": 116672,
+        "peak_rss_kib": 116672
+      },
+      "open_result": {
+        "ms": 61.1,
+        "rss_kib": 116672,
+        "peak_rss_kib": 116672
+      },
+      "resume": {
+        "ms": 303.3,
+        "rss_kib": 108708,
+        "peak_rss_kib": 108708
+      },
+      "turn_right": {
+        "ms": 60.3,
+        "rss_kib": 108708,
+        "peak_rss_kib": 108708
+      },
+      "turn_left": {
+        "ms": 61.8,
+        "rss_kib": 108708,
+        "peak_rss_kib": 108708
+      },
+      "resize_narrow": {
+        "ms": 109.8,
+        "rss_kib": 121916,
+        "peak_rss_kib": 122900
+      },
+      "resize_wide": {
+        "ms": 62.9,
+        "rss_kib": 121916,
+        "peak_rss_kib": 122900
+      }
+    },
+    "repeat": 1,
+    "disk_cache_bytes": 197
+  },
+  {
+    "host": "omvoid-thinkpad-x13",
+    "kernel": "6.18.62_1",
+    "arch": "x86_64",
+    "binary_sha256": "6798b2a09a80b988973c96629224c62a364092b2c38bb9b2252cf5a24ffb5883",
+    "book_sha256": "281ad4f801f4932e20e3391a1bf3bc59bdc2016f203440c5796748c459c341f9",
+    "inline_images": true,
+    "geometry": "115x30 -> 79x23",
+    "steps": {
+      "first_open": {
+        "ms": 438.9,
+        "rss_kib": 111744,
+        "peak_rss_kib": 115224
+      },
+      "word_results": {
+        "ms": 110.5,
+        "rss_kib": 126240,
+        "peak_rss_kib": 126240
+      },
+      "open_result": {
+        "ms": 89.8,
+        "rss_kib": 132372,
+        "peak_rss_kib": 132372
+      },
+      "resume": {
+        "ms": 334.1,
+        "rss_kib": 111452,
+        "peak_rss_kib": 114548
+      },
+      "turn_right": {
+        "ms": 61.0,
+        "rss_kib": 118060,
+        "peak_rss_kib": 118060
+      },
+      "turn_left": {
+        "ms": 60.2,
+        "rss_kib": 124192,
+        "peak_rss_kib": 124192
+      },
+      "resize_narrow": {
+        "ms": 108.2,
+        "rss_kib": 143276,
+        "peak_rss_kib": 143276
+      },
+      "resize_wide": {
+        "ms": 62.3,
+        "rss_kib": 143276,
+        "peak_rss_kib": 143276
+      }
+    },
+    "repeat": 1,
+    "disk_cache_bytes": 197
+  },
+  {
+    "host": "omvoid-thinkpad-x13",
+    "kernel": "6.18.62_1",
+    "arch": "x86_64",
+    "binary_sha256": "6798b2a09a80b988973c96629224c62a364092b2c38bb9b2252cf5a24ffb5883",
+    "book_sha256": "281ad4f801f4932e20e3391a1bf3bc59bdc2016f203440c5796748c459c341f9",
+    "inline_images": true,
+    "geometry": "115x30 -> 79x23",
+    "steps": {
+      "first_open": {
+        "ms": 484.6,
+        "rss_kib": 111664,
+        "peak_rss_kib": 115280
+      },
+      "word_results": {
+        "ms": 103.2,
+        "rss_kib": 126140,
+        "peak_rss_kib": 126140
+      },
+      "open_result": {
+        "ms": 57.0,
+        "rss_kib": 132272,
+        "peak_rss_kib": 132272
+      },
+      "resume": {
+        "ms": 348.5,
+        "rss_kib": 111716,
+        "peak_rss_kib": 115156
+      },
+      "turn_right": {
+        "ms": 56.7,
+        "rss_kib": 118324,
+        "peak_rss_kib": 118324
+      },
+      "turn_left": {
+        "ms": 57.5,
+        "rss_kib": 124456,
+        "peak_rss_kib": 124456
+      },
+      "resize_narrow": {
+        "ms": 102.6,
+        "rss_kib": 143452,
+        "peak_rss_kib": 143452
+      },
+      "resize_wide": {
+        "ms": 61.5,
+        "rss_kib": 143452,
+        "peak_rss_kib": 143452
+      }
+    },
+    "repeat": 2,
+    "disk_cache_bytes": 197
+  },
+  {
+    "host": "omvoid-thinkpad-x13",
+    "kernel": "6.18.62_1",
+    "arch": "x86_64",
+    "binary_sha256": "6798b2a09a80b988973c96629224c62a364092b2c38bb9b2252cf5a24ffb5883",
+    "book_sha256": "281ad4f801f4932e20e3391a1bf3bc59bdc2016f203440c5796748c459c341f9",
+    "inline_images": false,
+    "geometry": "115x30 -> 79x23",
+    "steps": {
+      "first_open": {
+        "ms": 441.8,
+        "rss_kib": 108772,
+        "peak_rss_kib": 109172
+      },
+      "word_results": {
+        "ms": 111.1,
+        "rss_kib": 116668,
+        "peak_rss_kib": 116668
+      },
+      "open_result": {
+        "ms": 62.1,
+        "rss_kib": 116668,
+        "peak_rss_kib": 116668
+      },
+      "resume": {
+        "ms": 429.5,
+        "rss_kib": 108564,
+        "peak_rss_kib": 108616
+      },
+      "turn_right": {
+        "ms": 58.0,
+        "rss_kib": 108564,
+        "peak_rss_kib": 108616
+      },
+      "turn_left": {
+        "ms": 60.1,
+        "rss_kib": 108564,
+        "peak_rss_kib": 108616
+      },
+      "resize_narrow": {
+        "ms": 108.6,
+        "rss_kib": 121760,
+        "peak_rss_kib": 122744
+      },
+      "resize_wide": {
+        "ms": 61.1,
+        "rss_kib": 121760,
+        "peak_rss_kib": 122744
+      }
+    },
+    "repeat": 2,
+    "disk_cache_bytes": 197
+  }
+]

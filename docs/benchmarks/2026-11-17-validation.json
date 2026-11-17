@@ -1,0 +1,371 @@
+{
+  "binary": {
+    "bytes": 24034232,
+    "sha256": "bb0c569c3268902eb897e8ad9a79cba5e23e4cf55bd5a1959fd6957b67b01b0e"
+  },
+  "method": "Same private Kitty PDF 1→9→1, five cycles. Other isolated functional smokes ran concurrently; no build. Timing values are therefore excluded.",
+  "memory": [
+    {
+      "processes": [
+        {
+          "comm": "kitty",
+          "rss_kib": 235580,
+          "pss_kib": 160454
+        },
+        {
+          "comm": "kitten",
+          "rss_kib": 26668,
+          "pss_kib": 12961
+        },
+        {
+          "comm": "botui-current",
+          "rss_kib": 64708,
+          "pss_kib": 58906
+        },
+        {
+          "comm": "kitten",
+          "rss_kib": 25984,
+          "pss_kib": 12473
+        }
+      ],
+      "total_rss_kib": 352940,
+      "storage": {
+        "cache/botui": {
+          "files": 0,
+          "bytes": 0
+        },
+        "cache/bookokrat": {
+          "files": 0,
+          "bytes": 0
+        },
+        "state/botui": {
+          "files": 0,
+          "bytes": 0
+        },
+        "state/bookokrat": {
+          "files": 0,
+          "bytes": 0
+        },
+        "data/botui": {
+          "files": 0,
+          "bytes": 0
+        },
+        "data/bookokrat": {
+          "files": 0,
+          "bytes": 0
+        },
+        "home": {
+          "files": 0,
+          "bytes": 0
+        }
+      },
+      "step": "opened"
+    },
+    {
+      "processes": [
+        {
+          "comm": "kitty",
+          "rss_kib": 254660,
+          "pss_kib": 179320
+        },
+        {
+          "comm": "kitten",
+          "rss_kib": 26668,
+          "pss_kib": 12961
+        },
+        {
+          "comm": "botui-current",
+          "rss_kib": 165776,
+          "pss_kib": 160069
+        },
+        {
+          "comm": "kitten",
+          "rss_kib": 25984,
+          "pss_kib": 12472
+        }
+      ],
+      "total_rss_kib": 473088,
+      "storage": {
+        "cache/botui": {
+          "files": 0,
+          "bytes": 0
+        },
+        "cache/bookokrat": {
+          "files": 0,
+          "bytes": 0
+        },
+        "state/botui": {
+          "files": 2,
+          "bytes": 194
+        },
+        "state/bookokrat": {
+          "files": 0,
+          "bytes": 0
+        },
+        "data/botui": {
+          "files": 0,
+          "bytes": 0
+        },
+        "data/bookokrat": {
+          "files": 0,
+          "bytes": 0
+        },
+        "home": {
+          "files": 0,
+          "bytes": 0
+        }
+      },
+      "step": "cycle_1"
+    },
+    {
+      "processes": [
+        {
+          "comm": "kitty",
+          "rss_kib": 254660,
+          "pss_kib": 179801
+        },
+        {
+          "comm": "kitten",
+          "rss_kib": 26668,
+          "pss_kib": 12962
+        },
+        {
+          "comm": "botui-current",
+          "rss_kib": 167132,
+          "pss_kib": 165099
+        },
+        {
+          "comm": "kitten",
+          "rss_kib": 25984,
+          "pss_kib": 12473
+        }
+      ],
+      "total_rss_kib": 474444,
+      "storage": {
+        "cache/botui": {
+          "files": 0,
+          "bytes": 0
+        },
+        "cache/bookokrat": {
+          "files": 0,
+          "bytes": 0
+        },
+        "state/botui": {
+          "files": 2,
+          "bytes": 194
+        },
+        "state/bookokrat": {
+          "files": 0,
+          "bytes": 0
+        },
+        "data/botui": {
+          "files": 0,
+          "bytes": 0
+        },
+        "data/bookokrat": {
+          "files": 0,
+          "bytes": 0
+        },
+        "home": {
+          "files": 0,
+          "bytes": 0
+        }
+      },
+      "step": "cycle_2"
+    },
+    {
+      "processes": [
+        {
+          "comm": "kitty",
+          "rss_kib": 254660,
+          "pss_kib": 179662
+        },
+        {
+          "comm": "kitten",
+          "rss_kib": 26668,
+          "pss_kib": 12960
+        },
+        {
+          "comm": "botui-current",
+          "rss_kib": 170780,
+          "pss_kib": 168745
+        },
+        {
+          "comm": "kitten",
+          "rss_kib": 25984,
+          "pss_kib": 12471
+        }
+      ],
+      "total_rss_kib": 478092,
+      "storage": {
+        "cache/botui": {
+          "files": 0,
+          "bytes": 0
+        },
+        "cache/bookokrat": {
+          "files": 0,
+          "bytes": 0
+        },
+        "state/botui": {
+          "files": 2,
+          "bytes": 194
+        },
+        "state/bookokrat": {
+          "files": 0,
+          "bytes": 0
+        },
+        "data/botui": {
+          "files": 0,
+          "bytes": 0
+        },
+        "data/bookokrat": {
+          "files": 0,
+          "bytes": 0
+        },
+        "home": {
+          "files": 0,
+          "bytes": 0
+        }
+      },
+      "step": "cycle_3"
+    },
+    {
+      "processes": [
+        {
+          "comm": "kitty",
+          "rss_kib": 254660,
+          "pss_kib": 179801
+        },
+        {
+          "comm": "kitten",
+          "rss_kib": 26668,
+          "pss_kib": 12962
+        },
+        {
+          "comm": "botui-current",
+          "rss_kib": 170780,
+          "pss_kib": 168747
+        },
+        {
+          "comm": "kitten",
+          "rss_kib": 25984,
+          "pss_kib": 12473
+        }
+      ],
+      "total_rss_kib": 478092,
+      "storage": {
+        "cache/botui": {
+          "files": 0,
+          "bytes": 0
+        },
+        "cache/bookokrat": {
+          "files": 0,
+          "bytes": 0
+        },
+        "state/botui": {
+          "files": 2,
+          "bytes": 194
+        },
+        "state/bookokrat": {
+          "files": 0,
+          "bytes": 0
+        },
+        "data/botui": {
+          "files": 0,
+          "bytes": 0
+        },
+        "data/bookokrat": {
+          "files": 0,
+          "bytes": 0
+        },
+        "home": {
+          "files": 0,
+          "bytes": 0
+        }
+      },
+      "step": "cycle_4"
+    },
+    {
+      "processes": [
+        {
+          "comm": "kitty",
+          "rss_kib": 254660,
+          "pss_kib": 179810
+        },
+        {
+          "comm": "kitten",
+          "rss_kib": 26668,
+          "pss_kib": 12962
+        },
+        {
+          "comm": "botui-current",
+          "rss_kib": 170780,
+          "pss_kib": 168747
+        },
+        {
+          "comm": "kitten",
+          "rss_kib": 25984,
+          "pss_kib": 12473
+        }
+      ],
+      "total_rss_kib": 478092,
+      "storage": {
+        "cache/botui": {
+          "files": 0,
+          "bytes": 0
+        },
+        "cache/bookokrat": {
+          "files": 0,
+          "bytes": 0
+        },
+        "state/botui": {
+          "files": 2,
+          "bytes": 194
+        },
+        "state/bookokrat": {
+          "files": 0,
+          "bytes": 0
+        },
+        "data/botui": {
+          "files": 0,
+          "bytes": 0
+        },
+        "data/bookokrat": {
+          "files": 0,
+          "bytes": 0
+        },
+        "home": {
+          "files": 0,
+          "bytes": 0
+        }
+      },
+      "step": "cycle_5"
+    }
+  ],
+  "pdf_roundtrip": {
+    "pixel_roundtrip_equal": true,
+    "diff_bbox": null
+  },
+  "epub_footnote_roundtrip": {
+    "image_bounds": [
+      24,
+      166,
+      772,
+      665
+    ],
+    "popup_unoccluded_bounds": [
+      24,
+      166,
+      580,
+      665
+    ],
+    "diff_bbox": {
+      "after_whole_image": null,
+      "after_whole_viewport": null,
+      "roundtrip_whole_image": null,
+      "roundtrip_whole_viewport": null,
+      "popup_unoccluded_image": null
+    },
+    "forward_changed": true
+  }
+}

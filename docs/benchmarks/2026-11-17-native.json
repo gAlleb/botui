@@ -1,0 +1,2718 @@
+{
+  "baseline": "04dfb77944fd5b3bba6391fe261cd7ae3c4885c8",
+  "bookokrat": "v0.3.14 (03600927470ce674ae1162a7269de840c7e044d5)",
+  "native": [
+    {
+      "app": "baseline",
+      "kind": "amber",
+      "repeat": 0,
+      "first_ready_ms": 854.3,
+      "rows": 43,
+      "columns": 145,
+      "sample": {
+        "processes": [
+          {
+            "comm": "kitty",
+            "rss_kib": 214464,
+            "pss_kib": 142974
+          },
+          {
+            "comm": "kitten",
+            "rss_kib": 25948,
+            "pss_kib": 16204
+          },
+          {
+            "comm": "botui-baseline",
+            "rss_kib": 123188,
+            "pss_kib": 121110
+          },
+          {
+            "comm": "kitten",
+            "rss_kib": 26320,
+            "pss_kib": 16565
+          }
+        ],
+        "total_rss_kib": 389920,
+        "storage": {
+          "cache/botui": {
+            "files": 1,
+            "bytes": 203
+          },
+          "cache/bookokrat": {
+            "files": 0,
+            "bytes": 0
+          },
+          "state/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "state/bookokrat": {
+            "files": 0,
+            "bytes": 0
+          },
+          "data/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "data/bookokrat": {
+            "files": 0,
+            "bytes": 0
+          },
+          "home": {
+            "files": 0,
+            "bytes": 0
+          }
+        }
+      }
+    },
+    {
+      "app": "bookokrat",
+      "kind": "amber",
+      "repeat": 0,
+      "first_ready_ms": 644.4,
+      "rows": 43,
+      "columns": 145,
+      "sample": {
+        "processes": [
+          {
+            "comm": "kitty",
+            "rss_kib": 227868,
+            "pss_kib": 156271
+          },
+          {
+            "comm": "kitten",
+            "rss_kib": 26368,
+            "pss_kib": 16594
+          },
+          {
+            "comm": "bookokrat",
+            "rss_kib": 16228,
+            "pss_kib": 13576
+          },
+          {
+            "comm": "kitten",
+            "rss_kib": 26252,
+            "pss_kib": 16468
+          }
+        ],
+        "total_rss_kib": 296716,
+        "storage": {
+          "cache/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "cache/bookokrat": {
+            "files": 145,
+            "bytes": 54308239
+          },
+          "state/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "state/bookokrat": {
+            "files": 1,
+            "bytes": 24661
+          },
+          "data/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "data/bookokrat": {
+            "files": 1,
+            "bytes": 892
+          },
+          "home": {
+            "files": 0,
+            "bytes": 0
+          }
+        }
+      }
+    },
+    {
+      "app": "baseline",
+      "kind": "ayurveda",
+      "repeat": 0,
+      "first_ready_ms": 657.1,
+      "rows": 43,
+      "columns": 145,
+      "sample": {
+        "processes": [
+          {
+            "comm": "kitty",
+            "rss_kib": 215020,
+            "pss_kib": 143515
+          },
+          {
+            "comm": "kitten",
+            "rss_kib": 26312,
+            "pss_kib": 16596
+          },
+          {
+            "comm": "botui-baseline",
+            "rss_kib": 88860,
+            "pss_kib": 86825
+          },
+          {
+            "comm": "kitten",
+            "rss_kib": 25860,
+            "pss_kib": 16150
+          }
+        ],
+        "total_rss_kib": 356052,
+        "storage": {
+          "cache/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "cache/bookokrat": {
+            "files": 0,
+            "bytes": 0
+          },
+          "state/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "state/bookokrat": {
+            "files": 0,
+            "bytes": 0
+          },
+          "data/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "data/bookokrat": {
+            "files": 0,
+            "bytes": 0
+          },
+          "home": {
+            "files": 0,
+            "bytes": 0
+          }
+        }
+      }
+    },
+    {
+      "app": "bookokrat",
+      "kind": "ayurveda",
+      "repeat": 0,
+      "first_ready_ms": 590.3,
+      "rows": 43,
+      "columns": 145,
+      "sample": {
+        "processes": [
+          {
+            "comm": "kitty",
+            "rss_kib": 228152,
+            "pss_kib": 156637
+          },
+          {
+            "comm": "kitten",
+            "rss_kib": 26628,
+            "pss_kib": 16847
+          },
+          {
+            "comm": "bookokrat",
+            "rss_kib": 16096,
+            "pss_kib": 13609
+          },
+          {
+            "comm": "kitten",
+            "rss_kib": 26340,
+            "pss_kib": 16557
+          }
+        ],
+        "total_rss_kib": 297216,
+        "storage": {
+          "cache/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "cache/bookokrat": {
+            "files": 2,
+            "bytes": 383666
+          },
+          "state/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "state/bookokrat": {
+            "files": 1,
+            "bytes": 3183
+          },
+          "data/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "data/bookokrat": {
+            "files": 1,
+            "bytes": 555
+          },
+          "home": {
+            "files": 0,
+            "bytes": 0
+          }
+        }
+      }
+    },
+    {
+      "app": "baseline",
+      "kind": "lessons",
+      "repeat": 0,
+      "first_ready_ms": 1623.6,
+      "rows": 43,
+      "columns": 148,
+      "sample": {
+        "processes": [
+          {
+            "comm": "kitty",
+            "rss_kib": 235484,
+            "pss_kib": 163948
+          },
+          {
+            "comm": "kitten",
+            "rss_kib": 26036,
+            "pss_kib": 16267
+          },
+          {
+            "comm": "botui-baseline",
+            "rss_kib": 63128,
+            "pss_kib": 61104
+          },
+          {
+            "comm": "kitten",
+            "rss_kib": 26488,
+            "pss_kib": 16656
+          }
+        ],
+        "total_rss_kib": 351136,
+        "storage": {
+          "cache/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "cache/bookokrat": {
+            "files": 0,
+            "bytes": 0
+          },
+          "state/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "state/bookokrat": {
+            "files": 0,
+            "bytes": 0
+          },
+          "data/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "data/bookokrat": {
+            "files": 0,
+            "bytes": 0
+          },
+          "home": {
+            "files": 0,
+            "bytes": 0
+          }
+        }
+      }
+    },
+    {
+      "app": "bookokrat",
+      "kind": "lessons",
+      "repeat": 0,
+      "first_ready_ms": 3154.6,
+      "rows": 43,
+      "columns": 145,
+      "sample": {
+        "processes": [
+          {
+            "comm": "kitty",
+            "rss_kib": 244776,
+            "pss_kib": 173236
+          },
+          {
+            "comm": "kitten",
+            "rss_kib": 26304,
+            "pss_kib": 16503
+          },
+          {
+            "comm": "bookokrat",
+            "rss_kib": 104444,
+            "pss_kib": 101399
+          },
+          {
+            "comm": "kitten",
+            "rss_kib": 26416,
+            "pss_kib": 16651
+          }
+        ],
+        "total_rss_kib": 401940,
+        "storage": {
+          "cache/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "cache/bookokrat": {
+            "files": 0,
+            "bytes": 0
+          },
+          "state/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "state/bookokrat": {
+            "files": 1,
+            "bytes": 3402
+          },
+          "data/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "data/bookokrat": {
+            "files": 1,
+            "bytes": 682
+          },
+          "home": {
+            "files": 0,
+            "bytes": 0
+          }
+        }
+      }
+    },
+    {
+      "app": "bookokrat",
+      "kind": "amber",
+      "repeat": 1,
+      "first_ready_ms": 635.7,
+      "rows": 43,
+      "columns": 145,
+      "sample": {
+        "processes": [
+          {
+            "comm": "kitty",
+            "rss_kib": 227240,
+            "pss_kib": 155233
+          },
+          {
+            "comm": "kitten",
+            "rss_kib": 26276,
+            "pss_kib": 16608
+          },
+          {
+            "comm": "bookokrat",
+            "rss_kib": 16088,
+            "pss_kib": 13569
+          },
+          {
+            "comm": "kitten",
+            "rss_kib": 26364,
+            "pss_kib": 16677
+          }
+        ],
+        "total_rss_kib": 295968,
+        "storage": {
+          "cache/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "cache/bookokrat": {
+            "files": 145,
+            "bytes": 54308239
+          },
+          "state/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "state/bookokrat": {
+            "files": 1,
+            "bytes": 24661
+          },
+          "data/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "data/bookokrat": {
+            "files": 1,
+            "bytes": 892
+          },
+          "home": {
+            "files": 0,
+            "bytes": 0
+          }
+        }
+      }
+    },
+    {
+      "app": "baseline",
+      "kind": "amber",
+      "repeat": 1,
+      "first_ready_ms": 862.2,
+      "rows": 43,
+      "columns": 145,
+      "sample": {
+        "processes": [
+          {
+            "comm": "kitty",
+            "rss_kib": 214616,
+            "pss_kib": 142026
+          },
+          {
+            "comm": "kitten",
+            "rss_kib": 26132,
+            "pss_kib": 16282
+          },
+          {
+            "comm": "botui-baseline",
+            "rss_kib": 123184,
+            "pss_kib": 121111
+          },
+          {
+            "comm": "kitten",
+            "rss_kib": 26452,
+            "pss_kib": 16568
+          }
+        ],
+        "total_rss_kib": 390384,
+        "storage": {
+          "cache/botui": {
+            "files": 1,
+            "bytes": 203
+          },
+          "cache/bookokrat": {
+            "files": 0,
+            "bytes": 0
+          },
+          "state/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "state/bookokrat": {
+            "files": 0,
+            "bytes": 0
+          },
+          "data/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "data/bookokrat": {
+            "files": 0,
+            "bytes": 0
+          },
+          "home": {
+            "files": 0,
+            "bytes": 0
+          }
+        }
+      }
+    },
+    {
+      "app": "bookokrat",
+      "kind": "ayurveda",
+      "repeat": 1,
+      "first_ready_ms": 610.9,
+      "rows": 43,
+      "columns": 145,
+      "sample": {
+        "processes": [
+          {
+            "comm": "kitty",
+            "rss_kib": 228156,
+            "pss_kib": 155515
+          },
+          {
+            "comm": "kitten",
+            "rss_kib": 26024,
+            "pss_kib": 16273
+          },
+          {
+            "comm": "bookokrat",
+            "rss_kib": 16156,
+            "pss_kib": 13587
+          },
+          {
+            "comm": "kitten",
+            "rss_kib": 26196,
+            "pss_kib": 16349
+          }
+        ],
+        "total_rss_kib": 296532,
+        "storage": {
+          "cache/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "cache/bookokrat": {
+            "files": 2,
+            "bytes": 383666
+          },
+          "state/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "state/bookokrat": {
+            "files": 1,
+            "bytes": 3183
+          },
+          "data/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "data/bookokrat": {
+            "files": 1,
+            "bytes": 555
+          },
+          "home": {
+            "files": 0,
+            "bytes": 0
+          }
+        }
+      }
+    },
+    {
+      "app": "baseline",
+      "kind": "ayurveda",
+      "repeat": 1,
+      "first_ready_ms": 653.0,
+      "rows": 43,
+      "columns": 145,
+      "sample": {
+        "processes": [
+          {
+            "comm": "kitty",
+            "rss_kib": 214864,
+            "pss_kib": 142562
+          },
+          {
+            "comm": "kitten",
+            "rss_kib": 26128,
+            "pss_kib": 16485
+          },
+          {
+            "comm": "botui-baseline",
+            "rss_kib": 88356,
+            "pss_kib": 86492
+          },
+          {
+            "comm": "kitten",
+            "rss_kib": 26244,
+            "pss_kib": 16527
+          }
+        ],
+        "total_rss_kib": 355592,
+        "storage": {
+          "cache/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "cache/bookokrat": {
+            "files": 0,
+            "bytes": 0
+          },
+          "state/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "state/bookokrat": {
+            "files": 0,
+            "bytes": 0
+          },
+          "data/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "data/bookokrat": {
+            "files": 0,
+            "bytes": 0
+          },
+          "home": {
+            "files": 0,
+            "bytes": 0
+          }
+        }
+      }
+    },
+    {
+      "app": "bookokrat",
+      "kind": "lessons",
+      "repeat": 1,
+      "first_ready_ms": 3171.9,
+      "rows": 43,
+      "columns": 145,
+      "sample": {
+        "processes": [
+          {
+            "comm": "kitty",
+            "rss_kib": 245120,
+            "pss_kib": 173622
+          },
+          {
+            "comm": "kitten",
+            "rss_kib": 26112,
+            "pss_kib": 16425
+          },
+          {
+            "comm": "bookokrat",
+            "rss_kib": 104220,
+            "pss_kib": 101177
+          },
+          {
+            "comm": "kitten",
+            "rss_kib": 26328,
+            "pss_kib": 16463
+          }
+        ],
+        "total_rss_kib": 401780,
+        "storage": {
+          "cache/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "cache/bookokrat": {
+            "files": 0,
+            "bytes": 0
+          },
+          "state/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "state/bookokrat": {
+            "files": 1,
+            "bytes": 3792
+          },
+          "data/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "data/bookokrat": {
+            "files": 1,
+            "bytes": 682
+          },
+          "home": {
+            "files": 0,
+            "bytes": 0
+          }
+        }
+      }
+    },
+    {
+      "app": "baseline",
+      "kind": "lessons",
+      "repeat": 1,
+      "first_ready_ms": 1490.9,
+      "rows": 43,
+      "columns": 148,
+      "sample": {
+        "processes": [
+          {
+            "comm": "kitty",
+            "rss_kib": 216636,
+            "pss_kib": 145083
+          },
+          {
+            "comm": "kitten",
+            "rss_kib": 26032,
+            "pss_kib": 16234
+          },
+          {
+            "comm": "botui-baseline",
+            "rss_kib": 57604,
+            "pss_kib": 55496
+          },
+          {
+            "comm": "kitten",
+            "rss_kib": 25988,
+            "pss_kib": 16224
+          }
+        ],
+        "total_rss_kib": 326260,
+        "storage": {
+          "cache/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "cache/bookokrat": {
+            "files": 0,
+            "bytes": 0
+          },
+          "state/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "state/bookokrat": {
+            "files": 0,
+            "bytes": 0
+          },
+          "data/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "data/bookokrat": {
+            "files": 0,
+            "bytes": 0
+          },
+          "home": {
+            "files": 0,
+            "bytes": 0
+          }
+        }
+      }
+    },
+    {
+      "app": "baseline",
+      "kind": "amber",
+      "repeat": 2,
+      "first_ready_ms": 825.5,
+      "rows": 43,
+      "columns": 145,
+      "sample": {
+        "processes": [
+          {
+            "comm": "kitty",
+            "rss_kib": 214496,
+            "pss_kib": 143085
+          },
+          {
+            "comm": "kitten",
+            "rss_kib": 26280,
+            "pss_kib": 16475
+          },
+          {
+            "comm": "botui-baseline",
+            "rss_kib": 123428,
+            "pss_kib": 121565
+          },
+          {
+            "comm": "kitten",
+            "rss_kib": 26144,
+            "pss_kib": 16377
+          }
+        ],
+        "total_rss_kib": 390348,
+        "storage": {
+          "cache/botui": {
+            "files": 1,
+            "bytes": 203
+          },
+          "cache/bookokrat": {
+            "files": 0,
+            "bytes": 0
+          },
+          "state/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "state/bookokrat": {
+            "files": 0,
+            "bytes": 0
+          },
+          "data/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "data/bookokrat": {
+            "files": 0,
+            "bytes": 0
+          },
+          "home": {
+            "files": 0,
+            "bytes": 0
+          }
+        }
+      }
+    },
+    {
+      "app": "bookokrat",
+      "kind": "amber",
+      "repeat": 2,
+      "first_ready_ms": 647.2,
+      "rows": 43,
+      "columns": 145,
+      "sample": {
+        "processes": [
+          {
+            "comm": "kitty",
+            "rss_kib": 227240,
+            "pss_kib": 155687
+          },
+          {
+            "comm": "kitten",
+            "rss_kib": 25976,
+            "pss_kib": 16304
+          },
+          {
+            "comm": "bookokrat",
+            "rss_kib": 15940,
+            "pss_kib": 13320
+          },
+          {
+            "comm": "kitten",
+            "rss_kib": 26228,
+            "pss_kib": 16541
+          }
+        ],
+        "total_rss_kib": 295384,
+        "storage": {
+          "cache/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "cache/bookokrat": {
+            "files": 145,
+            "bytes": 54308239
+          },
+          "state/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "state/bookokrat": {
+            "files": 1,
+            "bytes": 24661
+          },
+          "data/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "data/bookokrat": {
+            "files": 1,
+            "bytes": 892
+          },
+          "home": {
+            "files": 0,
+            "bytes": 0
+          }
+        }
+      }
+    },
+    {
+      "app": "baseline",
+      "kind": "ayurveda",
+      "repeat": 2,
+      "first_ready_ms": 637.8,
+      "rows": 43,
+      "columns": 145,
+      "sample": {
+        "processes": [
+          {
+            "comm": "kitty",
+            "rss_kib": 215260,
+            "pss_kib": 143725
+          },
+          {
+            "comm": "kitten",
+            "rss_kib": 26544,
+            "pss_kib": 16772
+          },
+          {
+            "comm": "botui-baseline",
+            "rss_kib": 88548,
+            "pss_kib": 86516
+          },
+          {
+            "comm": "kitten",
+            "rss_kib": 26120,
+            "pss_kib": 16344
+          }
+        ],
+        "total_rss_kib": 356472,
+        "storage": {
+          "cache/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "cache/bookokrat": {
+            "files": 0,
+            "bytes": 0
+          },
+          "state/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "state/bookokrat": {
+            "files": 0,
+            "bytes": 0
+          },
+          "data/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "data/bookokrat": {
+            "files": 0,
+            "bytes": 0
+          },
+          "home": {
+            "files": 0,
+            "bytes": 0
+          }
+        }
+      }
+    },
+    {
+      "app": "bookokrat",
+      "kind": "ayurveda",
+      "repeat": 2,
+      "first_ready_ms": 599.4,
+      "rows": 43,
+      "columns": 145,
+      "sample": {
+        "processes": [
+          {
+            "comm": "kitty",
+            "rss_kib": 228068,
+            "pss_kib": 156512
+          },
+          {
+            "comm": "kitten",
+            "rss_kib": 26696,
+            "pss_kib": 17024
+          },
+          {
+            "comm": "bookokrat",
+            "rss_kib": 16136,
+            "pss_kib": 13524
+          },
+          {
+            "comm": "kitten",
+            "rss_kib": 25836,
+            "pss_kib": 16058
+          }
+        ],
+        "total_rss_kib": 296736,
+        "storage": {
+          "cache/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "cache/bookokrat": {
+            "files": 2,
+            "bytes": 383666
+          },
+          "state/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "state/bookokrat": {
+            "files": 1,
+            "bytes": 3183
+          },
+          "data/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "data/bookokrat": {
+            "files": 1,
+            "bytes": 555
+          },
+          "home": {
+            "files": 0,
+            "bytes": 0
+          }
+        }
+      }
+    },
+    {
+      "app": "baseline",
+      "kind": "lessons",
+      "repeat": 2,
+      "first_ready_ms": 1475.3,
+      "rows": 43,
+      "columns": 148,
+      "sample": {
+        "processes": [
+          {
+            "comm": "kitty",
+            "rss_kib": 234828,
+            "pss_kib": 163306
+          },
+          {
+            "comm": "kitten",
+            "rss_kib": 26500,
+            "pss_kib": 16705
+          },
+          {
+            "comm": "botui-baseline",
+            "rss_kib": 57532,
+            "pss_kib": 55508
+          },
+          {
+            "comm": "kitten",
+            "rss_kib": 26420,
+            "pss_kib": 16578
+          }
+        ],
+        "total_rss_kib": 345280,
+        "storage": {
+          "cache/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "cache/bookokrat": {
+            "files": 0,
+            "bytes": 0
+          },
+          "state/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "state/bookokrat": {
+            "files": 0,
+            "bytes": 0
+          },
+          "data/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "data/bookokrat": {
+            "files": 0,
+            "bytes": 0
+          },
+          "home": {
+            "files": 0,
+            "bytes": 0
+          }
+        }
+      }
+    },
+    {
+      "app": "bookokrat",
+      "kind": "lessons",
+      "repeat": 2,
+      "first_ready_ms": 3159.8,
+      "rows": 43,
+      "columns": 145,
+      "sample": {
+        "processes": [
+          {
+            "comm": "kitty",
+            "rss_kib": 244716,
+            "pss_kib": 173221
+          },
+          {
+            "comm": "kitten",
+            "rss_kib": 26460,
+            "pss_kib": 16659
+          },
+          {
+            "comm": "bookokrat",
+            "rss_kib": 86036,
+            "pss_kib": 83070
+          },
+          {
+            "comm": "kitten",
+            "rss_kib": 26372,
+            "pss_kib": 16556
+          }
+        ],
+        "total_rss_kib": 383584,
+        "storage": {
+          "cache/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "cache/bookokrat": {
+            "files": 0,
+            "bytes": 0
+          },
+          "state/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "state/bookokrat": {
+            "files": 1,
+            "bytes": 3792
+          },
+          "data/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "data/bookokrat": {
+            "files": 1,
+            "bytes": 682
+          },
+          "home": {
+            "files": 0,
+            "bytes": 0
+          }
+        }
+      }
+    }
+  ],
+  "growth": {
+    "baseline-amber": [
+      {
+        "processes": [
+          {
+            "comm": "kitty",
+            "rss_kib": 214560,
+            "pss_kib": 140120
+          },
+          {
+            "comm": "kitten",
+            "rss_kib": 26564,
+            "pss_kib": 12784
+          },
+          {
+            "comm": "botui-baseline",
+            "rss_kib": 123232,
+            "pss_kib": 121296
+          },
+          {
+            "comm": "kitten",
+            "rss_kib": 26164,
+            "pss_kib": 12402
+          }
+        ],
+        "total_rss_kib": 390520,
+        "storage": {
+          "cache/botui": {
+            "files": 1,
+            "bytes": 203
+          },
+          "cache/bookokrat": {
+            "files": 0,
+            "bytes": 0
+          },
+          "state/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "state/bookokrat": {
+            "files": 0,
+            "bytes": 0
+          },
+          "data/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "data/bookokrat": {
+            "files": 0,
+            "bytes": 0
+          },
+          "home": {
+            "files": 0,
+            "bytes": 0
+          }
+        },
+        "step": "opened"
+      },
+      {
+        "processes": [
+          {
+            "comm": "kitty",
+            "rss_kib": 214560,
+            "pss_kib": 140119
+          },
+          {
+            "comm": "kitten",
+            "rss_kib": 26564,
+            "pss_kib": 11949
+          },
+          {
+            "comm": "botui-baseline",
+            "rss_kib": 130988,
+            "pss_kib": 129052
+          },
+          {
+            "comm": "kitten",
+            "rss_kib": 26164,
+            "pss_kib": 11605
+          }
+        ],
+        "total_rss_kib": 398276,
+        "storage": {
+          "cache/botui": {
+            "files": 1,
+            "bytes": 203
+          },
+          "cache/bookokrat": {
+            "files": 0,
+            "bytes": 0
+          },
+          "state/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "state/bookokrat": {
+            "files": 0,
+            "bytes": 0
+          },
+          "data/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "data/bookokrat": {
+            "files": 0,
+            "bytes": 0
+          },
+          "home": {
+            "files": 0,
+            "bytes": 0
+          }
+        },
+        "step": "global_search"
+      },
+      {
+        "processes": [
+          {
+            "comm": "kitty",
+            "rss_kib": 214848,
+            "pss_kib": 140407
+          },
+          {
+            "comm": "kitten",
+            "rss_kib": 26564,
+            "pss_kib": 12783
+          },
+          {
+            "comm": "botui-baseline",
+            "rss_kib": 138388,
+            "pss_kib": 136452
+          },
+          {
+            "comm": "kitten",
+            "rss_kib": 26164,
+            "pss_kib": 12402
+          }
+        ],
+        "total_rss_kib": 405964,
+        "storage": {
+          "cache/botui": {
+            "files": 1,
+            "bytes": 203
+          },
+          "cache/bookokrat": {
+            "files": 0,
+            "bytes": 0
+          },
+          "state/botui": {
+            "files": 2,
+            "bytes": 198
+          },
+          "state/bookokrat": {
+            "files": 0,
+            "bytes": 0
+          },
+          "data/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "data/bookokrat": {
+            "files": 0,
+            "bytes": 0
+          },
+          "home": {
+            "files": 0,
+            "bytes": 0
+          }
+        },
+        "step": "open_result"
+      },
+      {
+        "processes": [
+          {
+            "comm": "kitty",
+            "rss_kib": 235096,
+            "pss_kib": 160601
+          },
+          {
+            "comm": "kitten",
+            "rss_kib": 26564,
+            "pss_kib": 12784
+          },
+          {
+            "comm": "botui-baseline",
+            "rss_kib": 139400,
+            "pss_kib": 137464
+          },
+          {
+            "comm": "kitten",
+            "rss_kib": 26164,
+            "pss_kib": 12402
+          }
+        ],
+        "total_rss_kib": 427224,
+        "storage": {
+          "cache/botui": {
+            "files": 1,
+            "bytes": 203
+          },
+          "cache/bookokrat": {
+            "files": 0,
+            "bytes": 0
+          },
+          "state/botui": {
+            "files": 2,
+            "bytes": 197
+          },
+          "state/bookokrat": {
+            "files": 0,
+            "bytes": 0
+          },
+          "data/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "data/bookokrat": {
+            "files": 0,
+            "bytes": 0
+          },
+          "home": {
+            "files": 0,
+            "bytes": 0
+          }
+        },
+        "step": "cycle_1"
+      },
+      {
+        "processes": [
+          {
+            "comm": "kitty",
+            "rss_kib": 235096,
+            "pss_kib": 160601
+          },
+          {
+            "comm": "kitten",
+            "rss_kib": 26564,
+            "pss_kib": 12784
+          },
+          {
+            "comm": "botui-baseline",
+            "rss_kib": 139400,
+            "pss_kib": 137464
+          },
+          {
+            "comm": "kitten",
+            "rss_kib": 26164,
+            "pss_kib": 12402
+          }
+        ],
+        "total_rss_kib": 427224,
+        "storage": {
+          "cache/botui": {
+            "files": 1,
+            "bytes": 203
+          },
+          "cache/bookokrat": {
+            "files": 0,
+            "bytes": 0
+          },
+          "state/botui": {
+            "files": 2,
+            "bytes": 197
+          },
+          "state/bookokrat": {
+            "files": 0,
+            "bytes": 0
+          },
+          "data/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "data/bookokrat": {
+            "files": 0,
+            "bytes": 0
+          },
+          "home": {
+            "files": 0,
+            "bytes": 0
+          }
+        },
+        "step": "cycle_2"
+      },
+      {
+        "processes": [
+          {
+            "comm": "kitty",
+            "rss_kib": 235096,
+            "pss_kib": 160596
+          },
+          {
+            "comm": "kitten",
+            "rss_kib": 26564,
+            "pss_kib": 12783
+          },
+          {
+            "comm": "botui-baseline",
+            "rss_kib": 139400,
+            "pss_kib": 137464
+          },
+          {
+            "comm": "kitten",
+            "rss_kib": 26164,
+            "pss_kib": 12402
+          }
+        ],
+        "total_rss_kib": 427224,
+        "storage": {
+          "cache/botui": {
+            "files": 1,
+            "bytes": 203
+          },
+          "cache/bookokrat": {
+            "files": 0,
+            "bytes": 0
+          },
+          "state/botui": {
+            "files": 2,
+            "bytes": 197
+          },
+          "state/bookokrat": {
+            "files": 0,
+            "bytes": 0
+          },
+          "data/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "data/bookokrat": {
+            "files": 0,
+            "bytes": 0
+          },
+          "home": {
+            "files": 0,
+            "bytes": 0
+          }
+        },
+        "step": "cycle_3"
+      },
+      {
+        "processes": [
+          {
+            "comm": "kitty",
+            "rss_kib": 235096,
+            "pss_kib": 160168
+          },
+          {
+            "comm": "kitten",
+            "rss_kib": 26564,
+            "pss_kib": 12783
+          },
+          {
+            "comm": "botui-baseline",
+            "rss_kib": 139400,
+            "pss_kib": 137463
+          },
+          {
+            "comm": "kitten",
+            "rss_kib": 26164,
+            "pss_kib": 12402
+          }
+        ],
+        "total_rss_kib": 427224,
+        "storage": {
+          "cache/botui": {
+            "files": 1,
+            "bytes": 203
+          },
+          "cache/bookokrat": {
+            "files": 0,
+            "bytes": 0
+          },
+          "state/botui": {
+            "files": 2,
+            "bytes": 197
+          },
+          "state/bookokrat": {
+            "files": 0,
+            "bytes": 0
+          },
+          "data/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "data/bookokrat": {
+            "files": 0,
+            "bytes": 0
+          },
+          "home": {
+            "files": 0,
+            "bytes": 0
+          }
+        },
+        "step": "cycle_4"
+      },
+      {
+        "processes": [
+          {
+            "comm": "kitty",
+            "rss_kib": 235096,
+            "pss_kib": 160168
+          },
+          {
+            "comm": "kitten",
+            "rss_kib": 26564,
+            "pss_kib": 12783
+          },
+          {
+            "comm": "botui-baseline",
+            "rss_kib": 139400,
+            "pss_kib": 137463
+          },
+          {
+            "comm": "kitten",
+            "rss_kib": 26164,
+            "pss_kib": 12402
+          }
+        ],
+        "total_rss_kib": 427224,
+        "storage": {
+          "cache/botui": {
+            "files": 1,
+            "bytes": 203
+          },
+          "cache/bookokrat": {
+            "files": 0,
+            "bytes": 0
+          },
+          "state/botui": {
+            "files": 2,
+            "bytes": 197
+          },
+          "state/bookokrat": {
+            "files": 0,
+            "bytes": 0
+          },
+          "data/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "data/bookokrat": {
+            "files": 0,
+            "bytes": 0
+          },
+          "home": {
+            "files": 0,
+            "bytes": 0
+          }
+        },
+        "step": "cycle_5"
+      }
+    ],
+    "baseline-lessons": [
+      {
+        "processes": [
+          {
+            "comm": "kitty",
+            "rss_kib": 235012,
+            "pss_kib": 162743
+          },
+          {
+            "comm": "kitten",
+            "rss_kib": 26140,
+            "pss_kib": 16325
+          },
+          {
+            "comm": "botui-baseline",
+            "rss_kib": 63060,
+            "pss_kib": 61027
+          },
+          {
+            "comm": "kitten",
+            "rss_kib": 26220,
+            "pss_kib": 16447
+          }
+        ],
+        "total_rss_kib": 350432,
+        "storage": {
+          "cache/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "cache/bookokrat": {
+            "files": 0,
+            "bytes": 0
+          },
+          "state/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "state/bookokrat": {
+            "files": 0,
+            "bytes": 0
+          },
+          "data/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "data/bookokrat": {
+            "files": 0,
+            "bytes": 0
+          },
+          "home": {
+            "files": 0,
+            "bytes": 0
+          }
+        },
+        "step": "opened"
+      },
+      {
+        "processes": [
+          {
+            "comm": "kitty",
+            "rss_kib": 268168,
+            "pss_kib": 195876
+          },
+          {
+            "comm": "kitten",
+            "rss_kib": 26140,
+            "pss_kib": 16325
+          },
+          {
+            "comm": "botui-baseline",
+            "rss_kib": 148284,
+            "pss_kib": 146251
+          },
+          {
+            "comm": "kitten",
+            "rss_kib": 26220,
+            "pss_kib": 16447
+          }
+        ],
+        "total_rss_kib": 468812,
+        "storage": {
+          "cache/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "cache/bookokrat": {
+            "files": 0,
+            "bytes": 0
+          },
+          "state/botui": {
+            "files": 2,
+            "bytes": 194
+          },
+          "state/bookokrat": {
+            "files": 0,
+            "bytes": 0
+          },
+          "data/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "data/bookokrat": {
+            "files": 0,
+            "bytes": 0
+          },
+          "home": {
+            "files": 0,
+            "bytes": 0
+          }
+        },
+        "step": "cycle_1"
+      },
+      {
+        "processes": [
+          {
+            "comm": "kitty",
+            "rss_kib": 290352,
+            "pss_kib": 218790
+          },
+          {
+            "comm": "kitten",
+            "rss_kib": 26140,
+            "pss_kib": 16325
+          },
+          {
+            "comm": "botui-baseline",
+            "rss_kib": 148292,
+            "pss_kib": 146259
+          },
+          {
+            "comm": "kitten",
+            "rss_kib": 26220,
+            "pss_kib": 16447
+          }
+        ],
+        "total_rss_kib": 491004,
+        "storage": {
+          "cache/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "cache/bookokrat": {
+            "files": 0,
+            "bytes": 0
+          },
+          "state/botui": {
+            "files": 2,
+            "bytes": 194
+          },
+          "state/bookokrat": {
+            "files": 0,
+            "bytes": 0
+          },
+          "data/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "data/bookokrat": {
+            "files": 0,
+            "bytes": 0
+          },
+          "home": {
+            "files": 0,
+            "bytes": 0
+          }
+        },
+        "step": "cycle_2"
+      },
+      {
+        "processes": [
+          {
+            "comm": "kitty",
+            "rss_kib": 313588,
+            "pss_kib": 242045
+          },
+          {
+            "comm": "kitten",
+            "rss_kib": 26140,
+            "pss_kib": 16326
+          },
+          {
+            "comm": "botui-baseline",
+            "rss_kib": 153976,
+            "pss_kib": 151944
+          },
+          {
+            "comm": "kitten",
+            "rss_kib": 26220,
+            "pss_kib": 16448
+          }
+        ],
+        "total_rss_kib": 519924,
+        "storage": {
+          "cache/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "cache/bookokrat": {
+            "files": 0,
+            "bytes": 0
+          },
+          "state/botui": {
+            "files": 2,
+            "bytes": 194
+          },
+          "state/bookokrat": {
+            "files": 0,
+            "bytes": 0
+          },
+          "data/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "data/bookokrat": {
+            "files": 0,
+            "bytes": 0
+          },
+          "home": {
+            "files": 0,
+            "bytes": 0
+          }
+        },
+        "step": "cycle_3"
+      },
+      {
+        "processes": [
+          {
+            "comm": "kitty",
+            "rss_kib": 335772,
+            "pss_kib": 263128
+          },
+          {
+            "comm": "kitten",
+            "rss_kib": 26140,
+            "pss_kib": 16324
+          },
+          {
+            "comm": "botui-baseline",
+            "rss_kib": 148292,
+            "pss_kib": 146257
+          },
+          {
+            "comm": "kitten",
+            "rss_kib": 26220,
+            "pss_kib": 16446
+          }
+        ],
+        "total_rss_kib": 536424,
+        "storage": {
+          "cache/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "cache/bookokrat": {
+            "files": 0,
+            "bytes": 0
+          },
+          "state/botui": {
+            "files": 2,
+            "bytes": 194
+          },
+          "state/bookokrat": {
+            "files": 0,
+            "bytes": 0
+          },
+          "data/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "data/bookokrat": {
+            "files": 0,
+            "bytes": 0
+          },
+          "home": {
+            "files": 0,
+            "bytes": 0
+          }
+        },
+        "step": "cycle_4"
+      },
+      {
+        "processes": [
+          {
+            "comm": "kitty",
+            "rss_kib": 357956,
+            "pss_kib": 286413
+          },
+          {
+            "comm": "kitten",
+            "rss_kib": 26140,
+            "pss_kib": 16326
+          },
+          {
+            "comm": "botui-baseline",
+            "rss_kib": 153976,
+            "pss_kib": 151944
+          },
+          {
+            "comm": "kitten",
+            "rss_kib": 26220,
+            "pss_kib": 16448
+          }
+        ],
+        "total_rss_kib": 564292,
+        "storage": {
+          "cache/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "cache/bookokrat": {
+            "files": 0,
+            "bytes": 0
+          },
+          "state/botui": {
+            "files": 2,
+            "bytes": 194
+          },
+          "state/bookokrat": {
+            "files": 0,
+            "bytes": 0
+          },
+          "data/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "data/bookokrat": {
+            "files": 0,
+            "bytes": 0
+          },
+          "home": {
+            "files": 0,
+            "bytes": 0
+          }
+        },
+        "step": "cycle_5"
+      }
+    ],
+    "bookokrat-amber": [
+      {
+        "processes": [
+          {
+            "comm": "kitty",
+            "rss_kib": 204820,
+            "pss_kib": 130308
+          },
+          {
+            "comm": "kitten",
+            "rss_kib": 25860,
+            "pss_kib": 12287
+          },
+          {
+            "comm": "bookokrat",
+            "rss_kib": 16108,
+            "pss_kib": 13584
+          },
+          {
+            "comm": "kitten",
+            "rss_kib": 25668,
+            "pss_kib": 12321
+          }
+        ],
+        "total_rss_kib": 272456,
+        "storage": {
+          "cache/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "cache/bookokrat": {
+            "files": 145,
+            "bytes": 54308239
+          },
+          "state/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "state/bookokrat": {
+            "files": 1,
+            "bytes": 29508
+          },
+          "data/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "data/bookokrat": {
+            "files": 1,
+            "bytes": 892
+          },
+          "home": {
+            "files": 0,
+            "bytes": 0
+          }
+        },
+        "step": "opened"
+      },
+      {
+        "processes": [
+          {
+            "comm": "kitty",
+            "rss_kib": 206816,
+            "pss_kib": 131356
+          },
+          {
+            "comm": "kitten",
+            "rss_kib": 25860,
+            "pss_kib": 11452
+          },
+          {
+            "comm": "bookokrat",
+            "rss_kib": 16172,
+            "pss_kib": 13649
+          },
+          {
+            "comm": "kitten",
+            "rss_kib": 25668,
+            "pss_kib": 12322
+          }
+        ],
+        "total_rss_kib": 274516,
+        "storage": {
+          "cache/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "cache/bookokrat": {
+            "files": 145,
+            "bytes": 54308239
+          },
+          "state/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "state/bookokrat": {
+            "files": 1,
+            "bytes": 30064
+          },
+          "data/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "data/bookokrat": {
+            "files": 1,
+            "bytes": 892
+          },
+          "home": {
+            "files": 0,
+            "bytes": 0
+          }
+        },
+        "step": "global_search"
+      },
+      {
+        "processes": [
+          {
+            "comm": "kitty",
+            "rss_kib": 206844,
+            "pss_kib": 131384
+          },
+          {
+            "comm": "kitten",
+            "rss_kib": 25860,
+            "pss_kib": 11447
+          },
+          {
+            "comm": "bookokrat",
+            "rss_kib": 87220,
+            "pss_kib": 84529
+          },
+          {
+            "comm": "kitten",
+            "rss_kib": 25668,
+            "pss_kib": 11560
+          }
+        ],
+        "total_rss_kib": 345592,
+        "storage": {
+          "cache/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "cache/bookokrat": {
+            "files": 145,
+            "bytes": 54308239
+          },
+          "state/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "state/bookokrat": {
+            "files": 1,
+            "bytes": 46345
+          },
+          "data/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "data/bookokrat": {
+            "files": 1,
+            "bytes": 978
+          },
+          "home": {
+            "files": 0,
+            "bytes": 0
+          }
+        },
+        "step": "open_result"
+      },
+      {
+        "processes": [
+          {
+            "comm": "kitty",
+            "rss_kib": 224220,
+            "pss_kib": 148641
+          },
+          {
+            "comm": "kitten",
+            "rss_kib": 25860,
+            "pss_kib": 12287
+          },
+          {
+            "comm": "bookokrat",
+            "rss_kib": 95976,
+            "pss_kib": 93285
+          },
+          {
+            "comm": "kitten",
+            "rss_kib": 25668,
+            "pss_kib": 12322
+          }
+        ],
+        "total_rss_kib": 371724,
+        "storage": {
+          "cache/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "cache/bookokrat": {
+            "files": 145,
+            "bytes": 54308239
+          },
+          "state/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "state/bookokrat": {
+            "files": 1,
+            "bytes": 51854
+          },
+          "data/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "data/bookokrat": {
+            "files": 1,
+            "bytes": 978
+          },
+          "home": {
+            "files": 0,
+            "bytes": 0
+          }
+        },
+        "step": "cycle_1"
+      },
+      {
+        "processes": [
+          {
+            "comm": "kitty",
+            "rss_kib": 224220,
+            "pss_kib": 149094
+          },
+          {
+            "comm": "kitten",
+            "rss_kib": 25860,
+            "pss_kib": 12288
+          },
+          {
+            "comm": "bookokrat",
+            "rss_kib": 95976,
+            "pss_kib": 93286
+          },
+          {
+            "comm": "kitten",
+            "rss_kib": 25668,
+            "pss_kib": 12322
+          }
+        ],
+        "total_rss_kib": 371724,
+        "storage": {
+          "cache/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "cache/bookokrat": {
+            "files": 145,
+            "bytes": 54308239
+          },
+          "state/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "state/bookokrat": {
+            "files": 1,
+            "bytes": 52310
+          },
+          "data/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "data/bookokrat": {
+            "files": 1,
+            "bytes": 978
+          },
+          "home": {
+            "files": 0,
+            "bytes": 0
+          }
+        },
+        "step": "cycle_2"
+      },
+      {
+        "processes": [
+          {
+            "comm": "kitty",
+            "rss_kib": 224220,
+            "pss_kib": 149094
+          },
+          {
+            "comm": "kitten",
+            "rss_kib": 25860,
+            "pss_kib": 12288
+          },
+          {
+            "comm": "bookokrat",
+            "rss_kib": 95976,
+            "pss_kib": 93286
+          },
+          {
+            "comm": "kitten",
+            "rss_kib": 25668,
+            "pss_kib": 12322
+          }
+        ],
+        "total_rss_kib": 371724,
+        "storage": {
+          "cache/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "cache/bookokrat": {
+            "files": 145,
+            "bytes": 54308239
+          },
+          "state/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "state/bookokrat": {
+            "files": 1,
+            "bytes": 52766
+          },
+          "data/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "data/bookokrat": {
+            "files": 1,
+            "bytes": 978
+          },
+          "home": {
+            "files": 0,
+            "bytes": 0
+          }
+        },
+        "step": "cycle_3"
+      },
+      {
+        "processes": [
+          {
+            "comm": "kitty",
+            "rss_kib": 224220,
+            "pss_kib": 149094
+          },
+          {
+            "comm": "kitten",
+            "rss_kib": 25860,
+            "pss_kib": 12288
+          },
+          {
+            "comm": "bookokrat",
+            "rss_kib": 95976,
+            "pss_kib": 93286
+          },
+          {
+            "comm": "kitten",
+            "rss_kib": 25668,
+            "pss_kib": 12322
+          }
+        ],
+        "total_rss_kib": 371724,
+        "storage": {
+          "cache/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "cache/bookokrat": {
+            "files": 145,
+            "bytes": 54308239
+          },
+          "state/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "state/bookokrat": {
+            "files": 1,
+            "bytes": 53222
+          },
+          "data/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "data/bookokrat": {
+            "files": 1,
+            "bytes": 978
+          },
+          "home": {
+            "files": 0,
+            "bytes": 0
+          }
+        },
+        "step": "cycle_4"
+      },
+      {
+        "processes": [
+          {
+            "comm": "kitty",
+            "rss_kib": 224220,
+            "pss_kib": 149094
+          },
+          {
+            "comm": "kitten",
+            "rss_kib": 25860,
+            "pss_kib": 12288
+          },
+          {
+            "comm": "bookokrat",
+            "rss_kib": 95976,
+            "pss_kib": 93286
+          },
+          {
+            "comm": "kitten",
+            "rss_kib": 25668,
+            "pss_kib": 12322
+          }
+        ],
+        "total_rss_kib": 371724,
+        "storage": {
+          "cache/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "cache/bookokrat": {
+            "files": 145,
+            "bytes": 54308239
+          },
+          "state/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "state/bookokrat": {
+            "files": 1,
+            "bytes": 53678
+          },
+          "data/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "data/bookokrat": {
+            "files": 1,
+            "bytes": 978
+          },
+          "home": {
+            "files": 0,
+            "bytes": 0
+          }
+        },
+        "step": "cycle_5"
+      }
+    ],
+    "bookokrat-lessons": [
+      {
+        "processes": [
+          {
+            "comm": "kitty",
+            "rss_kib": 222524,
+            "pss_kib": 148526
+          },
+          {
+            "comm": "kitten",
+            "rss_kib": 26328,
+            "pss_kib": 12690
+          },
+          {
+            "comm": "bookokrat",
+            "rss_kib": 104460,
+            "pss_kib": 101410
+          },
+          {
+            "comm": "kitten",
+            "rss_kib": 26104,
+            "pss_kib": 12479
+          }
+        ],
+        "total_rss_kib": 379416,
+        "storage": {
+          "cache/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "cache/bookokrat": {
+            "files": 0,
+            "bytes": 0
+          },
+          "state/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "state/bookokrat": {
+            "files": 1,
+            "bytes": 8081
+          },
+          "data/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "data/bookokrat": {
+            "files": 1,
+            "bytes": 682
+          },
+          "home": {
+            "files": 0,
+            "bytes": 0
+          }
+        },
+        "step": "opened"
+      },
+      {
+        "processes": [
+          {
+            "comm": "kitty",
+            "rss_kib": 324764,
+            "pss_kib": 250766
+          },
+          {
+            "comm": "kitten",
+            "rss_kib": 26328,
+            "pss_kib": 12690
+          },
+          {
+            "comm": "bookokrat",
+            "rss_kib": 456752,
+            "pss_kib": 453702
+          },
+          {
+            "comm": "kitten",
+            "rss_kib": 26104,
+            "pss_kib": 12479
+          }
+        ],
+        "total_rss_kib": 833948,
+        "storage": {
+          "cache/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "cache/bookokrat": {
+            "files": 0,
+            "bytes": 0
+          },
+          "state/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "state/bookokrat": {
+            "files": 1,
+            "bytes": 41657
+          },
+          "data/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "data/bookokrat": {
+            "files": 1,
+            "bytes": 682
+          },
+          "home": {
+            "files": 0,
+            "bytes": 0
+          }
+        },
+        "step": "cycle_1"
+      },
+      {
+        "processes": [
+          {
+            "comm": "kitty",
+            "rss_kib": 337160,
+            "pss_kib": 263162
+          },
+          {
+            "comm": "kitten",
+            "rss_kib": 26328,
+            "pss_kib": 12690
+          },
+          {
+            "comm": "bookokrat",
+            "rss_kib": 525060,
+            "pss_kib": 522010
+          },
+          {
+            "comm": "kitten",
+            "rss_kib": 26104,
+            "pss_kib": 12479
+          }
+        ],
+        "total_rss_kib": 914652,
+        "storage": {
+          "cache/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "cache/bookokrat": {
+            "files": 0,
+            "bytes": 0
+          },
+          "state/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "state/bookokrat": {
+            "files": 1,
+            "bytes": 69918
+          },
+          "data/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "data/bookokrat": {
+            "files": 1,
+            "bytes": 682
+          },
+          "home": {
+            "files": 0,
+            "bytes": 0
+          }
+        },
+        "step": "cycle_2"
+      },
+      {
+        "processes": [
+          {
+            "comm": "kitty",
+            "rss_kib": 373984,
+            "pss_kib": 299986
+          },
+          {
+            "comm": "kitten",
+            "rss_kib": 26328,
+            "pss_kib": 12690
+          },
+          {
+            "comm": "bookokrat",
+            "rss_kib": 547044,
+            "pss_kib": 543994
+          },
+          {
+            "comm": "kitten",
+            "rss_kib": 26104,
+            "pss_kib": 12479
+          }
+        ],
+        "total_rss_kib": 973460,
+        "storage": {
+          "cache/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "cache/bookokrat": {
+            "files": 0,
+            "bytes": 0
+          },
+          "state/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "state/bookokrat": {
+            "files": 1,
+            "bytes": 98975
+          },
+          "data/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "data/bookokrat": {
+            "files": 1,
+            "bytes": 682
+          },
+          "home": {
+            "files": 0,
+            "bytes": 0
+          }
+        },
+        "step": "cycle_3"
+      },
+      {
+        "processes": [
+          {
+            "comm": "kitty",
+            "rss_kib": 386384,
+            "pss_kib": 311669
+          },
+          {
+            "comm": "kitten",
+            "rss_kib": 26328,
+            "pss_kib": 12688
+          },
+          {
+            "comm": "bookokrat",
+            "rss_kib": 528668,
+            "pss_kib": 522118
+          },
+          {
+            "comm": "kitten",
+            "rss_kib": 26104,
+            "pss_kib": 12477
+          }
+        ],
+        "total_rss_kib": 967484,
+        "storage": {
+          "cache/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "cache/bookokrat": {
+            "files": 0,
+            "bytes": 0
+          },
+          "state/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "state/bookokrat": {
+            "files": 1,
+            "bytes": 128982
+          },
+          "data/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "data/bookokrat": {
+            "files": 1,
+            "bytes": 682
+          },
+          "home": {
+            "files": 0,
+            "bytes": 0
+          }
+        },
+        "step": "cycle_4"
+      },
+      {
+        "processes": [
+          {
+            "comm": "kitty",
+            "rss_kib": 386384,
+            "pss_kib": 312366
+          },
+          {
+            "comm": "kitten",
+            "rss_kib": 26328,
+            "pss_kib": 12689
+          },
+          {
+            "comm": "bookokrat",
+            "rss_kib": 537904,
+            "pss_kib": 534853
+          },
+          {
+            "comm": "kitten",
+            "rss_kib": 26104,
+            "pss_kib": 12478
+          }
+        ],
+        "total_rss_kib": 976720,
+        "storage": {
+          "cache/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "cache/bookokrat": {
+            "files": 0,
+            "bytes": 0
+          },
+          "state/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "state/bookokrat": {
+            "files": 1,
+            "bytes": 158272
+          },
+          "data/botui": {
+            "files": 0,
+            "bytes": 0
+          },
+          "data/bookokrat": {
+            "files": 1,
+            "bytes": 682
+          },
+          "home": {
+            "files": 0,
+            "bytes": 0
+          }
+        },
+        "step": "cycle_5"
+      }
+    ]
+  }
+}
