@@ -24,7 +24,7 @@ BOTUI is a terminal book reader for Linux. Read books, documents and comics from
 - Mouse controls, a Space command menu and an optional Vim cursor
 - EPUB equations and illustrations, plus a full-width table view with pinned column headings
 - Formatted Markdown with code highlighting and a source view
-- Local PDF auto-reload and SyncTeX navigation between a PDF and its LaTeX source
+- Local PDF auto-reload and SyncTeX navigation between a PDF and its LaTeX source. `Neovim · reuse window` mode: opens the missing editor or PDF window on the first jump, then reuses it in both directions.
 
 ## Screenshots
 
