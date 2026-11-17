@@ -10,7 +10,6 @@ from pathlib import Path
 import re
 import sys
 import tempfile
-import time
 
 ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location("scroll", ROOT / "scripts/smoke-scroll.py")
@@ -64,16 +63,15 @@ sys.stdout.buffer.flush()
         term.see("::::::::")
         base = int(bins.joinpath("base").read_text())
         # Each level changes raster resolution before it reaches the 1920 px cap.
-        # The renderer is deliberately held, so this checks the intermediate
-        # frame rather than merely waiting until the flicker has gone away.
+        # The renderer cannot finish until we release it after observing the
+        # intermediate frame. A blocking redraw therefore times out in wait();
+        # no machine-dependent wall-clock threshold is needed.
         for percent in (110, 125, 150, 175, 200):
             side = min(1920, base * percent // 100)
-            start = time.monotonic()
             term.keys('Space', 'r', '+')
             term.wait(f"{mode}: zoom {percent}% retains the readable page", lambda f:
                 f"[Space l w {percent}%]" in f and "Rendering page" not in f
                 and re.search(r"[:*]{12,}", f))
-            assert time.monotonic() - start < .5, "Zoom waited for the PDF worker"
             term.wait("Larger raster requested", lambda _: (1, side) in calls())
             assert not bins.joinpath(f"done-1-{side}").exists(), "Refinement was not held"
             bins.joinpath(f"release-{side}").touch()
