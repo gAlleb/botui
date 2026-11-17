@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.1.22 — 2026-11-17
+
 - Wait for terminal test processes before cleaning up temporary files.
 
 ## 0.1.21 — 2026-11-17
