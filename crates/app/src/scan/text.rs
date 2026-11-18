@@ -172,8 +172,10 @@ impl Text {
         visible
     }
     pub fn show_source(&mut self, region: PdfRegion) {
-        self.cursor = None;
-        self.start = None;
+        // An editor jump ends the old text interaction. Its highlighted PDF
+        // region is a navigation target, not an unfinished text selection.
+        self.clear();
+        self.clear_search();
         self.search_regions = vec![region];
     }
     pub fn source_point(
@@ -1269,6 +1271,39 @@ impl Text {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn source_jump_ends_selection_without_losing_the_target_or_future_selection() {
+        let mut text = Text::new(None);
+        text.page(1, Rect::new(0, 0, 100, 100), [0., 0., 1., 1.], 0);
+        let mut layer = page("Alpha bravo charlie");
+        layer.interactive = true;
+        text.cache.insert(1, Ok(layer));
+        let click = Event::Mouse(crossterm::event::MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: 35,
+            row: 22,
+            modifiers: KeyModifiers::NONE,
+        });
+        text.input(&click);
+        assert!(text.selection().is_some());
+        let target = PdfRegion {
+            page: 1,
+            bounds: [0.6, 0.5, 0.8, 0.6],
+        };
+        text.show_source(target.clone());
+        text.poll(Path::new("/nonexistent-source-test.pdf"));
+        assert!(!text.enabled);
+        assert!(!text.drag);
+        assert!(text.selection().is_none());
+        assert_eq!(text.search_regions, vec![target]);
+        let (_, point) = text.source_point(None, Some(1)).unwrap();
+        assert!((point[0] - 0.7).abs() < 0.00001);
+        assert!((point[1] - 0.55).abs() < 0.00001);
+        text.input(&click);
+        assert!(text.enabled);
+        assert!(text.selection().is_some());
+    }
 
     #[test]
     fn forward_target_is_available_before_the_first_raster_but_not_after_leaving_its_page() {

@@ -195,6 +195,8 @@ Kitty displays covers and pages as images, including inside tmux with graphics p
 
 ### SyncTeX and VimTeX
 
+[![PDF in BOTUI and its LaTeX source in Neovim, with the corresponding formula highlighted](docs/images/synctex-neovim.png)](docs/images/synctex-neovim.png)
+
 The `synctex` executable must be on the `PATH` inherited by BOTUI and your editor. With a standalone TeX Live installation, add its binary directory to your shell's PATH before starting either application; for example:
 
 ```sh

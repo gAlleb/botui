@@ -182,6 +182,7 @@ result = subprocess.run(tmux + ["new-window", *flags, "-P", "-F", "#{pane_id}",
 
 def source_first(root):
     f = Fixture(root)
+    f.pdf.write_bytes(runpy.run_path(str(ROOT / "scripts/smoke-pdf-interaction.py"))["pdf"]())
     try:
         peer = f.start_editor()
         # Start from actual Neovim. Its child process carries $NVIM back to the
@@ -200,6 +201,31 @@ def source_first(root):
             f.term.keys("F8")
             f.at(peer, f.literal, page)
         assert len(f.launches("reader")) == 1 and not f.launches("editor")
+
+        def select_title():
+            frame = f.term.wait("Page raster ready for selection", lambda s: "@@@@" in s)
+            points = [(x, y) for y, row in enumerate(frame.splitlines())
+                      for x, char in enumerate(row) if char == "@"]
+            left, right = min(x for x, _ in points), max(x for x, _ in points) + 1
+            top, bottom = min(y for _, y in points), max(y for _, y in points) + 1
+            x = left + int((right - left) * 45 / 360)
+            y = top + int((bottom - top) * 50 / 500)
+            seq = f"\033[<0;{x + 1};{y + 1}M\033[<0;{x + 1};{y + 1}m"
+            f.term.run("send-keys", "-t", "shelf", "-H", *[f"{b:02x}" for b in seq.encode()])
+            f.term.see("SELECT")
+
+        # A forward jump after mouse selection must return to reading, retaining
+        # the target for F8 rather than a stale cursor from the selected page.
+        select_title()
+        f.forward(2, peer)
+        frame = f.term.see("Space z Zen")
+        assert "No text at this position" not in frame and "SELECT" not in frame, frame
+        f.term.keys("F8")
+        f.at(peer, f.literal, 2)
+        f.forward(1, peer)
+        select_title()
+        f.forward(1, peer)
+        f.term.see("Space z Zen")
 
         # A modified buffer may refuse a switch. Preserve it and show the error,
         # never force the edit or create another window to hide the refusal.

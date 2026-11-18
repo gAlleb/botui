@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Clear stale PDF selection state after SyncTeX jumps.
+
 ## 0.1.23 — 2026-11-17
 
 - Add optional Neovim/PDF window reuse with separate terminal launch commands.
