@@ -23,7 +23,7 @@ const ROW: f32 = 16.0;
 
 /// Parsed CSS/DOM belongs to an open pager, not to the portable source document.
 /// Resizing reuses the engine's incremental layout instead of parsing the book
-/// again. Retain at most 512 KiB of markup and 4,000 source tags; larger books
+/// again. Retain at most 2 MiB of markup and 24,000 source tags; larger books
 /// still render normally without growing this cache without bound.
 pub(super) struct Reflow {
     pool: Option<rayon::ThreadPool>,
@@ -163,8 +163,8 @@ impl Worker {
             return lines;
         }
         let tags = chapter.html.bytes().filter(|b| *b == b'<').count();
-        if self.markup + chapter.html.len() <= 512 * 1024 / self.partitions
-            && self.tags + tags <= 4_000 / self.partitions
+        if self.markup + chapter.html.len() <= 2 * 1024 * 1024 / self.partitions
+            && self.tags + tags <= 24_000 / self.partitions
         {
             self.markup += chapter.html.len();
             self.tags += tags;
