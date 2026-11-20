@@ -209,7 +209,12 @@ impl Chapter {
                         matches!(surface, crate::Surface::TableEdge { top: true, .. })
                     })
                 });
-                header = top_rule.unwrap_or(first)..end;
+                let separator = rows.get(end).is_some_and(|line| {
+                    line.surfaces
+                        .iter()
+                        .any(|s| matches!(s, crate::Surface::TableHeaderRule { .. }))
+                });
+                header = top_rule.unwrap_or(first)..end + usize::from(separator);
             }
         }
         Some(TableView {

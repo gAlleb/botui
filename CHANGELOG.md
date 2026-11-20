@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Preserve EPUB code spacing and Unicode math indices when copying.
+- Align EPUB quotes and table cells in Left mode and separate table headers from data.
 - Give formulas and headings distinct reading-theme colors.
 - Keep one blank line between a chapter title and its first subheading.
 

@@ -161,7 +161,7 @@ pub(super) fn read_book(reader: impl Read + Seek, fallback: &str) -> Result<Docu
             let chapter = crate::publisher::chapter(
                 &mut dom,
                 origins,
-                blocks.len(),
+                &blocks,
                 &member,
                 sheets.clone(),
                 figures.into_iter(),

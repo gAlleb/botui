@@ -66,7 +66,7 @@ pub(super) fn face(face: Face, theme: Theme) -> Style {
         (3, false) => Some(Color::Rgb(85, 90, 100)),
         (4, true) => Some(Color::Rgb(235, 180, 120)),
         (4, false) => Some(Color::Rgb(145, 65, 15)),
-        _ if (1..=6).contains(&face.role) => Some(theme.heading()),
+        _ if matches!(face.role, 1..=6 | 18) => Some(theme.heading()),
         _ if face.role == 17 => Some(theme.formula()),
         _ => accent(face.role, theme),
     };

@@ -119,6 +119,14 @@ impl Pager {
 
 impl Document {
     pub fn text_range(&self, range: TextRange) -> String {
+        self.selected_text(range, false)
+    }
+
+    pub fn clipboard_text(&self, range: TextRange) -> String {
+        self.selected_text(range, true)
+    }
+
+    fn selected_text(&self, range: TextRange, clipboard: bool) -> String {
         if let Some(md) = &self.markdown
             && !md.show_source
         {
@@ -164,7 +172,29 @@ impl Document {
             if let Some(s) = text.get(start..end)
                 && !s.is_empty()
             {
-                parts.push(s);
+                let replacements = clipboard
+                    .then(|| {
+                        self.styled
+                            .range(..=block)
+                            .next_back()
+                            .and_then(|(_, chapter)| chapter.clipboard_replacements.get(&block))
+                    })
+                    .flatten();
+                if let Some(replacements) = replacements {
+                    let mut part = String::new();
+                    let mut cursor = start;
+                    for (span, replacement) in replacements {
+                        if span.start >= cursor && span.end <= end {
+                            part.push_str(&text[cursor..span.start]);
+                            part.push_str(replacement);
+                            cursor = span.end;
+                        }
+                    }
+                    part.push_str(&text[cursor..end]);
+                    parts.push(std::borrow::Cow::Owned(part));
+                } else {
+                    parts.push(std::borrow::Cow::Borrowed(s));
+                }
             }
         }
         parts.join("\n\n")

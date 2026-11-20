@@ -1420,6 +1420,13 @@ fn paint_surfaces(
                 {
                     let symbol = match cell.symbol() {
                         " " => "│",
+                        "─" if line
+                            .surfaces
+                            .iter()
+                            .any(|s| matches!(s, botui_core::Surface::TableHeaderRule { .. })) =>
+                        {
+                            "┼"
+                        }
                         "─" if line.surfaces.iter().any(|s| {
                             matches!(s, botui_core::Surface::TableEdge { top: true, .. })
                         }) =>
@@ -1430,6 +1437,21 @@ fn paint_surfaces(
                         _ => continue,
                     };
                     cell.set_symbol(symbol)
+                        .set_style(style.add_modifier(Modifier::DIM));
+                }
+            }
+            botui_core::Surface::TableHeaderRule { x, width } => {
+                let end = x.saturating_add(width);
+                for col in x.max(left)..end.min(left.saturating_add(rect.width)) {
+                    let glyph = if col == x {
+                        "├"
+                    } else if col + 1 == end {
+                        "┤"
+                    } else {
+                        "─"
+                    };
+                    frame.buffer_mut()[(rect.x + (col - left), rect.y)]
+                        .set_symbol(glyph)
                         .set_style(style.add_modifier(Modifier::DIM));
                 }
             }

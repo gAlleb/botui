@@ -230,7 +230,14 @@ pub(super) fn lines(
             area.size.width = (new_right - new_left) as f32;
         }
     }
-    let rows = paint_lines::<true>(doc, width, &chapter.sources, blocks, &chapter.images);
+    let rows = paint_lines::<true>(
+        doc,
+        width,
+        &chapter.sources,
+        blocks,
+        &chapter.images,
+        &chapter.tables,
+    );
     // Blitz reuses the document on resize. Keep its cached geometry intact.
     for (child, x, width) in original_boxes {
         let area = doc.get_node_mut(child).unwrap().final_layout_mut();
@@ -282,6 +289,7 @@ fn paint_lines<const GROUPED: bool>(
     sources: &[Vec<SourceText>],
     blocks: &[Block],
     images: &[Option<usize>],
+    tables: &[super::DataTable],
 ) -> Vec<PageLine> {
     let mut figures = BTreeMap::<usize, Vec<crate::Figure>>::new();
     let mut surfaces = BTreeMap::<usize, Vec<crate::Surface>>::new();
@@ -394,8 +402,40 @@ fn paint_lines<const GROUPED: bool>(
             .collect();
         for table in data_tables {
             if let Some((range, x, end)) =
-                draw_table_dividers(doc, table, width, &positions, &mut surfaces)
+                draw_table_dividers(doc, table, width, &positions, &rows, &mut surfaces)
             {
+                let heading = table
+                    .element_data()
+                    .and_then(|e| super::marker(e, "data-botui-data-table"))
+                    .and_then(|id| tables.get(id))
+                    .and_then(|t| t.heading.as_ref());
+                if let Some(heading) = heading {
+                    let mut last_header = None;
+                    for (&y, glyphs) in rows.range_mut(range.clone()) {
+                        let mut header = false;
+                        for ink in glyphs
+                            .iter_mut()
+                            .filter(|g| (usize::from(x)..usize::from(end)).contains(&g.x))
+                        {
+                            if ink.source.is_some_and(|(at, _)| heading.contains(&at)) {
+                                header = true;
+                                if ink.face.role == 0 || ink.face.role == 9 {
+                                    ink.face.role = 18;
+                                }
+                            }
+                        }
+                        if header {
+                            last_header = Some(y);
+                        }
+                    }
+                    if let Some(y) = last_header
+                        && rows.range(y + 1..range.end).next().is_some()
+                    {
+                        edges
+                            .header
+                            .insert(y, crate::Surface::TableHeaderRule { x, width: end - x });
+                    }
+                }
                 let mut occupied = rows.range(range);
                 if let Some((&first, _)) = occupied.next() {
                     let last = occupied.next_back().map_or(first, |(&row, _)| row);
@@ -444,6 +484,7 @@ type Rows<'a> = BTreeMap<usize, Vec<Ink<'a>>>;
 
 #[derive(Default)]
 struct TableEdges {
+    header: BTreeMap<usize, crate::Surface>,
     above: BTreeMap<usize, Vec<crate::Surface>>,
     below: BTreeMap<usize, Vec<crate::Surface>>,
 }
@@ -455,6 +496,7 @@ fn draw_table_dividers(
     node: &Node,
     width: u16,
     positions: &[usize],
+    painted: &Rows,
     surfaces: &mut BTreeMap<usize, Vec<crate::Surface>>,
 ) -> Option<(std::ops::Range<usize>, u16, u16)> {
     use blitz_dom::node::SpecialElementData;
@@ -470,8 +512,12 @@ fn draw_table_dividers(
     let pos = node.absolute_position(0., 0.);
     let y = |offset: f32| ((pos.y + offset) / ROW).round() as usize;
     let tracks = &grid.rows.positions;
-    let first = positions.partition_point(|&row| row < y(tracks[0].start));
-    let last = positions.partition_point(|&row| row < y(tracks[tracks.len() - 1].end));
+    let track_range = y(tracks[0].start)..y(tracks.last()?.end);
+    let mut content = painted.range(track_range);
+    let (&top, _) = content.next()?;
+    let bottom = content.next_back().map_or(top, |(&row, _)| row);
+    let first = positions.partition_point(|&row| row < top);
+    let last = positions.partition_point(|&row| row <= bottom);
     let rows = &positions[first..last];
     let merged: Vec<_> = grid
         .items
@@ -966,7 +1012,29 @@ fn compose_rows(
                 line.spans.push(span);
             }
         }
+        let header_rule = edges.header.remove(&y).map(|rule| {
+            let dividers: Vec<_> = line
+                .surfaces
+                .iter()
+                .copied()
+                .filter(|s| matches!(s, crate::Surface::TableDivider { .. }))
+                .collect();
+            (rule, dividers)
+        });
         finish(&mut result, &mut line, &mut anchor);
+        if let Some((rule, dividers)) = header_rule {
+            // The separator supplies its own empty row before the table body.
+            prev = None;
+            let mut border = vec![rule];
+            border.extend_from_slice(&dividers);
+            for surfaces in [border, dividers] {
+                result.push(PageLine {
+                    start: anchor,
+                    surfaces,
+                    ..Default::default()
+                });
+            }
+        }
         if let Some(surfaces) = lower_edge {
             result.push(PageLine {
                 surfaces,
@@ -1063,11 +1131,11 @@ mod tests {
                     assert_eq!(
                         format!(
                             "{:?}",
-                            paint_lines::<true>(&doc, width, &sources, &blocks, &[])
+                            paint_lines::<true>(&doc, width, &sources, &blocks, &[], &[])
                         ),
                         format!(
                             "{:?}",
-                            paint_lines::<false>(&doc, width, &sources, &blocks, &[])
+                            paint_lines::<false>(&doc, width, &sources, &blocks, &[], &[])
                         ),
                         "{text:?}, {css}, width {width}",
                     );

@@ -241,7 +241,7 @@ pub struct SourceText {
 pub struct Face {
     /// Lightweight code token: keyword, string, comment, number.
     pub syntax: u8,
-    /// Markdown presentation: headings 1–6, link 7, quote 8, table head 9, code 10, alerts 12–16, math 17.
+    /// Markdown presentation: headings 1–6, link 7, quote 8, table head 9, code 10, alerts 12–16, math 17, EPUB column heading 18.
     pub role: u8,
     pub bold: bool,
     pub italic: bool,
@@ -270,6 +270,8 @@ impl TextSpan {
     }
 }
 
+pub type ClipboardReplacements = std::collections::BTreeMap<usize, Vec<(Range<usize>, String)>>;
+
 #[derive(Clone, Debug)]
 pub struct Chapter {
     pub(crate) end: usize,
@@ -277,6 +279,8 @@ pub struct Chapter {
     pub images: Vec<Option<usize>>,
     pub preserve_structure: bool,
     pub tables: Vec<DataTable>,
+    /// Display substitutions indexed by canonical source byte range, used only when copying.
+    pub clipboard_replacements: ClipboardReplacements,
     html: Arc<str>,
     url: String,
     sheets: Arc<Stylesheets>,
@@ -298,6 +302,7 @@ impl Chapter {
             sources,
             images: Vec::new(),
             tables: Vec::new(),
+            clipboard_replacements: Default::default(),
             preserve_structure: false,
         }
     }
@@ -331,6 +336,9 @@ impl Chapter {
             ":root {{ --botui-indent: {}px; }} {figures}",
             u16::from(options.paragraph_indent) * CELL as u16
         );
+        if options.typography.alignment == crate::TextAlignment::Left {
+            settings.push_str("blockquote{margin-inline-start:0!important} blockquote p,td p,th p,td,th{text-indent:0!important} table[data-botui-data-table] :is(td,th){padding-inline-start:0!important}");
+        }
         if options.typography.heading_rules {
             settings.push_str(
                 "h1,h2{border-bottom:16px solid!important}h1{border-bottom-style:double!important}",

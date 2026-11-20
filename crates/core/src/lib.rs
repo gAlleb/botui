@@ -212,6 +212,7 @@ pub enum Surface {
     HeadingRule { double: bool },
     Background { x: u16, width: u16, role: u8 },
     TableDivider { x: u16 },
+    TableHeaderRule { x: u16, width: u16 },
     TableEdge { x: u16, width: u16, top: bool },
 }
 

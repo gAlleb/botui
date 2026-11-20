@@ -2149,6 +2149,12 @@ fn epub_inline_math_and_code_share_the_prose_baseline() {
             .map(|s| &line.text[s.bytes.clone()])
             .collect::<String>();
         assert_eq!(code, "run");
+        let cells = line.text_cells(&doc);
+        let full = botui_core::TextRange::new(
+            cells.first().unwrap().source.start,
+            cells.last().unwrap().source.end,
+        );
+        assert!(doc.clipboard_text(full).contains("mc²"));
         assert!(rows.iter().any(|l| l.text.contains("Details")));
         let raw = rows.iter().find(|l| l.text.contains("$x$")).unwrap();
         assert!(raw.spans.iter().all(|s| s.face.role != 10));
@@ -2178,7 +2184,21 @@ fn scrollable_epub_table_keeps_rows_and_respects_hidden_media() {
                     .position(|r| r.text.contains(a) && r.text.contains(b))
                     .unwrap()
             };
-            assert!(row("Name", "Formula") < row("Energy", "First"));
+            let header = row("Name", "Formula");
+            assert!(rows[header].spans.iter().any(|s| s.face.role == 18));
+            assert!(
+                rows[header + 1]
+                    .surfaces
+                    .iter()
+                    .any(|s| matches!(s, botui_core::Surface::TableHeaderRule { .. }))
+            );
+            assert!(rows[header + 2].text.trim().is_empty());
+            assert_eq!(row("Energy", "First"), header + 3);
+            assert!(rows[..header - 1].iter().all(|r| {
+                !r.surfaces
+                    .iter()
+                    .any(|s| matches!(s, botui_core::Surface::TableDivider { .. }))
+            }));
             assert!(row("Energy", "First") < row("Euler", "Second"));
         }
     }
@@ -2236,5 +2256,68 @@ fn epub_heading_rules_use_the_markup_level_in_both_layout_engines() {
                 .collect();
             assert_eq!(rules, if enabled { vec![false, true] } else { vec![] });
         }
+    }
+}
+
+#[test]
+fn nested_epub_fraction_keeps_all_operands_across_narrow_pages() {
+    use botui_core::{LayoutMode, Pager};
+    let terms = "<mi>a</mi><mo>+</mo><mi>b</mi><mo>+</mo><mi>c</mi><mo>+</mo><mi>d</mi><mo>+</mo><mi>f</mi><mo>+</mo><mi>g</mi>";
+    let doc = styled_fixture(
+        &format!(
+            "<p>Lead</p><math display='block'><mrow><mfrac><mfrac><mi>Q</mi><mi>W</mi></mfrac><mi>Z</mi></mfrac><mo>=</mo><mrow>{terms}</mrow></mrow></math><p>Tail</p>"
+        ),
+        "",
+    );
+    for width in [12, 28, 64] {
+        let render = |height| {
+            let mut p = Pager::new(&doc, width, height, LayoutMode::Single);
+            let mut lines = Vec::new();
+            for _ in 0..p.page_count() {
+                lines.extend(p.lines(0).iter().map(|l| l.text.clone()));
+                p.next();
+            }
+            lines
+        };
+        let tall = render(64);
+        assert_eq!(
+            render(3),
+            tall,
+            "different content at page boundary, width {width}"
+        );
+        let equation = tall.join("").replace("Lead", "").replace("Tail", "");
+        for c in "QWZabcdfg=".chars() {
+            assert_eq!(equation.matches(c).count(), 1, "width {width}: {tall:?}");
+        }
+    }
+}
+
+#[test]
+fn copying_epub_code_restores_whitespace_across_inline_spans_and_wraps() {
+    use botui_core::{Anchor, LayoutMode, Pager, TextRange};
+    let raw = "first line\n\n    indented long line with words\n\tlast line";
+    let doc = styled_fixture(
+        "<pre><code>first line\n\n    <b>indented</b> long line with words\n\tlast line</code></pre>",
+        "",
+    );
+    let canonical = &doc.blocks[0].text;
+    for width in [12, 32, 64] {
+        let p = Pager::new(&doc, width, 30, LayoutMode::Single);
+        let cells: Vec<_> = p.lines(0).iter().flat_map(|l| l.text_cells(&doc)).collect();
+        let range = TextRange::new(
+            cells.first().unwrap().source.start,
+            cells.last().unwrap().source.end,
+        );
+        assert_eq!(doc.clipboard_text(range), raw);
+        assert_eq!(doc.text_range(range), canonical.as_str());
+        let start = canonical.find("words").unwrap();
+        let tail = TextRange::new(
+            Anchor {
+                block: 0,
+                byte: start,
+            },
+            range.end,
+        );
+        assert_eq!(doc.clipboard_text(tail), "words\n\tlast line");
     }
 }

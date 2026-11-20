@@ -60,14 +60,70 @@ pub(super) fn uses_layout(dom: &Html) -> bool {
     })
 }
 
+// Store only the differences from the whitespace-normalized CFI text.
+fn preformatted_whitespace(
+    dom: &Html,
+    origins: &TextOrigins,
+    blocks: &[Block],
+) -> botui_core::publisher::ClipboardReplacements {
+    let mut code_whitespace = std::collections::BTreeMap::new();
+    for pre in dom.select(&scraper::Selector::parse("pre").unwrap()) {
+        let mut positions = pre.descendants().filter_map(|n| origins.get(&n.id()));
+        let Some(&(start, _)) = positions.next() else {
+            continue;
+        };
+        if start.byte != 0 || positions.any(|(at, _)| at.block != start.block) {
+            continue;
+        }
+        let raw = pre.text().collect::<String>();
+        if blocks
+            .get(start.block)
+            .is_none_or(|block| super::xhtml::clean(&raw) != block.text)
+            || raw.chars().any(|c| c.is_control() && !c.is_whitespace())
+        {
+            continue;
+        }
+        let mut gaps = Vec::new();
+        let mut offset = 0;
+        let mut rest = raw.as_str();
+        while !rest.is_empty() {
+            let text = rest.trim_start_matches(char::is_whitespace);
+            let size = rest.len() - text.len();
+            if size > 0 {
+                let end = offset + usize::from(offset > 0 && !text.is_empty());
+                if &rest[..size] != " " || end == offset {
+                    gaps.push((offset..end, rest[..size].to_owned()));
+                }
+                offset = end;
+            }
+            let word = text.split_whitespace().next().unwrap_or("");
+            offset += word.len();
+            rest = &text[word.len()..];
+        }
+        if !gaps.is_empty()
+            && !pre.descendants().filter_map(ElementRef::wrap).any(|e| {
+                e.attr("hidden").is_some()
+                    || matches!(
+                        e.value().name(),
+                        "script" | "style" | "br" | "template" | "noscript"
+                    )
+            })
+        {
+            code_whitespace.insert(start.block, gaps);
+        }
+    }
+    code_whitespace
+}
+
 pub(super) fn chapter(
     dom: &mut Html,
     origins: TextOrigins,
-    end: usize,
+    blocks: &[Block],
     member: &str,
     sheets: Arc<Stylesheets>,
     figures: impl Iterator<Item = (ego_tree::NodeId, usize, Option<(usize, usize)>)>,
 ) -> Chapter {
+    let mut replacements = preformatted_whitespace(dom, &origins, blocks);
     let mut elements = Vec::new();
     let mut sources = Vec::new();
     let mut inline_code = Vec::new();
@@ -179,8 +235,20 @@ pub(super) fn chapter(
     super::math_text::prepare(dom, &mut sources);
     // scraper serializes HTML void elements such as <img> and <br> without
     // XML closing tags. Select the HTML parser even when the root declares XHTML.
+    for span in sources.iter().flatten() {
+        if let Some(display) = &span.display {
+            replacements
+                .entry(span.start.block)
+                .or_default()
+                .push((span.start.byte..span.end, display.clone()));
+        }
+    }
+    for spans in replacements.values_mut() {
+        spans.sort_by_key(|(range, _)| range.start);
+    }
     let html = format!("<!doctype html>\n{}", dom.root_element().html());
-    let mut chapter = Chapter::new(end, html, member, sheets, sources);
+    let mut chapter = Chapter::new(blocks.len(), html, member, sheets, sources);
+    chapter.clipboard_replacements = replacements;
     chapter.images = images;
     chapter.tables = tables;
     chapter.preserve_structure = preserve_structure;

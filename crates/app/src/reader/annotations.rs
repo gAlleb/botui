@@ -57,7 +57,7 @@ pub(super) fn run(
             reader
                 .study
                 .toolbar
-                .notify(super::clipboard::copy(&reader.doc.text_range(range))?);
+                .notify(super::clipboard::copy(&reader.doc.clipboard_text(range))?);
             reader.study.message = None;
             reader.study.copied();
         }
