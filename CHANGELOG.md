@@ -2,10 +2,9 @@
 
 ## Unreleased
 
+- Reduce memory used by cached EPUB chapters.
 - Keep EPUB fractions aligned in every reading mode and fit display equations across page breaks.
-
 - Open the spread containing the current single page when switching to two pages.
-
 - Preserve EPUB code spacing and Unicode math indices when copying.
 - Align EPUB quotes and table cells in Left mode and separate table headers from data.
 - Give formulas and headings distinct reading-theme colors.
