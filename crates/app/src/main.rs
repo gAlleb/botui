@@ -252,8 +252,9 @@ fn direct_book(
 ) -> Result<()> {
     if open_local_doc(term, path, doc, notices, None)? == BookExit::Back && !resume {
         let mut picker = picker::Picker::at_file(path)?;
-        browse_picker(term, notices, &mut picker)?;
-        bookorbit_shelf(term, None, notices)?;
+        if browse_picker(term, notices, &mut picker)? == BookExit::Back {
+            bookorbit_shelf(term, None, notices)?;
+        }
     }
     Ok(())
 }
@@ -292,7 +293,7 @@ fn browse(term: &mut AppTerminal, notices: &mut Vec<String>, dir: PathBuf) -> Re
             p
         }
     };
-    browse_picker(term, notices, &mut picker)
+    browse_picker(term, notices, &mut picker).map(|_| ())
 }
 
 fn browse_downloads(
@@ -303,20 +304,24 @@ fn browse_downloads(
     let dir = cache::downloads()?;
     std::fs::create_dir_all(&dir)?;
     let mut picker = picker::Picker::downloads(dir, source)?;
-    browse_picker(term, notices, &mut picker)
+    browse_picker(term, notices, &mut picker).map(|_| ())
 }
 
 fn browse_picker(
     term: &mut AppTerminal,
     notices: &mut Vec<String>,
     picker: &mut picker::Picker,
-) -> Result<()> {
-    while let Some(path) = picker.choose(term)? {
-        if let Err(err) = open_book(term, &path, notices) {
-            picker.error = Some(format!("{} — {err}", path.display()));
+) -> Result<BookExit> {
+    loop {
+        match picker.choose(term)? {
+            picker::Choice::Leave(exit) => return Ok(exit),
+            picker::Choice::Open(path) => {
+                if let Err(err) = open_book(term, &path, notices) {
+                    picker.error = Some(format!("{} — {err}", path.display()));
+                }
+            }
         }
     }
-    Ok(())
 }
 
 fn opds_shelf(term: &mut AppTerminal, url: String, notices: &mut Vec<String>) -> Result<()> {

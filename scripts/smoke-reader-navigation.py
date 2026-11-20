@@ -3,6 +3,7 @@
 import importlib.util
 import os
 import tempfile
+import time
 import tomllib
 from pathlib import Path
 
@@ -145,6 +146,32 @@ def direct_file(home, extension):
         assert tomllib.loads(config.read_text())["library_root"] == str(library)
     finally:
         term.run("kill-server", required=False)
+
+    for key, button in (("m", "[M Main menu]"), ("C-q", "[Ctrl+Q Quit]")):
+        term = s.Terminal(home, BINARY, args=[argument])
+        try:
+            term.see(marker)
+            term.run("set-window-option", "remain-on-exit", "on")
+            term.keys("q")
+            term.see(str(folder))
+            frame = term.see(button)
+            if extension == "pdf":
+                term.click(button, frame)
+            else:
+                term.keys(key)
+            if key == "m":
+                term.see("Choose a library")
+            else:
+                deadline = time.monotonic() + 5
+                while True:
+                    status = term.run("display-message", "-p", "#{pane_dead}:#{pane_dead_status}").stdout.strip()
+                    if status == "1:0":
+                        break
+                    assert time.monotonic() < deadline, f"BOTUI failed to quit cleanly: {status}"
+                    time.sleep(0.05)
+            assert tomllib.loads(config.read_text())["library_root"] == str(library)
+        finally:
+            term.run("kill-server", required=False)
 
 
 for kind in ("fb2", "pdf"):

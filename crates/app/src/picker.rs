@@ -23,7 +23,12 @@ use ratatui::{
     widgets::{Clear, List, ListItem, ListState, Paragraph},
 };
 
-use crate::AppTerminal;
+use crate::{AppTerminal, BookExit};
+
+pub(super) enum Choice {
+    Open(PathBuf),
+    Leave(BookExit),
+}
 
 #[derive(Clone, PartialEq, Eq)]
 enum LocalView {
@@ -74,6 +79,8 @@ pub struct Picker {
     directory_positions: HashMap<PathBuf, DirectoryPosition>,
     rows: Rect,
     exit: Rect,
+    home_button: Rect,
+    quit_button: Rect,
     pub error: Option<String>,
 }
 
@@ -143,6 +150,8 @@ impl Picker {
             directory_positions: HashMap::new(),
             rows: Rect::default(),
             exit: Rect::default(),
+            home_button: Rect::default(),
+            quit_button: Rect::default(),
             error: None,
         };
         picker.load_selected(&dir, selection)?;
@@ -411,6 +420,8 @@ impl Picker {
         let preferences = crate::preferences::Buttons::LABELS.join(" ");
         let actions = [
             Some("[ Q Back ]"),
+            self.back_to_filesystem_root.then_some("[M Main menu]"),
+            self.back_to_filesystem_root.then_some("[Ctrl+Q Quit]"),
             Some(preferences.as_str()),
             self.selected_scan().map(|_| "[I File info]"),
             (directory && self.dir.parent().is_some()).then_some("[↑ Up]"),
@@ -433,7 +444,7 @@ impl Picker {
                     .is_some())
             .then_some("[A Collections]"),
         ];
-        let mut rects = [Rect::default(); 10];
+        let mut rects = [Rect::default(); 12];
         let (mut x, mut line) = (0, 0);
         for (rect, label) in rects.iter_mut().zip(actions) {
             let Some(label) = label else { continue };
@@ -457,6 +468,8 @@ impl Picker {
         }
         let [
             back,
+            home,
+            quit,
             prefs,
             info,
             up,
@@ -471,6 +484,8 @@ impl Picker {
         self.membership_button = membership;
         self.remove_button = remove;
         self.exit = back;
+        self.home_button = home;
+        self.quit_button = quit;
         self.info_button = info;
         self.up_button = up;
         self.path_button = folder;
@@ -586,7 +601,7 @@ impl Picker {
         ));
     }
 
-    pub fn choose(&mut self, term: &mut AppTerminal) -> io::Result<Option<PathBuf>> {
+    pub fn choose(&mut self, term: &mut AppTerminal) -> io::Result<Choice> {
         let mut leader = crate::leader::Leader::new();
         if self.view == LocalView::Reading {
             let previous = self
@@ -606,7 +621,7 @@ impl Picker {
                 && let Some(path) = search.choose(term, |frame| self.draw(frame))?
             {
                 self.search = Some(search);
-                return Ok(Some(path));
+                return Ok(Choice::Open(path));
             }
             self.collect();
             term.draw(|frame| {
@@ -630,6 +645,34 @@ impl Picker {
                 e = event;
             } else {
                 e = crate::keymap::Scope::Library.event(e);
+            }
+            if self.back_to_filesystem_root {
+                let exit = match &e {
+                    Event::Key(k) if k.kind != KeyEventKind::Release => match (k.code, k.modifiers)
+                    {
+                        (KeyCode::Char('q'), KeyModifiers::CONTROL) => Some(BookExit::Close),
+                        (KeyCode::Char('m' | 'M'), mods)
+                            if (mods - KeyModifiers::SHIFT).is_empty() =>
+                        {
+                            Some(BookExit::Back)
+                        }
+                        _ => None,
+                    },
+                    Event::Mouse(m) if m.kind == MouseEventKind::Down(MouseButton::Left) => {
+                        let at = Position::new(m.column, m.row);
+                        if self.quit_button.contains(at) {
+                            Some(BookExit::Close)
+                        } else if self.home_button.contains(at) {
+                            Some(BookExit::Back)
+                        } else {
+                            None
+                        }
+                    }
+                    _ => None,
+                };
+                if let Some(exit) = exit {
+                    return Ok(Choice::Leave(exit));
+                }
             }
             if let Some(result) = self.navigation.splitter.input(&e) {
                 if let Err(error) = result {
@@ -743,7 +786,7 @@ impl Picker {
                 && let Some((path, kind)) = self.selected_scan()
             {
                 match show_info(term, path, kind) {
-                    Ok(true) => return Ok(Some(path.to_owned())),
+                    Ok(true) => return Ok(Choice::Open(path.to_owned())),
                     Ok(false) => (),
                     Err(e) => self.error = Some(e.to_string()),
                 }
@@ -861,7 +904,7 @@ impl Picker {
                 || click.is_some_and(|p| self.exit.contains(p))
             {
                 match self.back() {
-                    Ok(true) => return Ok(None),
+                    Ok(true) => return Ok(Choice::Leave(BookExit::Back)),
                     Ok(false) => (),
                     Err(e) => self.error = Some(e.to_string()),
                 }
@@ -888,7 +931,7 @@ impl Picker {
             let open = match e {
                 Event::Key(key) if key.kind != KeyEventKind::Release => match key.code {
                     KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                        return Ok(None);
+                        return Ok(Choice::Leave(BookExit::Back));
                     }
                     KeyCode::Right | KeyCode::Char('l') if self.grid.is_some() => {
                         self.move_selection(1);
@@ -964,7 +1007,7 @@ impl Picker {
                 let path = entry.path.clone();
                 if entry.kind.is_some() {
                     self.error = None;
-                    return Ok(Some(path));
+                    return Ok(Choice::Open(path));
                 }
                 let previous = self.dir.clone();
                 if let Err(e) = self.load(&path) {

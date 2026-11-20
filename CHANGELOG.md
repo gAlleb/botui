@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Add M for the main menu and Ctrl+Q to quit from a directly opened book’s folder.
 - Center EPUB fraction operands on the bar and keep display equations together at page breaks.
 - Open the spread containing the current single page when switching to two pages.
 - Preserve EPUB code spacing and Unicode math indices when copying.
