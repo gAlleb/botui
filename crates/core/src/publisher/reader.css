@@ -73,15 +73,21 @@ img, svg { max-width: 100%; }
 *|mfrac[data-botui-linear] > :nth-child(2) { border: 0; }
 *|mo { padding: 0; }
 *|math[display="block"], *|math[display="block"] > *|semantics > *|mrow {
-    display: flex; align-items: center; justify-content: center;
+    display: flex; flex-wrap: wrap; align-items: center; justify-content: center;
 }
 *|math[display="block"] > [data-botui-operator],
 *|math[display="block"] > *|mrow > [data-botui-operator],
 *|math[display="block"] > *|semantics > *|mrow > [data-botui-operator] { margin-inline: 1ch; }
 *|math[display="block"] *|munderover { margin-right: 1ch; }
-*|math[display="block"] > *|mrow { display: flex; align-items: center; justify-content: center; }
+*|math[display="block"] > *|mrow { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; }
 table[data-botui-scroll-table] { display: table !important; border-collapse: separate !important; border-spacing: 1ch 0 !important; }
 table[data-botui-scroll-table], table[data-botui-scroll-table] > :is(thead,tbody,tfoot),
 table[data-botui-scroll-table] > :is(thead,tbody,tfoot) > tr > :is(th,td) { border: 0 !important; }
 blockquote:not([data-botui-surface]) { border-left: 1px solid !important; padding-left: 1ch !important; }
 *|math[display="block"] *|msup:not([data-botui-linear]) { margin-bottom: 1em; margin-right: 1ch; }
+/* Script linearization must not remove the gutter of a fraction operand. */
+*|math[display="block"] *|mfrac > * {
+    padding-inline: 1ch;
+    text-align: center;
+    text-align-last: center;
+}

@@ -288,6 +288,15 @@ impl BookLayout {
     }
 }
 
+impl PageLine {
+    fn indivisible_blocks(&self) -> impl Iterator<Item = (u16, u16)> + '_ {
+        self.figures
+            .iter()
+            .map(|f| (f.row, f.height))
+            .chain((self.equation.1 > 1).then_some(self.equation))
+    }
+}
+
 impl Layout {
     /// Fill the column immediately before an exact reading position. If its
     /// first row would cut a picture, leave the whole picture on the earlier page.
@@ -300,9 +309,9 @@ impl Layout {
         let mut start = limit;
         while start < end {
             let mut after = start;
-            for figure in &rows[start].figures {
-                if figure.row > 0 && usize::from(figure.height) <= self.height {
-                    let bottom = start + usize::from(figure.height - figure.row);
+            for (row, height) in rows[start].indivisible_blocks() {
+                if row > 0 && usize::from(height) <= self.height {
+                    let bottom = start + usize::from(height - row);
                     if bottom >= end {
                         // The reading position is in the image or in an overlapping float.
                         return limit;
@@ -333,9 +342,9 @@ impl Layout {
         let mut end = boundary;
         while !self.scrolling && end > first {
             let mut before = end;
-            for figure in &rows[end - 1].figures {
-                if figure.row + 1 < figure.height && usize::from(figure.height) <= self.height {
-                    let top = (end - 1).saturating_sub(figure.row.into());
+            for (row, height) in rows[end - 1].indivisible_blocks() {
+                if row + 1 < height && usize::from(height) <= self.height {
+                    let top = (end - 1).saturating_sub(row.into());
                     if top <= first {
                         // Overlapping floats or an exact text anchor inside an image.
                         // No earlier whole-image break is possible on this page.
@@ -422,7 +431,9 @@ impl Pager {
             );
         }
         if self.layout.scrolling
-            || (!self.book.has_figures && !self.book.has_chapters)
+            || (!self.book.has_figures
+                && !self.book.has_chapters
+                && !self.lines.iter().any(|l| l.equation.1 > 1))
             || self.layout.height == 0
         {
             return;

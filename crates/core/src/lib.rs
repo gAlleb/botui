@@ -223,6 +223,8 @@ pub struct PageLine {
     pub figures: Vec<Figure>,
     pub surfaces: Vec<Surface>,
     pub table_header: bool,
+    /// Row within a display equation and its total rendered height.
+    equation: (u16, u16),
     chapter_start: bool,
     pub text: String,
     pub heading: bool,
@@ -857,6 +859,7 @@ fn wrap_block(lines: &mut Vec<PageLine>, block: &Block, index: usize, width: usi
             surfaces: Vec::new(),
             table_header: false,
             chapter_start: false,
+            equation: (0, 0),
             text: std::mem::take(row),
             heading: block.heading,
             start: Anchor { block: index, byte },

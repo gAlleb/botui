@@ -2321,3 +2321,93 @@ fn copying_epub_code_restores_whitespace_across_inline_spans_and_wraps() {
         assert_eq!(doc.clipboard_text(tail), "words\n\tlast line");
     }
 }
+
+#[test]
+fn display_fraction_centers_scripts_in_every_reading_alignment() {
+    use botui_core::{LayoutMode, Pager, TextAlignment};
+    let doc = styled_fixture(
+        "<math display='block'><semantics><mrow><munderover><mo>∑</mo><mrow><mi>n</mi><mo>=</mo><mn>1</mn></mrow><mi>∞</mi></munderover><mfrac><mn>1</mn><msup><mi>n</mi><mn>2</mn></msup></mfrac><mo>=</mo><mfrac><msup><mi>π</mi><mn>2</mn></msup><mn>6</mn></mfrac></mrow></semantics></math>",
+        "",
+    );
+    let mut options = Pager::new(&doc, 55, 20, LayoutMode::Single).reflow_options();
+    let mut shape = None;
+    for alignment in [
+        TextAlignment::Book,
+        TextAlignment::Left,
+        TextAlignment::Right,
+        TextAlignment::Center,
+        TextAlignment::Justify,
+    ] {
+        options.typography.alignment = alignment;
+        for width in [29, 30, 48, 55, 80] {
+            let pager = Pager::with_options(&doc, width, 20, LayoutMode::Single, options);
+            let rows = pager.lines(0);
+            let bar = rows.iter().position(|r| r.text.contains('─')).unwrap();
+            let math = &rows[bar - 1..=bar + 1];
+            let margin = math
+                .iter()
+                .map(|r| r.text.len() - r.text.trim_start().len())
+                .min()
+                .unwrap();
+            let shape_here: Vec<_> = math
+                .iter()
+                .map(|r| r.text[margin..].trim_end().to_owned())
+                .collect();
+            assert_eq!(
+                &shape_here,
+                shape.get_or_insert_with(|| shape_here.clone()),
+                "{alignment:?} {width}"
+            );
+            let line: Vec<_> = rows[bar].text.chars().collect();
+            let mut centers = Vec::new();
+            let mut i = 0;
+            while i < line.len() {
+                let start = i;
+                if line[i] != '─' {
+                    i += 1;
+                    continue;
+                }
+                while i < line.len() && line[i] == '─' {
+                    i += 1
+                }
+                centers.push(start + i - 1);
+            }
+            assert_eq!(centers.len(), 2);
+            for (s, word, center) in [
+                (&rows[bar - 1].text, "1", centers[0]),
+                (&rows[bar + 1].text, "n²", centers[0]),
+                (&rows[bar - 1].text, "π²", centers[1]),
+                (&rows[bar + 1].text, "6", centers[1]),
+            ] {
+                let x = s[..s.find(word).unwrap()].chars().count();
+                assert!(
+                    (2 * x + word.chars().count() - 1).abs_diff(center) <= 1,
+                    "{alignment:?} {width}: {:?}",
+                    rows.iter().map(|r| r.text.as_str()).collect::<Vec<_>>()
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn display_fraction_moves_whole_to_the_next_column_when_it_fits() {
+    use botui_core::{LayoutMode, Pager};
+    let doc = styled_fixture(
+        "<p>Before</p><math display='block'><mfrac><mi>top</mi><mi>bottom</mi></mfrac></math><p>After</p>",
+        "",
+    );
+    for mode in [LayoutMode::Single, LayoutMode::Spread] {
+        let mut p = Pager::new(&doc, 100, 4, mode);
+        assert!(p.lines(0).iter().all(|r| !r.text.contains("top")));
+        let column = if mode == LayoutMode::Single {
+            p.next();
+            0
+        } else {
+            1
+        };
+        let column = p.lines(column);
+        assert!(column.iter().any(|r| r.text.contains("top")));
+        assert!(column.iter().any(|r| r.text.contains("bottom")));
+    }
+}

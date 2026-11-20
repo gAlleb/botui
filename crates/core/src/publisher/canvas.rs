@@ -297,13 +297,45 @@ fn paint_lines<const GROUPED: bool>(
     let mut cursors: Vec<Cursor> = (0..sources.len()).map(|_| Cursor::default()).collect();
     let mut styles = HashMap::new();
     let mut data_tables = Vec::new();
-    let mut stack = vec![doc.root_element().id];
-    while let Some(id) = stack.pop() {
+    let mut equations = Vec::new();
+    let mut stack = vec![(doc.root_element().id, 0.)];
+    while let Some((id, mut shift_x)) = stack.pop() {
         let Some(node) = doc.get_node(id) else {
             continue;
         };
         if let Some(children) = node.layout_children.borrow().as_ref() {
-            stack.extend(children.iter().rev().copied());
+            if node.element_data().is_some_and(|e| {
+                &*e.name.local == "math"
+                    && e.attrs()
+                        .iter()
+                        .any(|a| &*a.name.local == "display" && a.value == "block")
+            }) {
+                let top = node.absolute_position(0., 0.).y;
+                let bottom = top + node.final_layout().size.height;
+                let band = (top / ROW).round() as usize..(bottom / ROW).round() as usize;
+                if band.len() > 1 {
+                    equations.push(band);
+                }
+                // Quantize the origin of the equation once. Otherwise moving a
+                // centered flex group half a cell rounds its operands independently.
+                let mut first = children.first().and_then(|&id| doc.get_node(id));
+                while let Some(wrapper) = first.filter(|n| {
+                    n.element_data()
+                        .is_some_and(|e| matches!(&*e.name.local, "mrow" | "semantics"))
+                }) {
+                    first = wrapper
+                        .layout_children
+                        .borrow()
+                        .as_ref()
+                        .and_then(|c| c.first())
+                        .and_then(|&id| doc.get_node(id));
+                }
+                if let Some(first) = first {
+                    let x = first.absolute_position(0., 0.).x;
+                    shift_x = (x / CELL).round() * CELL - x;
+                }
+            }
+            stack.extend(children.iter().rev().map(|&child| (child, shift_x)));
         }
         let area = node.final_layout();
         let pos = node.absolute_position(0., 0.);
@@ -377,11 +409,17 @@ fn paint_lines<const GROUPED: bool>(
             || area.border.right > 0.)
             && visible()
         {
-            draw_border(node, width, &mut rows, Paint::for_node(doc, id).face);
+            draw_border(
+                node,
+                shift_x,
+                width,
+                &mut rows,
+                Paint::for_node(doc, id).face,
+            );
         }
         draw_text::<GROUPED>(
             doc,
-            node,
+            (node, shift_x),
             &mut rows,
             sources,
             blocks,
@@ -477,7 +515,7 @@ fn paint_lines<const GROUPED: bool>(
         .next()
         .map(|s| s.start)
         .unwrap_or_default();
-    compose_rows(rows, figures, surfaces, edges, width, anchor)
+    compose_rows(rows, figures, surfaces, edges, equations, width, anchor)
 }
 
 type Rows<'a> = BTreeMap<usize, Vec<Ink<'a>>>;
@@ -622,9 +660,9 @@ fn draw_table_dividers(
     })
 }
 
-fn draw_border(node: &Node, width: u16, rows: &mut Rows<'_>, face: Face) {
+fn draw_border(node: &Node, shift_x: f32, width: u16, rows: &mut Rows<'_>, face: Face) {
     let area = node.final_layout();
-    let pos = node.absolute_position(0., 0.);
+    let pos = node.absolute_position(shift_x, 0.);
     let left = (pos.x / CELL).round().max(0.) as usize;
     let right = ((pos.x + area.size.width) / CELL).round().max(0.) as usize;
     let top = (pos.y / ROW).round().max(0.) as usize;
@@ -663,7 +701,7 @@ fn draw_border(node: &Node, width: u16, rows: &mut Rows<'_>, face: Face) {
 
 fn draw_text<'a, const GROUPED: bool>(
     doc: &'a BaseDocument,
-    node: &'a Node,
+    (node, shift_x): (&'a Node, f32),
     rows: &mut Rows<'a>,
     sources: &[Vec<SourceText>],
     blocks: &[Block],
@@ -677,7 +715,7 @@ fn draw_text<'a, const GROUPED: bool>(
     else {
         return;
     };
-    let pos = node.absolute_position(0., 0.);
+    let pos = node.absolute_position(shift_x, 0.);
     let area = node.final_layout();
     let left = pos.x + area.border.left + area.padding.left;
     let top = pos.y + area.border.top + area.padding.top + inline.block_offset;
@@ -895,18 +933,40 @@ fn compose_rows(
     mut figures: BTreeMap<usize, Vec<crate::Figure>>,
     mut surfaces: BTreeMap<usize, Vec<crate::Surface>>,
     mut edges: TableEdges,
+    mut equations: Vec<std::ops::Range<usize>>,
     width: u16,
     mut anchor: Anchor,
 ) -> Vec<PageLine> {
     let mut result = Vec::new();
+    // Keep coordinates in emitted rows: a wide CSS row can wrap, and
+    // table rules and collapsed vertical margins change the row count.
+    equations.sort_unstable_by_key(|r| r.start);
+    equations.dedup_by(|next, previous| {
+        if next.start < previous.end {
+            previous.end = previous.end.max(next.end);
+            true
+        } else {
+            false
+        }
+    });
+    let mut bands = equations.into_iter().peekable();
+    let mut formula_start = None;
     let mut prev: Option<usize> = None;
     for (y, mut glyphs) in rows {
+        while bands.next_if(|r| r.end <= y).is_some() {
+            if let Some(start) = formula_start.take() {
+                mark_equation(&mut result[start..]);
+            }
+        }
         for blank in blank_rows(prev, y) {
             result.push(PageLine {
                 surfaces: surfaces.remove(&blank).unwrap_or_default(),
                 start: anchor,
                 ..Default::default()
             });
+        }
+        if bands.peek().is_some_and(|r| r.contains(&y)) {
+            formula_start.get_or_insert(result.len());
         }
         prev = Some(y);
         glyphs.sort_by_key(|g| (g.x, g.rule)); // text paints over a coincident thin rule
@@ -1043,8 +1103,20 @@ fn compose_rows(
             });
         }
     }
+    if let Some(start) = formula_start {
+        mark_equation(&mut result[start..]);
+    }
     result
 }
+
+fn mark_equation(rows: &mut [PageLine]) {
+    if let Ok(height) = u16::try_from(rows.len()) {
+        for (index, row) in rows.iter_mut().enumerate() {
+            row.equation = (index as u16, height);
+        }
+    }
+}
+
 fn finish(rows: &mut Vec<PageLine>, line: &mut PageLine, anchor: &mut Anchor) {
     if let Some(at) = line
         .spans

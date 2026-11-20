@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Keep EPUB fractions aligned in every reading mode and fit display equations across page breaks.
+
 - Open the spread containing the current single page when switching to two pages.
 
 - Preserve EPUB code spacing and Unicode math indices when copying.
