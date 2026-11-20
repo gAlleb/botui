@@ -2110,3 +2110,74 @@ fn svg_archive_resources_are_self_contained_and_bounded() {
         Some((192, 96))
     );
 }
+
+#[test]
+fn epub_inline_math_and_code_share_the_prose_baseline() {
+    use botui_core::{LayoutMode, Pager};
+    let doc = styled_fixture(
+        "<h1>Unit</h1><p>Before <math><mi>E</mi><mo>=</mo><mi>m</mi><msup><mi>c</mi><mn>2</mn></msup></math> after <code>run</code>.</p><h2>Details</h2><pre><code>$x$</code></pre>",
+        "",
+    );
+    assert_eq!(doc.chapter_starts.iter().copied().collect::<Vec<_>>(), [0]);
+    for mode in [LayoutMode::Single, LayoutMode::Spread, LayoutMode::Scroll] {
+        let pager = Pager::new(&doc, 100, 24, mode);
+        let rows = pager.lines(0);
+        let line = rows
+            .iter()
+            .find(|l| l.text.contains("Before E = mc² after run."))
+            .unwrap();
+        let code = line
+            .spans
+            .iter()
+            .filter(|s| s.face.role == 10)
+            .map(|s| &line.text[s.bytes.clone()])
+            .collect::<String>();
+        assert_eq!(code, "run");
+        assert!(rows.iter().any(|l| l.text.contains("Details")));
+        let raw = rows.iter().find(|l| l.text.contains("$x$")).unwrap();
+        assert!(raw.spans.iter().all(|s| s.face.role != 10));
+    }
+}
+
+#[test]
+fn scrollable_epub_table_keeps_rows_and_respects_hidden_media() {
+    use botui_core::{LayoutMode, Pager};
+    let doc = styled_fixture(
+        "<blockquote><p>Quoted</p></blockquote><table><thead><tr><th>Name</th><th>Formula</th></tr></thead><tbody><tr><td>Energy</td><td>First</td></tr><tr><td>Euler</td><td>Second</td></tr></tbody></table><p>End.</p>",
+        "table{display:block;overflow-x:auto;width:100%}@media(max-width:300px){table{display:none}}",
+    );
+    let mut pager = Pager::new(&doc, 64, 40, LayoutMode::Single);
+    for width in [64, 29, 48] {
+        pager.relayout(&doc, width, 40, LayoutMode::Single);
+        let rows = pager.lines(0);
+        assert!(
+            rows.iter()
+                .any(|r| r.text.contains("Quoted") && r.text.contains('│'))
+        );
+        if width == 29 {
+            assert!(rows.iter().all(|r| !r.text.contains("Euler")));
+        } else {
+            let row = |a: &str, b: &str| {
+                rows.iter()
+                    .position(|r| r.text.contains(a) && r.text.contains(b))
+                    .unwrap()
+            };
+            assert!(row("Name", "Formula") < row("Energy", "First"));
+            assert!(row("Energy", "First") < row("Euler", "Second"));
+        }
+    }
+}
+
+#[test]
+fn epub_display_exponent_sits_above_the_integrand() {
+    use botui_core::{LayoutMode, Pager};
+    let doc = styled_fixture(
+        r#"<p>Integral</p><math display="block"><msubsup><mo>∫</mo><mn>0</mn><mi>∞</mi></msubsup><msup><mi>e</mi><mrow><mo>−</mo><msup><mi>x</mi><mn>2</mn></msup></mrow></msup><mi>d</mi><mi>x</mi><mo>=</mo><mfrac><mi>pi</mi><mn>2</mn></mfrac></math>"#,
+        "",
+    );
+    let pager = Pager::new(&doc, 60, 24, LayoutMode::Single);
+    let rows = pager.lines(0);
+    let base = rows.iter().position(|r| r.text.contains('∫')).unwrap();
+    assert!(rows[base].text.contains('e') && rows[base].text.contains("dx ="));
+    assert!(rows[base - 1].text.contains("−x²") && rows[base - 1].text.contains('∞'));
+}

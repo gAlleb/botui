@@ -14,6 +14,7 @@ mod svg;
 pub use resources::{
     Supplement, illustration, supplement, supplementary_document, supplementary_note,
 };
+mod math_text;
 mod publisher;
 #[cfg(test)]
 mod tests;

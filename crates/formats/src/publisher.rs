@@ -70,9 +70,18 @@ pub(super) fn chapter(
 ) -> Chapter {
     let mut elements = Vec::new();
     let mut sources = Vec::new();
+    let mut inline_code = Vec::new();
     let mut raised_links = Vec::new();
     let links = scraper::Selector::parse("a[href]").unwrap();
     for el in dom.tree.nodes().filter_map(ElementRef::wrap) {
+        if el.value().name() == "code"
+            && !el
+                .ancestors()
+                .filter_map(ElementRef::wrap)
+                .any(|p| p.value().name() == "pre")
+        {
+            inline_code.push(el.id());
+        }
         if el.value().name() == "sup" && el.select(&links).next().is_some() {
             raised_links.push(el.id());
         }
@@ -111,6 +120,11 @@ pub(super) fn chapter(
                         | "data-botui-gutter-right"
                 )
             });
+        }
+    }
+    for id in inline_code {
+        if let scraper::Node::Element(el) = dom.tree.get_mut(id).unwrap().value() {
+            set_attr(el, "data-botui-role", "10");
         }
     }
     for id in raised_links {
@@ -162,6 +176,7 @@ pub(super) fn chapter(
             || compact_structure(e.value())
     });
     super::tex::convert(dom);
+    super::math_text::prepare(dom, &mut sources);
     // scraper serializes HTML void elements such as <img> and <br> without
     // XML closing tags. Select the HTML parser even when the root declares XHTML.
     let html = format!("<!doctype html>\n{}", dom.root_element().html());

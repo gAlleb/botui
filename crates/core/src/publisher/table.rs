@@ -4,6 +4,25 @@ use blitz_traits::node_id::NodeId;
 use blitz_traits::shell::{ColorScheme, Viewport};
 use std::ops::Range;
 
+/// A scrollable block table (as emitted by Pandoc) needs a single shared
+/// column grid in a terminal. Inspect the publisher cascade before Blitz
+/// constructs layout boxes, preserving hidden tables and media queries.
+pub(super) fn normalize_scroll_tables(doc: &mut BaseDocument) {
+    doc.handle_messages();
+    doc.resolve_stylist(0.);
+    let markers: Vec<_> = doc
+        .tree()
+        .iter()
+        .filter_map(|(id, node)| {
+            super::marker(node.element_data()?, "data-botui-data-table")?;
+            (node.primary_styles()?.clone_display()
+                == style::values::specified::box_::Display::Block)
+                .then_some((id, "data-botui-scroll-table"))
+        })
+        .collect();
+    set_markers(doc, &markers, true);
+}
+
 /// Preserve publisher-drawn borders on any part of the table.
 pub(super) fn needs_rules(doc: &BaseDocument, node: &Node) -> bool {
     use blitz_dom::node::SpecialElementData;
@@ -79,7 +98,7 @@ pub(super) fn missing_gutters(
     gutters
 }
 
-pub(super) fn set_gutters(
+pub(super) fn set_markers(
     doc: &mut BaseDocument,
     gutters: &[(NodeId, &'static str)],
     enabled: bool,

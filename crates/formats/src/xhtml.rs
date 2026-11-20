@@ -197,6 +197,10 @@ pub(super) fn extract_element(
     let mut table_rows = vec![];
     let mut columns = 0;
     let mut svg_index = 0;
+    // Publishers may start a chapter at h1 or h2. Lower-ranked headings
+    // within the same spine document are navigation targets within it.
+    let mut primary_heading = None;
+    let mut heading_starts = Vec::new();
     for edge in body.traverse() {
         match edge {
             Edge::Open(node) if hidden.is_none() => match node.value() {
@@ -205,7 +209,14 @@ pub(super) fn extract_element(
                     if el.attr("hidden").is_none() {
                         let start = || blocks.len() + usize::from(!buffer.trim().is_empty());
                         if matches!(name, "h1" | "h2") {
-                            chapters.headings.insert(start());
+                            let rank = name.as_bytes()[1];
+                            if primary_heading.is_none_or(|level| rank < level) {
+                                heading_starts.clear();
+                                primary_heading = Some(rank);
+                            }
+                            if primary_heading == Some(rank) {
+                                heading_starts.push(start());
+                            }
                         }
                         if ["epub:type", "role"]
                             .iter()
@@ -382,5 +393,6 @@ pub(super) fn extract_element(
         }
     }
     flush(&mut buffer, is_heading, blocks);
+    chapters.headings.extend(heading_starts);
     ids
 }

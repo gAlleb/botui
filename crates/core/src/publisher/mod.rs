@@ -145,13 +145,19 @@ impl Worker {
             1.0,
             ColorScheme::Light,
         );
-        if let Some(doc) = self.documents.get_mut(&start) {
+        if let Some(doc) = self.documents.get_mut(&start)
+            && (chapter.tables.is_empty() || doc.viewport().window_size == viewport.window_size)
+        {
             doc.set_viewport(viewport);
             spacing::resolve(doc, options);
             return canvas::lines(doc, layout.width, chapter, blocks);
         }
         let mut doc = chapter.document(viewport, options, blocks, resume);
         let lines = canvas::lines(&mut doc, layout.width, chapter, blocks);
+        if let Some(cached) = self.documents.get_mut(&start) {
+            *cached = doc;
+            return lines;
+        }
         let tags = chapter.html.bytes().filter(|b| *b == b'<').count();
         if self.markup + chapter.html.len() <= 2 * 1024 * 1024 / self.partitions
             && self.tags + tags <= 24_000 / self.partitions
@@ -340,6 +346,9 @@ impl Chapter {
         // construction. Parsing the reusable sheet earlier drops those rules.
         doc.add_user_agent_stylesheet(SHEET.clone());
         doc.add_user_agent_stylesheet(UserAgentStylesheet::parse(&settings));
+        if !self.tables.is_empty() {
+            table::normalize_scroll_tables(&mut doc);
+        }
         doc
     }
 }

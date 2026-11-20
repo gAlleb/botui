@@ -144,7 +144,7 @@ pub(super) fn lines(
     // lines to fill the column leaves whole blank cells between words.
     let gutters = super::table::missing_gutters(doc, chapter);
     if !gutters.is_empty() {
-        super::table::set_gutters(doc, &gutters, true);
+        super::table::set_markers(doc, &gutters, true);
         doc.resolve(0.);
     }
     let justified: Vec<_> = doc
@@ -232,7 +232,7 @@ pub(super) fn lines(
             },
         );
     }
-    super::table::set_gutters(doc, &gutters, false);
+    super::table::set_markers(doc, &gutters, false);
     rows
 }
 

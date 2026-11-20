@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Keep EPUB subsections on the page, distinguish inline code, and align formulas to terminal cells.
+- Keep EPUB table rows aligned, mark quotations, and raise compound display exponents.
 - Clear stale PDF selection state after SyncTeX jumps.
 
 ## 0.1.23 — 2026-11-17
