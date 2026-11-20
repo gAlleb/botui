@@ -4,41 +4,53 @@ use ratatui::style::{Color, Style};
 #[derive(Clone, Copy)]
 struct Colors(u32, u32, u32);
 
+// Heading and formula ink on light paper, followed by the pair on dark paper.
+#[derive(Clone, Copy)]
+struct Accents(u32, u32, u32, u32);
+
 struct Palette {
     id: &'static str,
     name: &'static str,
     light: Colors,
     dark: Colors,
+    accents: Accents,
 }
 
-const fn palette(id: &'static str, name: &'static str, light: Colors, dark: Colors) -> Palette {
+const fn palette(
+    id: &'static str,
+    name: &'static str,
+    light: Colors,
+    dark: Colors,
+    accents: Accents,
+) -> Palette {
     Palette {
         id,
         name,
         light,
         dark,
+        accents,
     }
 }
 
 #[rustfmt::skip]
 const PALETTES: &[Palette] = &[
-    palette("default", "Default", Colors(0x000000, 0xffffff, 0x0066cc), Colors(0xe0e0e0, 0x222222, 0x77bbee)),
-    palette("gray", "Gray", Colors(0x222222, 0xe0e0e0, 0x4488cc), Colors(0xc6c6c6, 0x444444, 0x88ccee)),
-    palette("sepia", "Sepia", Colors(0x5b4636, 0xf1e8d0, 0x008b8b), Colors(0xffd595, 0x342e25, 0x48d1cc)),
-    palette("crimson", "Crimson", Colors(0x2f1f25, 0xfdf1f4, 0xdd0031), Colors(0xf3dbe2, 0x3a252d, 0xff5a86)),
-    palette("meadow", "Meadow", Colors(0x232c16, 0xd7dbbd, 0x177b4d), Colors(0xd8deba, 0x333627, 0xa6d608)),
-    palette("rosewood", "Rosewood", Colors(0x4e1609, 0xf0d1d5, 0xde3838), Colors(0xe5c4c8, 0x462f32, 0xff646e)),
-    palette("azure", "Azure", Colors(0x262d48, 0xcedef5, 0x2d53e5), Colors(0xbabee1, 0x282e47, 0xff646e)),
-    palette("dawnlight", "Dawnlight", Colors(0x586e75, 0xfdf6e3, 0x268bd2), Colors(0x93a1a1, 0x002b36, 0x268bd2)),
-    palette("ember", "Ember", Colors(0x3c3836, 0xfbf1c7, 0x076678), Colors(0xebdbb2, 0x282828, 0x83a598)),
-    palette("aurora", "Aurora", Colors(0x2e3440, 0xeceff4, 0x5e81ac), Colors(0xd8dee9, 0x2e3440, 0x88c0d0)),
-    palette("ocean", "Ocean", Colors(0x0a4d4d, 0xe0f7fa, 0x00838f), Colors(0xb2dfdb, 0x263238, 0x4dd0e1)),
-    palette("mist", "Mist", Colors(0x4a148c, 0xf3e5f5, 0x7b1fa2), Colors(0xc7b6dd, 0x3a3150, 0xb39ddb)),
-    palette("parchment", "Parchment", Colors(0x493e2f, 0xf4ecd8, 0x80521c), Colors(0xe7dac1, 0x29241d, 0xd9b878)),
-    palette("sage", "Sage", Colors(0x293e33, 0xe5ede2, 0x2a6854), Colors(0xd6e2d2, 0x1e2b24, 0x8fc7a5)),
-    palette("dusk", "Dusk", Colors(0x453449, 0xf0e7ef, 0x805184), Colors(0xe3d3e4, 0x2a2130, 0xd4a6dc)),
-    palette("slate", "Slate", Colors(0x2e3945, 0xe7edf2, 0x315f8c), Colors(0xd3dce6, 0x1c2530, 0x91b7dd)),
-    palette("amoled", "AMOLED", Colors(0x000000, 0xffffff, 0x0066cc), Colors(0xffffff, 0x000000, 0x77bbee)),
+    palette("default", "Default", Colors(0x000000, 0xffffff, 0x0066cc), Colors(0xe0e0e0, 0x222222, 0x77bbee), Accents(0x204884, 0x00674f, 0xf1ce91, 0x95d9ca)),
+    palette("gray", "Gray", Colors(0x222222, 0xe0e0e0, 0x4488cc), Colors(0xc6c6c6, 0x444444, 0x88ccee), Accents(0x393939, 0x575757, 0xf0f0f0, 0xb7d9da)),
+    palette("sepia", "Sepia", Colors(0x5b4636, 0xf1e8d0, 0x008b8b), Colors(0xffd595, 0x342e25, 0x48d1cc), Accents(0x783f19, 0x39623e, 0xffc27c, 0xabd6a1)),
+    palette("crimson", "Crimson", Colors(0x2f1f25, 0xfdf1f4, 0xdd0031), Colors(0xf3dbe2, 0x3a252d, 0xff5a86), Accents(0x832c50, 0x624174, 0xffabbe, 0xdcb5eb)),
+    palette("meadow", "Meadow", Colors(0x232c16, 0xd7dbbd, 0x177b4d), Colors(0xd8deba, 0x333627, 0xa6d608), Accents(0x42531c, 0x1d604b, 0xedd592, 0xa8d7ad)),
+    palette("rosewood", "Rosewood", Colors(0x4e1609, 0xf0d1d5, 0xde3838), Colors(0xe5c4c8, 0x462f32, 0xff646e), Accents(0x843d37, 0x623753, 0xffada0, 0xe5b1d8)),
+    palette("azure", "Azure", Colors(0x262d48, 0xcedef5, 0x2d53e5), Colors(0xbabee1, 0x282e47, 0xff646e), Accents(0x234d83, 0x454a85, 0x9ecbff, 0xcdbafa)),
+    palette("dawnlight", "Dawnlight", Colors(0x586e75, 0xfdf6e3, 0x268bd2), Colors(0x93a1a1, 0x002b36, 0x268bd2), Accents(0x684d24, 0x08695e, 0xeabc83, 0x82d0c1)),
+    palette("ember", "Ember", Colors(0x3c3836, 0xfbf1c7, 0x076678), Colors(0xebdbb2, 0x282828, 0x83a598), Accents(0x774217, 0x356451, 0xf5b879, 0xb7d29b)),
+    palette("aurora", "Aurora", Colors(0x2e3440, 0xeceff4, 0x5e81ac), Colors(0xd8dee9, 0x2e3440, 0x88c0d0), Accents(0x354d73, 0x32606c, 0xaacaf3, 0xa3d6bf)),
+    palette("ocean", "Ocean", Colors(0x0a4d4d, 0xe0f7fa, 0x00838f), Colors(0xb2dfdb, 0x263238, 0x4dd0e1), Accents(0x20596a, 0x38614c, 0x8cdaef, 0xb6dcc0)),
+    palette("mist", "Mist", Colors(0x4a148c, 0xf3e5f5, 0x7b1fa2), Colors(0xc7b6dd, 0x3a3150, 0xb39ddb), Accents(0x633376, 0x493c76, 0xe8b6ee, 0xbdc4f3)),
+    palette("parchment", "Parchment", Colors(0x493e2f, 0xf4ecd8, 0x80521c), Colors(0xe7dac1, 0x29241d, 0xd9b878), Accents(0x774c1e, 0x4e603b, 0xf0bc79, 0xb5d09c)),
+    palette("sage", "Sage", Colors(0x293e33, 0xe5ede2, 0x2a6854), Colors(0xd6e2d2, 0x1e2b24, 0x8fc7a5), Accents(0x385537, 0x215759, 0xb9d99a, 0x94d5ca)),
+    palette("dusk", "Dusk", Colors(0x453449, 0xf0e7ef, 0x805184), Colors(0xe3d3e4, 0x2a2130, 0xd4a6dc), Accents(0x703d65, 0x425276, 0xedb2d8, 0xb6c7ee)),
+    palette("slate", "Slate", Colors(0x2e3945, 0xe7edf2, 0x315f8c), Colors(0xd3dce6, 0x1c2530, 0x91b7dd), Accents(0x2c5077, 0x365967, 0xa6ccfa, 0xa1d5cc)),
+    palette("amoled", "AMOLED", Colors(0x000000, 0xffffff, 0x0066cc), Colors(0xffffff, 0x000000, 0x77bbee), Accents(0x303030, 0x5b5b5b, 0xdedede, 0xb3b3b3)),
 ];
 
 fn color(value: u32) -> Color {
@@ -126,6 +138,17 @@ impl Theme {
             .map_or(Color::Blue, |Colors(_, _, v)| color(v))
     }
 
+    pub(crate) fn heading(self) -> Color {
+        self.palette().map_or(Color::Yellow, |p| {
+            color(if self.dark { p.accents.2 } else { p.accents.0 })
+        })
+    }
+    pub(crate) fn formula(self) -> Color {
+        self.palette().map_or(Color::Cyan, |p| {
+            color(if self.dark { p.accents.3 } else { p.accents.1 })
+        })
+    }
+
     pub(crate) fn frame_style(self, focused: bool) -> Style {
         let Some(Colors(ink, paper, _)) = self.colors() else {
             let native = Style::new().fg(Color::Reset);
@@ -193,6 +216,11 @@ mod tests {
             for dark in [false, true] {
                 let theme = Theme::at(row, dark);
                 let paper = luminance(theme.style().bg.unwrap());
+                for accent in [theme.heading(), theme.formula()] {
+                    assert!(contrast(luminance(accent), paper) >= 4.5, "{}", theme.id());
+                    assert_ne!(Some(accent), theme.style().fg);
+                }
+                assert_ne!(theme.heading(), theme.formula());
                 let active = luminance(theme.frame_style(true).fg.unwrap());
                 let inactive = luminance(theme.frame_style(false).fg.unwrap());
                 assert!(contrast(active, paper) >= 3.0, "{}", theme.id());

@@ -38,7 +38,13 @@ impl Paint {
                     n.parent.and_then(|p| doc.get_node(p))
                 })
                 .filter_map(|n| n.element_data())
-                .find_map(|e| super::marker(e, "data-botui-role"))
+                .find_map(|e| match &*e.name.local {
+                    "math" => Some(17),
+                    "h1" | "h2" | "h3" | "h4" | "h5" | "h6" => {
+                        Some(usize::from(e.name.local.as_bytes()[1] - b'0'))
+                    }
+                    _ => super::marker(e, "data-botui-role"),
+                })
                 .unwrap_or(0) as u8,
                 bold: s.clone_font_weight().value() >= 600.,
                 italic: s.clone_font_style() != FontStyle::NORMAL,

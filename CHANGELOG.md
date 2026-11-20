@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Give formulas and headings distinct reading-theme colors.
+- Keep one blank line between a chapter title and its first subheading.
+
 - Add alignment for text, headings and formulas, full-width text and optional rules under headings.
 
 - Keep EPUB subsections on the page, distinguish inline code, and align formulas to terminal cells.

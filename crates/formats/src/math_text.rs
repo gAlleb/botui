@@ -129,6 +129,9 @@ pub(super) fn prepare(dom: &mut Html, sources: &mut [Vec<SourceText>]) {
             .filter(|e| native || matches!(e.value().name(), "sup" | "sub"))
             .map(|e| e.id())
             .collect();
+        if !native && let Node::Element(tag) = dom.tree.get_mut(root).unwrap().value() {
+            set_attr(tag, "data-botui-role", "17");
+        }
         for id in nodes {
             let e = ElementRef::wrap(dom.tree.get(id).unwrap()).unwrap();
             let name = e.value().name();

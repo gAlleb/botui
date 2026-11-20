@@ -2213,6 +2213,11 @@ fn epub_heading_rules_use_the_markup_level_in_both_layout_engines() {
             let mut options = base;
             options.typography.heading_rules = enabled;
             let pager = Pager::with_options(&doc, 60, 60, LayoutMode::Scroll, options);
+            let rows = pager.lines(0);
+            let main = rows.iter().position(|r| r.text.contains("Part")).unwrap();
+            let next = rows.iter().position(|r| r.text.contains("Aside")).unwrap();
+            assert_eq!(next - main, 2 + usize::from(enabled));
+            assert!(rows[next - 1].text.trim().is_empty() && rows[next - 1].surfaces.is_empty());
             let rules: Vec<_> = pager
                 .lines(0)
                 .iter()

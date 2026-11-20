@@ -176,7 +176,11 @@ pub(super) fn format(lines: Vec<PageLine>, doc: &Document, scrolling: bool) -> V
         let block = line.start.block;
         let has_text = !line.text.trim().is_empty();
         let starts = has_text && last_block != Some(block) && doc.chapter_starts.contains(&block);
-        let title = has_text && doc.blocks.get(block).is_some_and(|b| b.heading);
+        let heading_rule = line
+            .surfaces
+            .iter()
+            .any(|s| matches!(s, crate::Surface::HeadingRule { .. }));
+        let title = (has_text || heading_rule) && doc.blocks.get(block).is_some_and(|b| b.heading);
         if starts {
             while result.last().is_some_and(blank) {
                 result.pop();
@@ -190,7 +194,13 @@ pub(super) fn format(lines: Vec<PageLine>, doc: &Document, scrolling: bool) -> V
             }
             line.chapter_start = true;
             in_title = title;
-        } else if in_title && !title {
+        } else if in_title
+            && (!title
+                || (last_block != Some(block)
+                    && last_block.and_then(|b| doc.heading_levels.get(&b)) == Some(&1)))
+        {
+            // A subsection following H1 starts after the title gap, even
+            // though both source blocks are headings.
             if let Some(last) = result.last() {
                 result.push(PageLine {
                     start: last.start,

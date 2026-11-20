@@ -499,7 +499,11 @@ impl Reader {
                     },
                 );
                 if line.heading {
-                    para = para.style(style.add_modifier(Modifier::BOLD));
+                    para = para.style(
+                        style
+                            .fg(reading_theme.heading())
+                            .add_modifier(Modifier::BOLD),
+                    );
                 }
                 frame.render_widget(para, rect);
                 // Paragraph paints the whole row. Apply book decoration afterwards.
@@ -1407,7 +1411,7 @@ fn paint_surfaces(
                 for col in rect.x..rect.right() {
                     frame.buffer_mut()[(col, rect.y)]
                         .set_symbol(if double { "═" } else { "─" })
-                        .set_style(style.add_modifier(Modifier::DIM));
+                        .set_style(style.fg(theme.heading()));
                 }
             }
             botui_core::Surface::TableDivider { x } => {
