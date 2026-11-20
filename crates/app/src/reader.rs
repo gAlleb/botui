@@ -1312,7 +1312,8 @@ impl Reader {
                     _ => LayoutMode::Spread,
                 };
                 if self.mode != mode {
-                    self.pair_current_page = mode == LayoutMode::Spread;
+                    self.pair_current_page =
+                        self.mode == LayoutMode::Single && mode == LayoutMode::Spread;
                     self.mode = mode;
                     self.dirty = true;
                 }

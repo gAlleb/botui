@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.1.26 — 2026-11-21
+
+- Keep the reading position when switching from continuous scroll to a two-page spread.
+
 ## 0.1.25 — 2026-11-20
 
 - Fix release checks for exiting a book folder and returning from an EPUB footnote.

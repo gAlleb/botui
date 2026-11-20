@@ -30,7 +30,16 @@ def text_scroll(d):
         t.keys('Up');t.wait('Up restores first row',lambda a: re.findall(r'Passage \d+',a)==first)
         wheel(t,65);t.wait('Wheel defaults to exactly one line',lambda a:a==second)
         t.keys('PageDown');last=t.wait('Page scroll advances',lambda a:first[2] not in a and 'Passage' in a)
-        at=re.findall(r'Passage \d+',last)[0];t.keys('Space', 'l', '2', 'Space', 'l', '3');t.see(at);stop(t)
+        at=re.findall(r'Passage \d+',last)[0]
+        t.keys('Space', 'l', '2')
+        t.wait('Spread starts at the scroll position', lambda f:
+               re.findall(r'Passage \d+', f)[:1] == [at]
+               and any('Passage ' in row[len(row)//2:] for row in f.splitlines()))
+        t.keys('Space', 'l', '3')
+        t.wait('Scroll restores the source passage', lambda f:
+               re.findall(r'Passage \d+', f)[:1] == [at]
+               and f.rstrip().splitlines()[-1].lstrip().startswith('Scroll '))
+        stop(t)
         assert saved(d)['scrolling']
         t=start(d,file);t.see(at)
         for _ in range(18):t.keys('PageDown')
