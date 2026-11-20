@@ -232,12 +232,12 @@ fn rows(tab: usize, s: &Settings) -> Vec<SettingRow> {
                 pair(
                     "Text alignment",
                     s.text_alignment.label(),
-                    "Align prose inside the current page width.",
+                    "Align text, headings and display formulas inside the current page width.",
                 ),
                 pair(
                     "Heading rules",
                     if s.heading_rules { "On" } else { "Off" },
-                    "Double line under a main heading, single line under a subheading.",
+                    "Double line under H1 and single line under H2.",
                 ),
                 pair(
                     "SyncTeX mode",

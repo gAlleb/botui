@@ -332,7 +332,9 @@ impl Chapter {
             u16::from(options.paragraph_indent) * CELL as u16
         );
         if options.typography.heading_rules {
-            settings.push_str("h1,h2,h3,h4,h5,h6{border-bottom:16px solid!important}h1{border-bottom-style:double!important}");
+            settings.push_str(
+                "h1,h2{border-bottom:16px solid!important}h1{border-bottom-style:double!important}",
+            );
         }
         if options.typography.alignment != crate::TextAlignment::Book {
             let align = match options.typography.alignment {
@@ -342,6 +344,22 @@ impl Chapter {
                 crate::TextAlignment::Justify => "justify",
                 crate::TextAlignment::Book => unreachable!(),
             };
+            // Place the equation as one flex group. Its grid children retain their
+            // own alignment for fraction bars, limits and matrix columns.
+            if options.typography.alignment != crate::TextAlignment::Justify {
+                let packing = match options.typography.alignment {
+                    crate::TextAlignment::Right => "flex-end",
+                    crate::TextAlignment::Center => "center",
+                    _ => "flex-start",
+                };
+                settings.push_str(&format!(
+                    "body,section,div,p,h1,h2,h3,h4,h5,h6,address,blockquote,figcaption,li,dt,dd,caption,th,td
+                     {{text-align:{align}!important;text-align-last:auto!important}}
+                     *|math[display='block'],*|math[display='block'] > *|mrow,
+                     *|math[display='block'] > *|semantics > *|mrow
+                     {{justify-content:{packing}!important}}"
+                ));
+            }
             if matches!(
                 options.typography.alignment,
                 crate::TextAlignment::Right | crate::TextAlignment::Center

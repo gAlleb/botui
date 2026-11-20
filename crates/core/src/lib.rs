@@ -29,6 +29,8 @@ pub struct Document {
     pub markdown: Option<Markdown>,
     /// FB2 verse and explicit breaks before a block keep their own spacing.
     pub fixed_breaks: std::collections::BTreeSet<usize>,
+    /// EPUB heading rank keyed by the final text block of each heading.
+    pub heading_levels: std::collections::BTreeMap<usize, u8>,
     /// Source blocks that open chapters or parts of the book.
     pub chapter_starts: std::collections::BTreeSet<usize>,
     /// Lightweight inline faces in otherwise plain text (e.g. FB2), in source bytes.
@@ -895,6 +897,7 @@ mod tests {
             epub_spine: Default::default(),
             markdown: None,
             fixed_breaks: Default::default(),
+            heading_levels: Default::default(),
             chapter_starts: Default::default(),
             inline: Default::default(),
             image_pages: vec![],

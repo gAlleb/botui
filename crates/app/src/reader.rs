@@ -499,7 +499,7 @@ impl Reader {
                     },
                 );
                 if line.heading {
-                    para = para.centered().style(style.add_modifier(Modifier::BOLD));
+                    para = para.style(style.add_modifier(Modifier::BOLD));
                 }
                 frame.render_widget(para, rect);
                 // Paragraph paints the whole row. Apply book decoration afterwards.

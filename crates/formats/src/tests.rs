@@ -2197,3 +2197,39 @@ fn epub_display_exponent_sits_above_the_integrand() {
     assert!(rows[base].text.contains('e') && rows[base].text.contains("dx ="));
     assert!(rows[base - 1].text.contains("−x²") && rows[base - 1].text.contains('∞'));
 }
+
+#[test]
+fn epub_heading_rules_use_the_markup_level_in_both_layout_engines() {
+    use botui_core::{LayoutMode, Pager, Surface};
+    let body = "<h2>Opening</h2><h3>Detail</h3><h1>Part</h1><h4>Aside</h4><p>End</p>";
+    let plain = read_book(archive(&[
+        ("META-INF/container.xml","<container><rootfile full-path='p'/></container>"),
+        ("p","<package><manifest><item id='c' href='c' media-type='application/xhtml+xml'/></manifest><spine><itemref idref='c'/></spine></package>"),
+        ("c",&format!("<body>{body}</body>"))
+    ]),"Plain").unwrap();
+    for doc in [plain, styled_fixture(body, "")] {
+        let base = Pager::new(&doc, 60, 60, LayoutMode::Scroll).reflow_options();
+        for enabled in [false, true] {
+            let mut options = base;
+            options.typography.heading_rules = enabled;
+            let pager = Pager::with_options(&doc, 60, 60, LayoutMode::Scroll, options);
+            let rules: Vec<_> = pager
+                .lines(0)
+                .iter()
+                .filter_map(|row| {
+                    if row.text.contains("══") {
+                        return Some(true);
+                    }
+                    if row.text.contains("──") {
+                        return Some(false);
+                    }
+                    row.surfaces.iter().find_map(|s| match s {
+                        Surface::HeadingRule { double } => Some(*double),
+                        _ => None,
+                    })
+                })
+                .collect();
+            assert_eq!(rules, if enabled { vec![false, true] } else { vec![] });
+        }
+    }
+}

@@ -357,6 +357,7 @@ pub(super) fn read_book(reader: impl Read + Seek, fallback: &str) -> Result<Docu
         epub_spine: botui_core::EpubSpine::from_counts(spine_counts),
         markdown: None,
         fixed_breaks: Default::default(),
+        heading_levels: chapters.heading_levels,
         chapter_starts,
         inline: Default::default(),
         image_pages,

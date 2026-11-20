@@ -2,7 +2,7 @@ use super::super::{Action, links::Links};
 use botui_core::{Anchor, Document, LayoutMode, Pager, Target};
 use ratatui::{
     Frame,
-    layout::{Alignment, Position, Rect},
+    layout::{Position, Rect},
     widgets::Paragraph,
 };
 
@@ -46,12 +46,9 @@ impl<'a> NotePage<'a> {
         }
         for (y, line) in self.pager.lines(0).iter().enumerate() {
             let row = Rect::new(area.x, area.y + y as u16, area.width, 1).intersection(area);
-            let align = if line.heading {
-                Alignment::Center
-            } else {
-                Alignment::Left
-            };
-            frame.render_widget(Paragraph::new(line.text.as_str()).alignment(align), row);
+            let indent = line.indent.min(row.width);
+            let row = Rect::new(row.x + indent, row.y, row.width - indent, row.height);
+            frame.render_widget(Paragraph::new(line.text.as_str()), row);
             self.links.mark_line(frame, self.doc, line, row);
         }
         if let Some(id) = self.selected {

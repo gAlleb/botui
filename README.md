@@ -275,7 +275,7 @@ In two-page text mode, each chapter starts on the left of a new spread. In scrol
 
 **Space l w** adjusts text page width and the gap between columns. For PDF, DjVu, comics and image-only EPUBs, the same panel controls zoom and spread spacing. Its gap buttons or **[ / ]** set **0–32 terminal cells**; zero joins facing pages. `scan_gap` saves this independently of text spacing. **+ / −** zoom fixed pages, arrows pan, and **Space r 0** restores Fit page (Fit width in scroll mode). Enlarged pages fill the available margins and are clipped only at the reading pane edge.
 
-For text, **F** uses the full available width and **A** selects paragraph alignment. Enable **Heading rules** in **F2 → Reader** for double lines under main headings and single lines under subheadings.
+For text, **F** uses the full available width and **A** aligns text, headings and display formulas. Enable **Heading rules** in **F2 → Reader** for a double line under H1 and a single line under H2.
 
 Text size and typeface come from your terminal: use its font-size controls to enlarge or reduce text. BOTUI reflows the page. **F2 → Reader** controls first-line indentation, paragraph spacing and mouse-wheel step. Drag the contents divider to resize the sidebar.
 

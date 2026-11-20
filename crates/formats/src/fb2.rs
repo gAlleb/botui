@@ -284,6 +284,7 @@ pub(super) fn parse(bytes: &[u8], fallback: &str) -> Result<Document> {
         epub_spine: Default::default(),
         markdown: None,
         fixed_breaks,
+        heading_levels: Default::default(),
         chapter_starts: contents
             .iter()
             .filter_map(|entry| entry.anchor().map(|at| at.block))

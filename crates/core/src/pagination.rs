@@ -219,12 +219,15 @@ impl BookLayout {
                 resume.filter(|a| (start..=end).contains(&a.block)),
             );
             printed::faces(&mut lines[before..], doc, start, end);
-            if !block.heading && typography.alignment != TextAlignment::Book {
+            if block.heading || typography.alignment != TextAlignment::Book {
                 let count = lines.len() - before;
                 for (i, line) in lines[before..].iter_mut().enumerate() {
                     let spare = usize::from(width)
                         .saturating_sub(line.text.width() + usize::from(line.indent));
                     match typography.alignment {
+                        TextAlignment::Book | TextAlignment::Justify if block.heading => {
+                            line.indent = (spare / 2) as u16
+                        }
                         TextAlignment::Right => line.indent = spare as u16,
                         TextAlignment::Center => line.indent = (spare / 2) as u16,
                         TextAlignment::Justify if i + 1 < count => printed::justify(line, spare),
@@ -232,15 +235,24 @@ impl BookLayout {
                     }
                 }
             }
-            if block.heading && typography.heading_rules && lines.len() > before {
+            if block.heading
+                && typography.heading_rules
+                && lines.len() > before
+                && let Some(double) = if doc.epub_spine.is_empty() {
+                    Some(doc.chapter_starts.contains(&start))
+                } else {
+                    doc.heading_levels
+                        .get(&end)
+                        .filter(|&&level| level <= 2)
+                        .map(|&level| level == 1)
+                }
+            {
                 lines.push(PageLine {
                     start: Anchor {
                         block: end,
                         byte: block.text.len(),
                     },
-                    surfaces: vec![super::Surface::HeadingRule {
-                        double: doc.chapter_starts.contains(&start),
-                    }],
+                    surfaces: vec![super::Surface::HeadingRule { double }],
                     ..Default::default()
                 });
             }

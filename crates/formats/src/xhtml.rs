@@ -145,6 +145,7 @@ pub(super) type TextOrigins =
 pub(super) struct ChapterMarkers {
     pub explicit: std::collections::BTreeSet<usize>,
     pub headings: std::collections::BTreeSet<usize>,
+    pub heading_levels: std::collections::BTreeMap<usize, u8>,
 }
 
 pub(super) fn append_blocks(
@@ -192,6 +193,7 @@ pub(super) fn extract_element(
     let mut ids = Vec::new();
     let mut buffer = String::new();
     let mut is_heading = false;
+    let mut heading_start = 0;
     let mut hidden = None;
     let mut table_start = None;
     let mut table_rows = vec![];
@@ -322,6 +324,7 @@ pub(super) fn extract_element(
                         flush(&mut buffer, is_heading, blocks);
                         if heading(name) {
                             is_heading = true;
+                            heading_start = blocks.len();
                         }
                     } else if matches!(name, "td" | "th") {
                         buffer.push(' ');
@@ -385,6 +388,11 @@ pub(super) fn extract_element(
                         );
                     }
                     if heading(el.name()) {
+                        if is_heading && blocks.len() > heading_start {
+                            chapters
+                                .heading_levels
+                                .insert(blocks.len() - 1, el.name().as_bytes()[1] - b'0');
+                        }
                         is_heading = false;
                     }
                 }

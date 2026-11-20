@@ -52,16 +52,9 @@ impl Links {
         }
         blocks.sort_unstable();
         blocks.dedup();
-        let offset = if line.heading {
-            rect.width
-                .saturating_sub(Line::raw(&line.text).width() as u16)
-                / 2
-        } else {
-            0
-        };
         for &i in blocks.iter().filter_map(|b| self.by_block.get(b)).flatten() {
             if let Some(bytes) = line.link_range(doc, &doc.references[i]) {
-                let x = rect.x + offset + Line::raw(&line.text[..bytes.start]).width() as u16;
+                let x = rect.x + Line::raw(&line.text[..bytes.start]).width() as u16;
                 let w = Line::raw(&line.text[bytes]).width() as u16;
                 let hit = Rect::new(x, rect.y, w, 1).intersection(rect);
                 if !hit.is_empty() {

@@ -114,17 +114,8 @@ impl Study {
         self.buttons.clear();
     }
     pub fn map_line(&mut self, doc: &Document, line: &PageLine, rect: Rect) {
-        let width = ratatui::text::Line::raw(&line.text).width() as u16;
-        let shift = if line.heading {
-            rect.width.saturating_sub(width) / 2
-        } else {
-            0
-        };
         for cell in line.text_cells(doc) {
-            let x = rect
-                .x
-                .saturating_add(shift)
-                .saturating_add(cell.columns.start as u16);
+            let x = rect.x.saturating_add(cell.columns.start as u16);
             let r = Rect::new(x, rect.y, cell.columns.len() as u16, 1).intersection(rect);
             if !r.is_empty() {
                 self.map.push(Cell {

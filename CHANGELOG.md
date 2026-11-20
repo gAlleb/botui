@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Add paragraph alignment, full-width text and optional rules under headings.
+- Add alignment for text, headings and formulas, full-width text and optional rules under headings.
 
 - Keep EPUB subsections on the page, distinguish inline code, and align formulas to terminal cells.
 - Keep EPUB table rows aligned, mark quotations, and raise compound display exponents.
