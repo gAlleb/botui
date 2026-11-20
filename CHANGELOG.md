@@ -2,20 +2,17 @@
 
 ## Unreleased
 
+## 0.1.24 — 2026-11-20
+
+- Add five text alignment modes, full-width reading and optional rules under headings.
+- Keep EPUB subsections on the same page and open the correct spread when switching to two pages.
+- Use theme colors for headings and formulas, with a blank line after chapter titles.
+- Align EPUB fractions, exponents and matrices, and keep multi-line equations together at page breaks.
+- Mark EPUB quotations and inline code, and preserve code spacing and math indices when copying.
+- Keep EPUB table cells aligned and separate column headings from data.
 - Reduce memory used by cached EPUB chapters.
 - Add M for the main menu and Ctrl+Q to quit from a directly opened book’s folder.
-- Center EPUB fraction operands on the bar and keep display equations together at page breaks.
-- Open the spread containing the current single page when switching to two pages.
-- Preserve EPUB code spacing and Unicode math indices when copying.
-- Align EPUB quotes and table cells in Left mode and separate table headers from data.
-- Give formulas and headings distinct reading-theme colors.
-- Keep one blank line between a chapter title and its first subheading.
-
-- Add alignment for text, headings and formulas, full-width text and optional rules under headings.
-
-- Keep EPUB subsections on the page, distinguish inline code, and align formulas to terminal cells.
-- Keep EPUB table rows aligned, mark quotations, and raise compound display exponents.
-- Clear stale PDF selection state after SyncTeX jumps.
+- Clear stale PDF text selection after SyncTeX jumps.
 
 ## 0.1.23 — 2026-11-17
 
