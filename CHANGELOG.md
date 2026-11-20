@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.1.25 — 2026-11-20
+
+- Fix release checks for exiting a book folder and returning from an EPUB footnote.
+
 ## 0.1.24 — 2026-11-20
 
 - Add five text alignment modes, full-width reading and optional rules under headings.

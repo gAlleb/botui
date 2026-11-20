@@ -148,10 +148,15 @@ def direct_file(home, extension):
         term.run("kill-server", required=False)
 
     for key, button in (("m", "[M Main menu]"), ("C-q", "[Ctrl+Q Quit]")):
-        term = s.Terminal(home, BINARY, args=[argument])
+        if key == "C-q":
+            # Collect the child status even on tmux versions that omit pane_dead_status.
+            status_file = home / "exit-status"
+            command = '"$1" "$2"; echo "$?" > "$3.tmp"; mv "$3.tmp" "$3"'
+            term = s.Terminal(home, Path("/bin/sh"), args=["-c", command, "runner", str(BINARY), argument, str(status_file)])
+        else:
+            term = s.Terminal(home, BINARY, args=[argument])
         try:
             term.see(marker)
-            term.run("set-window-option", "remain-on-exit", "on")
             term.keys("q")
             term.see(str(folder))
             frame = term.see(button)
@@ -163,12 +168,11 @@ def direct_file(home, extension):
                 term.see("Choose a library")
             else:
                 deadline = time.monotonic() + 5
-                while True:
-                    status = term.run("display-message", "-p", "#{pane_dead}:#{pane_dead_status}").stdout.strip()
-                    if status == "1:0":
-                        break
-                    assert time.monotonic() < deadline, f"BOTUI failed to quit cleanly: {status}"
+                while not status_file.exists():
+                    assert time.monotonic() < deadline, "BOTUI did not exit"
                     time.sleep(0.05)
+                status = status_file.read_text().strip()
+                assert status == "0", f"BOTUI exited with status {status}"
             assert tomllib.loads(config.read_text())["library_root"] == str(library)
         finally:
             term.run("kill-server", required=False)

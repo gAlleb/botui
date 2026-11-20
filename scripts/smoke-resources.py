@@ -158,8 +158,14 @@ def check_reference_return(tmp):
     t=shelf.Terminal(tmp,BINARY,args=[str(book)])
     try:
         t.see("Coast waypoint 000")
-        t.keys('Space', 'l', '3', 'Space', 'f'); t.see("Find:"); t.type("Coast waypoint 038"); t.see("1 match"); t.keys("Enter")
-        source=t.wait("Reading before the cited paragraph",lambda f:"Find:" not in f and "Coast waypoint 038" in f and "Return marker" in f)
+        def find_source():
+            t.keys('Space', 'f'); t.see("Find:")
+            t.keys('C-u'); t.type("Coast waypoint 038"); t.see("1 match"); t.keys("Enter")
+            return t.wait("Reading before the cited paragraph", lambda f:
+                          "Find:" not in f and "Coast waypoint 038" in f and "Return marker" in f)
+
+        t.keys('Space', 'l', '3')
+        source = find_source()
         t.click("ebb tide",source)
         note=t.see("Water moves seaward.")
         assert "[ Back · Esc ]" in note
@@ -177,7 +183,7 @@ def check_reference_return(tmp):
         t.run("resize-window","-t","shelf","-x","155","-y","31")
         t.click("[ Back · Esc ]",t.see("[ Back · Esc ]"))
         t.wait("Spread reflows around original reading point",lambda f:"Coast waypoint 038" in f and "Return marker" in f and "Read here" not in f)
-        t.keys('Space', 'l', '3'); t.click("ebb tide",t.see("ebb tide")); t.see("Water moves seaward.")
+        t.keys('Space', 'l', '3'); t.click("ebb tide",find_source()); t.see("Water moves seaward.")
         t.keys("PageDown"); time.sleep(.8); t.keys("C-c")
         deadline=time.monotonic()+5
         while t.run("has-session","-t","shelf",required=False).returncode==0 and time.monotonic()<deadline:
