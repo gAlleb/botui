@@ -91,3 +91,8 @@ blockquote:not([data-botui-surface]) { border-left: 1px solid !important; paddin
     text-align: center;
     text-align-last: center;
 }
+/* A compact script can use the trailing gutter. This keeps a lone digit
+   over the base of n² (or beneath π²) in the middle cell of the bar. */
+*|math[display="block"] *|mfrac > :is(*|msup, *|msub)[data-botui-linear] {
+    padding-inline-end: 0;
+}

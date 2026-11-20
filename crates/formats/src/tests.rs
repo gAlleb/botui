@@ -2358,34 +2358,21 @@ fn display_fraction_centers_scripts_in_every_reading_alignment() {
                 shape.get_or_insert_with(|| shape_here.clone()),
                 "{alignment:?} {width}"
             );
-            let line: Vec<_> = rows[bar].text.chars().collect();
-            let mut centers = Vec::new();
-            let mut i = 0;
-            while i < line.len() {
-                let start = i;
-                if line[i] != '─' {
-                    i += 1;
-                    continue;
-                }
-                while i < line.len() && line[i] == '─' {
-                    i += 1
-                }
-                centers.push(start + i - 1);
-            }
-            assert_eq!(centers.len(), 2);
-            for (s, word, center) in [
-                (&rows[bar - 1].text, "1", centers[0]),
-                (&rows[bar + 1].text, "n²", centers[0]),
-                (&rows[bar - 1].text, "π²", centers[1]),
-                (&rows[bar + 1].text, "6", centers[1]),
-            ] {
-                let x = s[..s.find(word).unwrap()].chars().count();
-                assert!(
-                    (2 * x + word.chars().count() - 1).abs_diff(center) <= 1,
-                    "{alignment:?} {width}: {:?}",
-                    rows.iter().map(|r| r.text.as_str()).collect::<Vec<_>>()
-                );
-            }
+            // The digit and the base carrying the script share the center
+            // cell of each rule, even when the whole equation is centered.
+            let column = |s: &str, token: &str| s[..s.find(token).unwrap()].chars().count();
+            let rule = &rows[bar].text;
+            let first = column(rule, "───") + 1;
+            let second = rule[..rule.rfind("───").unwrap()].chars().count() + 1;
+            assert_eq!(
+                rule.matches('─').count(),
+                6,
+                "{alignment:?} {width}: {rule}"
+            );
+            assert_eq!(column(&rows[bar - 1].text, "1"), first);
+            assert_eq!(column(&rows[bar + 1].text, "n²"), first);
+            assert_eq!(column(&rows[bar - 1].text, "π²"), second);
+            assert_eq!(column(&rows[bar + 1].text, "6"), second);
         }
     }
 }
