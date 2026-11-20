@@ -242,3 +242,44 @@ fn plain_alignment_keeps_source_words_and_justifies_only_wrapped_lines() {
         assert_eq!(rows.last().unwrap().text, "три четыре");
     }
 }
+
+#[test]
+fn switching_from_single_page_opens_its_containing_spread() {
+    for starts in [vec![], vec![0, 9]] {
+        let doc = Document {
+            blocks: (0..31)
+                .map(|i| Block {
+                    text: format!("Line {i}"),
+                    heading: false,
+                })
+                .collect(),
+            chapter_starts: starts.into_iter().collect(),
+            ..Default::default()
+        };
+        let mut reference = Pager::new(&doc, 104, 6, LayoutMode::Spread);
+        let spreads = forward_breaks(&mut reference);
+        let mut pager = Pager::new(&doc, 50, 6, LayoutMode::Single);
+        for index in [1, 2, 5, 7] {
+            pager.seek(Anchor::default());
+            for _ in 0..index {
+                pager.next();
+            }
+            let row = pager.first;
+            let expected = spreads
+                .iter()
+                .position(|b| (b[0]..b[2]).contains(&row))
+                .unwrap();
+            pager.relayout(&doc, 104, 6, LayoutMode::Spread);
+            pager.pair_current_page();
+            assert_eq!(pager.complete_view().bounds, spreads[expected]);
+            pager.previous();
+            assert_eq!(
+                pager.complete_view().bounds,
+                spreads[expected.saturating_sub(1)]
+            );
+            pager.next();
+            assert_eq!(pager.complete_view().bounds, spreads[expected.max(1)]);
+            pager.relayout(&doc, 50, 6, LayoutMode::Single);
+        }
+    }
+}

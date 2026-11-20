@@ -56,15 +56,7 @@ impl Pager {
         }
         // A counted motion or a jump can cross more than one spread.
         if !(self.first..self.complete_view().end()).contains(&row) {
-            let first = if self.page_starts.is_empty() {
-                let height = self.viewport() * self.layout.columns;
-                row / height * height
-            } else {
-                let starts = self.regular_views();
-                starts[starts.partition_point(|&start| start <= row) - 1]
-            };
-            self.positioned_spreads.clear();
-            self.move_to(first);
+            self.show_regular_view(row);
         }
     }
 

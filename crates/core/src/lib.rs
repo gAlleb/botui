@@ -655,6 +655,27 @@ impl Pager {
         self.restore_position(position);
     }
 
+    /// Pair the current page when the reader explicitly selects the spread view.
+    pub fn pair_current_page(&mut self) {
+        self.finish_resize();
+        if self.layout.columns == 2 && !self.lines.is_empty() {
+            self.show_regular_view(self.first);
+        }
+    }
+
+    /// Show the regular page or spread containing a rendered row.
+    fn show_regular_view(&mut self, row: usize) {
+        let starts = self.regular_views();
+        let first = if starts.is_empty() {
+            let step = self.viewport() * self.layout.columns;
+            row / step * step
+        } else {
+            starts[starts.partition_point(|&start| start <= row) - 1]
+        };
+        self.positioned_spreads.clear();
+        self.move_to(first);
+    }
+
     pub fn columns(&self) -> usize {
         self.layout.columns
     }

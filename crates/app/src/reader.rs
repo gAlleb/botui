@@ -151,6 +151,7 @@ struct Reader {
     doc: std::sync::Arc<Document>,
     pager: Pager,
     mode: LayoutMode,
+    pair_current_page: bool,
     layout_panel: Option<layout::Panel>,
     page_width: u16,
     gap: u16,
@@ -316,6 +317,7 @@ impl Reader {
             study: study::Study::default(),
             leader: crate::leader::Leader::new(),
             text_rect: Rect::default(),
+            pair_current_page: false,
             scroll_lines: settings.scroll_lines.unwrap_or(1).clamp(1, 12) as i8,
             zen: settings.zen,
             zen_progress: settings.zen_progress,
@@ -437,6 +439,9 @@ impl Reader {
         }
         self.pager
             .resize_for_display(&self.doc, text.width, text.height, actual, gap);
+        if std::mem::take(&mut self.pair_current_page) && actual == LayoutMode::Spread {
+            self.pager.pair_current_page();
+        }
         self.search.update(&self.pager, &self.doc);
         let view = self.pager.viewport_rows();
         let pages = (!self.pager.is_paginating())
@@ -1307,6 +1312,7 @@ impl Reader {
                     _ => LayoutMode::Spread,
                 };
                 if self.mode != mode {
+                    self.pair_current_page = mode == LayoutMode::Spread;
                     self.mode = mode;
                     self.dirty = true;
                 }
