@@ -176,3 +176,46 @@ pub(super) fn faces(lines: &mut [PageLine], doc: &super::Document, start: usize,
         }
     }
 }
+
+/// Expand visual gaps while preserving each word's source bytes for selection.
+pub(super) fn justify(line: &mut PageLine, extra: usize) {
+    let gaps = line.text.matches(' ').count();
+    if extra == 0 || gaps == 0 {
+        return;
+    }
+    let mut offset = 0;
+    let mut expanded = String::new();
+    let mut spans = Vec::new();
+    let mut original = line.spans.iter().peekable();
+    for (i, word) in line.text.split_inclusive(' ').enumerate() {
+        let end = offset + word.len();
+        let visual = expanded.len();
+        expanded.push_str(word);
+        while let Some(span) = original.peek() {
+            let a = span.bytes.start.max(offset);
+            let b = span.bytes.end.min(end);
+            if a < b {
+                let mut part = (*span).clone();
+                part.bytes = visual + a - offset..visual + b - offset;
+                if let Some(anchor) = &mut part.source {
+                    anchor.byte += a - span.bytes.start;
+                    part.source_end = anchor.byte + b - a;
+                }
+                spans.push(part);
+            }
+            if span.bytes.end > end {
+                break;
+            }
+            original.next();
+        }
+        if word.ends_with(' ') {
+            expanded.extend(std::iter::repeat_n(
+                ' ',
+                extra / gaps + usize::from(i < extra % gaps),
+            ));
+        }
+        offset = end;
+    }
+    line.text = expanded;
+    line.spans = spans;
+}

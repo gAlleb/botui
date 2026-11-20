@@ -207,6 +207,7 @@ pub struct Figure {
 /// Visual elements drawn over a row without changing its text or source positions.
 #[derive(Clone, Copy, Debug)]
 pub enum Surface {
+    HeadingRule { double: bool },
     Background { x: u16, width: u16, role: u8 },
     TableDivider { x: u16 },
     TableEdge { x: u16, width: u16, top: bool },
@@ -321,8 +322,43 @@ impl Layout {
     }
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TextAlignment {
+    #[default]
+    Book,
+    Left,
+    Center,
+    Right,
+    Justify,
+}
+impl TextAlignment {
+    pub const ALL: [Self; 5] = [
+        Self::Book,
+        Self::Left,
+        Self::Center,
+        Self::Right,
+        Self::Justify,
+    ];
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Book => "From book",
+            Self::Left => "Left",
+            Self::Center => "Center",
+            Self::Right => "Right",
+            Self::Justify => "Justified",
+        }
+    }
+}
+#[derive(Clone, Copy, Default)]
+pub struct Typography {
+    pub alignment: TextAlignment,
+    pub heading_rules: bool,
+}
+
 #[derive(Clone, Copy)]
 pub struct ReflowOptions {
+    pub typography: Typography,
     pub repair_printed: bool,
     pub inline_images: bool,
     pub paragraph_indent: u8,
@@ -385,6 +421,7 @@ impl Pager {
             height,
             mode,
             ReflowOptions {
+                typography: Default::default(),
                 repair_printed,
                 inline_images,
                 paragraph_indent: 0,
@@ -889,6 +926,7 @@ mod tests {
             14,
             LayoutMode::Single,
             ReflowOptions {
+                typography: Default::default(),
                 repair_printed: false,
                 inline_images: true,
                 paragraph_indent: 4,
@@ -1118,6 +1156,7 @@ mod tests {
             2,
             LayoutMode::Single,
             ReflowOptions {
+                typography: Default::default(),
                 repair_printed: true,
                 inline_images: false,
                 paragraph_indent: 3,

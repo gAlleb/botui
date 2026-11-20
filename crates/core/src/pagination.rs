@@ -141,7 +141,13 @@ impl BookLayout {
         let images = &self.images;
         let printed = &self.printed;
         let resume = self.resume;
-        let paragraph_indent = self.options.paragraph_indent;
+        use super::TextAlignment;
+        use unicode_width::UnicodeWidthStr;
+        let typography = self.options.typography;
+        let paragraph_indent = match typography.alignment {
+            TextAlignment::Right | TextAlignment::Center => 0,
+            _ => self.options.paragraph_indent,
+        };
         let draw_images = |lines: &mut Vec<PageLine>, boundary: usize| {
             if let Some(ids) = images.get(&boundary) {
                 let anchor = if boundary == 0 {
@@ -213,6 +219,31 @@ impl BookLayout {
                 resume.filter(|a| (start..=end).contains(&a.block)),
             );
             printed::faces(&mut lines[before..], doc, start, end);
+            if !block.heading && typography.alignment != TextAlignment::Book {
+                let count = lines.len() - before;
+                for (i, line) in lines[before..].iter_mut().enumerate() {
+                    let spare = usize::from(width)
+                        .saturating_sub(line.text.width() + usize::from(line.indent));
+                    match typography.alignment {
+                        TextAlignment::Right => line.indent = spare as u16,
+                        TextAlignment::Center => line.indent = (spare / 2) as u16,
+                        TextAlignment::Justify if i + 1 < count => printed::justify(line, spare),
+                        _ => (),
+                    }
+                }
+            }
+            if block.heading && typography.heading_rules && lines.len() > before {
+                lines.push(PageLine {
+                    start: Anchor {
+                        block: end,
+                        byte: block.text.len(),
+                    },
+                    surfaces: vec![super::Surface::HeadingRule {
+                        double: doc.chapter_starts.contains(&start),
+                    }],
+                    ..Default::default()
+                });
+            }
             start = end + 1;
             if lines.len() > before {
                 let gap = self.options.paragraph_spacing.filter(|_| {

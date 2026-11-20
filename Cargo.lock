@@ -290,6 +290,7 @@ dependencies = [
  "blitz-traits",
  "parley",
  "rayon",
+ "serde",
  "stylo",
  "unicode-segmentation",
  "unicode-width",

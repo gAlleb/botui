@@ -39,7 +39,7 @@ impl BookSettings {
     }
     pub fn apply(&self, prefs: &mut Settings) {
         if let Some(n) = self.page_width {
-            prefs.page_width = Some(n.clamp(32, 240));
+            prefs.page_width = Some(if n == 0 { 0 } else { n.clamp(32, 240) });
         }
         if let Some(n) = self.paragraph_indent {
             prefs.paragraph_indent = n.min(8);

@@ -3,6 +3,7 @@ mod about;
 mod book;
 pub(crate) use book::Kind as BookKind;
 mod edit;
+pub(crate) use edit::alignment;
 mod help;
 use crate::{AppTerminal, appearance, settings::Settings, shell_theme};
 use crossterm::event::{Event, KeyCode, KeyEventKind, MouseButton, MouseEventKind};
@@ -146,7 +147,7 @@ fn rows(tab: usize, s: &Settings) -> Vec<SettingRow> {
                 ),
                 pair(
                     "Page width",
-                    &format!("{} cells", s.page_width.unwrap_or(78)),
+                    &book::width_label(s.page_width.unwrap_or(78)),
                     "Preferred width of each text column, in terminal cells. A narrow window uses one page.",
                 ),
                 pair(
@@ -227,6 +228,16 @@ fn rows(tab: usize, s: &Settings) -> Vec<SettingRow> {
                     "Comic background",
                     &s.comic_theme().name(),
                     "Background around CBZ/CBR pages. Artwork always keeps its original colors. Space t previews and saves this choice.",
+                ),
+                pair(
+                    "Text alignment",
+                    s.text_alignment.label(),
+                    "Align prose inside the current page width.",
+                ),
+                pair(
+                    "Heading rules",
+                    if s.heading_rules { "On" } else { "Off" },
+                    "Double line under a main heading, single line under a subheading.",
                 ),
                 pair(
                     "SyncTeX mode",

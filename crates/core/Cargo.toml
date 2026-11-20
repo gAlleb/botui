@@ -6,6 +6,7 @@ license.workspace = true
 publish = false
 
 [dependencies]
+serde = { version = "1", features = ["derive"] }
 unicode-segmentation = "1.13"
 unicode-width = "0.2"
 blitz-dom = { version = "=0.3.0-beta.4", default-features = false, features = ["floats"] }

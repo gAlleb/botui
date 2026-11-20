@@ -43,6 +43,18 @@ pub(super) fn choose_theme(
     }
 }
 
+pub(crate) fn alignment(term: &mut AppTerminal, p: &Settings) -> io::Result<()> {
+    if let Some(i) = choose(
+        term,
+        "Text alignment",
+        &botui_core::TextAlignment::ALL.map(|a| a.label()),
+        p.text_alignment as usize,
+    )? {
+        Settings::update(|s| s.text_alignment = botui_core::TextAlignment::ALL[i])?;
+    }
+    Ok(())
+}
+
 pub(super) fn setting(
     term: &mut AppTerminal,
     tab: usize,
@@ -51,6 +63,12 @@ pub(super) fn setting(
 ) -> io::Result<()> {
     match (tab, i) {
         (1, 17) => {
+            alignment(term, p)?;
+        }
+        (1, 18) => {
+            Settings::update(|s| s.heading_rules = !s.heading_rules)?;
+        }
+        (1, 19) => {
             if let Some(i) = choose(
                 term,
                 "SyncTeX mode",
@@ -66,8 +84,8 @@ pub(super) fn setting(
                 })?;
             }
         }
-        (1, 18 | 19) if matches!(p.synctex_mode, crate::synctex::Mode::Neovim) => {
-            let neovim = i == 18;
+        (1, 20 | 21) if matches!(p.synctex_mode, crate::synctex::Mode::Neovim) => {
+            let neovim = i == 20;
             let (title, args) = if neovim {
                 (
                     "SyncTeX Neovim terminal · blank = Auto",
@@ -90,7 +108,7 @@ pub(super) fn setting(
                 })?;
             }
         }
-        (1, 18) => {
+        (1, 20) => {
             if let Some(command) = edit(
                 term,
                 "SyncTeX editor command · e.g. kitty nvim +{line} -- {file}",
@@ -207,7 +225,7 @@ pub(super) fn setting(
                     p.page_width.unwrap_or(78),
                     32,
                     240,
-                    "Page width · 32–240 cells",
+                    "Page width · 0 = full, 32–240 cells",
                 )
             } else if i == 7 {
                 (
@@ -220,7 +238,11 @@ pub(super) fn setting(
                 (p.column_gap.unwrap_or(4), 0, 32, "Column gap · 0–32 cells")
             };
             if let Some(v) = edit(term, title, &val.to_string())? {
-                let Some(n) = v.parse::<u16>().ok().filter(|v| (lo..=hi).contains(v)) else {
+                let Some(n) = v
+                    .parse::<u16>()
+                    .ok()
+                    .filter(|v| (i == 2 && *v == 0) || (lo..=hi).contains(v))
+                else {
                     return Err(io::Error::other(format!(
                         "Enter a number from {lo} to {hi}."
                     )));

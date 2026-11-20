@@ -20,6 +20,19 @@ pub(super) fn resolve(doc: &mut BaseDocument, options: ReflowOptions) {
                 changes.push((id, name, enabled));
             }
         };
+        if options.typography.alignment != crate::TextAlignment::Book {
+            let prose =
+                !std::iter::successors(Some(node), |n| n.parent.and_then(|p| doc.get_node(p)))
+                    .filter_map(Node::element_data)
+                    .any(|e| {
+                        structured(e, true)
+                            || matches!(
+                                &*e.name.local,
+                                "blockquote" | "figure" | "figcaption" | "header" | "footer"
+                            )
+                    });
+            mark("data-botui-prose-align", prose);
+        }
         let centered = node.primary_styles().is_some_and(|s| {
             matches!(
                 s.clone_text_align(),

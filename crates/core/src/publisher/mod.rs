@@ -146,10 +146,14 @@ impl Worker {
             ColorScheme::Light,
         );
         if let Some(doc) = self.documents.get_mut(&start)
-            && (chapter.tables.is_empty() || doc.viewport().window_size == viewport.window_size)
+            && ((chapter.tables.is_empty()
+                && options.typography.alignment == crate::TextAlignment::Book)
+                || doc.viewport().window_size == viewport.window_size)
         {
-            doc.set_viewport(viewport);
-            spacing::resolve(doc, options);
+            if doc.viewport().window_size != viewport.window_size {
+                doc.set_viewport(viewport);
+                spacing::resolve(doc, options);
+            }
             return canvas::lines(doc, layout.width, chapter, blocks);
         }
         let mut doc = chapter.document(viewport, options, blocks, resume);
@@ -327,6 +331,25 @@ impl Chapter {
             ":root {{ --botui-indent: {}px; }} {figures}",
             u16::from(options.paragraph_indent) * CELL as u16
         );
+        if options.typography.heading_rules {
+            settings.push_str("h1,h2,h3,h4,h5,h6{border-bottom:16px solid!important}h1{border-bottom-style:double!important}");
+        }
+        if options.typography.alignment != crate::TextAlignment::Book {
+            let align = match options.typography.alignment {
+                crate::TextAlignment::Left => "left",
+                crate::TextAlignment::Right => "right",
+                crate::TextAlignment::Center => "center",
+                crate::TextAlignment::Justify => "justify",
+                crate::TextAlignment::Book => unreachable!(),
+            };
+            if matches!(
+                options.typography.alignment,
+                crate::TextAlignment::Right | crate::TextAlignment::Center
+            ) {
+                settings.push_str("p[data-botui-prose-align]{text-indent:0!important}");
+            }
+            settings.push_str(&format!("p[data-botui-prose-align]{{text-align:{align}!important;text-align-last:auto!important}}"));
+        }
         if let Some(rows) = options.paragraph_spacing {
             let gap = u16::from(rows) * ROW as u16;
             settings.push_str(&format!(

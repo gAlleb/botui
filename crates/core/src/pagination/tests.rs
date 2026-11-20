@@ -209,3 +209,36 @@ fn reversing_after_an_exact_jump_restores_the_same_spread_without_skipping_rows(
         }
     }
 }
+
+#[test]
+fn plain_alignment_keeps_source_words_and_justifies_only_wrapped_lines() {
+    use crate::TextAlignment::*;
+    let doc = Document {
+        blocks: vec![Block {
+            text: "один  два три четыре".into(),
+            heading: false,
+        }],
+        ..Default::default()
+    };
+    let base = Pager::new(&doc, 10, 12, LayoutMode::Single).reflow_options();
+    for (alignment, indent, text) in [
+        (Book, 0, "один два"),
+        (Left, 0, "один два"),
+        (Right, 2, "один два"),
+        (Center, 1, "один два"),
+        (Justify, 0, "один   два"),
+    ] {
+        let mut options = base;
+        options.typography.alignment = alignment;
+        let book = super::BookLayout::new(&doc, options, None);
+        let rows = book.lines(
+            &doc,
+            crate::Layout::new(10, 12, LayoutMode::Single, 0),
+            0..1,
+        );
+        assert_eq!((rows[0].indent, rows[0].text.as_str()), (indent, text));
+        let last = rows[0].text_cells(&doc).pop().unwrap();
+        assert_eq!(last.source.end.byte, "один  два".len());
+        assert_eq!(rows.last().unwrap().text, "три четыре");
+    }
+}

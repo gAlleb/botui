@@ -18,6 +18,10 @@ pub(super) fn panes(
     splitter.layout(screen, !zen && screen.width >= 78)
 }
 
+pub(super) fn width_setting(width: u16) -> u16 {
+    if width == 0 { 0 } else { width.clamp(32, 240) }
+}
+
 pub(super) fn geometry(
     frame: &ReadingFrame,
     mode: LayoutMode,
@@ -35,6 +39,7 @@ pub(super) fn geometry(
     } else {
         0
     };
+    let width = if width == 0 { available } else { width };
     let used = if spread {
         (width.min((available - gap) / 2)) * 2 + gap
     } else {
@@ -69,13 +74,13 @@ impl Panel {
         &mut self,
         f: &mut Frame,
         style: Style,
-        effective: u16,
-        width: u16,
+        (effective, width): (u16, u16),
+        alignment: botui_core::TextAlignment,
         gap: u16,
         actual_gap: Option<u16>,
     ) {
         let screen = f.area();
-        let mut panel = crate::centered(screen, 52, 5);
+        let mut panel = crate::centered(screen, 52, 6);
         panel.y = screen.bottom().saturating_sub(panel.height);
         crate::overlay::backdrop(f, panel);
         let block = crate::appearance::block()
@@ -88,7 +93,9 @@ impl Panel {
         let values = [
             (
                 "Page width",
-                if effective < width {
+                if width == 0 {
+                    format!("Full ({effective})")
+                } else if effective < width {
                     format!("{effective} (max here)")
                 } else {
                     format!("{width} cells")
@@ -131,6 +138,19 @@ impl Panel {
         }
         if inside.height >= 3 {
             let row = Rect::new(inside.x, inside.y + 2, inside.width, 1);
+            let width = row.width.min(16);
+            let full = Rect::new(row.x, row.y, width, 1);
+            let align = Rect::new(full.right(), row.y, row.width - width, 1);
+            f.render_widget(Paragraph::new("[F Full width]"), full);
+            f.render_widget(
+                Paragraph::new(format!("[A Alignment: {}]", alignment.label())),
+                align,
+            );
+            self.hits
+                .extend([(full, Action::FullWidth), (align, Action::Alignment)]);
+        }
+        if inside.height >= 4 {
+            let row = Rect::new(inside.x, inside.y + 3, inside.width, 1);
             let done = Rect::new(row.right() - row.width.min(8), row.y, row.width.min(8), 1);
             f.render_widget(
                 Paragraph::new("[ ] width   { } gap").dim(),
@@ -143,6 +163,8 @@ impl Panel {
     pub fn input(&self, event: Event) -> Option<Action> {
         match event {
             Event::Key(k) if k.kind != KeyEventKind::Release => match k.code {
+                KeyCode::Char('f' | 'F') => Some(Action::FullWidth),
+                KeyCode::Char('a' | 'A') => Some(Action::Alignment),
                 KeyCode::Char('[') => Some(Action::Margin(-1)),
                 KeyCode::Char(']') => Some(Action::Margin(1)),
                 KeyCode::Char('{') => Some(Action::Gap(-1)),

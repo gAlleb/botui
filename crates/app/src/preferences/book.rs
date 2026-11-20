@@ -49,6 +49,13 @@ fn spacing_label(lines: Option<u8>) -> &'static str {
 fn toggle(b: bool) -> &'static str {
     if b { "On" } else { "Off" }
 }
+pub(super) fn width_label(n: u16) -> String {
+    if n == 0 {
+        "Full width".into()
+    } else {
+        cells(n)
+    }
+}
 fn cells(n: u16) -> String {
     format!("{n} cells")
 }
@@ -69,8 +76,8 @@ pub(super) fn edit(term: &mut AppTerminal, store: &LocalState, kind: Kind) -> io
         for field in fields {
             let value = match field {
                 Width => scope(
-                    local.page_width.map(cells),
-                    cells(g.page_width.unwrap_or(78)),
+                    local.page_width.map(width_label),
+                    width_label(g.page_width.unwrap_or(78)),
                 ),
                 Indent => scope(
                     local.paragraph_indent.map(|n| cells(n.into())),
@@ -157,7 +164,7 @@ pub(super) fn edit(term: &mut AppTerminal, store: &LocalState, kind: Kind) -> io
             Width => {
                 if let Some(s) = prompt::edit(
                     term,
-                    "Page width · 32–240 cells, blank to use global",
+                    "Page width · 0 = full, 32–240 cells, blank to use global",
                     "[ Save ↵ ]",
                     &local.page_width.map(|n| n.to_string()).unwrap_or_default(),
                     |_| {},
@@ -169,9 +176,9 @@ pub(super) fn edit(term: &mut AppTerminal, store: &LocalState, kind: Kind) -> io
                             s.trim()
                                 .parse::<u16>()
                                 .ok()
-                                .filter(|n| (32..=240).contains(n))
+                                .filter(|n| *n == 0 || (32..=240).contains(n))
                                 .ok_or_else(|| {
-                                    io::Error::other("Enter 32–240 cells or clear to use global.")
+                                    io::Error::other("Enter 0 for full width, 32–240 cells or clear to use global.")
                                 })?,
                         )
                     };

@@ -152,6 +152,14 @@ pub(super) fn lines(
         .iter()
         .filter_map(|(id, node)| {
             let layout = &node.element_data()?.inline_layout_data.as_ref()?.layout;
+            if node
+                .element_data()?
+                .attrs()
+                .iter()
+                .any(|a| &*a.name.local == "data-botui-prose-align")
+            {
+                return None;
+            }
             let align = layout.alignment()?;
             let last = node.primary_styles()?.clone_text_align_last();
             if last != TextAlignLast::Justify && (align != Alignment::Justify || layout.len() <= 1)
@@ -579,12 +587,15 @@ fn draw_border(node: &Node, width: u16, rows: &mut Rows<'_>, face: Face) {
                 rule: true,
             })
         };
+        let double = node.primary_styles().is_some_and(|s| {
+            s.get_border().border_bottom_style == style::values::computed::BorderStyle::Double
+        });
         for x in left..right.min(usize::from(width)) {
             if area.border.top > 0. {
                 rule(x, top, "─");
             }
             if area.border.bottom > 0. {
-                rule(x, bottom - 1, "─");
+                rule(x, bottom - 1, if double { "═" } else { "─" });
             }
         }
         for y in top..bottom.min(top.saturating_add(2048)) {
@@ -1033,6 +1044,7 @@ mod tests {
                     let doc = chapter.document(
                         Viewport::new(u32::from(width) * CELL as u32, 480, 1., ColorScheme::Light),
                         crate::ReflowOptions {
+                            typography: Default::default(),
                             repair_printed: true,
                             inline_images: true,
                             paragraph_indent: 0,

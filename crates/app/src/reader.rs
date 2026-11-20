@@ -75,6 +75,8 @@ enum Action {
     NavEdit(Edit),
     Mark,
     Bookmarks,
+    FullWidth,
+    Alignment,
     Margin(i8),
     Gap(i8),
     Layout,
@@ -255,10 +257,11 @@ impl Reader {
             LayoutMode::Spread
         };
         let margin = saved.as_ref().map_or(0, |s| s.margin);
-        let page_width = settings
-            .page_width
-            .unwrap_or_else(|| 78u16.saturating_add_signed(-6 * i16::from(margin)))
-            .clamp(32, 240);
+        let page_width = layout::width_setting(
+            settings
+                .page_width
+                .unwrap_or_else(|| 78u16.saturating_add_signed(-6 * i16::from(margin))),
+        );
         let gap = settings.column_gap.unwrap_or(4).min(32);
         let mut splitter = crate::splitter::Splitter::new(
             crate::splitter::Pane::Contents,
@@ -291,6 +294,7 @@ impl Reader {
             mode_for_size,
             actual_gap,
             ReflowOptions {
+                typography: settings.typography(),
                 repair_printed: !settings.preserve_printed_lines,
                 inline_images: !settings.hide_inline_images,
                 paragraph_indent: settings.paragraph_indent,
@@ -353,7 +357,7 @@ impl Reader {
         store: Option<&LocalState>,
         notices: &mut Vec<String>,
     ) {
-        if matches!(action, Action::Margin(_))
+        if matches!(action, Action::Margin(_) | Action::FullWidth)
             && let Some(store) = store
         {
             let local = (|| -> io::Result<bool> {
@@ -381,7 +385,7 @@ impl Reader {
         }
         let result = crate::settings::Settings::update(|s| match action {
             Action::Gap(_) => s.column_gap = Some(self.gap),
-            Action::Margin(_) => s.page_width = Some(self.page_width),
+            Action::Margin(_) | Action::FullWidth => s.page_width = Some(self.page_width),
             Action::Zen => s.zen = self.zen,
             Action::ZenProgress => s.zen_progress = self.zen_progress,
             Action::Background => s.opaque_background = self.opaque,
@@ -686,8 +690,8 @@ impl Reader {
             panel.draw(
                 frame,
                 style,
-                view.width(),
-                self.page_width,
+                (view.width(), self.page_width),
+                self.pager.reflow_options().typography.alignment,
                 self.gap,
                 (view.columns() == 2).then(|| view.gutter()),
             );
@@ -1101,6 +1105,7 @@ impl Reader {
                         self.mode,
                         self.gap,
                         ReflowOptions {
+                            typography: options.typography(),
                             repair_printed: false,
                             inline_images: !options.hide_inline_images,
                             paragraph_indent: 0,
@@ -1223,6 +1228,10 @@ impl Reader {
             Action::Gap(d) => {
                 self.gap = self.gap.saturating_add_signed(i16::from(d)).min(32);
             }
+            Action::FullWidth => {
+                self.page_width = 0;
+                self.dirty = true;
+            }
             Action::Margin(d) => {
                 self.page_width = self
                     .pager
@@ -1321,6 +1330,7 @@ impl Reader {
             | Action::Follow(_)
             | Action::Bookmarks
             | Action::Mark
+            | Action::Alignment
             | Action::Settings
             | Action::Help
             | Action::Statistics
@@ -1391,6 +1401,13 @@ fn paint_surfaces(
                         Rect::new(rect.x + (start - left), rect.y, end - start, 1),
                         ratatui::style::Style::new().bg(markdown_style::background(role, theme)),
                     );
+                }
+            }
+            botui_core::Surface::HeadingRule { double } => {
+                for col in rect.x..rect.right() {
+                    frame.buffer_mut()[(col, rect.y)]
+                        .set_symbol(if double { "═" } else { "─" })
+                        .set_style(style.add_modifier(Modifier::DIM));
                 }
             }
             botui_core::Surface::TableDivider { x } => {
@@ -1850,7 +1867,7 @@ pub fn read_server(
                 }
                 continue;
             }
-            if matches!(action, Action::Settings | Action::Help) {
+            if matches!(action, Action::Settings | Action::Help | Action::Alignment) {
                 let old = crate::settings::book::BookSettings::effective(state.as_ref())?;
                 let kind = if reader.doc.markdown.is_some() {
                     crate::preferences::BookKind::Markdown
@@ -1861,16 +1878,20 @@ pub fn read_server(
                 } else {
                     crate::preferences::BookKind::Text
                 };
-                crate::preferences::show_book(
-                    term,
-                    if action == Action::Help {
-                        crate::preferences::Open::Help
-                    } else {
-                        crate::preferences::Open::Settings
-                    },
-                    crate::preferences::Context::Text,
-                    state.as_ref().map(|s| (s, kind)),
-                )?;
+                if action == Action::Alignment {
+                    crate::preferences::alignment(term, &old)?;
+                } else {
+                    crate::preferences::show_book(
+                        term,
+                        if action == Action::Help {
+                            crate::preferences::Open::Help
+                        } else {
+                            crate::preferences::Open::Settings
+                        },
+                        crate::preferences::Context::Text,
+                        state.as_ref().map(|s| (s, kind)),
+                    )?;
+                }
                 let new = crate::settings::book::BookSettings::effective(state.as_ref())?;
                 reader.zen = new.zen;
                 reader.scroll_lines = new.scroll_lines.unwrap_or(1).clamp(1, 12) as i8;
@@ -1892,7 +1913,7 @@ pub fn read_server(
                     reader.dirty = true;
                 }
                 if old.page_width != new.page_width {
-                    reader.page_width = new.page_width.unwrap_or(78).clamp(32, 240);
+                    reader.page_width = layout::width_setting(new.page_width.unwrap_or(78));
                     if new.page_width.is_none() {
                         reader.margin = 0;
                         reader.dirty = true;
@@ -1902,6 +1923,8 @@ pub fn read_server(
                     reader.gap = g.min(32);
                 }
                 if old.preserve_printed_lines != new.preserve_printed_lines
+                    || old.text_alignment != new.text_alignment
+                    || old.heading_rules != new.heading_rules
                     || old.hide_inline_images != new.hide_inline_images
                     || old.paragraph_indent != new.paragraph_indent
                     || old.paragraph_spacing != new.paragraph_spacing
@@ -1925,6 +1948,7 @@ pub fn read_server(
                         mode,
                         gap,
                         ReflowOptions {
+                            typography: new.typography(),
                             repair_printed: !new.preserve_printed_lines,
                             inline_images: !new.hide_inline_images,
                             paragraph_indent: new.paragraph_indent,
@@ -2021,9 +2045,11 @@ pub fn read_server(
             }
             reader.apply(action);
             match action {
-                Action::Zen | Action::ZenProgress | Action::Gap(_) | Action::Margin(_) => {
-                    save_after_draw = Some(action)
-                }
+                Action::Zen
+                | Action::ZenProgress
+                | Action::Gap(_)
+                | Action::Margin(_)
+                | Action::FullWidth => save_after_draw = Some(action),
                 Action::Background | Action::Pick(theme_picker::Edit::Accept(_)) => {
                     reader.save_appearance(action, state.as_ref(), notices)
                 }

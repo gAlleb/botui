@@ -275,6 +275,8 @@ In two-page text mode, each chapter starts on the left of a new spread. In scrol
 
 **Space l w** adjusts text page width and the gap between columns. For PDF, DjVu, comics and image-only EPUBs, the same panel controls zoom and spread spacing. Its gap buttons or **[ / ]** set **0–32 terminal cells**; zero joins facing pages. `scan_gap` saves this independently of text spacing. **+ / −** zoom fixed pages, arrows pan, and **Space r 0** restores Fit page (Fit width in scroll mode). Enlarged pages fill the available margins and are clipped only at the reading pane edge.
 
+For text, **F** uses the full available width and **A** selects paragraph alignment. Enable **Heading rules** in **F2 → Reader** for double lines under main headings and single lines under subheadings.
+
 Text size and typeface come from your terminal: use its font-size controls to enlarge or reduce text. BOTUI reflows the page. **F2 → Reader** controls first-line indentation, paragraph spacing and mouse-wheel step. Drag the contents divider to resize the sidebar.
 
 In Foot/Sixel, fast wheel and touchpad gestures advance through bounded intermediate frames while preserving the requested scrolling distance. Opening a menu or using a navigation key stops queued motion. Large images still take longer to transmit than in Kitty.
@@ -534,7 +536,9 @@ synctex_botui_terminal = []
 # Space between PDF/DjVu/comic pages in a spread (0–32 terminal cells).
 scan_gap = 2
 # Preferred width of one text page and the space between facing pages, in terminal cells.
-# page_width = 78
+# page_width = 78 # 0 uses the full available column
+# text_alignment = "book" # book, left, right, center, justify
+# heading_rules = false
 column_gap = 4
 # First line of a prose paragraph in EPUB/FB2, in cells (0–8; 0 disables).
 paragraph_indent = 0

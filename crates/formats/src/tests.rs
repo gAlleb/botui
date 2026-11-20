@@ -813,6 +813,7 @@ fn paging_back_from_a_citation_fills_prose_and_keeps_the_marker_whole() {
                 9,
                 mode,
                 ReflowOptions {
+                    typography: Default::default(),
                     repair_printed: true,
                     inline_images: true,
                     paragraph_indent: 0,
@@ -864,6 +865,7 @@ fn exact_epub_positions_after_chapter_titles_and_pictures_do_not_clip_the_previo
         "p,h1{margin:0} img{display:block;width:80px;height:96px}",
     );
     let options = ReflowOptions {
+        typography: Default::default(),
         repair_printed: true,
         inline_images: true,
         paragraph_indent: 0,
@@ -911,6 +913,7 @@ fn raised_footnotes_keep_wrapped_prose_on_consecutive_rows() {
             80,
             LayoutMode::Scroll,
             ReflowOptions {
+                typography: Default::default(),
                 paragraph_spacing: Some(1),
                 repair_printed: true,
                 inline_images: true,
@@ -966,6 +969,7 @@ fn paragraph_spacing_in_epub_and_fb2_preserves_structured_content_and_anchors() 
     ];
     for (doc, book_gap, structured_gaps) in [(&epub, 0, &epub_gaps[..]), (&fb2, 1, &fb2_gaps[..])] {
         let options = ReflowOptions {
+            typography: Default::default(),
             repair_printed: true,
             inline_images: true,
             paragraph_indent: 3,
@@ -1019,6 +1023,7 @@ fn paragraph_spacing_keeps_centered_addresses_and_authored_blank_rows() {
         "p {margin:0; text-align:justify} .address {text-align:center} h1 {margin:0 0 16px}",
     );
     let options = ReflowOptions {
+        typography: Default::default(),
         repair_printed: true,
         inline_images: true,
         paragraph_indent: 0,
@@ -1099,6 +1104,7 @@ fn centered_paragraphs_keep_the_book_indent_across_settings_and_resizes() {
         for compact_spacing in [true, false] {
             for paragraph_indent in [0, 4] {
                 let options = ReflowOptions {
+                    typography: Default::default(),
                     repair_printed: true,
                     inline_images: true,
                     paragraph_spacing,
@@ -1146,6 +1152,7 @@ fn compact_blocks_and_paragraph_spacing_are_independent() {
         "p {margin:0} .center {text-align:center} table p {margin-bottom:32px}",
     );
     let options = ReflowOptions {
+        typography: Default::default(),
         repair_printed: true,
         inline_images: true,
         paragraph_indent: 0,
@@ -1197,6 +1204,7 @@ fn paragraph_spacing_uses_inherited_alignment_and_rechecks_it_after_resize() {
          @media(min-width:500px) {.responsive {text-align:justify}}",
     );
     let options = ReflowOptions {
+        typography: Default::default(),
         repair_printed: true,
         inline_images: true,
         paragraph_indent: 0,
@@ -1278,6 +1286,7 @@ fn paragraph_spacing_recognizes_bare_epub_compact_markup_without_stylesheets() {
                 48,
                 LayoutMode::Single,
                 ReflowOptions {
+                    typography: Default::default(),
                     repair_printed: true,
                     inline_images: true,
                     paragraph_indent: 0,
@@ -1321,6 +1330,7 @@ fn paragraph_spacing_preserves_semantic_groups_and_an_independent_unicode_cfi() 
     assert_eq!(at.block, 0);
     assert_eq!(&doc.blocks[at.block].text[at.byte..], "Маяк");
     let options = ReflowOptions {
+        typography: Default::default(),
         repair_printed: true,
         inline_images: true,
         paragraph_indent: 0,
@@ -1383,6 +1393,7 @@ fn prose_preserves_words_indentation_footnotes_and_spread_page_turns() {
         "h1 {font-size:2.5em} p {text-indent:1em; text-align:justify}",
     );
     let options = ReflowOptions {
+        typography: Default::default(),
         repair_printed: true,
         inline_images: true,
         paragraph_indent: 3,
@@ -1599,6 +1610,7 @@ fn illustrations_fit_the_viewport_and_hidden_figures_take_no_space() {
         42,
         LayoutMode::Single,
         ReflowOptions {
+            typography: Default::default(),
             repair_printed: true,
             inline_images: false,
             paragraph_indent: 0,
@@ -1665,6 +1677,7 @@ fn reopening_before_the_last_picture_keeps_the_next_chapter_title_at_the_top() {
     ]), "Illustrated chapters").unwrap();
     let start = Anchor { block: 1, byte: 7 };
     let options = ReflowOptions {
+        typography: Default::default(),
         repair_printed: true,
         inline_images: true,
         paragraph_indent: 0,
@@ -1706,6 +1719,7 @@ fn reopening_an_illustrated_spread_distinguishes_the_picture_from_its_text_cfi()
         "p,h1,figure{margin:0} img{display:block;width:160px;height:96px}",
     );
     let options = ReflowOptions {
+        typography: Default::default(),
         repair_printed: false,
         inline_images: true,
         paragraph_indent: 0,
@@ -1834,6 +1848,7 @@ fn resizing_and_cached_layouts_match_a_fresh_epub_layout() {
         ".pair{display:flex;gap:2ch}.wide,.tall{display:none}@media(min-width:500px){.wide{display:block}}@media(min-height:500px){.tall{display:block}}",
     );
     let options = ReflowOptions {
+        typography: Default::default(),
         repair_printed: true,
         inline_images: true,
         paragraph_indent: 2,
@@ -2016,6 +2031,7 @@ fn fb2_faces_survive_wrapping_and_resume_without_changing_source_offsets() {
         30,
         LayoutMode::Single,
         ReflowOptions {
+            typography: Default::default(),
             repair_printed: true,
             inline_images: true,
             paragraph_indent: 2,

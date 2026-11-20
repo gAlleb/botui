@@ -40,6 +40,8 @@ pub struct Settings {
     pub opaque_color: Option<String>,
     pub borders: crate::appearance::BordersStyle,
     pub page_width: Option<u16>,
+    pub text_alignment: botui_core::TextAlignment,
+    pub heading_rules: bool,
     pub scan_zoom: Option<u16>,
     pub scan_gap: Option<u16>,
     pub paragraph_indent: u8,
@@ -335,6 +337,13 @@ fn extend_config(doc: &mut DocumentMut) -> io::Result<bool> {
 }
 
 impl Settings {
+    pub fn typography(&self) -> botui_core::Typography {
+        botui_core::Typography {
+            alignment: self.text_alignment,
+            heading_rules: self.heading_rules,
+        }
+    }
+
     pub fn compact_spacing(&self) -> bool {
         self.preserve_compact_spacing.unwrap_or(true)
     }
