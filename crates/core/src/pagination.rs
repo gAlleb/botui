@@ -480,10 +480,10 @@ impl Pager {
             preceding.push(start);
             end = start;
         }
-        // A preceding ordinary page may overlap the first exact page. Keep both
-        // starts so that turning forward again returns to the same spread.
-        // Pair pages backwards only inside this chapter. Earlier chapters
-        // already have complete, reversible spreads of their own.
+        // A preceding ordinary page may overlap the first exact page. PageUp
+        // rejoins the regular layout at that boundary instead of retaining the
+        // exact position as an extra page. Pair pages backwards only inside this
+        // chapter; earlier chapters already have their own complete spreads.
         let chapter = self.chapter_rows.partition_point(|&r| r <= self.first);
         let chapter_start = chapter.checked_sub(1).map_or(0, |i| self.chapter_rows[i]);
         let begin = self.page_starts.partition_point(|&r| r < chapter_start);
@@ -517,7 +517,7 @@ impl Pager {
         }
     }
 
-    fn view_at(&self, first: usize) -> Viewport<'_> {
+    pub(super) fn view_at(&self, first: usize) -> Viewport<'_> {
         Viewport::new(self.layout, &self.lines, first)
     }
 

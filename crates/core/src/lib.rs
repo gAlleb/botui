@@ -387,7 +387,8 @@ pub struct Pager {
     spread_starts: Vec<usize>,
     /// First laid-out row of each chapter, including in scroll mode.
     chapter_rows: Vec<usize>,
-    /// Spread starts for paging in either direction from an exact search or resume position.
+    /// Views around an exact search or resume position, until paging back rejoins
+    /// the regular layout at an overlapping boundary.
     positioned_spreads: Vec<usize>,
     figure_starts: Vec<(usize, Figure)>,
     first: usize,
@@ -657,14 +658,6 @@ impl Pager {
         self.restore_position(position);
     }
 
-    /// Pair the current page when the reader explicitly selects the spread view.
-    pub fn pair_current_page(&mut self) {
-        self.finish_resize();
-        if self.layout.columns == 2 && !self.lines.is_empty() {
-            self.show_regular_view(self.first);
-        }
-    }
-
     /// Show the regular page or spread containing a rendered row.
     fn show_regular_view(&mut self, row: usize) {
         let starts = self.regular_views();
@@ -793,7 +786,14 @@ impl Pager {
         self.finish_resize();
         let first = self.previous_start();
         if first != self.first {
-            self.move_to(first);
+            if !self.positioned_spreads.is_empty() && self.view_at(first).end() > self.first {
+                // An exact landing position is not an extra page. Once going
+                // back would overlap it, rejoin the regular layout so the next
+                // turn advances past this page instead of reopening its suffix.
+                self.show_regular_view(self.first - 1);
+            } else {
+                self.move_to(first);
+            }
         }
     }
 

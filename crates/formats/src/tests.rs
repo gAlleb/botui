@@ -2398,3 +2398,99 @@ fn display_fraction_moves_whole_to_the_next_column_when_it_fits() {
         assert!(column.iter().any(|r| r.text.contains("bottom")));
     }
 }
+
+#[test]
+fn returning_before_a_scrolled_math_epub_restores_its_two_regular_pages() {
+    use botui_core::{LayoutMode, Pager};
+    let doc = styled_fixture(
+        "<p>Opening.</p><p>Scroll target.</p><p>Before the fraction.</p>\
+         <math display='block'><mfrac><mi>UPPER</mi><mi>LOWER</mi></mfrac></math>\
+         <p>After the fraction.</p><p>End.</p>",
+        "p,math{margin:0}",
+    );
+    // The equation itself must activate pagination, without chapter or image breaks.
+    assert!(doc.chapter_starts.is_empty());
+    assert!(doc.references.is_empty());
+    let full = Pager::new(&doc, 50, 64, LayoutMode::Scroll);
+    let rows = full.lines(0);
+    let upper = rows
+        .iter()
+        .position(|row| row.text.contains("UPPER"))
+        .unwrap();
+    let lower = rows
+        .iter()
+        .position(|row| row.text.contains("LOWER"))
+        .unwrap();
+    let target = rows
+        .iter()
+        .position(|row| row.text.contains("Scroll target."))
+        .unwrap();
+    assert_eq!(
+        lower,
+        upper + 2,
+        "fixture must contain a three-row fraction"
+    );
+    assert!(rows[upper + 1].text.contains('─'));
+    assert!(target > 0 && target < upper);
+    // A normal first page would cut off the denominator unless the whole fraction moves.
+    let height = u16::try_from(lower).unwrap();
+    let snapshot = |pager: &Pager| {
+        (0..pager.columns())
+            .map(|column| {
+                pager
+                    .lines(column)
+                    .iter()
+                    .map(|row| (row.anchor(), row.text.clone()))
+                    .collect::<Vec<_>>()
+            })
+            .collect::<Vec<_>>()
+    };
+    let full_rows = snapshot(&full).remove(0);
+    for (mode, width, views) in [(LayoutMode::Single, 50, 2), (LayoutMode::Spread, 104, 1)] {
+        let mut regular = Pager::new(&doc, width, height, mode);
+        assert_eq!(regular.page_count(), 2, "fixture must occupy two pages");
+        assert!(
+            regular
+                .lines(0)
+                .iter()
+                .all(|row| !row.text.contains("UPPER"))
+        );
+        let first = snapshot(&regular);
+        let mut collected = Vec::new();
+        for _ in 0..views {
+            for column in snapshot(&regular) {
+                assert_eq!(
+                    column.iter().any(|(_, text)| text.contains("UPPER")),
+                    column.iter().any(|(_, text)| text.contains("LOWER")),
+                    "fraction split between columns in {mode:?}"
+                );
+                collected.extend(column);
+            }
+            regular.next();
+        }
+        assert!(regular.at_end());
+        assert_eq!(collected, full_rows, "lost or repeated rows in {mode:?}");
+        let last = snapshot(&regular);
+
+        let mut pager = Pager::new(&doc, 50, height, LayoutMode::Scroll);
+        pager.scroll(target as isize);
+        let anchor = pager.anchor();
+        assert!(pager.lines(0)[0].text.contains("Scroll target."));
+        pager.relayout(&doc, width, height, mode);
+        assert_eq!(pager.anchor(), anchor);
+        assert!(pager.lines(0)[0].text.contains("Scroll target."));
+        pager.previous();
+        assert_eq!(
+            snapshot(&pager),
+            first,
+            "return to the beginning in {mode:?}"
+        );
+        pager.next();
+        assert_eq!(
+            snapshot(&pager),
+            last,
+            "an exact landing is not an extra page in {mode:?}"
+        );
+        assert!(pager.at_end());
+    }
+}

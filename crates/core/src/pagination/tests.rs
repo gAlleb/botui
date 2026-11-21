@@ -12,6 +12,77 @@ fn forward_breaks(pager: &mut Pager) -> Vec<[usize; 3]> {
     }
 }
 
+fn short_document(with_chapter: bool) -> Document {
+    Document {
+        blocks: (0..18)
+            .map(|i| Block {
+                text: format!("Passage {i}."),
+                heading: false,
+            })
+            .collect(),
+        chapter_starts: if with_chapter {
+            [0].into()
+        } else {
+            Default::default()
+        },
+        ..Default::default()
+    }
+}
+
+#[test]
+fn scrolling_into_a_single_page_does_not_add_a_page_after_returning_to_the_start() {
+    for with_chapter in [false, true] {
+        let doc = short_document(with_chapter);
+        let mut regular = Pager::with_reflow(&doc, 50, 24, LayoutMode::Single, false);
+        let pages = forward_breaks(&mut regular);
+        assert_eq!(pages.len(), 2, "fixture must occupy two normal pages");
+
+        let mut pager = Pager::with_reflow(&doc, 50, 24, LayoutMode::Scroll, false);
+        pager.scroll(4);
+        let anchor = pager.anchor();
+        assert_ne!(anchor, Anchor::default());
+        pager.relayout(&doc, 50, 24, LayoutMode::Single);
+        assert_eq!(pager.anchor(), anchor);
+        assert!(pager.first > pages[0][0] && pager.first < pages[1][0]);
+
+        pager.previous();
+        assert_eq!(pager.complete_view().bounds, pages[0]);
+        pager.next();
+        assert_eq!(pager.complete_view().bounds, pages[1]);
+        assert!(pager.at_end());
+        pager.previous();
+        assert_eq!(pager.complete_view().bounds, pages[0]);
+        pager.next();
+        assert_eq!(pager.complete_view().bounds, pages[1]);
+    }
+}
+
+#[test]
+fn scrolling_into_one_spread_does_not_leave_an_extra_partial_spread() {
+    for with_chapter in [false, true] {
+        let doc = short_document(with_chapter);
+        let mut regular = Pager::with_reflow(&doc, 104, 24, LayoutMode::Spread, false);
+        let spreads = forward_breaks(&mut regular);
+        assert_eq!(spreads.len(), 1, "fixture must fit in one full spread");
+
+        let mut pager = Pager::with_reflow(&doc, 50, 24, LayoutMode::Scroll, false);
+        pager.scroll(4);
+        let anchor = pager.anchor();
+        assert_ne!(anchor, Anchor::default());
+        pager.relayout(&doc, 104, 24, LayoutMode::Spread);
+        assert_eq!(pager.anchor(), anchor);
+        assert!(pager.first > 0);
+
+        pager.previous();
+        assert_eq!(pager.complete_view().bounds, spreads[0]);
+        assert!(pager.at_end());
+        pager.next();
+        assert_eq!(pager.complete_view().bounds, spreads[0]);
+        pager.previous();
+        assert_eq!(pager.complete_view().bounds, spreads[0]);
+    }
+}
+
 #[test]
 fn chapter_percentage_uses_the_first_visible_source_line_across_reflow() {
     let mut doc = Document {
@@ -161,7 +232,7 @@ fn check_direction_changes(pager: &mut Pager, spreads: &[[usize; 3]]) {
 }
 
 #[test]
-fn reversing_after_an_exact_jump_restores_the_same_spread_without_skipping_rows() {
+fn reversing_after_an_exact_jump_rejoins_regular_pages_without_skipping_rows() {
     let doc = Document {
         blocks: (0..72)
             .map(|i| Block {
@@ -196,10 +267,22 @@ fn reversing_after_an_exact_jump_restores_the_same_spread_without_skipping_rows(
                     let end = pager.complete_view().end();
                     assert!(end >= original[0], "lost rows after {end}");
                     crossed_overlap |= end > original[0];
+                    if end > original[0] {
+                        assert!(pager.positioned_spreads.is_empty());
+                        assert!(pager.regular_views().binary_search(&pager.first).is_ok());
+                    }
                     pager.next();
-                    assert_eq!(pager.complete_view().bounds, original);
-                    pager.previous();
-                    assert_eq!(pager.complete_view().bounds, previous);
+                    if end == original[0] {
+                        assert_eq!(pager.complete_view().bounds, original);
+                    } else if end < pager.lines.len() {
+                        assert_eq!(pager.first, end, "overlap must not create an extra page");
+                    } else {
+                        assert_eq!(pager.complete_view().bounds, previous);
+                    }
+                    if end < pager.lines.len() {
+                        pager.previous();
+                        assert_eq!(pager.complete_view().bounds, previous);
+                    }
                 }
             }
             assert!(
@@ -244,7 +327,7 @@ fn plain_alignment_keeps_source_words_and_justifies_only_wrapped_lines() {
 }
 
 #[test]
-fn switching_from_single_page_opens_its_containing_spread() {
+fn switching_from_single_page_keeps_the_same_passage_on_the_left() {
     for starts in [vec![], vec![0, 9]] {
         let doc = Document {
             blocks: (0..31)
@@ -256,30 +339,42 @@ fn switching_from_single_page_opens_its_containing_spread() {
             chapter_starts: starts.into_iter().collect(),
             ..Default::default()
         };
-        let mut reference = Pager::new(&doc, 104, 6, LayoutMode::Spread);
-        let spreads = forward_breaks(&mut reference);
         let mut pager = Pager::new(&doc, 50, 6, LayoutMode::Single);
         for index in [1, 2, 5, 7] {
+            pager.relayout(&doc, 50, 6, LayoutMode::Single);
             pager.seek(Anchor::default());
             for _ in 0..index {
                 pager.next();
             }
-            let row = pager.first;
-            let expected = spreads
+            let anchor = pager.anchor();
+            let text = pager
+                .lines(0)
                 .iter()
-                .position(|b| (b[0]..b[2]).contains(&row))
-                .unwrap();
-            pager.relayout(&doc, 104, 6, LayoutMode::Spread);
-            pager.pair_current_page();
-            assert_eq!(pager.complete_view().bounds, spreads[expected]);
-            pager.previous();
-            assert_eq!(
-                pager.complete_view().bounds,
-                spreads[expected.saturating_sub(1)]
-            );
-            pager.next();
-            assert_eq!(pager.complete_view().bounds, spreads[expected.max(1)]);
-            pager.relayout(&doc, 50, 6, LayoutMode::Single);
+                .find(|row| !row.text.is_empty())
+                .unwrap()
+                .text
+                .clone();
+            for (mode, width) in [
+                (LayoutMode::Spread, 104),
+                (LayoutMode::Single, 50),
+                (LayoutMode::Spread, 104),
+                (LayoutMode::Scroll, 50),
+                (LayoutMode::Spread, 104),
+                (LayoutMode::Single, 50),
+            ] {
+                pager.relayout(&doc, width, 6, mode);
+                assert_eq!(pager.anchor(), anchor, "{mode:?}, page {index}");
+                assert_eq!(
+                    pager
+                        .lines(0)
+                        .iter()
+                        .find(|row| !row.text.is_empty())
+                        .unwrap()
+                        .text,
+                    text,
+                    "{mode:?}, page {index}"
+                );
+            }
         }
     }
 }
