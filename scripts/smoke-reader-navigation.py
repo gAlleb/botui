@@ -56,7 +56,9 @@ def check(home, kind):
         term.keys('Space', 'c')
         term.wait('Space c leaves cursor mode', lambda f: 'NORMAL' not in f and 'VISUAL' not in f)
         # Menu Q resumes reading; a second Q later closes the book.
-        term.keys('Escape'); term.see('Resume')
+        term.keys('Escape')
+        menu = term.see('Resume')
+        assert any('Print document…' in row and 'Ctrl+P' in row for row in menu.splitlines())
         term.keys('q'); term.wait('Reading menu closed', lambda f: 'Resume' not in f and 'Local library' not in f)
         term.keys('F2'); term.see('Appearance')
         term.keys('Escape'); term.wait('Settings closed', lambda f: 'Appearance' not in f)

@@ -23,11 +23,16 @@ pub enum Command {
     Dictionary,
     Translate,
     OpenTable,
+    Print,
 }
 impl Command {
     pub fn event(self) -> Option<Event> {
         match self {
             Self::Key(code) => Some(Event::Key(KeyEvent::new(code, KeyModifiers::NONE))),
+            Self::Print => Some(Event::Key(KeyEvent::new(
+                KeyCode::Char('p'),
+                KeyModifiers::CONTROL,
+            ))),
             _ => None,
         }
     }
@@ -173,6 +178,12 @@ fn entries(context: Context, path: &str) -> Vec<Entry> {
         _ => vec![
             key('c', "Text cursor / Vim", F(7)),
             key('m', "Reading menu", Char('M')),
+            Entry {
+                key: 'P',
+                label: "Print document…",
+                command: Some(Command::Print),
+                group: "",
+            },
             key(
                 'o',
                 "Contents",

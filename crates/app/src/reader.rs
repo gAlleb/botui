@@ -89,6 +89,7 @@ enum Action {
 
 const COMMANDS: [Action; 34] = [
     Action::Resume,
+    Action::Print,
     Action::Previous,
     Action::Next,
     Action::Single,
@@ -113,7 +114,6 @@ const COMMANDS: [Action; 34] = [
     Action::Navigate(Kind::Notes),
     Action::Export,
     Action::Statistics,
-    Action::Print,
     Action::Resources,
     Action::OpenTable,
     Action::Cover,
@@ -894,7 +894,7 @@ impl Reader {
                 Action::Note => ("Comment on selected text".into(), "Space a n"),
                 Action::Navigate(Kind::Notes) => ("Highlights & notes".into(), "Space a a"),
                 Action::Export => ("Export notes to Markdown".into(), "Space a e"),
-                Action::Print => ("Print document…".into(), ""),
+                Action::Print => ("Print document…".into(), "Ctrl+P"),
                 Action::Statistics => ("Reading statistics".into(), "Space r s"),
                 Action::Settings => ("Settings".into(), "F2"),
                 Action::Help => ("Keyboard shortcuts".into(), "F1"),
@@ -1855,6 +1855,7 @@ pub fn read_server(
                     let action = match command {
                         Some(L::Key(KeyCode::F(10))) => Some(Action::AnnotationSync),
                         Some(L::Key(KeyCode::Char('N'))) => Some(Action::Note),
+                        Some(L::Print) => Some(Action::Print),
                         Some(L::OpenTable) => Some(Action::OpenTable),
                         Some(L::Dictionary) => Some(Action::Study(study::Command::Lookup)),
                         Some(L::Translate) => Some(Action::Study(study::Command::Translate)),
@@ -1896,6 +1897,14 @@ pub fn read_server(
                 } else {
                     Scope::Reading.event(e)
                 };
+                if reader.nav.is_none()
+                    && reader.palette.is_none()
+                    && reader.layout_panel.is_none()
+                    && !reader.study.expects_literal()
+                    && crate::print::shortcut(&e)
+                {
+                    break Action::Print;
+                }
                 if reader.menu.is_none()
                     && reader.nav.is_none()
                     && reader.palette.is_none()

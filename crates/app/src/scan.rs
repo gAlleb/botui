@@ -1189,6 +1189,7 @@ pub(super) fn read_pages(
             };
             e = scope.event(e);
         }
+        let print_requested = !text.expects_mark() && crate::print::shortcut(&e);
         let source_click = match &e {
             Event::Mouse(m)
                 if m.kind == MouseEventKind::Down(MouseButton::Left)
@@ -1205,6 +1206,7 @@ pub(super) fn read_pages(
             && !from_leader
             && !text.normal()
             && !source_request
+            && !print_requested
             && !crate::leader::pdf_reading_event(&e)
         {
             continue;
@@ -1241,6 +1243,7 @@ pub(super) fn read_pages(
         if selectable
             && !menu
             && !source_request
+            && !print_requested
             && let Some(action) =
                 leader_action.or_else(|| if from_leader { None } else { text.input(&e) })
         {
@@ -1282,6 +1285,7 @@ pub(super) fn read_pages(
             || matches!(&e, Event::Key(k) if matches!(k.code,KeyCode::Char('a'|'A'))))
         .then(|| rendered.buffer.clone());
         let action = match e {
+            _ if print_requested => 47,
             _ if !menu && source_request => 46,
             Event::Key(k) if k.kind != KeyEventKind::Release => match k.code {
                 KeyCode::Char('c') if k.modifiers.contains(KeyModifiers::CONTROL) => 5,

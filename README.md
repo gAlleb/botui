@@ -312,7 +312,7 @@ A new profile opens text books at full width with Zen off, left alignment and no
 
 Open **F2 → Reader → S This book** to set the reading theme and layout for one edition. Text books also have alignment and heading rules. In EPUB and FB2 you can enable **Word hyphenation (EN/RU)** for ordinary prose, and adjust width, first-line indent and paragraph spacing. EPUB supports compact blocks. **Use global** restores inheritance. The quick theme and layout controls save the current book. **Space l w → A** previews alignment over the text. In continuous PDF reading, **Space l w → [ / ]** adjusts the vertical gap down to zero rows.
 
-Use **Print document…** in the reading menu to open the system print dialog for the whole book. PDF uses the original pages. EPUB, FB2 and Markdown use Pandoc with Typst, and DjVu uses ddjvu. For comics, BOTUI prints the original page images in reading order. The dialog requires Python GI with GTK 3, Cairo and Poppler.
+Press **Ctrl+P**, **Space P** (uppercase P), or choose **Print document…** in the reading menu (**Space m**) to open the system print dialog for the whole book. PDF uses the original pages. EPUB, FB2 and Markdown use Pandoc with Typst, and DjVu uses ddjvu. For comics, BOTUI prints the original page images in reading order. The dialog requires Python GI with GTK 3, Cairo and Poppler.
 
 From the start screen, press **A** for **Highlights & notes**. Type a book filename, quote or comment to find annotations saved on this device. Enter or click a result to open its passage in the matching edition. Annotations from unavailable files can still be read in the list.
 
@@ -338,6 +338,7 @@ Commands depend on the document: text actions need selectable text; page zoom, r
 | `Space o` | Contents |
 | `Space z` | Zen mode |
 | `Space p` | Show/hide frame and progress in zen |
+| `Space P` / `Ctrl+P` | Print the whole document |
 | `Space f` | Find in book |
 | `Space b a` | Add/remove bookmark |
 | `Space b l` | Bookmark list |

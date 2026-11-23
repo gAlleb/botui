@@ -118,6 +118,7 @@ pub(super) fn entries(ctx: Context, p: &Settings) -> Vec<Entry> {
                 "EPUB, FB2 & Markdown · reading without cursor",
                 &[
                     ("Q", "Close book and return to its source"),
+                    ("Ctrl+P / Space P", "Print the whole document"),
                     ("← / → · PgUp / PgDn", "Previous / next page"),
                     (
                         "h j k l / arrows",
@@ -157,6 +158,7 @@ pub(super) fn entries(ctx: Context, p: &Settings) -> Vec<Entry> {
                 "PDF, DjVu & comics · reading without cursor",
                 &[
                     ("Q", "Close book and return to its source"),
+                    ("Ctrl+P / Space P", "Print the whole document"),
                     (
                         "← / → · PgUp / PgDn",
                         "Navigate pages; arrows pan a zoomed page",

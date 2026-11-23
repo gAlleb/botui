@@ -1,6 +1,12 @@
 //! Print the complete document independently of reader zoom, theme and position.
 use std::{fs, io, path::Path, process::Command};
 
+pub fn shortcut(event: &crossterm::event::Event) -> bool {
+    use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers};
+    matches!(event, Event::Key(k) if k.kind != KeyEventKind::Release
+        && k.code == KeyCode::Char('p') && k.modifiers == KeyModifiers::CONTROL)
+}
+
 pub fn document(path: &Path, image_pages: Option<&[String]>) -> io::Result<()> {
     let mut command = Command::new("python3");
     command
