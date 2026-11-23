@@ -8,7 +8,7 @@
 - Start new reader profiles at full width with Zen off, left alignment and no extra blank lines between paragraphs. Group Reader settings by purpose and format. Keep EPUB table headers and data rows compact.
 - Remember each book’s reading theme, layout, alignment and heading rules. Preview alignment over the book and optionally hyphenate English and Russian prose.
 - Copy inline MathML fraction bars and select individual digits in exponents.
-- Join scrolling PDF pages edge to edge by default at every zoom level.
+- Join scrolling PDF pages edge to edge by default at every zoom level. Center the divider in any added gap and label its controls with the matching bracket keys.
 - Keep PDF text stationary while selecting, request sharper page images and adjust continuous page spacing down to zero.
 - Open the system print dialog for the original PDF with Ctrl+P, Space P, or Print document near the top of the reading menu.
 - Open PDF files from desktop applications with a launcher that preserves Kitty font settings and filenames containing spaces.

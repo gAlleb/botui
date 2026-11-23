@@ -111,13 +111,16 @@ impl Strip<'_> {
         text: &super::text::Text,
     ) {
         for (n, skip, rows, y, take) in self.parts(n, offset) {
-            // A single quiet row separates pages, including when the viewport starts
-            // exactly at the seam. Page pixels and scroll fractions are unchanged.
-            let seam = y.saturating_add(take);
-            if self.gap > 0 && skip <= rows && n < self.count && seam < self.height {
+            // Locate the middle on the full strip before clipping it to the viewport.
+            let middle = rows + u32::from(self.gap / 2);
+            if self.gap > 0
+                && n < self.count
+                && let Some(dy) = middle.checked_sub(skip)
+                && dy < u32::from(self.height - y)
+            {
                 f.render_widget(
                     Paragraph::new("·".repeat(r.width as usize)).dim(),
-                    Rect::new(r.x, r.y + seam, r.width, 1),
+                    Rect::new(r.x, r.y + y + dy as u16, r.width, 1),
                 );
             }
             if take == 0 {

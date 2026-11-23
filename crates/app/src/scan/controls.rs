@@ -109,8 +109,8 @@ impl Dialog {
                 );
                 let mut x = left + 22;
                 for (label, action) in [
-                    ("[ < ]", Command::Gap(false)),
-                    ("[ > ]", Command::Gap(true)),
+                    ("[ [ ]", Command::Gap(false)),
+                    ("[ ] ]", Command::Gap(true)),
                 ] {
                     let width = 7.min(inner.right().saturating_sub(x));
                     let rect = Rect::new(x, inner.y + 2, width, 1);

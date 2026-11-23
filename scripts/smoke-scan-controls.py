@@ -58,7 +58,10 @@ with tempfile.TemporaryDirectory(prefix="botui-width-") as tmp:
         term.see("80%")
         term.keys("[", "[")
         term.see("Scroll gap: 0 rows")
-        term.click("[ > ]", term.see("Scroll gap: 0 rows"))
+        term.click("[ ] ]", term.see("Scroll gap: 0 rows"))
+        term.click("[ [ ]", term.see("Scroll gap: 1 rows"))
+        term.see("Scroll gap: 0 rows")
+        term.keys("]")
         term.see("Scroll gap: 1 rows")
         term.keys("[")
         term.see("Scroll gap: 0 rows")
@@ -125,12 +128,31 @@ with tempfile.TemporaryDirectory(prefix="botui-width-") as tmp:
 with tempfile.TemporaryDirectory(prefix="botui-small-sheets-") as tmp:
     root=Path(tmp)
     slides=root/"slides.pdf"
-    slides.write_bytes(scroll.s.pdf(True, 600, 95, (.2,.3,.42,.6,.72,.99)))
+    slides.write_bytes(scroll.s.pdf(True, 600, 95, (.8,.3,.42,.6,.72,.99)))
     term=scroll.start(root,slides)
     try:
         term.see("1 / 6")
         term.keys("Space", "l", "3", *[key for _ in range(7) for key in ["Space", "r", "-"]])
         term.wait("Sixth sheet is rendered without scrolling",lambda f:"25%" in f and "%" * 12 in f and ":"*12 in f)
+        term.keys("Space", "l", "w", *(["]"] * 9), "Enter")
+        for zoom in (25, 50):
+            if zoom == 50:
+                term.keys("+", "+")
+            frame = term.wait(f"Nine-row gap at {zoom}%", lambda f:
+                              f"{zoom}%" in f and "·" * 12 in f and ":" * 12 in f and "Done" not in f)
+            lines = frame.splitlines()
+            last = max(i for i, line in enumerate(lines) if "#" * 12 in line)
+            seam = next(i for i, line in enumerate(lines) if "·" * 12 in line)
+            first = next(i for i, line in enumerate(lines) if ":" * 12 in line)
+            assert (seam - last - 1, first - seam - 1) == (4, 4), frame
+        # Start the viewport inside the gap, exactly on the separator.
+        top = next(i for i, line in enumerate(lines) if "#" * 12 in line)
+        term.keys(*(["Down"] * (seam - top)))
+        term.wait("Centered divider at top of viewport",
+                  lambda f: "·" * 12 in f.splitlines()[top] and ":" * 12 in f.splitlines()[top + 5])
+        term.keys("Down")
+        term.wait("Divider scrolls off the top",
+                  lambda f: "·" * 12 not in f.splitlines()[top] and ":" * 12 in f.splitlines()[top + 4])
         scroll.stop(term)
     finally:
         term.run("kill-server",required=False)
