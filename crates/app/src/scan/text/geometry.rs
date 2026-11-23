@@ -84,19 +84,6 @@ impl View {
             bottom.saturating_sub(top),
         ))
     }
-    pub fn window_for(&self, r: Rect) -> [f32; 4] {
-        let x = |v| {
-            self.window[0]
-                + f32::from(v - self.screen.x) / f32::from(self.screen.width)
-                    * (self.window[2] - self.window[0])
-        };
-        let y = |v| {
-            self.window[1]
-                + f32::from(v - self.screen.y) / f32::from(self.screen.height)
-                    * (self.window[3] - self.window[1])
-        };
-        [x(r.x), y(r.y), x(r.right()), y(r.bottom())]
-    }
 }
 #[cfg(test)]
 mod tests {

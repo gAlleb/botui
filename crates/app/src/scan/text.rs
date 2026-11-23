@@ -17,6 +17,7 @@ use ratatui::{
     layout::{Position, Rect},
     widgets::Paragraph,
 };
+#[cfg(test)]
 use ratatui_image::picker::Picker;
 use std::{
     collections::BTreeMap,
@@ -79,8 +80,8 @@ pub(super) fn location(
         crop,
     }
 }
-struct Patch {
-    key: (u64, View, Vec<ColoredBounds>),
+struct MarkedPage {
+    key: (u64, Vec<ColoredBounds>),
     picture: Picture,
 }
 pub(super) struct Text {
@@ -110,8 +111,7 @@ pub(super) struct Text {
     job: Option<(u32, Ticket<io::Result<PageText>>)>,
     cache: BTreeMap<u32, Result<PageText, String>>,
     views: Vec<View>,
-    patches: Vec<Patch>,
-    sixel: Option<super::sixel::Cache>,
+    marked_pages: Vec<MarkedPage>,
     pub notes: Vec<Note>,
     pub message: String,
     pub toolbar: crate::reader::controls::ActionRow,
@@ -146,8 +146,7 @@ impl Text {
             job: None,
             cache: BTreeMap::new(),
             views: vec![],
-            patches: vec![],
-            sixel: None,
+            marked_pages: vec![],
             notes: store.and_then(|s| s.notes().ok()).unwrap_or_default(),
             message: String::new(),
             toolbar: Default::default(),
@@ -270,12 +269,9 @@ impl Text {
         self.normal
     }
     pub fn busy(&self) -> bool {
-        self.job.is_some() || self.sixel.as_ref().is_some_and(super::sixel::Cache::busy)
+        self.job.is_some()
     }
     pub fn poll(&mut self, path: &Path) {
-        if let Some(cache) = &mut self.sixel {
-            cache.poll();
-        }
         if let Some((page, job)) = &self.job {
             let page = *page;
             match job.receiver.try_recv() {
@@ -1152,16 +1148,21 @@ impl Text {
     pub fn take_reveal(&mut self) -> Option<PdfRegion> {
         self.reveal.take()
     }
-    pub fn paint(&mut self, f: &mut Frame, pages: &super::pages::Pages, picker: &Picker) {
+    pub fn prepare_marks(
+        &mut self,
+        pages: &super::pages::Pages,
+        visible: impl Iterator<Item = u32>,
+        turns: u8,
+    ) {
         let selected = self.selection().map(|(_, _, r)| r).unwrap_or_default();
         let mut next = Vec::new();
-        for view in &self.views {
-            let Some(picture) = pages.get(view.page) else {
+        for page in visible {
+            let Some(picture) = pages.get(page) else {
                 continue;
             };
             let mut marks = Vec::new();
             for note in &self.notes {
-                for region in note.pdf_regions.iter().filter(|r| r.page == view.page) {
+                for region in note.pdf_regions.iter().filter(|r| r.page == page) {
                     let mut bounds = region.bounds;
                     if note.color.is_none() {
                         if note.body.trim().is_empty() {
@@ -1171,7 +1172,7 @@ impl Text {
                         bounds[1] = bounds[3] - (bounds[3] - bounds[1]) * 0.12;
                     }
                     marks.push((
-                        rotate(bounds, view.turns),
+                        rotate(bounds, turns),
                         note.color.map_or([100, 130, 170], |c| c.rgb()),
                     ));
                 }
@@ -1179,50 +1180,38 @@ impl Text {
             marks.extend(
                 self.search_regions
                     .iter()
-                    .filter(|r| r.page == view.page)
-                    .map(|r| (rotate(r.bounds, view.turns), [250, 204, 21])),
+                    .filter(|r| r.page == page)
+                    .map(|r| (rotate(r.bounds, turns), [250, 204, 21])),
             );
             if self.enabled {
                 marks.extend(
                     selected
                         .iter()
-                        .filter(|r| r.page == view.page)
-                        .map(|r| (rotate(r.bounds, view.turns), [160, 185, 255])),
+                        .filter(|r| r.page == page)
+                        .map(|r| (rotate(r.bounds, turns), [160, 185, 255])),
                 );
             }
-            marks.retain(|(r, _)| view.rotated_rect(*r).is_some());
-            let Some(rect) = marks
-                .iter()
-                .filter_map(|(r, _)| view.rotated_rect(*r))
-                .reduce(|a, b| a.union(b))
-            else {
+            if marks.is_empty() {
                 continue;
-            };
-            let key = (picture.identity, *view, marks);
-            let patch = if let Some(i) = self.patches.iter().position(|p| p.key == key) {
-                self.patches.swap_remove(i)
+            }
+            let key = (picture.identity, marks);
+            let marked = if let Some(i) = self.marked_pages.iter().position(|p| p.key == key) {
+                self.marked_pages.swap_remove(i)
             } else {
-                Patch {
-                    picture: picture.text_patch(
-                        view.window_for(rect),
-                        rect.as_size(),
-                        picker,
-                        &key.2,
-                    ),
+                MarkedPage {
+                    picture: picture.marked(&key.1),
                     key,
                 }
             };
-            if picker.protocol_type() == ratatui_image::picker::ProtocolType::Sixel {
-                let cache = self.sixel.get_or_insert_with(super::sixel::Cache::new);
-                crate::overlay::paint(f, rect, |f| {
-                    cache.draw_patch(f, &patch.picture, rect, picker)
-                });
-            } else {
-                crate::overlay::paint(f, rect, |f| patch.picture.draw(f, rect, picker));
-            }
-            next.push(patch);
+            next.push(marked);
         }
-        self.patches = next;
+        self.marked_pages = next;
+    }
+    pub fn decorated<'a>(&'a self, page: &'a Picture) -> &'a Picture {
+        self.marked_pages
+            .iter()
+            .find(|p| p.key.0 == page.identity)
+            .map_or(page, |p| &p.picture)
     }
     pub fn footer(&mut self, f: &mut Frame, area: Rect) -> bool {
         if !self.enabled || area.is_empty() {
@@ -1551,7 +1540,7 @@ mod tests {
         assert_eq!(hit, WordAt { page: 8, index: 1 });
     }
     #[test]
-    fn highlight_patch_has_separate_identity_and_preserves_page_geometry() {
+    fn highlighted_page_has_separate_identity_and_preserves_page_geometry() {
         use ratatui::{Terminal, backend::TestBackend};
         // The same picture geometry is stable; changing zoom/rotation changes the key.
         let mut terminal = Terminal::new(TestBackend::new(80, 30)).unwrap();
@@ -1578,13 +1567,9 @@ mod tests {
             .unwrap();
         assert_eq!(placement.window, [0., 0., 1., 1.]);
         assert!(!placement.screen.is_empty());
-        let patch = picture.text_patch(
-            [0., 0.1, 0.5, 0.2],
-            ratatui::layout::Size::new(20, 3),
-            &picker,
-            &[([0., 0.1, 0.5, 0.2], [255, 200, 0])],
-        );
-        assert_ne!(picture.identity, patch.identity);
+        let marked = picture.marked(&[([0., 0.1, 0.5, 0.2], [255, 200, 0])]);
+        assert_eq!(marked.dimensions(), picture.dimensions());
+        assert_ne!(picture.identity, marked.identity);
         assert_eq!(picture.dimensions(), (300, 400));
     }
     #[test]

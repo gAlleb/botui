@@ -45,6 +45,7 @@ pub struct Settings {
     pub hyphenation: bool,
     pub scan_zoom: Option<u16>,
     pub scan_gap: Option<u16>,
+    pub scan_scroll_gap: Option<u16>,
     pub paragraph_indent: u8,
     pub preserve_compact_spacing: Option<bool>,
     pub paragraph_spacing: Option<u8>,

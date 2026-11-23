@@ -91,6 +91,11 @@ def scan_scroll(d,file):
         t.keys('Up');t.wait('Scan line restored',lambda f:f==a)
         wheel(t,65);t.wait('PDF/DjVu wheel equals one scan line',lambda f:f==one)
         t.keys('Up');t.wait('Transition restored',lambda f:f==a)
+        t.keys('Space', 'l', 'w', '[')
+        t.see('Scroll gap: 0 rows');t.keys('Enter')
+        t.wait('Zero gap joins physical sheets',lambda f:'::::::::' in f and '########' in f and '········' not in f)
+        t.keys('Space', 'l', 'w', ']','Enter')
+        t.wait('Single-row separator restored',lambda f:f==a)
         # Jump away and back to the exact same slice spanning the two sheets.
         t.keys('Space', 'r', 'p');t.see('Go to page');t.keys('3','Enter');t.see('3 / 3')
         t.keys('Space', 'r', '[');t.wait('Jump restores scroll offset',lambda a:'::::::::' in a and '########' in a)

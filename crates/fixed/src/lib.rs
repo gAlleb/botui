@@ -117,6 +117,7 @@ pub fn page_info(
         .map(str::to_owned);
     Ok((count, title))
 }
+pub const MAX_PDF_SIDE: u16 = 2800; // A square RGB PPM still fits the 24 MiB decoder budget.
 pub fn page(
     path: &Path,
     kind: FileKind,
@@ -125,7 +126,14 @@ pub fn page(
     cancel: &AtomicBool,
 ) -> io::Result<DynamicImage> {
     let path = path.canonicalize()?;
-    let side = largest.clamp(200, 1920);
+    let side = largest.clamp(
+        200,
+        if kind == FileKind::Pdf {
+            MAX_PDF_SIDE
+        } else {
+            1920
+        },
+    );
     let mut cmd;
     match kind {
         FileKind::Pdf => {

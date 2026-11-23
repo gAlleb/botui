@@ -38,9 +38,12 @@ try:
 except FileExistsError: pass
 with (d/'calls').open('a') as f: print(n,side,file=f)
 base=int((d/'base').read_text())
+# The scroll viewport first learns the test page's 2:3 aspect ratio.
+if d.parent.name == 'scroll':
+    base = (base * 3 + 1) // 2
 if side>base:
     while not (d/f'release-{side}').exists(): time.sleep(.01)
-value=76 if side==base else (205 if side>=base*2 else 173)
+value=76 if side<=base else (205 if side>=base*2 else 173)
 sys.stdout.buffer.write(b'P6\\n20 30\\n255\\n'+bytes([value])*1800)
 sys.stdout.buffer.flush()
 (d/f'done-{n}-{side}').touch()
@@ -62,12 +65,15 @@ sys.stdout.buffer.flush()
     try:
         term.see("::::::::")
         base = int(bins.joinpath("base").read_text())
-        # Each level changes raster resolution before it reaches the 1920 px cap.
+        if mode == "scroll":
+            base = (base * 3 + 1) // 2
+            term.wait("Portrait raster matches the full viewport width", lambda _: ready(base))
+        # Each level changes raster resolution before it reaches the 2800 px cap.
         # The renderer cannot finish until we release it after observing the
         # intermediate frame. A blocking redraw therefore times out in wait();
         # no machine-dependent wall-clock threshold is needed.
         for percent in (110, 125, 150, 175, 200):
-            side = min(1920, base * percent // 100)
+            side = min(2800, base * percent // 100)
             term.keys('Space', 'r', '+')
             term.wait(f"{mode}: zoom {percent}% retains the readable page", lambda f:
                 f"[Space l w {percent}%]" in f and "Rendering page" not in f

@@ -98,7 +98,11 @@ impl Dialog {
                 Rect::new(left, inner.y, inner.right() - left, 1),
             );
             if matches!(self, Self::Width) {
-                let label = format!("Spread gap: {gap} cells");
+                let label = if scrolling {
+                    format!("Scroll gap: {gap} rows")
+                } else {
+                    format!("Spread gap: {gap} cells")
+                };
                 f.render_widget(
                     Paragraph::new(label),
                     Rect::new(left, inner.y + 2, inner.width.saturating_sub(2), 1),

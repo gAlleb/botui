@@ -64,11 +64,11 @@ impl PageReader {
             if self.session.is_none() {
                 self.session = Some(unix::Session::open(&self.path)?);
             }
-            let result = self
-                .session
-                .as_mut()
-                .unwrap()
-                .render(n, side.clamp(200, 1920), cancel);
+            let result =
+                self.session
+                    .as_mut()
+                    .unwrap()
+                    .render(n, side.clamp(200, MAX_PDF_SIDE), cancel);
             if result.is_err() {
                 self.session = None;
             } // A cancelled response must not reach a later request.

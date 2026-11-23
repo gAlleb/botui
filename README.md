@@ -303,7 +303,7 @@ The highlight and comment editor offers all ten BookOrbit preset colors, with co
 
 A new profile opens text books at full width with Zen off, left alignment and no extra blank lines between paragraphs. **F2 → Reader** groups reading controls, text books, PDF and DjVu, comics and SyncTeX.
 
-Open **F2 → Reader → S This book** to set the reading theme and layout for one edition. Text books also have alignment and heading rules. In EPUB and FB2 you can enable **Word hyphenation (EN/RU)** for ordinary prose, and adjust width, first-line indent and paragraph spacing. EPUB supports compact blocks. **Use global** restores inheritance. The quick theme and layout controls save the current book. **Space l w → A** previews alignment over the text.
+Open **F2 → Reader → S This book** to set the reading theme and layout for one edition. Text books also have alignment and heading rules. In EPUB and FB2 you can enable **Word hyphenation (EN/RU)** for ordinary prose, and adjust width, first-line indent and paragraph spacing. EPUB supports compact blocks. **Use global** restores inheritance. The quick theme and layout controls save the current book. **Space l w → A** previews alignment over the text. In continuous PDF reading, **Space l w → [ / ]** adjusts the vertical gap down to zero rows.
 
 From the start screen, press **A** for **Highlights & notes**. Type a book filename, quote or comment to find annotations saved on this device. Enter or click a result to open its passage in the matching edition. Annotations from unavailable files can still be read in the list.
 
@@ -537,6 +537,8 @@ synctex_botui_terminal = []
 # synctex_editor = ["code", "--goto", "{file}:{line}:{column}"]
 # Space between PDF/DjVu/comic pages in a spread (0–32 terminal cells).
 scan_gap = 2
+# Blank rows between continuous pages. Set 0 to join their edges.
+scan_scroll_gap = 1
 # Preferred width of one text page and the space between facing pages, in terminal cells.
 page_width = 0 # 0 uses the full available column
 text_alignment = "left" # book, left, right, center, justify

@@ -118,6 +118,7 @@ pub(super) fn read_pages(
     let initial_zoom = crop.percent;
     let mut source_job: Option<crate::shelf::background::Ticket<io::Result<String>>> = None;
     let mut reveal: Option<botui_store::PdfRegion> = None;
+    let mut scroll_gap = prefs.scan_scroll_gap.unwrap_or(1).min(32);
     let mut gap = prefs.scan_gap.unwrap_or(2).min(32);
     let mut dialog: Option<controls::Dialog> = None;
     let saved = store.as_ref().and_then(|s| {
@@ -358,7 +359,23 @@ pub(super) fn read_pages(
             .saturating_mul(size.width)
             .max(area.height.saturating_mul(size.height))
             .clamp(240, 1600);
-        let side = (u32::from(side) * u32::from(crop.percent.max(100)) / 100).min(1920) as u16;
+        let side = if kind == FileKind::Pdf {
+            let width = u32::from(crop.fit(area, false).width) * u32::from(size.width);
+            let target = if scrolling {
+                let (w, h) = pages.dimensions(n).unwrap_or((1, 1));
+                width.saturating_mul(h.max(w)).div_ceil(w.max(1))
+            } else {
+                u32::from(
+                    (available / cols)
+                        .saturating_mul(size.width)
+                        .max(area.height.saturating_mul(size.height)),
+                )
+            };
+            (target.saturating_mul(u32::from(crop.percent.max(100))) / 100)
+                .clamp(240, botui_fixed::MAX_PDF_SIDE.into()) as u16
+        } else {
+            (u32::from(side) * u32::from(crop.percent.max(100)) / 100).min(1920) as u16
+        };
         let mut appearance = checkpoint.scan_appearance;
         if let Some(mode) = palette.as_ref().and_then(|p| p.colors) {
             mode.apply(&mut appearance);
@@ -392,6 +409,7 @@ pub(super) fn read_pages(
             );
         }
         let view = flow::Viewport {
+            gap: scroll_gap,
             side,
             width: crop.fit(area, false).width,
             height: area.height,
@@ -490,6 +508,18 @@ pub(super) fn read_pages(
         let mut dialog_hits = Vec::new();
         let mut footer = [Rect::default(); 6];
         text.begin_frame();
+        if selectable {
+            let visible = if scrolling {
+                strip.parts(shown, shown_offset).count() as u32
+            } else {
+                u32::from(cols)
+            };
+            text.prepare_marks(
+                &pages,
+                shown..shown.saturating_add(visible),
+                appearance.quarter_turns,
+            );
+        }
         if let Some(cache) = &mut sixel {
             cache.begin_frame();
         }
@@ -581,7 +611,7 @@ pub(super) fn read_pages(
                 }
             }
             if scrolling {
-                strip.draw(f, area, shown, shown_offset, sixel.as_mut());
+                strip.draw(f, area, shown, shown_offset, sixel.as_mut(), &text);
                 if selectable {
                     for (number, skip, rows, y, take) in strip.parts(shown, shown_offset) {
                         if let Some(picture) = pages.get(number) {
@@ -621,6 +651,7 @@ pub(super) fn read_pages(
                     };
                     let page_number = shown.saturating_add(i as u32);
                     if let Some(page) = pages.get(page_number) {
+                        let page = text.decorated(page);
                         if let Some(cache) = &mut sixel {
                             cache.draw(page, f, placement.screen, &picker, placement.window);
                         } else {
@@ -653,9 +684,6 @@ pub(super) fn read_pages(
                 && paper.cell_background
             {
                 paper.clear_cells(f, area);
-            }
-            if selectable {
-                text.paint(f, &pages, &picker);
             }
             if pages.get(shown).is_none()
                 && pages.error(shown, side).is_none()
@@ -734,7 +762,7 @@ pub(super) fn read_pages(
                     area,
                     total.unwrap_or(0),
                     crop.percent,
-                    (scrolling, gap),
+                    (scrolling, if scrolling { scroll_gap } else { gap }),
                     &mut dialog_hits,
                 );
             }
@@ -903,6 +931,8 @@ pub(super) fn read_pages(
             match watch.wait(&worker, path, n, timeout, input)? {
                 reload::Wake::Input(event) => event,
                 reload::Wake::Jump(region) => {
+                    // A delayed inverse-search result belongs to the previous location.
+                    source_job = None;
                     if total.is_some_and(|count| region.page > count) {
                         message = "SyncTeX target is outside this PDF".into();
                     } else {
@@ -1070,12 +1100,19 @@ pub(super) fn read_pages(
                 controls::Command::Fit => crop = Crop::default(),
                 controls::Command::Zoom(more) => crop.step(more),
                 controls::Command::Gap(more) => {
-                    gap = if more {
+                    let gap = if scrolling { &mut scroll_gap } else { &mut gap };
+                    *gap = if more {
                         gap.saturating_add(1).min(32)
                     } else {
                         gap.saturating_sub(1)
                     };
-                    if let Err(e) = crate::settings::Settings::update(|s| s.scan_gap = Some(gap)) {
+                    if let Err(e) = crate::settings::Settings::update(|s| {
+                        if scrolling {
+                            s.scan_scroll_gap = Some(*gap)
+                        } else {
+                            s.scan_gap = Some(*gap)
+                        }
+                    }) {
                         message = e.to_string();
                     }
                 }
@@ -1357,6 +1394,20 @@ pub(super) fn read_pages(
         message.clear();
         let old = (n, spread, scrolling, offset);
         let mut found = false;
+        if matches!(action, 3 | 4 | 28)
+            && let Some(store) = &store
+        {
+            store.update_book_preferences(|p: &mut crate::settings::book::BookSettings| {
+                p.reading_layout = Some(
+                    match action {
+                        3 => "single",
+                        4 => "spread",
+                        _ => "scroll",
+                    }
+                    .into(),
+                )
+            })?;
+        }
         match action {
             16 | 17 | 37 | 38 if image_only => {
                 message = "Image-only book has no text layer".into();

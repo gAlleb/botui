@@ -53,10 +53,14 @@ def check(binary, directory):
                     os.write(terminal, b'\x1b_Gi=31;OK\x1b\\\x1b[6;24;12t\x1b[0n')
             elif data.endswith(b'\x1b[?2026l') and time.monotonic() - last > .025:
                 uploads = len(re.findall(rb'a=[Tt][^;]*s=\d+', data))
-                return round((last - start) * 1000, 1), len(data), uploads
+                # Count source-image payload separately from repeated viewport traffic.
+                # The portrait test page is now rasterized for the terminal's pixel width.
+                payload = sum(m.end(1) - m.start(1) for m in re.finditer(
+                    rb'\x1b_G[^;]*;([A-Za-z0-9+/=]+)\x1b\\', data))
+                return round((last - start) * 1000, 1), len(data), uploads, payload
         if timeout >= 3:
             raise AssertionError('No completed frame while scrolling')
-        return 0, len(data), 0
+        return 0, len(data), 0, 0
 
     try:
         collect(10)
@@ -69,7 +73,9 @@ def check(binary, directory):
         uploads = sum(row[3] for row in forward)
         transferred = sum(row[2] for row in forward)
         assert uploads <= 4, f'Cached pages were re-uploaded {uploads} times'
-        assert transferred < 60_000_000, 'Scrolling repeatedly transmitted viewport rasters'
+        payload = sum(row[4] for row in forward)
+        assert payload <= uploads * (2800 * 1910 * 4 * 4 // 3 + 4096), (uploads, payload)
+        assert transferred - payload < 15_000_000, 'Scrolling repeatedly redrew the viewport'
         backward = []
         for _ in range(150):
             os.write(terminal, b'\x1b[A')

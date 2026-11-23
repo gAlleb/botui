@@ -7,6 +7,7 @@ use ratatui_image::picker::Picker;
 #[derive(Clone, Copy)]
 pub(super) struct Viewport<'a> {
     pub side: u16,
+    pub gap: u16,
     pub width: u16,
     pub height: u16,
     pub picker: &'a Picker,
@@ -39,37 +40,47 @@ impl Strip<'_> {
     }
     fn row(&self, n: u32, f: u16) -> u32 {
         let rows = self.rows(n);
-        let row = ((u64::from(rows) * u64::from(f) + 32767) / 65535) as u32;
+        let row = ((u64::from(self.last_offset(n)) * u64::from(f) + 32767) / 65535) as u32;
         if n == self.count {
             row.min(rows.saturating_sub(self.height.into()))
         } else {
             row
         }
     }
+    fn last_offset(&self, n: u32) -> u32 {
+        self.rows(n)
+            + if n < self.count {
+                u32::from(self.gap)
+            } else {
+                1
+            }
+            - 1
+    }
     fn frac(&self, n: u32, r: u32) -> u16 {
-        ((u64::from(r) * 65535 + u64::from(self.rows(n)) / 2) / u64::from(self.rows(n))).min(65535)
-            as u16
+        ((u64::from(r) * 65535 + u64::from(self.last_offset(n).max(1)) / 2)
+            / u64::from(self.last_offset(n).max(1)))
+        .min(65535) as u16
     }
     pub fn shift(&self, n: &mut u32, f: &mut u16, delta: i32) {
         let mut row = i64::from(self.row(*n, *f)) + i64::from(delta);
         while row < 0 && *n > 1 {
             *n -= 1;
-            row += i64::from(self.rows(*n)) + 1;
+            row += i64::from(self.rows(*n)) + i64::from(self.gap);
         }
-        while *n < self.count && row > i64::from(self.rows(*n)) {
-            row -= i64::from(self.rows(*n)) + 1;
+        while *n < self.count && row > i64::from(self.last_offset(*n)) {
+            row -= i64::from(self.rows(*n)) + i64::from(self.gap);
             *n += 1;
         }
         let max = if *n == self.count {
             self.rows(*n).saturating_sub(self.height.into())
         } else {
-            self.rows(*n)
+            self.last_offset(*n)
         };
         *f = self.frac(*n, row.clamp(0, i64::from(max)) as u32);
     }
     pub fn parts(&self, n: u32, f: u16) -> impl Iterator<Item = (u32, u32, u32, u16, u16)> + '_ {
         let mut n = n;
-        let mut skip = self.row(n, f).min(self.rows(n));
+        let mut skip = self.row(n, f);
         let mut y = 0u16;
         std::iter::from_fn(move || {
             if y >= self.height || n > self.count {
@@ -78,7 +89,8 @@ impl Strip<'_> {
             let rows = self.rows(n);
             let take = rows.saturating_sub(skip).min(u32::from(self.height - y)) as u16;
             let result = (n, skip, rows, y, take);
-            y = y.saturating_add(take).saturating_add(1);
+            let gap = self.gap.saturating_sub(skip.saturating_sub(rows) as u16);
+            y = y.saturating_add(take).saturating_add(gap);
             n += 1;
             skip = 0;
             Some(result)
@@ -96,12 +108,13 @@ impl Strip<'_> {
         n: u32,
         offset: u16,
         mut sixel: Option<&mut super::sixel::Cache>,
+        text: &super::text::Text,
     ) {
         for (n, skip, rows, y, take) in self.parts(n, offset) {
             // A single quiet row separates pages, including when the viewport starts
             // exactly at the seam. Page pixels and scroll fractions are unchanged.
             let seam = y.saturating_add(take);
-            if n < self.count && seam < self.height {
+            if self.gap > 0 && skip <= rows && n < self.count && seam < self.height {
                 f.render_widget(
                     Paragraph::new("·".repeat(r.width as usize)).dim(),
                     Rect::new(r.x, r.y + seam, r.width, 1),
@@ -112,6 +125,7 @@ impl Strip<'_> {
             }
             let area = Rect::new(r.x + (r.width - self.width) / 2, r.y + y, self.width, take);
             if let Some(p) = self.pages.get(n) {
+                let p = text.decorated(p);
                 if let Some(cache) = &mut sixel {
                     let (w, h) = p.dimensions();
                     let cw = self.crop.span(w);

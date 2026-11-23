@@ -2,6 +2,7 @@
 """PDF occurrence navigation, raster highlights, offscreen reveal and Vim cursor."""
 import importlib.util
 import os
+import re
 from pathlib import Path
 import shutil
 import subprocess
@@ -45,12 +46,44 @@ def check(root, mode, fallback=False, zoom=100, rotate=False):
     path = str(helpers) + ('' if fallback else os.pathsep + os.environ['PATH'])
     t = s.Terminal(d, Path('/usr/bin/env'), args=['TERM=xterm', 'COLORTERM=', 'PATH=' + path, str(BINARY), str(book)])
     def raster():
-        # Feedback sits inside the content frame, above its border and the footer.
-        # It can disappear after a key press without changing the PDF highlight.
-        return '\n'.join(row for row in t.run('capture-pane', '-p', '-e', '-t', 'shelf').stdout.splitlines()[:-3] if '▀' in row or '▄' in row)
+        capture = t.run('capture-pane', '-p', '-e', '-t', 'shelf').stdout
+        return '\n'.join(row for row in capture.splitlines()[:-3] if '▀' in row or '▄' in row)
+    def highlight():
+        # Compare the highlighted PDF cells. A sharper Poppler raster may arrive
+        # between frames and change the grayscale antialiasing of unrelated text.
+        capture = t.run('capture-pane', '-p', '-e', '-t', 'shelf').stdout
+        colors = {38: False, 48: False}
+        marked = []
+        for y, row in enumerate(capture.splitlines()[:-3]):
+            x = 0
+            for piece in re.split(r'(\x1b\[[\d;]*m)', row):
+                if piece.startswith('\x1b['):
+                    codes = iter(int(v or 0) for v in piece[2:-1].split(';'))
+                    for c in codes:
+                        if c == 0:
+                            colors = {38: False, 48: False}
+                        elif c in (39, 49):
+                            colors[c - 1] = False
+                        elif c in (38, 48):
+                            mode = next(codes)
+                            if mode == 2:
+                                r, g, b = next(codes), next(codes), next(codes)
+                                colors[c] = r > g and g - b > 45
+                            elif mode == 5:
+                                next(codes)
+                                colors[c] = False
+                    continue
+                for glyph in piece:
+                    if glyph in '▀▄' and any(colors.values()):
+                        marked.append((x, y))
+                    x += 1
+        if not marked:
+            return None
+        xs, ys = zip(*marked)
+        return min(xs), min(ys), max(xs), max(ys)
     def match(i):
         t.see(f'Match {i} / 4')
-        t.wait('Rendered found word', lambda f: ('▀' in f or '▄' in f) and 'Rendering' not in f)
+        t.wait('Rendered found word', lambda f: 'Rendering' not in f and ('▀' in f or '▄' in f))
     def copied(expected):
         for _ in range(150):
             if (d / 'copied').exists() and (d / 'copied').read_text() == expected:
@@ -62,24 +95,25 @@ def check(root, mode, fallback=False, zoom=100, rotate=False):
         if rotate:
             t.keys('Space', 'r', 'r')
         t.keys('Space', 'f'); t.see('Find in text layer'); t.type('lighthouse'); t.keys('Enter'); match(1)
-        first = raster()
+        t.wait('Search tint visible', lambda _: highlight())
+        first = highlight()
         t.keys('F5'); t.see('Search results'); t.keys('Escape')
-        t.wait('Closing results keeps the highlight', lambda _: raster() == first)
+        t.wait('Closing results keeps the highlight', lambda _: highlight() == first)
         t.keys('Space', 'Escape')
-        t.wait('Closing Space keeps the highlight', lambda _: raster() == first)
+        t.wait('Closing Space keeps the highlight', lambda _: highlight() == first)
         for key, hit in [('n', 2), ('N', 1), ('F3', 2), ('F4', 1)]:
             highlighted = raster()
             t.keys('Escape')
             t.wait('Search dismissed without a menu', lambda f: 'Match ' not in f and 'Find in text layer' not in f and ('▀' in f or '▄' in f) and raster() != highlighted)
             t.keys(key); match(hit)
-        assert raster() == first, 'Resuming search changed its original highlight or viewport'
-        t.keys('F3'); match(2); second = raster()
+        assert highlight() == first, 'Resuming search changed its original highlight or viewport'
+        t.keys('F3'); match(2); second = highlight()
         assert first != second, 'Same-page matches did not change the raster highlight'
         t.keys('F4'); match(1)
-        assert first == raster(), 'Previous occurrence did not restore its position and highlight'
+        assert first == highlight(), 'Previous occurrence did not restore its position and highlight'
         t.keys('F3'); match(2)
         t.keys('F3'); match(3)
-        assert raster() != second
+        assert highlight() != second
         t.keys('F3'); match(4); t.see('3 / 3')
         t.keys('F3'); match(1); t.see('1 / 3')
         # Ordinary search keys must cross pages and wrap in both directions.

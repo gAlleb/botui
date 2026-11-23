@@ -508,7 +508,7 @@ impl Picture {
             *cache = Some((
                 area.as_size(),
                 window,
-                Box::new(self.text_patch(window, area.as_size(), picker, &[])),
+                Box::new(self.scaled_window(window, area.as_size(), picker)),
             ));
         }
         if let Some((_, _, picture)) = &*cache {
