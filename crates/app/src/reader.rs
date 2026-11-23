@@ -51,6 +51,7 @@ enum Action {
     HideSearch,
     Note,
     Export,
+    Print,
     Statistics,
     Resources,
     Cover,
@@ -86,7 +87,7 @@ enum Action {
     Resize,
 }
 
-const COMMANDS: [Action; 33] = [
+const COMMANDS: [Action; 34] = [
     Action::Resume,
     Action::Previous,
     Action::Next,
@@ -112,6 +113,7 @@ const COMMANDS: [Action; 33] = [
     Action::Navigate(Kind::Notes),
     Action::Export,
     Action::Statistics,
+    Action::Print,
     Action::Resources,
     Action::OpenTable,
     Action::Cover,
@@ -892,6 +894,7 @@ impl Reader {
                 Action::Note => ("Comment on selected text".into(), "Space a n"),
                 Action::Navigate(Kind::Notes) => ("Highlights & notes".into(), "Space a a"),
                 Action::Export => ("Export notes to Markdown".into(), "Space a e"),
+                Action::Print => ("Print document…".into(), ""),
                 Action::Statistics => ("Reading statistics".into(), "Space r s"),
                 Action::Settings => ("Settings".into(), "F2"),
                 Action::Help => ("Keyboard shortcuts".into(), "F1"),
@@ -1414,6 +1417,7 @@ impl Reader {
             | Action::Alignment
             | Action::Settings
             | Action::Help
+            | Action::Print
             | Action::Statistics
             | Action::Note
             | Action::Study(_)
@@ -2086,6 +2090,13 @@ pub fn read_server(
             if action == Action::OpenTable {
                 reader.menu = None;
                 table_view::open(term, &reader)?;
+                continue;
+            }
+            if action == Action::Print {
+                reader.menu = None;
+                if let Err(e) = crate::print::document(path, None) {
+                    crate::prompt::message(term, "Print document", &e.to_string())?;
+                }
                 continue;
             }
             if action == Action::Statistics {

@@ -17,6 +17,7 @@ mod opds_settings;
 mod overlay;
 mod picker;
 mod preferences;
+mod print;
 mod prompt;
 mod reader;
 mod reader_footer;

@@ -35,6 +35,7 @@ pub(super) const ITEMS: &[(&str, &str, usize)] = &[
     ("Edit page note", "Space a p", 20),
     ("Highlights & page notes", "Space a a", 21),
     ("Export notes to Markdown", "Space a e", 22),
+    ("Print document…", "", 47),
     ("Reading statistics", "Space r s", 23),
     ("Toggle opaque background", "Space l f", 15),
     ("Change borders", "Space l u", 25),

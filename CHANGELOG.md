@@ -7,6 +7,7 @@
 - Remember each book’s reading theme, layout, alignment and heading rules. Preview alignment over the book and optionally hyphenate English and Russian prose.
 - Copy inline MathML fraction bars and select individual digits in exponents.
 - Keep PDF text stationary while selecting, request sharper page images and adjust continuous page spacing down to zero.
+- Print a whole document from its reading menu using the system print dialog.
 
 ## 0.1.26 — 2026-11-21
 

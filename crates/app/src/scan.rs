@@ -1556,6 +1556,11 @@ pub(super) fn read_pages(
                     message = "Local reading state unavailable".into();
                 }
             }
+            47 => {
+                if let Err(e) = crate::print::document(path, plates.as_deref()) {
+                    crate::prompt::message(term, "Print document", &e.to_string())?;
+                }
+            }
             23 => {
                 if let Err(e) = crate::stats::show(
                     term,
