@@ -999,9 +999,13 @@ impl Pager {
             if chapter {
                 row = self.regular_first(row);
             } else if let Some(line) = self.lines.get(row) {
-                // The scroll viewport can start inside a plate. A paged view
-                // must always start at or before its first image row.
-                if let Some(offset) = line.indivisible_blocks().map(|(offset, _)| offset).max() {
+                // Start at the top of a plate or a page-sized equation. Taller
+                // equations can start on the row reached in Scroll.
+                if let Some(offset) = line
+                    .indivisible_blocks(self.layout.height)
+                    .map(|(offset, _)| offset)
+                    .max()
+                {
                     row = row.saturating_sub(usize::from(offset));
                 }
             }

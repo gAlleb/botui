@@ -2506,6 +2506,75 @@ fn display_fraction_moves_whole_to_the_next_column_when_it_fits() {
 }
 
 #[test]
+fn switching_from_inside_a_tall_display_matrix_keeps_the_row_in_view() {
+    use botui_core::{LayoutMode, Pager, PaginationMode};
+    let cells = (0..15)
+        .map(|i| format!("<mtr><mtd><mi>row{i:02}</mi></mtd></mtr>"))
+        .collect::<String>();
+    let doc = styled_fixture(
+        &format!(
+            "<p>Before</p><math display='block'><mtable>{cells}</mtable></math><p>After</p><p>Tail</p>"
+        ),
+        "p,math{margin:0}",
+    );
+    let height = 5;
+    let scroll = Pager::new(&doc, 46, 64, LayoutMode::Scroll);
+    let target_row = scroll
+        .lines(0)
+        .iter()
+        .position(|l| l.text.trim() == "row12")
+        .unwrap();
+    let rows = |p: &Pager| {
+        (0..p.columns())
+            .flat_map(|column| {
+                p.lines(column)
+                    .iter()
+                    .map(|line| line.text.trim().to_owned())
+            })
+            .collect::<Vec<_>>()
+    };
+    for (mode, width) in [(LayoutMode::Single, 46), (LayoutMode::Spread, 96)] {
+        let mut regular = Pager::new(&doc, width, height, mode);
+        let mut pages = vec![rows(&regular)];
+        while !regular.at_end() {
+            regular.next();
+            pages.push(rows(&regular));
+        }
+        let matrix_rows: Vec<_> = pages
+            .iter()
+            .flatten()
+            .filter(|row| row.starts_with("row"))
+            .collect();
+        assert_eq!(matrix_rows.len(), 15);
+        for (i, row) in matrix_rows.into_iter().enumerate() {
+            assert_eq!(row, &format!("row{i:02}"));
+        }
+        let target_page = pages
+            .iter()
+            .position(|page| page.iter().any(|row| row == "row12"))
+            .unwrap();
+        for policy in [PaginationMode::Chapter, PaginationMode::KeepWord] {
+            let mut pager = Pager::new(&doc, 46, height, LayoutMode::Scroll);
+            pager.set_pagination_mode(policy);
+            pager.scroll(target_row as isize);
+            assert_eq!(pager.lines(0)[0].text.trim(), "row12");
+            pager.switch_mode(&doc, width, height, mode, 4);
+            if policy == PaginationMode::KeepWord {
+                assert_eq!(pager.lines(0)[0].text.trim(), "row12");
+                pager.relayout(&doc, width + 4, height, mode);
+                assert_eq!(pager.lines(0)[0].text.trim(), "row12");
+                pager.previous();
+                assert_eq!(rows(&pager), pages[target_page]);
+            } else {
+                assert_eq!(rows(&pager), pages[target_page]);
+                pager.previous();
+                assert_eq!(rows(&pager), pages[target_page - 1]);
+            }
+        }
+    }
+}
+
+#[test]
 fn returning_before_a_scrolled_math_epub_restores_its_two_regular_pages() {
     use botui_core::{LayoutMode, Pager};
     let doc = styled_fixture(

@@ -296,16 +296,21 @@ impl BookLayout {
 }
 
 impl PageLine {
-    pub(super) fn indivisible_blocks(&self) -> impl Iterator<Item = (u16, u16)> + '_ {
+    pub(super) fn indivisible_blocks(
+        &self,
+        page_height: usize,
+    ) -> impl Iterator<Item = (u16, u16)> + '_ {
+        let (_, equation_height) = self.equation;
+        let whole_equation = equation_height > 1 && usize::from(equation_height) <= page_height;
         self.figures
             .iter()
             .map(|f| (f.row, f.height))
-            .chain((self.equation.1 > 1).then_some(self.equation))
+            .chain(whole_equation.then_some(self.equation))
     }
 }
 
 impl Layout {
-    /// Find a column break without cutting an illustration that fits on a fresh page.
+    /// Keep illustrations and display equations whole when they fit on a fresh page.
     fn page_end(self, rows: &[PageLine], first: usize) -> usize {
         let limit = (first + self.height).min(rows.len());
         let next = (first + 1).min(limit);
@@ -320,7 +325,7 @@ impl Layout {
         let mut end = boundary;
         while !self.scrolling && end > first {
             let mut before = end;
-            for (row, height) in rows[end - 1].indivisible_blocks() {
+            for (row, height) in rows[end - 1].indivisible_blocks(self.height) {
                 if row + 1 < height && usize::from(height) <= self.height {
                     let top = (end - 1).saturating_sub(row.into());
                     if top <= first {
