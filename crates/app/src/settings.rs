@@ -42,6 +42,7 @@ pub struct Settings {
     pub page_width: Option<u16>,
     pub text_alignment: botui_core::TextAlignment,
     pub heading_rules: bool,
+    pub hyphenation: bool,
     pub scan_zoom: Option<u16>,
     pub scan_gap: Option<u16>,
     pub paragraph_indent: u8,
@@ -341,6 +342,7 @@ impl Settings {
         botui_core::Typography {
             alignment: self.text_alignment,
             heading_rules: self.heading_rules,
+            hyphenation: self.hyphenation,
         }
     }
 

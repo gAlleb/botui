@@ -1959,6 +1959,7 @@ pub fn read_server(
                 }
                 if old.preserve_printed_lines != new.preserve_printed_lines
                     || old.text_alignment != new.text_alignment
+                    || old.hyphenation != new.hyphenation
                     || old.heading_rules != new.heading_rules
                     || old.hide_inline_images != new.hide_inline_images
                     || old.paragraph_indent != new.paragraph_indent

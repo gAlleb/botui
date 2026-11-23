@@ -451,3 +451,31 @@ fn different_width_switches_keep_the_word_and_reverse_until_the_chapter_opening(
     ordinary.next();
     assert_eq!(pager.lines(0)[0].anchor(), ordinary.lines(0)[0].anchor());
 }
+
+#[test]
+fn optional_prose_hyphenation_preserves_source_text_and_clicks() {
+    for text in [
+        "One extraordinary opportunity",
+        "Два замечательных предложения",
+    ] {
+        let doc = Document {
+            blocks: vec![Block {
+                text: text.into(),
+                heading: false,
+            }],
+            ..Default::default()
+        };
+        let mut pager = Pager::new(&doc, 12, 12, LayoutMode::Single);
+        let mut options = pager.reflow_options();
+        options.typography.hyphenation = true;
+        pager.reconfigure(&doc, 12, 12, LayoutMode::Single, 4, options);
+        let rows = pager.lines(0);
+        assert!(rows.iter().any(|l| l.text.ends_with('-')), "{rows:?}");
+        let mut cells = rows.iter().flat_map(|l| l.text_cells(&doc));
+        let range = crate::TextRange::new(
+            cells.next().unwrap().source.start,
+            cells.last().unwrap().source.end,
+        );
+        assert_eq!(doc.clipboard_text(range), text);
+    }
+}

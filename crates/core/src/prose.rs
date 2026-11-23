@@ -1,4 +1,4 @@
-//! Word wrapping for ordinary prose with a forced reading boundary.
+//! Word wrapping for ordinary prose with a forced reading boundary or dictionary hyphenation.
 //! Structural EPUB rows keep their publisher layout.
 use crate::{
     Anchor, Block, Document, PageLine, TextAlignment, Typography, breaks_word, publisher::TextSpan,
@@ -12,34 +12,76 @@ fn pieces(text: &str) -> impl DoubleEndedIterator<Item = (usize, &str)> {
         .map(move |s| (s.as_ptr() as usize - text.as_ptr() as usize, s))
 }
 
+fn split_word(word: &str, consumed: usize, space: usize) -> Option<usize> {
+    let stem = word
+        .trim_end_matches(|c: char| c.is_ascii_punctuation() || matches!(c, '»' | '”' | '…' | '—'));
+    if space < 3 || stem.len() < 5 {
+        return None;
+    }
+    let lang = if stem.bytes().all(|c| c.is_ascii_alphabetic()) {
+        hypher::Lang::English
+    } else if stem.chars().all(|c| matches!(c, 'А'..='я' | 'ё' | 'Ё')) {
+        hypher::Lang::Russian
+    } else {
+        return None;
+    };
+    let mut offset = 0;
+    hypher::hyphenate_bounded(stem, lang, 2, 2)
+        .filter_map(|part| {
+            offset += part.len();
+            (offset > consumed && offset < stem.len() && stem[consumed..offset].width() < space)
+                .then_some(offset.saturating_sub(consumed))
+        })
+        .last()
+}
+
 struct Row {
     words: Vec<Range<usize>>,
     indent: u16,
+    hyphen: bool,
 }
 impl Row {
     fn new(indent: u16) -> Self {
         Self {
             words: Vec::new(),
             indent,
+            hyphen: false,
         }
     }
 }
 
-fn wrap(text: &str, start: usize, width: usize, indent: u16, out: &mut Vec<Row>) -> Option<()> {
+fn wrap(
+    text: &str,
+    start: usize,
+    width: usize,
+    indent: u16,
+    hyphens: bool,
+    out: &mut Vec<Row>,
+) -> Option<()> {
     let mut row = Row::new(indent);
     let mut used = usize::from(indent);
     for (index, word) in pieces(text) {
-        let cells = word.width();
-        if cells > width {
-            return None;
-        }
-        if !row.words.is_empty() && used + 1 + cells > width {
+        let mut offset = 0;
+        while offset < word.len() {
+            let rest = &word[offset..];
+            let space = width.saturating_sub(used + usize::from(!row.words.is_empty()));
+            let begin = start + index + offset;
+            if rest.width() <= space {
+                used += usize::from(!row.words.is_empty()) + rest.width();
+                row.words.push(begin..begin + rest.len());
+                break;
+            }
+            if let Some(cut) = hyphens.then(|| split_word(word, offset, space)).flatten() {
+                row.words.push(begin..begin + cut);
+                row.hyphen = true;
+                offset += cut;
+            } else if row.words.is_empty() {
+                return None;
+            }
             out.push(row);
             row = Row::new(0);
             used = 0;
         }
-        used += usize::from(!row.words.is_empty()) + cells;
-        row.words.push(start + index..start + index + word.len());
     }
     if !row.words.is_empty() {
         out.push(row);
@@ -100,8 +142,11 @@ pub(super) fn layout(
                     .and_then(|s| s.chars().last())
                     .is_some_and(breaks_word)
         })
-        .map(|a| a.byte)?;
-    let (prefix, suffix) = block.text.split_at_checked(cut)?;
+        .map(|a| a.byte);
+    if cut.is_none() && !style.hyphenation {
+        return None;
+    }
+    let (prefix, suffix) = block.text.split_at_checked(cut.unwrap_or(0))?;
     let width = usize::from(width);
     let indent = if matches!(
         style.alignment,
@@ -113,7 +158,7 @@ pub(super) fn layout(
             .indent
             .saturating_add((first.text.len() - first.text.trim_start_matches(' ').len()) as u16)
     };
-    {
+    if cut.is_some() {
         // Work backwards from the forced break. The short line, if any, is at
         // the start of the paragraph rather than dangling above the reading point.
         let mut row = Row::new(0);
@@ -145,7 +190,17 @@ pub(super) fn layout(
         }
         rows.reverse();
     }
-    wrap(suffix, prefix.len(), width, 0, &mut rows)?;
+    wrap(
+        suffix,
+        prefix.len(),
+        width,
+        if cut.is_some() { 0 } else { indent },
+        style.hyphenation,
+        &mut rows,
+    )?;
+    if cut.is_none() && !rows.iter().any(|row| row.hyphen) {
+        return None;
+    }
     let mut faces: Vec<_> = lines
         .iter()
         .flat_map(|l| &l.spans)
@@ -201,6 +256,9 @@ pub(super) fn layout(
                 pos = end;
             }
         }
+        if row.hyphen {
+            line.text.push('-');
+        }
         let spare = width.saturating_sub(usize::from(line.indent) + line.text.width());
         match style.alignment {
             TextAlignment::Center => line.indent = (spare / 2) as u16,
@@ -220,14 +278,19 @@ pub(super) fn rewrap(
     style: Typography,
     anchor: Option<Anchor>,
 ) -> Vec<PageLine> {
-    if width == 0 || anchor.is_none_or(|a| a.byte == 0) || doc.markdown.is_some() {
+    if width == 0
+        || (!style.hyphenation && anchor.is_none_or(|a| a.byte == 0))
+        || doc.markdown.is_some()
+    {
         return lines;
     }
     let mut input = lines.into_iter().peekable();
     let mut out = Vec::new();
     while let Some(line) = input.next() {
         let index = line.start.block;
-        if line.text.trim().is_empty() || anchor.is_none_or(|a| a.block != index) {
+        if line.text.trim().is_empty()
+            || (!style.hyphenation && anchor.is_none_or(|a| a.block != index))
+        {
             out.push(line);
             continue;
         }

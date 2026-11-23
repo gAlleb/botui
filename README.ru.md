@@ -539,6 +539,7 @@ scan_gap = 2
 # page_width = 78 # 0 uses the full available column
 # text_alignment = "book" # book, left, right, center, justify
 # heading_rules = false
+# hyphenation = false # English and Russian prose
 column_gap = 4
 # First line of a prose paragraph in EPUB/FB2, in cells (0–8; 0 disables).
 paragraph_indent = 0

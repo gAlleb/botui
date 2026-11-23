@@ -3,6 +3,7 @@
 ## Unreleased
 
 - Keep the first visible word when switching reading modes. Page back without repeats until the chapter opening, then resume regular pagination.
+- Optionally hyphenate English and Russian prose.
 
 ## 0.1.26 — 2026-11-21
 

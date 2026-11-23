@@ -359,6 +359,7 @@ impl TextAlignment {
 #[derive(Clone, Copy, Default)]
 pub struct Typography {
     pub alignment: TextAlignment,
+    pub hyphenation: bool,
     pub heading_rules: bool,
 }
 
