@@ -62,13 +62,16 @@ pub(super) fn setting(
     p: &Settings,
 ) -> io::Result<()> {
     match (tab, i) {
-        (1, 17) => {
+        (1, 14) => {
+            Settings::update(|s| s.hyphenation = !s.hyphenation)?;
+        }
+        (1, 9) => {
             alignment(term, p)?;
         }
-        (1, 18) => {
+        (1, 10) => {
             Settings::update(|s| s.heading_rules = !s.heading_rules)?;
         }
-        (1, 19) => {
+        (1, 20) => {
             if let Some(i) = choose(
                 term,
                 "SyncTeX mode",
@@ -84,8 +87,8 @@ pub(super) fn setting(
                 })?;
             }
         }
-        (1, 20 | 21) if matches!(p.synctex_mode, crate::synctex::Mode::Neovim) => {
-            let neovim = i == 20;
+        (1, 21 | 22) if matches!(p.synctex_mode, crate::synctex::Mode::Neovim) => {
+            let neovim = i == 21;
             let (title, args) = if neovim {
                 (
                     "SyncTeX Neovim terminal · blank = Auto",
@@ -108,7 +111,7 @@ pub(super) fn setting(
                 })?;
             }
         }
-        (1, 20) => {
+        (1, 21) => {
             if let Some(command) = edit(
                 term,
                 "SyncTeX editor command · e.g. kitty nvim +{line} -- {file}",
@@ -118,7 +121,7 @@ pub(super) fn setting(
                 Settings::update(|s| s.synctex_editor = args)?;
             }
         }
-        (1, 15) => {
+        (1, 18) => {
             let modes = settings::PageColors::ALL;
             if let Some(i) = choose(
                 term,
@@ -129,7 +132,7 @@ pub(super) fn setting(
                 Settings::update(|s| s.scan_page_colors = Some(modes[i]))?;
             }
         }
-        (1, 13) => {
+        (1, 5) => {
             if let Some(value) = edit(
                 term,
                 "Space menu delay · milliseconds (0–1000)",
@@ -181,11 +184,11 @@ pub(super) fn setting(
                 Settings::update(|s| s.opaque_color = (!v.is_empty()).then_some(v))?;
             }
         }
-        (1, 0) | (1, 14) | (1, 16) => {
-            let comic = i == 16;
+        (1, 6) | (1, 17) | (1, 19) => {
+            let comic = i == 19;
             let (initial, title) = if comic {
                 (p.comic_theme(), " Comic background ")
-            } else if i == 14 {
+            } else if i == 17 {
                 (p.page_theme(), " PDF reading theme ")
             } else {
                 (
@@ -197,7 +200,7 @@ pub(super) fn setting(
                 Settings::update(|s| {
                     if comic {
                         s.comic_background = Some(t.id());
-                    } else if i == 14 {
+                    } else if i == 17 {
                         s.scan_page_colors = Some(s.page_colors());
                         s.scan_theme = Some(t.id());
                     } else {
@@ -206,28 +209,28 @@ pub(super) fn setting(
                 })?;
             }
         }
-        (1, 11) => {
+        (1, 3) => {
             Settings::update(|s| s.zen_progress = !s.zen_progress)?;
         }
-        (1, 1) => {
+        (1, 0) => {
             Settings::update(|s| s.zen = !s.zen)?;
         }
-        (1, 2) | (1, 3) | (1, 7) | (1, 12) => {
-            let (val, lo, hi, title) = if i == 12 {
+        (1, 7) | (1, 8) | (1, 11) | (1, 4) => {
+            let (val, lo, hi, title) = if i == 4 {
                 (
                     u16::from(p.scroll_lines.unwrap_or(1).clamp(1, 12)),
                     1,
                     12,
                     "Mouse wheel step · 1–12 lines",
                 )
-            } else if i == 2 {
+            } else if i == 7 {
                 (
-                    p.page_width.unwrap_or(78),
+                    p.page_width.unwrap_or_default(),
                     32,
                     240,
                     "Page width · 0 = full, 32–240 cells",
                 )
-            } else if i == 7 {
+            } else if i == 11 {
                 (
                     u16::from(p.paragraph_indent.min(8)),
                     0,
@@ -241,18 +244,18 @@ pub(super) fn setting(
                 let Some(n) = v
                     .parse::<u16>()
                     .ok()
-                    .filter(|v| (i == 2 && *v == 0) || (lo..=hi).contains(v))
+                    .filter(|v| (i == 7 && *v == 0) || (lo..=hi).contains(v))
                 else {
                     return Err(io::Error::other(format!(
                         "Enter a number from {lo} to {hi}."
                     )));
                 };
                 Settings::update(|s| {
-                    if i == 12 {
+                    if i == 4 {
                         s.scroll_lines = Some(n as u8)
-                    } else if i == 2 {
-                        s.page_width = Some(n)
                     } else if i == 7 {
+                        s.page_width = Some(n)
+                    } else if i == 11 {
                         s.paragraph_indent = n as u8;
                     } else {
                         s.column_gap = Some(n)
@@ -260,13 +263,13 @@ pub(super) fn setting(
                 })?;
             }
         }
-        (1, 4) => {
+        (1, 15) => {
             Settings::update(|s| s.preserve_printed_lines = !s.preserve_printed_lines)?;
         }
-        (1, 5) => {
+        (1, 16) => {
             Settings::update(|s| s.hide_inline_images = !s.hide_inline_images)?;
         }
-        (1, 6) => {
+        (1, 1) => {
             let modes = ["auto", "single", "spread", "scroll"];
             let selected = modes
                 .iter()
@@ -276,10 +279,10 @@ pub(super) fn setting(
                 Settings::update(|s| s.reading_layout = Some(modes[i].into()))?;
             }
         }
-        (1, 8) => {
+        (1, 12) => {
             Settings::update(|s| s.preserve_compact_spacing = Some(!s.compact_spacing()))?;
         }
-        (1, 9) => {
+        (1, 13) => {
             if let Some(choice) = choose(
                 term,
                 "Paragraph spacing",
@@ -289,7 +292,7 @@ pub(super) fn setting(
                 Settings::update(|s| s.paragraph_spacing = choice.checked_sub(1).map(|n| n as u8))?;
             }
         }
-        (1, 10) | (2, 4) => {
+        (1, 2) | (2, 4) => {
             let reader = tab == 1;
             let val = if reader {
                 p.contents_width

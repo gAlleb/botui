@@ -345,7 +345,7 @@ Run `botui --config-path` to print the exact path. The default is `~/.config/bot
 
 On startup, older configs gain missing dictionary/translation defaults, the Space hint delay, mouse-wheel step and an empty OPDS list. Existing values, connections and comments are preserved.
 
-In **F2 → Reader**, **First-line indent** moves the first line of a paragraph to the right by 0–8 cells. Centered EPUB paragraphs keep the indent specified by the book. **Paragraph spacing** sets the vertical gap between EPUB/FB2 paragraphs: **From book** (the default), **0 blank lines**, **1 blank line** or **2 blank lines**. **From book** follows EPUB layout and uses one blank line for plain FB2 prose.
+In **F2 → Reader**, **First-line indent** moves the first line of a paragraph to the right by 0–8 cells. Centered EPUB paragraphs keep the indent specified by the book. **Paragraph spacing** sets the vertical gap between EPUB/FB2 paragraphs: **From book**, **0 blank lines** (the default for new profiles), **1 blank line** or **2 blank lines**. **From book** follows EPUB layout and uses one blank line for plain FB2 prose.
 
 The separate **Compact blocks** switch is on by default. It preserves book spacing in EPUB addresses, centered or right-aligned groups and explicit blank paragraphs. Turn it off to apply your selected paragraph spacing to these blocks too. It never changes the **Paragraph spacing** setting; with **From book**, both switch positions use the book’s intervals. Tables, lists, poetry and captions retain their existing spacing in either case. Both settings apply immediately to the open book.
 
@@ -408,8 +408,8 @@ synctex_botui_terminal = []
 # Space between PDF/DjVu/comic pages in a spread (0–32 terminal cells).
 scan_gap = 2
 # Preferred width of one text page and the space between facing pages, in terminal cells.
-# page_width = 78 # 0 uses the full available column
-# text_alignment = "book" # book, left, right, center, justify
+page_width = 0 # 0 uses the full available column
+text_alignment = "left" # book, left, right, center, justify
 # heading_rules = false
 # hyphenation = false # English and Russian prose
 column_gap = 4
@@ -418,7 +418,7 @@ paragraph_indent = 0
 # Preserve book spacing in compact EPUB blocks when a paragraph interval is set.
 preserve_compact_spacing = true
 # Blank lines between paragraphs (0, 1 or 2). Omit to follow the book.
-# paragraph_spacing = 1
+paragraph_spacing = 0
 # Default layout for books without a saved mode: auto, single, spread, scroll.
 reading_layout = "auto"
 opaque_background = false

@@ -73,6 +73,18 @@ def run(tmp):
         t.keys("Space", "l", "w", "]", "Enter")
         t.wait("Quick width saved only for this edition", lambda f: json.loads(pref(text).read_text())["page_width"] != 44)
         assert cfg.read_bytes() == global_bytes
+        t.keys("Space", "l", "w", "a")
+        before = t.see("Text alignment")
+        origin = next(line.index("First paragraph") for line in before.splitlines() if "First paragraph" in line)
+        t.keys("Down")
+        t.wait("Center preview moves the book text", lambda f: "Text alignment" in f and
+               any(line.find("First paragraph") > origin for line in f.splitlines()))
+        t.keys("Escape")
+        t.wait("Cancel restores the original alignment", lambda f: "Text alignment" not in f and
+               any(line.find("First paragraph") == origin for line in f.splitlines()))
+        t.keys("Space", "l", "w", "a", "Down", "Enter")
+        t.wait("Center saved for first book", lambda _: json.loads(pref(text).read_text()).get("alignment") == "center")
+        assert cfg.read_bytes() == global_bytes
         # A deliberate edit in the all-books scope reaches the second book immediately.
         t.keys("F2")
         t.see("Appearance")
@@ -94,6 +106,7 @@ def run(tmp):
             if path == second:
                 assert not pref(path).exists()
             else:
+                assert json.loads(pref(path).read_text())["alignment"] == "center"
                 frame = open_settings(t)
                 t.click("Paragraph spacing", frame)
                 t.click("From book", t.see("From book"))

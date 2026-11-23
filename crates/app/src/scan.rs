@@ -151,6 +151,10 @@ pub(super) fn read_pages(
         .map_or(prefs.reading_layout.as_deref() == Some("scroll"), |s| {
             s.scrolling
         });
+    if let Some(mode) = crate::settings::book::BookSettings::load(store.as_ref())?.reading_layout {
+        spread = mode == "spread";
+        scrolling = mode == "scroll";
+    }
     let mut offset = saved
         .as_ref()
         .filter(|s| s.anchor.block + 1 == n as usize)
@@ -986,7 +990,17 @@ pub(super) fn read_pages(
                 match edit {
                     Edit::Cancel => palette = None,
                     Edit::Accept(theme) => {
-                        let updated = if comic {
+                        let updated = if comic && let Some(store) = &store {
+                            store
+                                .update_book_preferences(
+                                    |p: &mut crate::settings::book::BookSettings| {
+                                        p.comic_background = Some(theme.id())
+                                    },
+                                )
+                                .and_then(|()| {
+                                    crate::settings::book::BookSettings::effective(Some(store))
+                                })
+                        } else if comic {
                             crate::settings::Settings::update(|s| {
                                 s.comic_background = Some(theme.id())
                             })
@@ -1502,7 +1516,8 @@ pub(super) fn read_pages(
                 }
             }
             26 | 27 => {
-                let before = crate::settings::Settings::load()?.reading_layout;
+                let before =
+                    crate::settings::book::BookSettings::effective(store.as_ref())?.reading_layout;
                 crate::preferences::show_book(
                     term,
                     if action == 26 {
@@ -1511,10 +1526,16 @@ pub(super) fn read_pages(
                         crate::preferences::Open::Help
                     },
                     crate::preferences::Context::Scan,
-                    store
-                        .as_ref()
-                        .filter(|_| !comic)
-                        .map(|s| (s, crate::preferences::BookKind::Pdf)),
+                    store.as_ref().map(|s| {
+                        (
+                            s,
+                            if comic {
+                                crate::preferences::BookKind::Comic
+                            } else {
+                                crate::preferences::BookKind::Pdf
+                            },
+                        )
+                    }),
                 )?;
                 let updated = crate::settings::book::BookSettings::effective(store.as_ref())?;
                 reading_theme = updated.fixed_theme(comic);

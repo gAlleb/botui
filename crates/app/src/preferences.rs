@@ -3,7 +3,6 @@ mod about;
 mod book;
 pub(crate) use book::Kind as BookKind;
 mod edit;
-pub(crate) use edit::alignment;
 mod help;
 use crate::{AppTerminal, appearance, settings::Settings, shell_theme};
 use crossterm::event::{Event, KeyCode, KeyEventKind, MouseButton, MouseEventKind};
@@ -95,11 +94,20 @@ fn spacing_index(prefs: &Settings) -> usize {
         .map_or(0, |n| 1 + usize::from(n.min(2)))
 }
 struct SettingRow {
+    section: Option<&'static str>,
     label: String,
     hint: &'static str,
 }
+impl SettingRow {
+    fn section(mut self, name: &'static str) -> Self {
+        self.section = Some(name);
+        self
+    }
+}
+
 fn rows(tab: usize, s: &Settings) -> Vec<SettingRow> {
     let pair = |k: &str, v: &str, hint| SettingRow {
+        section: None,
         label: format!("{k}\t{v}"),
         hint,
     };
@@ -136,62 +144,14 @@ fn rows(tab: usize, s: &Settings) -> Vec<SettingRow> {
         1 => {
             let mut rows = vec![
                 pair(
-                    "Reading theme",
-                    &crate::theme::Theme::from_id(s.theme.as_deref().unwrap_or("terminal")).name(),
-                    "Preview light and dark book paper separately from the library interface.",
-                ),
-                pair(
                     "Reader view",
                     if s.zen { "Zen" } else { "Contents sidebar" },
                     "Zen shows just the page. Press Z while reading to bring the controls back.",
-                ),
-                pair(
-                    "Page width",
-                    &book::width_label(s.page_width.unwrap_or(78)),
-                    "Preferred width of each text column, in terminal cells. A narrow window uses one page.",
-                ),
-                pair(
-                    "Column gap",
-                    &format!("{} cells", s.column_gap.unwrap_or(4)),
-                    "Space between facing text pages. The Space l w panel also lets you adjust this while reading.",
-                ),
-                pair(
-                    "Printed line breaks",
-                    if s.preserve_printed_lines {
-                        "Preserve"
-                    } else {
-                        "Reflow"
-                    },
-                    "Reflow repairs words split across printed lines. Preserve keeps the book’s original breaks.",
-                ),
-                pair(
-                    "Illustrations",
-                    if s.hide_inline_images {
-                        "Viewer only"
-                    } else {
-                        "In text"
-                    },
-                    "Display embedded illustrations on the page or open them from I when you need them.",
-                ),
+                ).section("Reading controls"),
                 pair(
                     "Default page layout",
                     s.reading_layout.as_deref().unwrap_or("auto"),
                     "Choose one page, a spread or continuous scroll for newly opened books.",
-                ),
-                pair(
-                    "First-line indent",
-                    &format!("{} cells", s.paragraph_indent.min(8)),
-                    "Indent the first line by 0–8 cells. Centered EPUB paragraphs keep the book's indent.",
-                ),
-                pair(
-                    "Compact blocks",
-                    if s.compact_spacing() { "On" } else { "Off" },
-                    "On keeps book spacing in addresses, centered/right-aligned and blank paragraphs. Off applies Paragraph spacing there too.",
-                ),
-                pair(
-                    "Paragraph spacing",
-                    PARAGRAPH_SPACING[spacing_index(s)],
-                    "Use the book’s spacing or choose 0, 1 or 2 blank lines between paragraphs.",
                 ),
                 pair(
                     "Contents width",
@@ -215,19 +175,19 @@ fn rows(tab: usize, s: &Settings) -> Vec<SettingRow> {
                     "Delay before command hints appear. Space combinations always execute immediately. Set 0 for instant hints.",
                 ),
                 pair(
-                    "PDF reading theme",
-                    &s.page_theme().name(),
-                    "Palette for PDF, DjVu and image-only EPUB margins and dialogs.",
+                    "Reading theme",
+                    &crate::theme::Theme::from_id(s.theme.as_deref().unwrap_or("terminal")).name(),
+                    "Preview light and dark book paper separately from the library interface.",
+                ).section("Text books"),
+                pair(
+                    "Page width",
+                    &book::width_label(s.page_width.unwrap_or_default()),
+                    "Preferred width of each text column, in terminal cells. A narrow window uses one page.",
                 ),
                 pair(
-                    "PDF page colors",
-                    s.page_colors().label(),
-                    "Keep document colors, invert the original page, or apply the reading theme to paper and ink.",
-                ),
-                pair(
-                    "Comic background",
-                    &s.comic_theme().name(),
-                    "Background around CBZ/CBR pages. Artwork always keeps its original colors. Space t previews and saves this choice.",
+                    "Column gap",
+                    &format!("{} cells", s.column_gap.unwrap_or(4)),
+                    "Space between facing text pages. The Space l w panel also lets you adjust this while reading.",
                 ),
                 pair(
                     "Text alignment",
@@ -240,11 +200,64 @@ fn rows(tab: usize, s: &Settings) -> Vec<SettingRow> {
                     "Double line under H1 and single line under H2.",
                 ),
                 pair(
+                    "First-line indent",
+                    &format!("{} cells", s.paragraph_indent.min(8)),
+                    "Indent the first line by 0–8 cells. Centered EPUB paragraphs keep the book's indent.",
+                ),
+                pair(
+                    "Compact blocks",
+                    if s.compact_spacing() { "On" } else { "Off" },
+                    "On keeps book spacing in addresses, centered/right-aligned and blank paragraphs. Off applies Paragraph spacing there too.",
+                ),
+                pair(
+                    "Paragraph spacing",
+                    PARAGRAPH_SPACING[spacing_index(s)],
+                    "Use the book’s spacing or choose 0, 1 or 2 blank lines between paragraphs.",
+                ),
+                pair(
+                    "Word hyphenation (EN/RU)",
+                    if s.hyphenation { "On" } else { "Off" },
+                    "Use dictionary hyphens in English and Russian prose.",
+                ),
+                pair(
+                    "Printed line breaks",
+                    if s.preserve_printed_lines {
+                        "Preserve"
+                    } else {
+                        "Reflow"
+                    },
+                    "Reflow repairs words split across printed lines. Preserve keeps the book’s original breaks.",
+                ),
+                pair(
+                    "Illustrations",
+                    if s.hide_inline_images {
+                        "Viewer only"
+                    } else {
+                        "In text"
+                    },
+                    "Display embedded illustrations on the page or open them from I when you need them.",
+                ),
+                pair(
+                    "PDF reading theme",
+                    &s.page_theme().name(),
+                    "Palette for PDF, DjVu and image-only EPUB margins and dialogs.",
+                ).section("PDF & DjVu"),
+                pair(
+                    "PDF page colors",
+                    s.page_colors().label(),
+                    "Keep document colors, invert the original page, or apply the reading theme to paper and ink.",
+                ),
+                pair(
+                    "Comic background",
+                    &s.comic_theme().name(),
+                    "Background around CBZ/CBR pages. Artwork always keeps its original colors. Space t previews and saves this choice.",
+                ).section("Comics"),
+                pair(
                     "SyncTeX mode",
                     SYNCTEX_MODES
                         [usize::from(matches!(s.synctex_mode, crate::synctex::Mode::Neovim))],
                     "Custom runs your editor command. Neovim opens source and PDF windows when needed, then reuses them for jumps both ways.",
-                ),
+                ).section("SyncTeX"),
             ];
             if matches!(s.synctex_mode, crate::synctex::Mode::Neovim) {
                 rows.extend([
@@ -364,7 +377,11 @@ fn rows(tab: usize, s: &Settings) -> Vec<SettingRow> {
         ],
         7 => crate::lookup::settings::rows(&crate::lookup::Config::from_settings(s))
             .into_iter()
-            .map(|(label, hint)| SettingRow { label, hint })
+            .map(|(label, hint)| SettingRow {
+                label,
+                hint,
+                section: None,
+            })
             .collect(),
         _ => Vec::new(),
     }
@@ -461,22 +478,38 @@ pub fn show_book(
                 5 => about_max = about::draw(f, body, &mut about_offset),
                 4 => guide_view.draw(f, body, &guide),
                 _ => {
+                    let columns = crate::prompt::columns(
+                        &labels
+                            .iter()
+                            .map(|row| row.label.clone())
+                            .collect::<Vec<_>>(),
+                        body.width,
+                    );
+                    let items = labels.iter().zip(columns).map(|(row, label)| {
+                        let mut lines = Vec::with_capacity(2);
+                        if let Some(section) = row.section {
+                            lines.push(ratatui::text::Line::styled(
+                                section,
+                                appearance::CURRENT_SECTION,
+                            ));
+                        }
+                        lines.push(ratatui::text::Line::raw(label));
+                        ratatui::widgets::ListItem::new(lines)
+                    });
+                    let rows =
+                        labels.len() + labels.iter().filter(|row| row.section.is_some()).count();
+                    let hint_space = if tab == 1 && body.height >= 12 { 2 } else { 0 };
+                    let mut list_area = body;
+                    list_area.height = list_area.height.saturating_sub(hint_space);
                     f.render_stateful_widget(
-                        List::new(crate::prompt::columns(
-                            &labels
-                                .iter()
-                                .map(|row| row.label.clone())
-                                .collect::<Vec<_>>(),
-                            body.width,
-                        ))
-                        .highlight_style(appearance::SELECTION),
-                        body,
+                        List::new(items).highlight_style(appearance::SELECTION),
+                        list_area,
                         &mut state,
                     );
-                    if body.height >= labels.len() as u16 + 4
+                    if (hint_space > 0 || body.height >= rows as u16 + 4)
                         && let Some(row) = state.selected().and_then(|i| labels.get(i))
                     {
-                        let y = body.y + labels.len() as u16 + 1;
+                        let y = (body.y + rows as u16 + 1).min(list_area.bottom());
                         f.render_widget(
                             Paragraph::new(row.hint)
                                 .dim()
@@ -606,7 +639,17 @@ pub fn show_book(
                         }
                         select = tabs.iter().position(|r| r.contains(pos));
                         if body.contains(pos) && (tab < 4 || tab == 7) {
-                            opened = Some(state.offset() + usize::from(m.row - body.y));
+                            let mut y = body.y;
+                            for (i, row) in labels.iter().enumerate().skip(state.offset()) {
+                                y += u16::from(row.section.is_some());
+                                if y == m.row
+                                    && (tab != 1 || body.height < 12 || y < body.bottom() - 2)
+                                {
+                                    opened = Some(i);
+                                    break;
+                                }
+                                y += 1;
+                            }
                         }
                         0
                     }

@@ -187,6 +187,99 @@ impl Panel {
     }
 }
 
+pub(super) fn choose_alignment(
+    term: &mut crate::AppTerminal,
+    reader: &mut super::Reader,
+    store: Option<&botui_store::LocalState>,
+) -> std::io::Result<()> {
+    use crate::settings::book::BookSettings;
+    use botui_core::TextAlignment;
+    let mut settings = BookSettings::effective(store)?;
+    let original = settings.text_alignment;
+    let mut row = original as usize;
+    let accepted = loop {
+        let mut body = Rect::default();
+        term.draw(|f| {
+            reader.draw(f, None);
+            let area = crate::centered(f.area(), 27, 8);
+            crate::overlay::paint(f, area, |f| {
+                let panel = crate::appearance::block()
+                    .title(" Text alignment ")
+                    .style(reader.theme.style());
+                body = panel.inner(area);
+                f.render_widget(Clear, area);
+                f.render_widget(panel, area);
+                for (i, alignment) in TextAlignment::ALL
+                    .iter()
+                    .enumerate()
+                    .take(usize::from(body.height))
+                {
+                    let style = if i == row {
+                        crate::appearance::SELECTION
+                    } else {
+                        reader.theme.style()
+                    };
+                    f.render_widget(
+                        Paragraph::new(alignment.label()).style(style),
+                        Rect::new(body.x, body.y + i as u16, body.width, 1),
+                    );
+                }
+                if body.height > 5 {
+                    f.render_widget(
+                        Paragraph::new("Enter apply · Esc cancel").dim(),
+                        Rect::new(body.x, body.y + 5, body.width, 1),
+                    );
+                }
+            });
+            crate::settings::paint_book(f, reader.theme);
+        })?;
+        reader.pager.start_pagination();
+        let event = crate::settings::read_dialog()?;
+        let mut accept = false;
+        match event {
+            Event::Key(k) if k.kind != KeyEventKind::Release => match k.code {
+                KeyCode::Up | KeyCode::Char('k') => row = row.saturating_sub(1),
+                KeyCode::Down | KeyCode::Char('j') => row = (row + 1).min(4),
+                KeyCode::Enter => break true,
+                KeyCode::Esc | KeyCode::Char('q') => break false,
+                _ => continue,
+            },
+            Event::Mouse(m) if m.kind == MouseEventKind::Down(MouseButton::Left) => {
+                if !body.contains(Position::new(m.column, m.row)) {
+                    break false;
+                }
+                let i = usize::from(m.row - body.y);
+                if i >= 5 {
+                    continue;
+                }
+                row = i;
+                accept = true;
+            }
+            _ => continue,
+        }
+        if settings.text_alignment != TextAlignment::ALL[row] {
+            settings.text_alignment = TextAlignment::ALL[row];
+            reader.apply_typography(term, &settings)?;
+        }
+        if accept {
+            break true;
+        }
+    };
+    if accepted {
+        if let Some(store) = store {
+            store.update_book_preferences(|p: &mut BookSettings| {
+                p.alignment = Some(settings.text_alignment)
+            })?;
+        } else {
+            crate::settings::Settings::update(|s| s.text_alignment = settings.text_alignment)?;
+        }
+    } else if settings.text_alignment != original {
+        settings.text_alignment = original;
+        reader.apply_typography(term, &settings)?;
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

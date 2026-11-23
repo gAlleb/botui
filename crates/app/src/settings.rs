@@ -593,7 +593,18 @@ mod dialog_tests {
         assert_eq!(settings.leader_delay_ms, Some(150));
         assert_eq!(settings.preserve_compact_spacing, Some(true));
         assert!(settings.compact_spacing());
-        assert_eq!(settings.paragraph_spacing, None);
+        assert_eq!(settings.page_width, Some(0));
+        assert!(!settings.zen);
+        assert_eq!(settings.paragraph_spacing, Some(0));
+        assert_eq!(settings.text_alignment, botui_core::TextAlignment::Left);
+        assert_eq!(
+            decode("").unwrap().text_alignment,
+            botui_core::TextAlignment::Left
+        );
+        assert_eq!(
+            decode("text_alignment = \"book\"").unwrap().text_alignment,
+            botui_core::TextAlignment::Book
+        );
         assert!(settings.keys.is_empty());
         for doc in [
             include_str!("../../../README.md"),

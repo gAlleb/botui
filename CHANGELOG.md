@@ -3,8 +3,8 @@
 ## Unreleased
 
 - Keep the first visible word when switching reading modes. Page back without repeats until the chapter opening, then resume regular pagination.
-- Keep EPUB table headers and data rows compact.
-- Optionally hyphenate English and Russian prose.
+- Start new reader profiles at full width with Zen off, left alignment and no extra blank lines between paragraphs. Group Reader settings by purpose and format. Keep EPUB table headers and data rows compact.
+- Remember each book’s reading theme, layout, alignment and heading rules. Preview alignment over the book and optionally hyphenate English and Russian prose.
 - Copy inline MathML fraction bars and select individual digits in exponents.
 
 ## 0.1.26 — 2026-11-21

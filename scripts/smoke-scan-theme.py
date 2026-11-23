@@ -2,6 +2,8 @@
 """Preview and save independent PDF colors and palette in the reader and F2."""
 import importlib.util
 import os
+import hashlib
+import json
 import tempfile
 import tomllib
 from pathlib import Path
@@ -19,10 +21,13 @@ with tempfile.TemporaryDirectory(prefix="botui-scan-theme-") as tmp:
     config.parent.mkdir(parents=True)
     config.write_text('scan_theme = "mist-dark"\ntheme = "sepia-dark"\nopaque_background = true\n')
 
+    pref = root / "state/botui/positions" / (hashlib.sha256(book.read_bytes()).hexdigest() + ".preferences")
+
     def saved():
         settings = tomllib.loads(config.read_text())
         assert settings["theme"] == "sepia-dark"
-        return settings["scan_theme"], settings["scan_page_colors"]
+        local = json.loads(pref.read_text()) if pref.exists() else {}
+        return local.get("pdf_theme") or settings["scan_theme"], local.get("pdf_colors") or settings["scan_page_colors"]
 
     def pixels(color):
         ansi = t.run("capture-pane", "-p", "-e", "-t", "shelf").stdout
@@ -53,11 +58,16 @@ with tempfile.TemporaryDirectory(prefix="botui-scan-theme-") as tmp:
         t.wait("white page with Sepia margins", lambda _: pixels("255;255;255") and pixels("241;232;208"))
         t.keys("F2")
         t.see("Appearance")
-        t.keys("Right", "End")
+        assert tomllib.loads(config.read_text())["scan_theme"] == "mist-dark"
+        t.keys("Right")
+        t.click("[S This book]", t.see("[S This book]"))
+        t.click("Use global settings for this book", t.see("Use global settings for this book"))
+        t.wait("edition returns to global palette", lambda _: saved() == ("mist-dark", "theme"))
+        t.keys("Escape", "End")
         t.click("PDF page colors", t.see("PDF page colors"))
         frame = t.see("As in document")
         t.click("As in document", frame)
-        t.wait("F2 changed mode only", lambda _: saved() == ("sepia-light", "original"))
+        t.wait("F2 changed mode only", lambda _: saved() == ("mist-dark", "original"))
         t.click("PDF reading theme", t.see("PDF reading theme"))
         t.see("↑↓ Palette")
         t.keys("Home", "Down", "Down", "Right", "Enter")

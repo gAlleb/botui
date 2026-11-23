@@ -301,7 +301,9 @@ SyncTeX связывает области свёрстанного докуме�
 
 **Space a a** открывает список хайлайтов и заметок с поиском. Выбранная запись показывает содержимое и позицию в книге/разделе либо номер страницы; доступны **Go**, **Edit**, **Color**, **Delete** и **Export**. **Space a p** добавляет заметку к фиксированной странице. Заметки и хайлайты остаются доступны локально. Если открыть издание с подключённой полки BookOrbit, BOTUI синхронизирует комментарии к фрагментам, цвета и удаления в обе стороны: текст — по точным CFI-диапазонам, выделения PDF — по координатам страницы. Изменения без сети отправляются при следующем открытии этого издания через BookOrbit. **Space a s** показывает состояние обмена и предлагает **Sync now / retry unconfirmed uploads** — синхронизировать сейчас или повторить неподтверждённую отправку.
 
-В открытой книге выберите **F2 → Reader → S This book** для настройки этого издания. В EPUB и FB2 доступны ширина страницы, красная строка и интервал абзацев, в EPUB также компактные блоки. В Markdown доступна ширина. Для фиксированных страниц, кроме комиксов, можно отдельно выбрать тему и режим цветов. **Use global** наследует будущие изменения общего значения; **From book** использует интервалы издателя в этом издании. **Use global settings for this book** сбрасывает индивидуальные значения. Быстрая настройка ширины меняет только книгу с индивидуальной шириной. Если для фиксированных страниц задана своя палитра или режим цветов, **Space t** сохраняет изменения для этого издания.
+В новом профиле текстовая книга занимает всю доступную ширину. Zen выключен, текст выровнен влево, между абзацами нет дополнительных пустых строк. В **F2 → Reader** есть группы общих настроек чтения, текстовых книг, PDF и DjVu, комиксов и SyncTeX.
+
+В **F2 → Reader → S This book** можно выбрать тему и режим чтения для одного издания. Для текстовых книг доступны выравнивание и линии под заголовками. Для обычной прозы EPUB и FB2 можно включить **Word hyphenation (EN/RU)**, настроить ширину, красную строку и интервалы между абзацами. EPUB поддерживает компактные блоки. Пункт **Use global** возвращает наследование. Быстрый выбор темы и режима чтения сохраняется для открытой книги. **Space l w → A** показывает выравнивание прямо на тексте.
 
 На стартовом экране нажмите **A** для поиска по **Highlights & notes**. Введите имя файла книги, цитату или текст заметки. Enter или щелчок открывает фрагмент в соответствующем издании. Если файла уже нет, цитату и заметку можно прочитать в списке.
 
@@ -536,8 +538,8 @@ synctex_botui_terminal = []
 # Space between PDF/DjVu/comic pages in a spread (0–32 terminal cells).
 scan_gap = 2
 # Preferred width of one text page and the space between facing pages, in terminal cells.
-# page_width = 78 # 0 uses the full available column
-# text_alignment = "book" # book, left, right, center, justify
+page_width = 0 # 0 uses the full available column
+text_alignment = "left" # book, left, right, center, justify
 # heading_rules = false
 # hyphenation = false # English and Russian prose
 column_gap = 4
@@ -546,7 +548,7 @@ paragraph_indent = 0
 # Preserve book spacing in compact EPUB blocks when a paragraph interval is set.
 preserve_compact_spacing = true
 # Blank lines between paragraphs (0, 1 or 2). Omit to follow the book.
-# paragraph_spacing = 1
+paragraph_spacing = 0
 # Default layout for books without a saved mode: auto, single, spread, scroll.
 reading_layout = "auto"
 opaque_background = false

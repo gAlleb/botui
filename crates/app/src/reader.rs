@@ -258,11 +258,13 @@ impl Reader {
             LayoutMode::Spread
         };
         let margin = saved.as_ref().map_or(0, |s| s.margin);
-        let page_width = layout::width_setting(
-            settings
-                .page_width
-                .unwrap_or_else(|| 78u16.saturating_add_signed(-6 * i16::from(margin))),
-        );
+        let page_width = layout::width_setting(settings.page_width.unwrap_or_else(|| {
+            if margin == 0 {
+                0
+            } else {
+                78u16.saturating_add_signed(-6 * i16::from(margin))
+            }
+        }));
         let gap = settings.column_gap.unwrap_or(4).min(32);
         let mut splitter = crate::splitter::Splitter::new(
             crate::splitter::Pane::Contents,
@@ -359,6 +361,39 @@ impl Reader {
         store: Option<&LocalState>,
         notices: &mut Vec<String>,
     ) {
+        if let Some(store) = store
+            && matches!(
+                action,
+                Action::Pick(theme_picker::Edit::Accept(_))
+                    | Action::Single
+                    | Action::Spread
+                    | Action::Scroll
+            )
+        {
+            if let Err(e) =
+                store.update_book_preferences(|p: &mut crate::settings::book::BookSettings| {
+                    match action {
+                        Action::Pick(_) => p.theme = Some(self.theme.id()),
+                        _ => {
+                            p.reading_layout = Some(
+                                match self.mode {
+                                    LayoutMode::Single => "single",
+                                    LayoutMode::Spread => "spread",
+                                    LayoutMode::Scroll => "scroll",
+                                }
+                                .into(),
+                            )
+                        }
+                    }
+                })
+            {
+                notices.push(e.to_string());
+            }
+            return;
+        }
+        if matches!(action, Action::Single | Action::Spread | Action::Scroll) {
+            return;
+        }
         if matches!(action, Action::Margin(_) | Action::FullWidth)
             && let Some(store) = store
         {
@@ -399,6 +434,40 @@ impl Reader {
         }
     }
 
+    fn apply_typography(
+        &mut self,
+        term: &AppTerminal,
+        settings: &crate::settings::Settings,
+    ) -> io::Result<()> {
+        let size = term.size()?;
+        let screen = Rect::new(0, 0, size.width, size.height);
+        let (_, reading_frame, _) = self.reading_panes(screen);
+        let (text, mode, gap) = layout::geometry(
+            &reading_frame,
+            self.mode,
+            self.page_width,
+            self.gap,
+            self.zen,
+        );
+        let text = controls::above_status(text, screen);
+        self.pager.reconfigure(
+            &self.doc,
+            text.width,
+            text.height,
+            mode,
+            gap,
+            ReflowOptions {
+                typography: settings.typography(),
+                repair_printed: !settings.preserve_printed_lines,
+                inline_images: !settings.hide_inline_images,
+                paragraph_indent: settings.paragraph_indent,
+                paragraph_spacing: settings.paragraph_spacing,
+                compact_spacing: settings.compact_spacing(),
+            },
+        );
+        self.search.reflow(&self.pager, &self.doc);
+        Ok(())
+    }
     fn draw_resource_background(&mut self, frame: &mut Frame) -> bool {
         self.draw(frame, None);
         self.pager.start_pagination();
@@ -1598,6 +1667,12 @@ pub fn read_server(
             notices.push("BookOrbit has no exact text location. Using the local position.".into());
         }
     }
+    if let Some(mode) = crate::settings::book::BookSettings::load(state.as_ref())?.reading_layout
+        && let Some(s) = &mut saved
+    {
+        s.spread = mode == "spread";
+        s.scrolling = mode == "scroll";
+    }
     let mut reader = Reader::new(
         doc,
         Rect::new(0, 0, size.width, size.height),
@@ -1913,7 +1988,10 @@ pub fn read_server(
                     crate::preferences::BookKind::Text
                 };
                 if action == Action::Alignment {
-                    crate::preferences::alignment(term, &old)?;
+                    reader.menu = None;
+                    reader.layout_panel = None;
+                    layout::choose_alignment(term, &mut reader, state.as_ref())?;
+                    continue;
                 } else {
                     crate::preferences::show_book(
                         term,
@@ -1948,7 +2026,7 @@ pub fn read_server(
                     reader.dirty = true;
                 }
                 if old.page_width != new.page_width {
-                    reader.page_width = layout::width_setting(new.page_width.unwrap_or(78));
+                    reader.page_width = layout::width_setting(new.page_width.unwrap_or_default());
                     if new.page_width.is_none() {
                         reader.margin = 0;
                         reader.dirty = true;
@@ -1966,33 +2044,7 @@ pub fn read_server(
                     || old.paragraph_spacing != new.paragraph_spacing
                     || old.compact_spacing() != new.compact_spacing()
                 {
-                    let size = term.size()?;
-                    let screen = Rect::new(0, 0, size.width, size.height);
-                    let (_, reading_frame, _) = reader.reading_panes(screen);
-                    let (text, mode, gap) = layout::geometry(
-                        &reading_frame,
-                        reader.mode,
-                        reader.page_width,
-                        reader.gap,
-                        reader.zen,
-                    );
-                    let text = controls::above_status(text, screen);
-                    reader.pager.reconfigure(
-                        &reader.doc,
-                        text.width,
-                        text.height,
-                        mode,
-                        gap,
-                        ReflowOptions {
-                            typography: new.typography(),
-                            repair_printed: !new.preserve_printed_lines,
-                            inline_images: !new.hide_inline_images,
-                            paragraph_indent: new.paragraph_indent,
-                            paragraph_spacing: new.paragraph_spacing,
-                            compact_spacing: new.compact_spacing(),
-                        },
-                    );
-                    reader.search.reflow(&reader.pager, &reader.doc);
+                    reader.apply_typography(term, &new)?;
                 }
                 continue;
             }
@@ -2081,7 +2133,10 @@ pub fn read_server(
             }
             reader.apply(action);
             match action {
-                Action::Zen
+                Action::Single
+                | Action::Spread
+                | Action::Scroll
+                | Action::Zen
                 | Action::ZenProgress
                 | Action::Gap(_)
                 | Action::Margin(_)

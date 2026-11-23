@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """ZIP and RAR4/5, including mislabeled suffixes: pages, controls and persistence."""
-import importlib.util, os, struct, subprocess, tempfile, zipfile, zlib, tomllib, json
+import hashlib, importlib.util, os, struct, subprocess, tempfile, zipfile, zlib, tomllib, json
 from pathlib import Path
 spec=importlib.util.spec_from_file_location('shelf',Path(__file__).with_name('smoke-shelf.py'))
 s=importlib.util.module_from_spec(spec);spec.loader.exec_module(s)
@@ -58,7 +58,9 @@ def run(ext, fixture=None, archive=None):
             assert tomllib.loads(config.read_text())['comic_background']=='terminal'
             t.keys('Escape');t.wait('Cancelled background',lambda f:'Comic background' not in f)
             t.keys('Space','t','Home','Down','Down','Down','Left','Enter')
-            t.wait('Saved comic background',lambda _:tomllib.loads(config.read_text())['comic_background']=='sepia-light')
+            pref=root/'state/botui/positions'/(hashlib.sha256(book.read_bytes()).hexdigest()+'.preferences')
+            t.wait('Saved comic background',lambda _:pref.exists() and json.loads(pref.read_text())['comic_background']=='sepia-light')
+            assert tomllib.loads(config.read_text())['comic_background']=='terminal'
             assert tomllib.loads(config.read_text())['scan_page_colors']=='inverted'
             t.wait('Original pixels with saved background',lambda _: '20;40;220' in ansi())
             t.keys('q')

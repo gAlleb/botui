@@ -23,9 +23,15 @@ impl Spacing {
 #[serde(default)]
 pub struct BookSettings {
     pub page_width: Option<u16>,
+    pub theme: Option<String>,
+    pub reading_layout: Option<String>,
+    pub alignment: Option<botui_core::TextAlignment>,
+    pub heading_rules: Option<bool>,
+    pub hyphenation: Option<bool>,
     pub paragraph_indent: Option<u8>,
     pub paragraph_spacing: Option<Spacing>,
     pub compact_spacing: Option<bool>,
+    pub comic_background: Option<String>,
     pub pdf_theme: Option<String>,
     pub pdf_colors: Option<PageColors>,
 }
@@ -38,6 +44,24 @@ impl BookSettings {
             .unwrap_or_default())
     }
     pub fn apply(&self, prefs: &mut Settings) {
+        if let Some(v) = &self.comic_background {
+            prefs.comic_background = Some(v.clone());
+        }
+        if let Some(v) = &self.theme {
+            prefs.theme = Some(v.clone());
+        }
+        if let Some(v) = &self.reading_layout {
+            prefs.reading_layout = Some(v.clone());
+        }
+        if let Some(v) = self.alignment {
+            prefs.text_alignment = v;
+        }
+        if let Some(v) = self.heading_rules {
+            prefs.heading_rules = v;
+        }
+        if let Some(v) = self.hyphenation {
+            prefs.hyphenation = v;
+        }
         if let Some(n) = self.page_width {
             prefs.page_width = Some(if n == 0 { 0 } else { n.clamp(32, 240) });
         }
@@ -65,8 +89,7 @@ impl BookSettings {
     }
 }
 
-/// PDF's quick palette edits the current edition when either of its color choices
-/// is pinned. Keep the other field inherited until the reader actually changes it.
+/// Quick palette changes belong to the open edition. Untouched fields inherit their defaults.
 pub fn save_pdf_palette(
     store: Option<&LocalState>,
     theme: crate::theme::Theme,
@@ -74,8 +97,7 @@ pub fn save_pdf_palette(
     previous_theme: crate::theme::Theme,
     previous_colors: PageColors,
 ) -> io::Result<Settings> {
-    let local = BookSettings::load(store)?;
-    if let Some(store) = store.filter(|_| local.pdf_theme.is_some() || local.pdf_colors.is_some()) {
+    if let Some(store) = store {
         store.update_book_preferences(|p: &mut BookSettings| {
             if theme != previous_theme {
                 p.pdf_theme = Some(theme.id());

@@ -331,8 +331,8 @@ impl Layout {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TextAlignment {
-    #[default]
     Book,
+    #[default]
     Left,
     Center,
     Right,
@@ -356,11 +356,22 @@ impl TextAlignment {
         }
     }
 }
-#[derive(Clone, Copy, Default)]
+#[derive(Clone, Copy)]
 pub struct Typography {
     pub alignment: TextAlignment,
     pub hyphenation: bool,
     pub heading_rules: bool,
+}
+
+// Low-level publisher layout follows the source until a reader profile is applied.
+impl Default for Typography {
+    fn default() -> Self {
+        Self {
+            alignment: TextAlignment::Book,
+            hyphenation: false,
+            heading_rules: false,
+        }
+    }
 }
 
 #[derive(Clone, Copy)]

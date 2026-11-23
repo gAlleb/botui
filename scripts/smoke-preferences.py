@@ -72,21 +72,27 @@ def check(tmp):
         t.click('Borders & covers',t.see('Borders & covers'));t.click('Square',t.see('Square'))
         t.wait('Square borders applied',lambda f:'Solid terminal color' in f and cfg()['borders']=='square')
         t.keys('Tab', 'Home')
+        frame = t.see("Reading controls")
+        for group in ("Text books", "PDF & DjVu", "Comics", "SyncTeX"):
+            assert group in frame, group
         for index, hint in enumerate((
-            'Preview light and dark book paper',
             'Zen shows just the page',
-            'Preferred width of each text column',
-            'Space between facing text pages',
-            'Reflow repairs words split',
-            'Display embedded illustrations',
             'Choose one page, a spread',
-            'Indent the first line',
-            'On keeps book spacing in addresses',
-            '0, 1 or 2 blank lines between paragraphs',
             'divider between the contents sidebar',
             'Show the reading frame, page and percentage',
             'Lines per wheel tick',
             'Delay before command hints appear',
+            'Preview light and dark book paper',
+            'Preferred width of each text column',
+            'Space between facing text pages',
+            'Align text, headings',
+            'Double line under H1',
+            'Indent the first line',
+            'On keeps book spacing in addresses',
+            '0, 1 or 2 blank lines between paragraphs',
+            'Use dictionary hyphens',
+            'Reflow repairs words split',
+            'Display embedded illustrations',
             'Palette for PDF, DjVu',
             'Keep document colors, invert the original page',
             'Background around CBZ/CBR pages',
@@ -97,7 +103,7 @@ def check(tmp):
         t.click('Column gap',t.see('Column gap'));t.keys('C-u');t.type('10');t.keys('Enter');t.see('10 cells')
         t.click('First-line indent',t.see('First-line indent'));t.keys('C-u');t.type('3');t.keys('Enter');t.see('3 cells')
         assert cfg()['paragraph_indent']==3
-        assert compact_row(t.see('Compact blocks'), True) and spacing_saved(True, None)
+        assert compact_row(t.see('Compact blocks'), True) and spacing_saved(True, 0)
         t.click('Paragraph spacing', t.see('Paragraph spacing'))
         t.click('0 blank lines', t.see('0 blank lines'))
         t.wait('Zero paragraph gap with compact blocks enabled', lambda f: compact_row(f, True) and spacing_saved(True, 0))

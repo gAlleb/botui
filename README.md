@@ -301,7 +301,9 @@ The highlight and comment editor offers all ten BookOrbit preset colors, with co
 
 **Space a a** opens the searchable list of highlights and notes. Select an entry to see its text and position in the book/section or its page number; use **Go**, **Edit**, **Color**, **Delete** or **Export**. **Space a p** adds a page note to a fixed-page document. Notes and highlights remain available locally. When you open an edition from a connected BookOrbit shelf, BOTUI synchronizes passage comments, colors and deletions in both directions: text uses exact CFI ranges, and PDF text highlights use page coordinates. Changes made offline are sent when you reopen that edition through BookOrbit. **Space a s** shows synchronization status and offers **Sync now / retry unconfirmed uploads**.
 
-In an open book, choose **F2 → Reader → S This book** for edition-specific settings. EPUB and FB2 support page width, first-line indent and paragraph spacing. EPUB also supports compact blocks. Markdown has page width. Fixed pages have separate reading theme and page colors, except comics. **Use global** inherits future changes to a setting; **From book** uses publisher spacing in that edition. Reset all overrides with **Use global settings for this book**. The quick page-width control updates an edition with a custom width. With a custom fixed-page palette or color mode, **Space t** saves your changes to that edition.
+A new profile opens text books at full width with Zen off, left alignment and no extra blank lines between paragraphs. **F2 → Reader** groups reading controls, text books, PDF and DjVu, comics and SyncTeX.
+
+Open **F2 → Reader → S This book** to set the reading theme and layout for one edition. Text books also have alignment and heading rules. In EPUB and FB2 you can enable **Word hyphenation (EN/RU)** for ordinary prose, and adjust width, first-line indent and paragraph spacing. EPUB supports compact blocks. **Use global** restores inheritance. The quick theme and layout controls save the current book. **Space l w → A** previews alignment over the text.
 
 From the start screen, press **A** for **Highlights & notes**. Type a book filename, quote or comment to find annotations saved on this device. Enter or click a result to open its passage in the matching edition. Annotations from unavailable files can still be read in the list.
 
@@ -536,8 +538,8 @@ synctex_botui_terminal = []
 # Space between PDF/DjVu/comic pages in a spread (0–32 terminal cells).
 scan_gap = 2
 # Preferred width of one text page and the space between facing pages, in terminal cells.
-# page_width = 78 # 0 uses the full available column
-# text_alignment = "book" # book, left, right, center, justify
+page_width = 0 # 0 uses the full available column
+text_alignment = "left" # book, left, right, center, justify
 # heading_rules = false
 # hyphenation = false # English and Russian prose
 column_gap = 4
@@ -546,7 +548,7 @@ paragraph_indent = 0
 # Preserve book spacing in compact EPUB blocks when a paragraph interval is set.
 preserve_compact_spacing = true
 # Blank lines between paragraphs (0, 1 or 2). Omit to follow the book.
-# paragraph_spacing = 1
+paragraph_spacing = 0
 # Default layout for books without a saved mode: auto, single, spread, scroll.
 reading_layout = "auto"
 opaque_background = false
