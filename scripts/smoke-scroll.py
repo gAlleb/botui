@@ -18,8 +18,12 @@ def saved(d):
     for p in d.rglob('*.json'):
         val=json.loads(p.read_text())
         if isinstance(val,dict) and 'spread' in val and 'block' in val:return val
-def text_scroll(d):
+def text_scroll(d, keep_word=False):
     d.mkdir();file=d/'scroll.fb2'
+    if keep_word:
+        config = d/'config/botui'
+        config.mkdir(parents=True)
+        (config/'config.toml').write_text('pagination_mode = "keep_word"\n')
     file.write_text('<FictionBook><body><section>'+''.join(f'<p>Passage {i:03}.</p>' for i in range(100))+'</section></body></FictionBook>')
     t=start(d,file)
     try:
@@ -31,17 +35,20 @@ def text_scroll(d):
         wheel(t,65);t.wait('Wheel defaults to exactly one line',lambda a:a==second)
         t.keys('PageDown');last=t.wait('Page scroll advances',lambda a:first[2] not in a and 'Passage' in a)
         at=re.findall(r'Passage \d+',last)[0]
+        spread_top = at if keep_word else first[0]
         t.keys('Space', 'l', '2')
-        t.wait('Spread starts at the scroll position', lambda f:
-               re.findall(r'Passage \d+', f)[:1] == [at]
+        t.wait('Spread shows the scroll passage on the expected page', lambda f:
+               at in f and re.findall(r'Passage \d+', f)[:1] == [spread_top]
                and any('Passage ' in row[len(row)//2:] for row in f.splitlines()))
         t.keys('Space', 'l', '3')
-        t.wait('Scroll restores the source passage', lambda f:
-               re.findall(r'Passage \d+', f)[:1] == [at]
+        t.wait('Scroll starts at the visible top of the spread', lambda f:
+               re.findall(r'Passage \d+', f)[:1] == [spread_top]
                and f.rstrip().splitlines()[-1].lstrip().startswith('Scroll '))
         stop(t)
         assert saved(d)['scrolling']
-        t=start(d,file);t.see(at)
+        t=start(d,file)
+        t.wait('Reopened scroll view retains its first passage', lambda f:
+               re.findall(r'Passage \d+', f)[:1] == [spread_top])
         for _ in range(18):t.keys('PageDown')
         t.see('Passage 099');stop(t);assert saved(d)['finished']
     finally:t.run('kill-server',required=False)
@@ -195,7 +202,13 @@ sys.stdout.buffer.write(b'P6\\n20 30\\n255\\n'+bytes([value])*1800)
 
 if __name__=='__main__':
     with tempfile.TemporaryDirectory(prefix='botui-flow-') as tmp:
-        d=Path(tmp);slow_jump(d/'jump');damaged_sheet_and_search(d/'mixed');text_scroll(d/'text');configured_wheel(d/'wheel');pdf=d/'pages.pdf';pdf.write_bytes(s.pdf(True));scan_scroll(d/'pdf',pdf)
+        d=Path(tmp)
+        slow_jump(d/'jump')
+        damaged_sheet_and_search(d/'mixed')
+        text_scroll(d/'text')
+        text_scroll(d/'keep-word', keep_word=True)
+        configured_wheel(d/'wheel')
+        pdf=d/'pages.pdf';pdf.write_bytes(s.pdf(True));scan_scroll(d/'pdf',pdf)
         if shutil.which('c44') and shutil.which('djvm'):
             sheets=[]
             for i,color in enumerate((76,204,128)):
