@@ -52,6 +52,11 @@ def check(binary, directory):
                 if b'\x1b[5n' in chunk:
                     os.write(terminal, b'\x1b_Gi=31;OK\x1b\\\x1b[6;24;12t\x1b[0n')
             elif data.endswith(b'\x1b[?2026l') and time.monotonic() - last > .025:
+                for header in re.findall(rb'\x1b_G([^;]*a=T[^;]*);', data):
+                    fields = dict(p.split(b'=', 1) for p in header.split(b',') if b'=' in p)
+                    if fields.get(b'U') == b'1':
+                        w, h, cols, rows = (int(fields[k]) for k in (b's', b'v', b'c', b'r'))
+                        assert w * rows * 24 == h * cols * 12, 'Kitty would letterbox the page'
                 uploads = len(re.findall(rb'a=[Tt][^;]*s=\d+', data))
                 # Count source-image payload separately from repeated viewport traffic.
                 # The portrait test page is now rasterized for the terminal's pixel width.

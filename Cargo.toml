@@ -28,3 +28,7 @@ opt-level = 3
 # Scans, cover thumbnails and inline figures share the image resampler.
 [profile.release.package.image]
 opt-level = 3
+
+# Keep full-page resampling off the critical path in interactive debug builds.
+[profile.dev.package.image]
+opt-level = 3

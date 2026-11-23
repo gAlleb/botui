@@ -86,7 +86,10 @@ def scan_scroll(d,file):
             if '::::::::' in a and '########' in a:
                 both=True;break
         assert both,('No sheet transition',file.suffix,samples)
-        assert '········' in a, 'No dotted separator between physical sheets'
+        assert '········' not in a, 'Default scroll gap must join physical sheets'
+        t.keys('Space','l','w');t.see('Scroll gap: 0 rows')
+        t.keys(']','Enter')
+        a=t.wait('One-row gap between sheets',lambda f:'········' in f and '::::::::' in f and '########' in f)
         t.keys('Down');one=t.wait('One scan line',lambda f:f!=a and '········' in f)
         t.keys('Up');t.wait('Scan line restored',lambda f:f==a)
         wheel(t,65);t.wait('PDF/DjVu wheel equals one scan line',lambda f:f==one)

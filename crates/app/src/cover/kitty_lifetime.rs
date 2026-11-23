@@ -172,7 +172,31 @@ pub(super) fn new_sliced(
         });
     }
     let managed = if scan {
-        // Scan windows scale a bounded source raster in the terminal.
+        // Kitty preserves the upload's aspect ratio inside a virtual placement.
+        // Match the pixel aspect of its whole-cell box, or rounding the page
+        // height up to rows leaves a transparent strip below the final pixels.
+        let font = picker.font_size();
+        let width = u32::from(size.width) * u32::from(font.width.max(1));
+        let height = u32::from(size.height) * u32::from(font.height.max(1));
+        let (mut gcd, mut remainder) = (width, height);
+        while remainder != 0 {
+            (gcd, remainder) = (remainder, gcd % remainder);
+        }
+        let (unit_w, unit_h) = (width / gcd, height / gcd);
+        let units = gcd
+            .min(image.width() / unit_w)
+            .min(image.height() / unit_h)
+            .max(1);
+        let (w, h) = (unit_w * units, unit_h * units);
+        if u64::from(w) * u64::from(h) > 8_000_000 {
+            // draw_strip falls back to rendering just the visible window.
+            return Err(io::Error::other("Scan placement exceeds the raster budget").into());
+        }
+        let image = if image.width() == w && image.height() == h {
+            image
+        } else {
+            image.resize_exact(w, h, image::imageops::FilterType::Triangle)
+        };
         kitty(picker, image, size)?
     } else {
         let managed = new_protocol(picker, image, size, resize)?;

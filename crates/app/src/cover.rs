@@ -486,12 +486,16 @@ impl Picture {
                 .min(u64::from(h)) as u32;
             *cache = Some((
                 key,
-                Box::new(Self::new(self.source.crop_imm(
-                    x,
-                    y,
-                    cw,
-                    end.saturating_sub(y).max(1),
-                ))),
+                Box::new(self.scaled_window(
+                    [
+                        x as f32 / w as f32,
+                        y as f32 / h as f32,
+                        (x + cw) as f32 / w as f32,
+                        end as f32 / h as f32,
+                    ],
+                    area.as_size(),
+                    picker,
+                )),
             ));
         }
         if let Some((_, page)) = &*cache {

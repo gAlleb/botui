@@ -408,7 +408,7 @@ synctex_botui_terminal = []
 # Space between PDF/DjVu/comic pages in a spread (0–32 terminal cells).
 scan_gap = 2
 # Blank rows between continuous pages. Set 0 to join their edges.
-scan_scroll_gap = 1
+scan_scroll_gap = 0
 # Preferred width of one text page and the space between facing pages, in terminal cells.
 page_width = 0 # 0 uses the full available column
 text_alignment = "left" # book, left, right, center, justify

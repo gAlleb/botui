@@ -118,7 +118,7 @@ pub(super) fn read_pages(
     let initial_zoom = crop.percent;
     let mut source_job: Option<crate::shelf::background::Ticket<io::Result<String>>> = None;
     let mut reveal: Option<botui_store::PdfRegion> = None;
-    let mut scroll_gap = prefs.scan_scroll_gap.unwrap_or(1).min(32);
+    let mut scroll_gap = prefs.scan_scroll_gap.unwrap_or(0).min(32);
     let mut gap = prefs.scan_gap.unwrap_or(2).min(32);
     let mut dialog: Option<controls::Dialog> = None;
     let saved = store.as_ref().and_then(|s| {
