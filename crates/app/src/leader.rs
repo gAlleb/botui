@@ -14,6 +14,7 @@ pub enum Context {
     Text,
     Markdown,
     Pdf,
+    Djvu,
     Images,
     Shelf,
 }
@@ -178,16 +179,10 @@ fn entries(context: Context, path: &str) -> Vec<Entry> {
         _ => vec![
             key('c', "Text cursor / Vim", F(7)),
             key('m', "Reading menu", Char('M')),
-            Entry {
-                key: 'P',
-                label: "Print document…",
-                command: Some(Command::Print),
-                group: "",
-            },
             key(
                 'o',
                 "Contents",
-                if matches!(context, Context::Pdf | Context::Images) {
+                if matches!(context, Context::Pdf | Context::Djvu | Context::Images) {
                     Tab
                 } else {
                     Char('O')
@@ -204,7 +199,7 @@ fn entries(context: Context, path: &str) -> Vec<Entry> {
             key(
                 't',
                 "Theme / page colors",
-                if matches!(context, Context::Pdf | Context::Images) {
+                if matches!(context, Context::Pdf | Context::Djvu | Context::Images) {
                     Char('V')
                 } else {
                     Char('T')
@@ -215,6 +210,17 @@ fn entries(context: Context, path: &str) -> Vec<Entry> {
             key('q', "Back to library", Char('Q')),
         ],
     };
+    if context == Context::Pdf && path.is_empty() {
+        items.insert(
+            2,
+            Entry {
+                key: 'P',
+                label: "Print document…",
+                command: Some(Command::Print),
+                group: "",
+            },
+        );
+    }
     if context == Context::Markdown && path == "reading" {
         items.insert(0, key('v', "Formatted / source", F(9)));
     }

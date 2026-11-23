@@ -219,11 +219,14 @@ pub(super) fn read_pages(
     let image_only = plates.is_some();
     let leader_context = if image_only {
         crate::leader::Context::Images
-    } else {
+    } else if selectable {
         crate::leader::Context::Pdf
+    } else {
+        crate::leader::Context::Djvu
     };
     let menu_items: Vec<_> = menu::ITEMS
         .iter()
+        .filter(|(_, _, action)| *action != 47 || selectable)
         .filter(|(_, _, action)| *action != 46 || watch.is_some())
         .filter(|(_, _, action)| !image_only || !matches!(action, 16 | 17 | 37 | 38))
         .collect();
@@ -1189,7 +1192,7 @@ pub(super) fn read_pages(
             };
             e = scope.event(e);
         }
-        let print_requested = !text.expects_mark() && crate::print::shortcut(&e);
+        let print_requested = selectable && !text.expects_mark() && crate::print::shortcut(&e);
         let source_click = match &e {
             Event::Mouse(m)
                 if m.kind == MouseEventKind::Down(MouseButton::Left)
@@ -1561,7 +1564,7 @@ pub(super) fn read_pages(
                 }
             }
             47 => {
-                if let Err(e) = crate::print::document(path, plates.as_deref()) {
+                if let Err(e) = crate::print::pdf(path) {
                     crate::prompt::message(term, "Print document", &e.to_string())?;
                 }
             }

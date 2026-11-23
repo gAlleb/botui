@@ -10,7 +10,7 @@
 - Copy inline MathML fraction bars and select individual digits in exponents.
 - Join scrolling PDF pages edge to edge by default at every zoom level.
 - Keep PDF text stationary while selecting, request sharper page images and adjust continuous page spacing down to zero.
-- Open the system print dialog for the whole document with Ctrl+P, Space P, or Print document near the top of the reading menu.
+- Open the system print dialog for the original PDF with Ctrl+P, Space P, or Print document near the top of the reading menu.
 - Open PDF files from desktop applications with a launcher that preserves Kitty font settings and filenames containing spaces.
 
 ## 0.1.26 — 2026-11-21

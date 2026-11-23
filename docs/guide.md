@@ -164,7 +164,7 @@ In zen mode, **Space p** shows or hides the reading frame and progress. Hiding t
 | `Space o` | Contents |
 | `Space z` | Zen mode |
 | `Space p` | Show/hide frame and progress in zen |
-| `Space P` / `Ctrl+P` | Print the whole document |
+| `Space P` / `Ctrl+P` | Print the whole PDF |
 | `Space f` | Find in book |
 | `Space b a` | Add/remove bookmark |
 | `Space b l` | Bookmark list |

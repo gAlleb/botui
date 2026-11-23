@@ -51,7 +51,6 @@ enum Action {
     HideSearch,
     Note,
     Export,
-    Print,
     Statistics,
     Resources,
     Cover,
@@ -87,9 +86,8 @@ enum Action {
     Resize,
 }
 
-const COMMANDS: [Action; 34] = [
+const COMMANDS: [Action; 33] = [
     Action::Resume,
-    Action::Print,
     Action::Previous,
     Action::Next,
     Action::Single,
@@ -894,7 +892,6 @@ impl Reader {
                 Action::Note => ("Comment on selected text".into(), "Space a n"),
                 Action::Navigate(Kind::Notes) => ("Highlights & notes".into(), "Space a a"),
                 Action::Export => ("Export notes to Markdown".into(), "Space a e"),
-                Action::Print => ("Print document…".into(), "Ctrl+P"),
                 Action::Statistics => ("Reading statistics".into(), "Space r s"),
                 Action::Settings => ("Settings".into(), "F2"),
                 Action::Help => ("Keyboard shortcuts".into(), "F1"),
@@ -1417,7 +1414,6 @@ impl Reader {
             | Action::Alignment
             | Action::Settings
             | Action::Help
-            | Action::Print
             | Action::Statistics
             | Action::Note
             | Action::Study(_)
@@ -1855,7 +1851,6 @@ pub fn read_server(
                     let action = match command {
                         Some(L::Key(KeyCode::F(10))) => Some(Action::AnnotationSync),
                         Some(L::Key(KeyCode::Char('N'))) => Some(Action::Note),
-                        Some(L::Print) => Some(Action::Print),
                         Some(L::OpenTable) => Some(Action::OpenTable),
                         Some(L::Dictionary) => Some(Action::Study(study::Command::Lookup)),
                         Some(L::Translate) => Some(Action::Study(study::Command::Translate)),
@@ -1897,14 +1892,6 @@ pub fn read_server(
                 } else {
                     Scope::Reading.event(e)
                 };
-                if reader.nav.is_none()
-                    && reader.palette.is_none()
-                    && reader.layout_panel.is_none()
-                    && !reader.study.expects_literal()
-                    && crate::print::shortcut(&e)
-                {
-                    break Action::Print;
-                }
                 if reader.menu.is_none()
                     && reader.nav.is_none()
                     && reader.palette.is_none()
@@ -2099,13 +2086,6 @@ pub fn read_server(
             if action == Action::OpenTable {
                 reader.menu = None;
                 table_view::open(term, &reader)?;
-                continue;
-            }
-            if action == Action::Print {
-                reader.menu = None;
-                if let Err(e) = crate::print::document(path, None) {
-                    crate::prompt::message(term, "Print document", &e.to_string())?;
-                }
                 continue;
             }
             if action == Action::Statistics {

@@ -31,7 +31,7 @@ pub(super) fn entries(ctx: Context, p: &Settings) -> Vec<Entry> {
     ));
     let context = match ctx {
         Context::Text => crate::leader::Context::Text,
-        Context::Scan => crate::leader::Context::Pdf,
+        Context::Scan => crate::leader::Context::Djvu,
         _ => crate::leader::Context::Shelf,
     };
     rows.extend(
@@ -118,7 +118,6 @@ pub(super) fn entries(ctx: Context, p: &Settings) -> Vec<Entry> {
                 "EPUB, FB2 & Markdown · reading without cursor",
                 &[
                     ("Q", "Close book and return to its source"),
-                    ("Ctrl+P / Space P", "Print the whole document"),
                     ("← / → · PgUp / PgDn", "Previous / next page"),
                     (
                         "h j k l / arrows",
@@ -158,7 +157,7 @@ pub(super) fn entries(ctx: Context, p: &Settings) -> Vec<Entry> {
                 "PDF, DjVu & comics · reading without cursor",
                 &[
                     ("Q", "Close book and return to its source"),
-                    ("Ctrl+P / Space P", "Print the whole document"),
+                    ("Ctrl+P / Space P", "Print the whole PDF (PDF only)"),
                     (
                         "← / → · PgUp / PgDn",
                         "Navigate pages; arrows pan a zoomed page",
@@ -199,7 +198,7 @@ pub(super) fn entries(ctx: Context, p: &Settings) -> Vec<Entry> {
             let context = if c == Context::Text {
                 crate::leader::Context::Text
             } else {
-                crate::leader::Context::Pdf
+                crate::leader::Context::Djvu
             };
             rows.extend(
                 crate::leader::help(context)
