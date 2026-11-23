@@ -142,10 +142,17 @@ When opening a file directly, **q** returns to its folder with the book selected
 
 If you want a desktop file - you can create one with fine-tweaked font like `Iosevka Term Slab`:
 
+Install the launcher in a directory on your graphical session’s PATH, then save the desktop entry.
+
 ```sh
+install -Dm755 scripts/botui-open "$HOME/.local/bin/botui-open"
+```
+
+```ini
 [Desktop Entry]
 Name=botui
-Exec=kitty --class=botui -o "font_family=family=\\"Iosevka Term Slab\\" style=\\"Extended Italic\\"" -o "bold_font=family=\\"Iosevka Term Slab\\" style=\\"Bold Extended\\"" -o "italic_font=family=\\"Iosevka Term Slab\\" style=\\"Extended Italic\\"" -o "bold_italic_font=family=\\"Iosevka Term Slab\\" style=\\"Bold Extended Italic\\"" -o font_size=18 -o window_margin_width=0 --title=botui -e botui %F
+Exec=botui-open %f
+MimeType=application/pdf;application/epub+zip;
 Type=Application
 Terminal=false
 Icon=books

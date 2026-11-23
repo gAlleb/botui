@@ -142,10 +142,17 @@ botui --resume                 # Продолжить последнюю нез�
 
 Если хотите desktop файл - можете создать его с более точной настройкой шрифтов, например с `Iosevka Term Slab`:
 
+Установите скрипт в каталог из PATH графического сеанса, затем сохраните desktop-файл.
+
 ```sh
+install -Dm755 scripts/botui-open "$HOME/.local/bin/botui-open"
+```
+
+```ini
 [Desktop Entry]
 Name=botui
-Exec=kitty --class=botui -o "font_family=family=\\"Iosevka Term Slab\\" style=\\"Extended Italic\\"" -o "bold_font=family=\\"Iosevka Term Slab\\" style=\\"Bold Extended\\"" -o "italic_font=family=\\"Iosevka Term Slab\\" style=\\"Extended Italic\\"" -o "bold_italic_font=family=\\"Iosevka Term Slab\\" style=\\"Bold Extended Italic\\"" -o font_size=18 -o window_margin_width=0 --title=botui -e botui %F
+Exec=botui-open %f
+MimeType=application/pdf;application/epub+zip;
 Type=Application
 Terminal=false
 Icon=books

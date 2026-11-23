@@ -1,0 +1,9 @@
+#!/bin/sh
+# Desktop file managers pass one local filename per invocation.
+if [ "$#" -gt 0 ]; then set -- -- "$@"; fi
+exec kitty --class=botui --title=botui \
+    -o 'font_family=family="Iosevka Term Slab" style="Extended Italic"' \
+    -o 'bold_font=family="Iosevka Term Slab" style="Bold Extended"' \
+    -o 'italic_font=family="Iosevka Term Slab" style="Extended Italic"' \
+    -o 'bold_italic_font=family="Iosevka Term Slab" style="Bold Extended Italic"' \
+    -o font_size=18 -o window_margin_width=0 -e botui "$@"

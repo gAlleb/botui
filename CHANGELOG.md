@@ -8,6 +8,7 @@
 - Copy inline MathML fraction bars and select individual digits in exponents.
 - Keep PDF text stationary while selecting, request sharper page images and adjust continuous page spacing down to zero.
 - Print a whole document from its reading menu using the system print dialog.
+- Open PDF files from desktop applications with a launcher that preserves Kitty font settings and filenames containing spaces.
 
 ## 0.1.26 — 2026-11-21
 
