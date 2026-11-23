@@ -411,7 +411,7 @@ pub struct Pager {
     /// Views around an exact search or resume position, until paging back rejoins
     /// the regular layout at an overlapping boundary.
     positioned_spreads: Vec<usize>,
-    backward_bounds: std::collections::BTreeMap<usize, pagination::BackwardView>,
+    backward_bounds: std::collections::BTreeMap<usize, [usize; 3]>,
     figure_starts: Vec<(usize, Figure)>,
     first: usize,
     focus: Anchor,

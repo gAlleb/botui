@@ -4,7 +4,7 @@
 
 - Highlight only the selected setting in F2 Reader.
 - Show Main menu (M) and Quit (Ctrl+Q) in the library for direct files, normal launches and catalog shelves.
-- Fit standalone illustrations above the text when paging back from a saved word, filling either column and keeping the picture whole.
+- Keep the normal size of illustrations and use forward page breaks for earlier text when paging back from a saved word.
 - Keep the first visible word when switching reading modes. Page back without repeats until the chapter opening, then resume regular pagination.
 - Start new reader profiles at full width with Zen off, left alignment and no extra blank lines between paragraphs. Group Reader settings by purpose and format. Keep EPUB table headers and data rows compact.
 - Remember each book’s reading theme, layout, alignment and heading rules. Preview alignment over the book and optionally hyphenate English and Russian prose.

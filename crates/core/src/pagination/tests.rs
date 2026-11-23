@@ -497,3 +497,52 @@ fn optional_prose_hyphenation_preserves_source_text_and_clicks() {
         assert_eq!(doc.clipboard_text(range), text);
     }
 }
+
+#[test]
+fn an_exact_reading_position_does_not_shorten_prose_at_earlier_illustrations() {
+    let doc = Document {
+        blocks: (0..280)
+            .map(|i| Block {
+                heading: false,
+                text: format!("Passage {i}."),
+            })
+            .collect(),
+        references: [17, 52, 101, 143, 191, 231]
+            .into_iter()
+            .map(|source| Reference {
+                source,
+                bytes: None,
+                backlink: false,
+                label: "Plate".into(),
+                target: Target::Image("plate.png".into()),
+            })
+            .collect(),
+        ..Default::default()
+    };
+    for mode in [LayoutMode::Single, LayoutMode::Spread] {
+        let mut pager = Pager::new(&doc, 92, 16, mode);
+        for block in 245..262 {
+            pager.seek(Anchor { block, byte: 0 });
+            let mut short_prose_columns = 0;
+            while pager.first > 0 {
+                pager.previous();
+                let view = pager.complete_view();
+                for col in 0..view.columns() {
+                    let lines = view.lines(col);
+                    let next = view.bounds[col + 1];
+                    if pager.first != 0
+                        && lines.len() < pager.viewport()
+                        && lines.last().is_some_and(|line| line.figures.is_empty())
+                        && pager.lines[next].figures.is_empty()
+                    {
+                        short_prose_columns += 1;
+                    }
+                }
+            }
+            assert!(
+                short_prose_columns <= 1,
+                "{mode:?} at {block}: {short_prose_columns}"
+            );
+        }
+    }
+}

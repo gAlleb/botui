@@ -847,7 +847,7 @@ fn paging_back_from_a_citation_fills_prose_and_keeps_the_marker_whole() {
 }
 
 #[test]
-fn paging_back_from_epub_text_fills_columns_and_keeps_standalone_pictures_whole() {
+fn paging_back_from_epub_text_preserves_picture_dimensions_and_the_saved_word() {
     use botui_core::{Anchor, LayoutMode, Pager, ReflowOptions};
     let passages = |label| {
         (0..32)
@@ -873,7 +873,24 @@ fn paging_back_from_epub_text_fills_columns_and_keeps_standalone_pictures_whole(
         paragraph_spacing: Some(0),
     };
     for mode in [LayoutMode::Single, LayoutMode::Spread] {
-        let mut fitted_columns = [false; 2];
+        let mut forward = Pager::with_start(&doc, 90, 12, mode, options, None);
+        let natural_size = loop {
+            if let Some(figure) = (0..forward.columns())
+                .flat_map(|col| forward.lines(col))
+                .flat_map(|line| &line.figures)
+                .next()
+            {
+                break (figure.width, figure.height);
+            }
+            let old = forward.anchor();
+            forward.next();
+            assert_ne!(
+                forward.anchor(),
+                old,
+                "fixture must contain an illustration"
+            );
+        };
+        let mut saw_picture = [false; 2];
         for label in ["Chapter line", "After picture"] {
             for n in 1..30 {
                 let query = format!("{label} {n}.");
@@ -892,9 +909,11 @@ fn paging_back_from_epub_text_fills_columns_and_keeps_standalone_pictures_whole(
                 {
                     continue;
                 }
-                for (col, fitted) in fitted_columns.iter_mut().enumerate().take(pager.columns()) {
+                for (col, seen) in saw_picture.iter_mut().enumerate().take(pager.columns()) {
                     let lines = pager.lines(col);
-                    assert_eq!(lines.len(), 12, "{mode:?} {query} column {col}");
+                    if label == "Chapter line" {
+                        assert_eq!(lines.len(), 12, "{mode:?} {query} column {col}");
+                    }
                     let parts: Vec<_> = lines.iter().flat_map(|line| &line.figures).collect();
                     if let Some(first) = parts.first() {
                         assert_eq!(parts.len(), usize::from(first.height));
@@ -902,7 +921,8 @@ fn paging_back_from_epub_text_fills_columns_and_keeps_standalone_pictures_whole(
                             assert_eq!(part.row as usize, row);
                             assert_eq!(part.height, first.height);
                         }
-                        *fitted |= first.height < 6;
+                        assert_eq!((first.width, first.height), natural_size);
+                        *seen = true;
                     }
                 }
                 let last = pager.lines(pager.columns() - 1).last().unwrap();
@@ -913,7 +933,7 @@ fn paging_back_from_epub_text_fills_columns_and_keeps_standalone_pictures_whole(
             }
         }
         let columns = if mode == LayoutMode::Spread { 2 } else { 1 };
-        assert!(fitted_columns[..columns].iter().all(|&found| found));
+        assert!(saw_picture[..columns].iter().all(|&found| found));
     }
 }
 

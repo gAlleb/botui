@@ -156,7 +156,7 @@ pub(super) fn bare(line: &PageLine) -> bool {
         && line.spans.iter().all(|s| s.source.is_none())
 }
 
-pub(super) fn standalone_figure(first: &PageLine, following: &[PageLine]) -> Option<super::Figure> {
+fn standalone_figure(first: &PageLine, following: &[PageLine]) -> Option<super::Figure> {
     let [figure] = first.figures.as_slice() else {
         return None;
     };

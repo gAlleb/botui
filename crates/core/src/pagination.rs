@@ -305,52 +305,6 @@ impl PageLine {
 }
 
 impl Layout {
-    /// Fill the column ending at an exact position without moving its final word.
-    fn previous_column(
-        self,
-        rows: &[PageLine],
-        chapter_start: usize,
-        end: usize,
-    ) -> (usize, Option<Vec<PageLine>>) {
-        let limit = end.saturating_sub(self.height).max(chapter_start);
-        // Fit a standalone illustration into the rows left above the prose.
-        // Keep the original row indices for navigation and source positions.
-        if let Some(line) = rows[limit..end].first()
-            && let [part] = line.figures.as_slice()
-            && part.row > 0
-            && let Some(top) = limit.checked_sub(usize::from(part.row))
-            && top >= chapter_start
-            && let Some(figure) = media::standalone_figure(&rows[top], &rows[top + 1..end])
-        {
-            let height = figure.height - part.row;
-            let mut fitted = rows[limit..end].to_vec();
-            for (i, line) in fitted[..usize::from(height)].iter_mut().enumerate() {
-                line.figures[0].row = i as u16;
-                line.figures[0].height = height;
-            }
-            return (top, Some(fitted));
-        }
-        let mut start = limit;
-        while start < end {
-            let mut after = start;
-            for (row, height) in rows[start].indivisible_blocks() {
-                if row > 0 && usize::from(height) <= self.height {
-                    let bottom = start + usize::from(height - row);
-                    if bottom >= end {
-                        // The reading position is in the image or in an overlapping float.
-                        return (limit, None);
-                    }
-                    after = after.max(bottom);
-                }
-            }
-            if after == start {
-                break;
-            }
-            start = after;
-        }
-        (start, None)
-    }
-
     /// Find a column break without cutting an illustration that fits on a fresh page.
     fn page_end(self, rows: &[PageLine], first: usize) -> usize {
         let limit = (first + self.height).min(rows.len());
@@ -386,16 +340,10 @@ impl Layout {
     }
 }
 
-pub(super) struct BackwardView {
-    bounds: [usize; 3],
-    fitted: [Option<Vec<PageLine>>; 2],
-}
-
 /// The exact rows currently visible in the reading pane, including both pages of a spread.
 pub struct Viewport<'a> {
     layout: Layout,
     rows: &'a [PageLine],
-    fitted: [Option<&'a [PageLine]>; 2],
     bounds: [usize; 3],
 }
 impl<'a> Viewport<'a> {
@@ -411,7 +359,6 @@ impl<'a> Viewport<'a> {
         Self {
             layout,
             rows,
-            fitted: [None; 2],
             bounds,
         }
     }
@@ -431,8 +378,7 @@ impl<'a> Viewport<'a> {
         if column >= self.layout.columns {
             return &[];
         }
-        self.fitted[column]
-            .unwrap_or_else(|| &self.rows[self.bounds[column]..self.bounds[column + 1]])
+        &self.rows[self.bounds[column]..self.bounds[column + 1]]
     }
 }
 
@@ -500,7 +446,7 @@ impl Pager {
         if self.layout.scrolling
             || self.layout.height == 0
             || self.first == 0
-            || (!self.book.has_figures && self.regular_views().binary_search(&self.first).is_ok())
+            || self.regular_views().binary_search(&self.first).is_ok()
             || (self.page_starts.is_empty()
                 && self.first.is_multiple_of(columns * self.layout.height))
         {
@@ -509,44 +455,16 @@ impl Pager {
 
         let chapter = self.chapter_rows.partition_point(|&r| r <= self.first);
         let chapter_start = chapter.checked_sub(1).map_or(0, |i| self.chapter_rows[i]);
-        let mut end = self.first;
-        while end > chapter_start {
-            let mut bounds = [end; 3];
-            let mut fitted = [None, None];
-            for col in (0..columns).rev() {
-                (bounds[col], fitted[col]) =
-                    self.layout
-                        .previous_column(&self.lines, chapter_start, bounds[col + 1]);
-            }
-            if columns == 1 {
-                bounds[2] = bounds[0];
-            }
-            let start = bounds[0];
-            self.positioned_spreads.push(start);
-            let regular = Viewport::new(self.layout, &self.lines, start);
-            // At the opening prefer ordinary pages, unless resetting there
-            // would skip content between that spread and the saved word.
-            let keep_bounds = if start == chapter_start {
-                regular.end() < end
-            } else {
-                fitted.iter().any(Option::is_some) || regular.bounds != bounds
-            };
-            if keep_bounds {
-                self.backward_bounds
-                    .insert(start, BackwardView { bounds, fitted });
-            }
-            end = start;
-        }
+        let regular = self.regular_views();
+        self.positioned_spreads =
+            regular[..regular.partition_point(|&r| r < chapter_start)].to_vec();
+        self.index_before_position(chapter_start);
+
         let regular = if columns == 2 {
             &self.spread_starts
         } else {
             &self.page_starts
         };
-        let prior = regular.partition_point(|&r| r < chapter_start);
-        self.positioned_spreads
-            .extend(regular[..prior].iter().rev().copied());
-        self.positioned_spreads.reverse();
-
         let mut start = self.first;
         while start < self.lines.len() {
             if let Ok(index) = regular.binary_search(&start) {
@@ -558,13 +476,78 @@ impl Pager {
         }
     }
 
+    fn index_before_position(&mut self, chapter: usize) {
+        // Keep a full column of source rows before the saved word whenever it
+        // fits. At the first indivisible block, join the chapter's forward
+        // page sequence. Reversing every earlier break would put the space
+        // for each illustration under prose on the following page.
+        let mut ends = vec![self.first];
+        let mut end = self.first;
+        while end > chapter {
+            let limit = end.saturating_sub(self.layout.height).max(chapter);
+            let mut start = limit;
+            while start < end {
+                let after = self.lines[start]
+                    .indivisible_blocks()
+                    .filter(|&(row, height)| row > 0 && usize::from(height) <= self.layout.height)
+                    .map(|(row, height)| start + usize::from(height - row))
+                    .max();
+                match after {
+                    Some(after) if after < end => start = after,
+                    Some(_) => {
+                        start = limit;
+                        break;
+                    }
+                    None => break,
+                }
+            }
+            ends.push(start);
+            if start != limit {
+                // The forward page containing the block ends at or after it.
+                // Clip that one page at its bottom; its pixels stay intact.
+                let from = self.page_starts.partition_point(|&r| r < chapter);
+                let to = self.page_starts.partition_point(|&r| r < start);
+                ends.extend(self.page_starts[from..to].iter().rev().copied());
+                break;
+            }
+            end = start;
+        }
+        if ends.last() != Some(&chapter) {
+            ends.push(chapter);
+        }
+        // Pair columns from the saved position. Only the chapter opening
+        // may overlap the next spread, then forward turns use ordinary pages.
+        let columns = self.layout.columns;
+        for i in (0..ends.len() - 1).step_by(columns).rev() {
+            let end = ends[i];
+            let start = ends[(i + columns).min(ends.len() - 1)];
+            self.positioned_spreads.push(start);
+            let normal = Viewport::new(self.layout, &self.lines, start);
+            if normal.end() == end || (start == chapter && normal.end() >= end) {
+                continue;
+            }
+            let middle = if columns == 1 {
+                end
+            } else {
+                let split = ends[i + 1];
+                // If the left page ends with a whole plate, keep the following
+                // prose together instead of moving its empty rows to the right.
+                if split > start && !self.lines[split - 1].figures.is_empty() {
+                    split
+                } else {
+                    normal.bounds[1].min(end)
+                }
+            };
+            self.backward_bounds.insert(start, [start, middle, end]);
+        }
+    }
+
     pub(super) fn view_at(&self, first: usize) -> Viewport<'_> {
-        if let Some(view) = self.backward_bounds.get(&first) {
+        if let Some(&bounds) = self.backward_bounds.get(&first) {
             Viewport {
                 layout: self.layout,
                 rows: &self.lines,
-                fitted: view.fitted.each_ref().map(Option::as_deref),
-                bounds: view.bounds,
+                bounds,
             }
         } else {
             Viewport::new(self.layout, &self.lines, first)
