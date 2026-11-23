@@ -485,27 +485,32 @@ pub fn show_book(
                             .collect::<Vec<_>>(),
                         body.width,
                     );
-                    let items = labels.iter().zip(columns).map(|(row, label)| {
-                        let mut lines = Vec::with_capacity(2);
-                        if let Some(section) = row.section {
-                            lines.push(ratatui::text::Line::styled(
-                                section,
-                                appearance::CURRENT_SECTION,
-                            ));
-                        }
-                        lines.push(ratatui::text::Line::raw(label));
-                        ratatui::widgets::ListItem::new(lines)
-                    });
+                    let selected = state.selected();
+                    let items = labels
+                        .iter()
+                        .zip(columns)
+                        .enumerate()
+                        .map(|(i, (row, label))| {
+                            let mut lines = Vec::with_capacity(2);
+                            if let Some(section) = row.section {
+                                lines.push(ratatui::text::Line::styled(
+                                    section,
+                                    appearance::CURRENT_SECTION,
+                                ));
+                            }
+                            let mut line = ratatui::text::Line::raw(label);
+                            if selected == Some(i) {
+                                line = line.style(appearance::SELECTION);
+                            }
+                            lines.push(line);
+                            ratatui::widgets::ListItem::new(lines)
+                        });
                     let rows =
                         labels.len() + labels.iter().filter(|row| row.section.is_some()).count();
                     let hint_space = if tab == 1 && body.height >= 12 { 2 } else { 0 };
                     let mut list_area = body;
                     list_area.height = list_area.height.saturating_sub(hint_space);
-                    f.render_stateful_widget(
-                        List::new(items).highlight_style(appearance::SELECTION),
-                        list_area,
-                        &mut state,
-                    );
+                    f.render_stateful_widget(List::new(items), list_area, &mut state);
                     if (hint_space > 0 || body.height >= rows as u16 + 4)
                         && let Some(row) = state.selected().and_then(|i| labels.get(i))
                     {

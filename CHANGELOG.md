@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Highlight only the selected setting in F2 Reader.
 - Show Main menu (M) and Quit (Ctrl+Q) in the library for direct files, normal launches and catalog shelves.
 - Fit standalone illustrations above the text when paging back from a saved word, filling either column and keeping the picture whole.
 - Keep the first visible word when switching reading modes. Page back without repeats until the chapter opening, then resume regular pagination.

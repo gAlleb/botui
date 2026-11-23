@@ -75,6 +75,15 @@ def check(tmp):
         frame = t.see("Reading controls")
         for group in ("Text books", "PDF & DjVu", "Comics", "SyncTeX"):
             assert group in frame, group
+        def styled_row(label):
+            return next(line for line in t.run('capture-pane', '-e', '-p', '-t', 'shelf').stdout.splitlines() if label in line)
+        heading = styled_row("Reading controls")
+        selected = styled_row("Reader view")
+        t.keys('Down')
+        t.see('Choose one page, a spread')
+        assert styled_row("Reading controls") == heading
+        assert styled_row("Reader view") != selected
+        t.keys('Home')
         for index, hint in enumerate((
             'Zen shows just the page',
             'Choose one page, a spread',
