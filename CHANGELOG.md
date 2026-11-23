@@ -4,8 +4,7 @@
 
 - Highlight only the selected setting in F2 Reader.
 - Show Main menu (M) and Quit (Ctrl+Q) in the library for direct files, normal launches and catalog shelves.
-- Keep the normal size of illustrations and use forward page breaks for earlier text when paging back from a saved word.
-- Keep the first visible word when switching reading modes. Page back without repeats until the chapter opening, then resume regular pagination.
+- Paginate Single and Spread from the chapter start by default. Briefly mark the target word after a mode switch, resize, search or BookOrbit resume. The optional Keep first word setting keeps the visible word at the top across mode and size changes, then returns to whole chapter pages on the first backward turn.
 - Start new reader profiles at full width with Zen off, left alignment and no extra blank lines between paragraphs. Group Reader settings by purpose and format. Keep EPUB table headers and data rows compact.
 - Remember each book’s reading theme, layout, alignment and heading rules. Preview alignment over the book and optionally hyphenate English and Russian prose.
 - Copy inline MathML fraction bars and select individual digits in exponents.

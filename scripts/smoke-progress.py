@@ -113,22 +113,18 @@ def publisher_progress(tmp, server):
         "updatedAt": "2026-11-08T10:00:00.000Z",
         "text": {"cfi": f"epubcfi({cell_path}:{words.index(marker)})"},
     }
+    config = Path(tmp) / "config/botui/config.toml"
+    config.parent.mkdir(parents=True)
+    config.write_text('zen = true\nreading_layout = "scroll"\n')
     url = f"http://127.0.0.1:{server.server_port}/reader"
     t = s.Terminal(Path(tmp), s.ROOT / "target/debug/botui", url)
     try:
         s.login(t, url)
         t.keys("Enter")
         t.click("EPUB", s.formats(t))
-        t.see(marker)
-        t.keys('Space', 'z')
-        before = t.wait("Merged cell in clean reading view", lambda f: "Sections:" not in f and marker in f)
-        top_word = re.search(r'marker\d+', before)[0]
-        t.keys('Space', 'l', '3')
         first = t.wait(
-            f"BookOrbit position in a merged cell ({top_word})",
-            lambda frame: "Sections:" not in frame
-            and re.search(r"marker\d+", frame)
-            and re.search(r"marker\d+", frame)[0] == top_word,
+            f"BookOrbit position in a merged cell ({marker})",
+            lambda frame: bool(frame.strip()) and marker in frame.strip().splitlines()[0],
         )
         for _ in range(4):
             t.keys("j")
@@ -159,7 +155,7 @@ def publisher_progress(tmp, server):
     finally:
         t.run("kill-server", required=False)
 
-def illustration_progress(tmp, server):
+def illustration_progress(tmp, server, pagination):
     """A device-local picture refines only its matching BookOrbit text position."""
     markup = """<html xmlns="http://www.w3.org/1999/xhtml"><head><title>Picture resume</title></head>
       <body><h1>Opening chapter</h1><p>Local text before the plate.</p>
@@ -183,43 +179,58 @@ def illustration_progress(tmp, server):
     record.parent.mkdir(parents=True)
     config = root / "config/botui/config.toml"
     config.parent.mkdir(parents=True)
-    config.write_text('zen = true\nreading_layout = "single"\n')
+    config.write_text(f'zen = true\nreading_layout = "single"\npagination_mode = "{pagination}"\n')
     url = f"http://127.0.0.1:{server.server_port}/reader"
-    # In monochrome, a picture has a text label we can assert through tmux.
     args = ["NO_COLOR=1", str(s.ROOT / "target/debug/botui"), "--server", url]
     t = s.Terminal(root, Path("/usr/bin/env"), args=args)
     try:
         s.login(t, url)
         t.keys("Enter")
-        for node, hint, expected in [
-            ("4/1", [0, 0], "Illustration"),
-            ("10/1", [0, 0], "Other device starts here."),
-            ("4/1", None, "Local text before the plate."),
+        for node, offset, hint in [
+            ("4/1", 0, [0, 0]),
+            ("10/1", 6, [0, 0]),
+            ("4/1", 0, None),
         ]:
             local = {"version": 1, "block": 1, "byte": 0, "spread": False, "theme": "terminal"}
             if hint is not None:
                 local["illustration"] = hint
             record.write_text(json.dumps(local))
+            cfi = f"epubcfi(/6/2!/4/{node}:{offset})"
             server.progress[301] = {
                 "fileId": 301, "percentage": 20, "updatedAt": "2026-11-08T10:00:00.000Z",
-                "text": {"cfi": f"epubcfi(/6/2!/4/{node}:0)"},
+                "text": {"cfi": cfi},
             }
             t.click("EPUB", s.formats(t))
-            t.wait(expected, lambda f: "Text on later pages." in f and f.lstrip().startswith(expected))
+            page = t.see("Text on later pages.").strip()
+            if pagination == "chapter":
+                assert page.startswith("Opening chapter"), page
+                paragraphs = ["Local text before the plate.", "Text after illustration.", "Other device starts here."]
+                offsets = [page.index(text) for text in paragraphs]
+                assert offsets == sorted(offsets)
+            elif node == "10/1":
+                assert page.startswith("device starts here."), page
+            elif hint:
+                # The terminal may render graphics, a block mosaic or a label.
+                assert "Local text before the plate." not in page and "Text after illustration." in page, page
+            else:
+                assert page.startswith("Local text before the plate."), page
             t.keys("Space", "q")
             s.formats(t)
             assert not server.saved, server.saved
-            persisted = json.loads(record.read_text()).get("illustration")
-            assert persisted == (hint if node == "4/1" else None), persisted
+            assert server.progress[301]["text"]["cfi"] == cfi
+            persisted = json.loads(record.read_text())
+            assert (persisted["block"], persisted["byte"]) == (1 if node == "4/1" else 3, offset), persisted
+            assert persisted.get("illustration") == (hint if node == "4/1" else None), persisted
     finally:
         t.run("kill-server", required=False)
 
 
 if __name__=='__main__':
-    with tempfile.TemporaryDirectory() as tmp, s.Fixture(False) as server:
-        threading.Thread(target=server.serve_forever, daemon=True).start()
-        try: illustration_progress(tmp, server)
-        finally: server.shutdown()
+    for pagination in ("chapter", "keep_word"):
+        with tempfile.TemporaryDirectory() as tmp, s.Fixture(False) as server:
+            threading.Thread(target=server.serve_forever, daemon=True).start()
+            try: illustration_progress(tmp, server, pagination)
+            finally: server.shutdown()
     with tempfile.TemporaryDirectory() as tmp, s.Fixture(False) as server:
         threading.Thread(target=server.serve_forever, daemon=True).start()
         try: change_edition_during_save(tmp, server)

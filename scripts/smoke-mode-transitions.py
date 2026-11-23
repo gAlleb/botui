@@ -17,7 +17,7 @@ shelf = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(shelf)
 
 
-def start(directory, body, page_width=50):
+def start(directory, body, page_width=50, pagination_mode=None):
     directory.mkdir()
     config = directory / "config/botui"
     config.mkdir(parents=True)
@@ -25,6 +25,7 @@ def start(directory, body, page_width=50):
         'reading_layout = "single"\n'
         'zen = true\nzen_progress = true\n'
         f'page_width = {page_width}\npreserve_printed_lines = true\n'
+        + (f'pagination_mode = "{pagination_mode}"\n' if pagination_mode else "")
     )
     book = directory / "transitions.fb2"
     # The chapter boundary matters: it enables the block-aware page index.
@@ -69,7 +70,7 @@ def scrolled_middle(terminal):
 
 
 def mode_cycle(directory):
-    terminal = start(directory, paragraph_body(100))
+    terminal = start(directory, paragraph_body(100), pagination_mode="keep_word")
     try:
         frame = scrolled_middle(terminal)
         anchor = first_passage(frame)
@@ -92,7 +93,7 @@ def reflow_cycle(directory):
     # Full width in Single/Scroll and half width in Spread force actual word
     # wrapping. Preserve the source word, not an obsolete rendered row number.
     body = "<p>" + " ".join(f"W{number:04}" for number in range(1000)) + "</p>"
-    terminal = start(directory, body, page_width=0)
+    terminal = start(directory, body, page_width=0, pagination_mode="keep_word")
 
     def top_words(frame, spread=False):
         for row in frame.splitlines()[1:-1]:
@@ -127,7 +128,7 @@ def reflow_cycle(directory):
 
 
 def single_after_back(directory):
-    terminal = start(directory, paragraph_body(18))
+    terminal = start(directory, paragraph_body(18), pagination_mode="keep_word")
     try:
         terminal.see("1 / 2")
         terminal.keys("Down")
@@ -163,7 +164,7 @@ def single_after_back(directory):
 
 
 def spread_after_back(directory):
-    terminal = start(directory, paragraph_body(18))
+    terminal = start(directory, paragraph_body(18), pagination_mode="keep_word")
     try:
         anchor = first_passage(scrolled_middle(terminal))
         terminal.keys("Space", "l", "2")
@@ -191,6 +192,38 @@ def spread_after_back(directory):
         terminal.run("kill-server", required=False)
 
 
+def chapter_pages(directory, mode):
+    terminal = start(directory, paragraph_body(100))
+
+    def visible(frame):
+        return passages(frame) + (passages(frame, right=True) if mode == "2" else [])
+
+    try:
+        terminal.keys("Space", "l", mode)
+        regular = terminal.wait("Ordinary chapter opening", lambda f:
+                                bool(passages(f, right=True)) == (mode == "2") and "Passage 000" in f)
+        opening = visible(regular)
+        terminal.keys("Right")
+        second = visible(terminal.wait("Next ordinary view", lambda f:
+                                      visible(f) and visible(f)[0] not in opening))
+        terminal.keys("Left")
+        terminal.wait("Previous ordinary view", lambda f: visible(f) == opening)
+        scrolled_middle(terminal)
+        terminal.keys("Space", "l", mode)
+        terminal.wait("Return from Scroll to the whole chapter page", lambda f: visible(f) == opening)
+        terminal.keys("Space", "l", "3")
+        terminal.wait("Scroll uses the page now on screen", lambda f:
+                      first_passage(f) == ["Passage 000"] and not passages(f, right=True))
+        terminal.keys("Space", "l", mode)
+        terminal.wait("Reopen the ordinary chapter page", lambda f: visible(f) == opening)
+        terminal.keys("Right")
+        terminal.wait("Forward from restored page", lambda f: visible(f) == second)
+        terminal.keys("Left")
+        terminal.wait("Back to the same page", lambda f: visible(f) == opening)
+    finally:
+        terminal.run("kill-server", required=False)
+
+
 if __name__ == "__main__":
     with tempfile.TemporaryDirectory(prefix="botui-mode-transitions-") as tmp:
         directory = Path(tmp)
@@ -198,4 +231,6 @@ if __name__ == "__main__":
         reflow_cycle(directory / "reflow")
         single_after_back(directory / "single")
         spread_after_back(directory / "spread")
+        for mode in ("1", "2"):
+            chapter_pages(directory / f"chapter-{mode}", mode)
     print("Passed layout anchors and normal page turns after leaving a scroll position.")

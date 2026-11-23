@@ -54,8 +54,15 @@ def framed(frame):
     return top.startswith(("╭", "┌")) and top.rstrip().endswith(("╮", "┐"))
 
 
-def target_on_first_line(frame):
-    return TARGET in next((row for row in frame.splitlines() if re.search(r"word\d{3}", row)), "")
+def page_body(frame):
+    # A search hit and the first word on its ordinary page have different
+    # progress percentages, even when the displayed book content is identical.
+    rows = frame.rstrip("\n").splitlines()
+    return rows[1:-1] if framed(frame) else rows
+
+
+def target_visible(frame):
+    return any(TARGET in row for row in frame.splitlines()[:-1])
 
 
 def picture_visible(frame):
@@ -69,7 +76,8 @@ def search(term, query):
     term.see("Find:")
     term.keys("C-u")
     term.type(query)
-    term.see("1 match")
+    term.wait("Search results for the full query", lambda f:
+              query in f and re.search(r"[1-9]\d* (?:match(?:es)?\b|· refine)", f))
     term.keys("Enter")
     return term.wait("Search reaches the passage", lambda f: "Find:" not in f and query in f)
 
@@ -135,29 +143,29 @@ def check(root, mode):
     try:
         term.see("word000")
         search(term, TARGET)
-        term.wait("Exact interior passage is at the top", target_on_first_line)
+        term.wait("Chapter page contains the exact interior passage", target_visible)
         close(term)
         original = saved_position()
         assert original[1] > 0, ("Fixture did not reach inside the long paragraph", original)
 
         term = start()
         clean = term.wait("Reopen clean Zen at the saved word", lambda f: not framed(f)
-                          and target_on_first_line(f))
+                          and target_visible(f))
         term.keys("Space", "p")
         term.wait("Frame and progress retain the source passage", lambda f: framed(f)
-                  and "Reader frame fixture" in f.splitlines()[0] and PROGRESS.search(f) and target_on_first_line(f))
+                  and "Reader frame fixture" in f.splitlines()[0] and PROGRESS.search(f) and target_visible(f))
         close(term)
         assert saved_position() == original, "Showing the frame changed the saved source address"
 
         term = start()
         bordered = term.wait("Reopen framed Zen at the same word", lambda f: framed(f)
-                             and PROGRESS.search(f) and target_on_first_line(f))
+                             and PROGRESS.search(f) and target_visible(f))
         check_selection_row(term, bordered)
         term.keys("Space", "p")
         term.wait("Removing the frame restores the clean layout", lambda f: f == clean)
         term.keys("Space", "z")
         normal = term.wait("Normal reader keeps the word inside its frame", lambda f: framed(f)
-                           and "[Space z Zen]" in f and PROGRESS.search(f) and target_on_first_line(f))
+                           and "[Space z Zen]" in f and PROGRESS.search(f) and target_visible(f))
         border = normal.splitlines()[-2]
         assert PROGRESS.search(border), normal
         assert "Chapter 1" not in border, normal
@@ -177,7 +185,7 @@ def check(root, mode):
         for visible in (True, False):
             term.keys("Space", "p")
             term.wait("Selected paragraph survives frame reflow", lambda f: framed(f) == visible
-                      and "VISUAL" in f and target_on_first_line(f))
+                      and "VISUAL" in f and target_visible(f))
             copied = root / "copied"
             copied.unlink(missing_ok=True)
             term.keys("Space", "a", "y")
@@ -192,18 +200,19 @@ def check(root, mode):
         assert saved_position() == original, "Frame/Zen toggles changed the saved source address"
 
         term = start()
-        term.wait("Reopen after all toggles", lambda f: not framed(f) and target_on_first_line(f))
-        search(term, "BeforePlate")
+        term.wait("Reopen after all toggles", lambda f: not framed(f) and target_visible(f))
         for visible in (False, True):
             if visible:
                 term.keys("Space", "p")
+            search(term, "AfterPlate")
             plate = term.wait("Illustration is present beside its source text", lambda f:
-                              framed(f) == visible and "BeforePlate" in f and picture_visible(f)
+                              framed(f) == visible and "AfterPlate" in f and picture_visible(f)
                               and (not visible or PROGRESS.search(f)))
             term.keys("Left")
             term.wait("Previous page is different", lambda f: f != plate and "word" in f)
             term.keys("Right")
-            term.wait("Back/forward restores the same illustration page", lambda f: f == plate)
+            term.wait("Back/forward restores the same illustration page",
+                      lambda f: page_body(f) == page_body(plate))
         close(term)
     finally:
         term.run("kill-server", required=False)
@@ -302,9 +311,12 @@ def check_real_book(root, source, word, metrics=None, images=True):
         measure("turn_" + forward.lower(), started)
         started = time.monotonic()
         term.keys(back)
-        term.wait("Recover the spread after a round trip", lambda f: f == first)
+        term.wait("Recover the spread after a round trip", lambda f: page_body(f) == page_body(first))
         measure("turn_" + back.lower(), started)
 
+        # A return turn focuses the visible page opening. Select the searched
+        # paragraph again before testing that its source range survives a resize.
+        search(term, word)
         term.keys("Space", "c", "V"); term.see("VISUAL")
         before = copy_paragraph(term)
         term.keys("V"); term.see("VISUAL")

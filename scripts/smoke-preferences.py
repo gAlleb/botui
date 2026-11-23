@@ -102,6 +102,7 @@ def check(tmp):
             'Use dictionary hyphens',
             'Reflow repairs words split',
             'Display embedded illustrations',
+            'In Single and Spread',
             'Palette for PDF, DjVu',
             'Keep document colors, invert the original page',
             'Background around CBZ/CBR pages',
@@ -109,6 +110,9 @@ def check(tmp):
             if index:
                 t.keys('Down')
             t.see(hint)
+        t.click('Pagination', t.see('Pagination'))
+        t.click('Keep first word', t.see('Keep first word'))
+        t.wait('Global pagination saved', lambda _: cfg()['pagination_mode'] == 'keep_word')
         t.click('Column gap',t.see('Column gap'));t.keys('C-u');t.type('10');t.keys('Enter');t.see('10 cells')
         t.click('First-line indent',t.see('First-line indent'));t.keys('C-u');t.type('3');t.keys('Enter');t.see('3 cells')
         assert cfg()['paragraph_indent']==3

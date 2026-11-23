@@ -13,6 +13,7 @@ mod search;
 mod study;
 mod table_view;
 pub(crate) mod theme_picker;
+mod word_flash;
 use navigation::{Edit, Kind};
 
 use std::{
@@ -21,7 +22,9 @@ use std::{
     time::{Duration, Instant},
 };
 
-use botui_core::{Document, LayoutMode, Pager, ReflowOptions, ViewPosition};
+use botui_core::{
+    Document, HistoryPosition, LayoutMode, Pager, PaginationMode, ReflowOptions, ViewPosition,
+};
 use botui_store::{LocalState, Saved};
 use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind};
 use ratatui::{
@@ -144,8 +147,8 @@ struct Reader {
     remote_marked: bool,
     sidebar_focus: bool,
     links: links::Links,
-    history: Vec<ViewPosition>,
-    future: Vec<ViewPosition>,
+    history: Vec<HistoryPosition>,
+    future: Vec<HistoryPosition>,
     source: std::path::PathBuf,
     illustrations: Option<crate::shelf::covers::Covers>,
     doc: std::sync::Arc<Document>,
@@ -161,6 +164,7 @@ struct Reader {
     menu_rows: Rect,
     nav: Option<navigation::Navigation>,
     search: search::Search,
+    word_flash: word_flash::WordFlash,
     marks: Vec<botui_core::Anchor>,
     margin: i8,
     bindings: std::collections::HashMap<char, Action>,
@@ -291,7 +295,7 @@ impl Reader {
                     .filter(|s| s.anchor == anchor)
                     .and_then(|s| s.illustration),
             });
-        let pager = Pager::for_display_position(
+        let pager = Pager::for_display_position_with_pagination(
             &doc,
             (text.width, text.height),
             mode_for_size,
@@ -306,7 +310,15 @@ impl Reader {
             },
             resume,
             image_cell,
+            settings.pagination_mode,
         );
+        let mut word_flash = word_flash::WordFlash::default();
+        if settings.pagination_mode == PaginationMode::Chapter
+            && mode != LayoutMode::Scroll
+            && let Some(anchor) = remote
+        {
+            word_flash.show(&doc, anchor);
+        }
         let marks = saved.as_ref().map(|s| s.marks.clone()).unwrap_or_default();
         let theme = settings
             .theme
@@ -347,6 +359,7 @@ impl Reader {
             menu_rows: Rect::default(),
             nav: None,
             search: Default::default(),
+            word_flash,
             marks,
             margin,
             bindings: Default::default(),
@@ -466,7 +479,17 @@ impl Reader {
             },
         );
         self.search.reflow(&self.pager, &self.doc);
+        self.flash_chapter_position();
         Ok(())
+    }
+    fn flash_chapter_position(&mut self) {
+        if self.mode != LayoutMode::Scroll
+            && self.pager.pagination_mode() == PaginationMode::Chapter
+        {
+            self.word_flash.show(&self.doc, self.pager.anchor());
+        } else {
+            self.word_flash.clear();
+        }
     }
     fn draw_resource_background(&mut self, frame: &mut Frame) -> bool {
         self.draw(frame, None);
@@ -509,9 +532,12 @@ impl Reader {
         if std::mem::take(&mut self.switch_mode) {
             self.pager
                 .switch_mode(&self.doc, text.width, text.height, actual, gap);
-        } else {
-            self.pager
-                .resize_for_display(&self.doc, text.width, text.height, actual, gap);
+            self.flash_chapter_position();
+        } else if self
+            .pager
+            .resize_for_display(&self.doc, text.width, text.height, actual, gap)
+        {
+            self.flash_chapter_position();
         }
         self.search.update(&self.pager, &self.doc);
         let view = self.pager.viewport_rows();
@@ -585,6 +611,8 @@ impl Reader {
                 // Paragraph paints the whole row. Apply book decoration afterwards.
                 paint_surfaces(frame, line, rect, 0, reading_theme, style);
                 self.links.mark_line(frame, &self.doc, line, rect);
+                self.word_flash
+                    .paint(&self.doc, line, rect, frame.buffer_mut());
                 if self.study.mapping() {
                     self.study.map_line(&self.doc, line, rect);
                 }
@@ -1162,15 +1190,29 @@ impl Reader {
         }
     }
 
-    fn jump_to(&mut self, place: botui_core::Anchor) {
+    fn remember_jump(&mut self, before: HistoryPosition, place: botui_core::Anchor) {
+        self.word_flash.clear();
         if self.study.normal {
             self.study.cursor = Some(place);
         }
-        let current = self.pager.position();
-        if place != current.anchor || current.illustration.is_some() {
-            self.history.push(current);
+        if self.pager.history_position() != before {
+            self.history.push(before);
             self.future.clear();
+        }
+    }
+    fn jump_to(&mut self, place: botui_core::Anchor) {
+        let before = self.pager.history_position();
+        if before.logical.anchor != place || before.logical.illustration.is_some() {
             self.pager.seek(place);
+        }
+        self.remember_jump(before, place);
+    }
+    fn jump_to_match(&mut self, place: botui_core::Anchor) {
+        let before = self.pager.history_position();
+        self.pager.seek_chapter(place);
+        self.remember_jump(before, place);
+        if self.mode != LayoutMode::Scroll {
+            self.word_flash.show(&self.doc, place);
         }
     }
     fn apply(&mut self, action: Action) {
@@ -1199,12 +1241,15 @@ impl Reader {
             }
             Action::ReturnLink => {
                 if let Some(position) = self.links.back() {
-                    self.pager.restore_position(position);
+                    self.word_flash.clear();
+                    self.pager.restore_history(&self.doc, position);
                 }
             }
             Action::KeepLink => {
-                self.history.push(self.links.origin(self.pager.position()));
-                self.future.clear();
+                if let Some(origin) = self.links.origin() {
+                    self.history.push(origin);
+                    self.future.clear();
+                }
                 self.links.keep();
                 self.dirty = true;
             }
@@ -1215,10 +1260,11 @@ impl Reader {
                     (&mut self.future, &mut self.history)
                 };
                 if let Some(position) = from.pop() {
-                    to.push(self.pager.position());
-                    self.pager.restore_position(position);
+                    self.word_flash.clear();
+                    to.push(self.pager.history_position());
+                    self.pager.restore_history(&self.doc, position);
                     if self.study.normal {
-                        self.study.cursor = Some(position.anchor);
+                        self.study.cursor = Some(position.logical.anchor);
                     }
                     self.dirty = true;
                 }
@@ -1256,7 +1302,10 @@ impl Reader {
                 }
                 self.nav = Some(nav);
             }
-            Action::HideSearch => self.search.hide(),
+            Action::HideSearch => {
+                self.search.hide();
+                self.word_flash.clear();
+            }
             Action::SearchResults => {
                 self.apply(Action::Navigate(Kind::Search));
                 if let Some(nav) = &mut self.nav {
@@ -1271,7 +1320,7 @@ impl Reader {
                     .filter(|_| self.study.normal)
                     .unwrap_or(self.pager.anchor());
                 if let Some(place) = self.search.advance(origin, forward) {
-                    self.jump_to(place);
+                    self.jump_to_match(place);
                     self.dirty = true;
                 } else {
                     self.apply(Action::Navigate(Kind::Search));
@@ -1291,8 +1340,10 @@ impl Reader {
                             std::mem::take(&mut nav.hits),
                             selected,
                         );
+                        self.jump_to_match(place);
+                    } else {
+                        self.jump_to(place);
                     }
-                    self.jump_to(place);
                     self.dirty = true;
                     self.nav = None;
                 }
@@ -1345,6 +1396,7 @@ impl Reader {
                 }
             }
             Action::Previous | Action::Next | Action::Lines(_) => {
+                self.word_flash.clear();
                 self.pager.finish_resize();
                 let old = self.pager.position();
                 let forward = match action {
@@ -1424,8 +1476,14 @@ impl Reader {
         }
     }
 
+    fn saved_position(&self) -> ViewPosition {
+        self.links
+            .origin()
+            .map_or_else(|| self.pager.position(), |origin| origin.logical)
+    }
+
     fn snapshot(&self) -> Saved {
-        let position = self.links.origin(self.pager.position());
+        let position = self.saved_position();
         Saved {
             anchor: position.anchor,
             illustration: position.illustration,
@@ -1741,7 +1799,7 @@ pub fn read_server(
             }
             frame_result?;
             if can_sync && let Some(sync) = live.as_deref_mut() {
-                let anchor = reader.links.origin(reader.pager.position()).anchor;
+                let anchor = reader.saved_position().anchor;
                 if observed != (anchor, reader.finished) {
                     observed = (anchor, reader.finished);
                     sync.moved(
@@ -1783,6 +1841,7 @@ pub fn read_server(
                             .then_some(Duration::from_millis(55)),
                     )
                     .chain(reader.leader.timeout())
+                    .chain(reader.word_flash.timeout())
                     .chain(reader.study.toolbar.timeout())
                     .chain(images.then_some(Duration::from_millis(70)))
                     .chain((drag_direction != 0).then_some(
@@ -1790,7 +1849,7 @@ pub fn read_server(
                     ))
                     .min();
                 let Some(e) = crate::settings::read_event_for(timeout)? else {
-                    if reader.study.toolbar.expire() {
+                    if reader.word_flash.expire() || reader.study.toolbar.expire() {
                         break Action::Resize;
                     }
                     if drag_direction != 0
@@ -2005,6 +2064,10 @@ pub fn read_server(
                     )?;
                 }
                 let new = crate::settings::book::BookSettings::effective(state.as_ref())?;
+                if old.pagination_mode != new.pagination_mode {
+                    reader.pager.set_pagination_mode(new.pagination_mode);
+                    reader.flash_chapter_position();
+                }
                 reader.zen = new.zen;
                 reader.scroll_lines = new.scroll_lines.unwrap_or(1).clamp(1, 12) as i8;
                 reader.zen_progress = new.zen_progress;
@@ -2068,11 +2131,16 @@ pub fn read_server(
                         reader.draw_resource_background(f)
                     }) {
                         Ok(Some(a)) => {
-                            let dest =
+                            reader.word_flash.clear();
+                            if let Some(previous) =
                                 reader
                                     .links
-                                    .destination(reader.pager.position(), &reference, a);
-                            reader.pager.restore_position(dest);
+                                    .follow(reader.pager.history_position(), &reference, a)
+                            {
+                                reader.pager.restore_history(&doc, previous);
+                            } else {
+                                reader.pager.seek(a);
+                            }
                         }
                         Ok(None) => (),
                         Err(e) => {
@@ -2150,10 +2218,8 @@ pub fn read_server(
         Ok(())
     })();
     reader.pager.finish_resize();
-    if reader.links.visiting() {
-        reader
-            .pager
-            .restore_position(reader.links.origin(reader.pager.position()));
+    if let Some(origin) = reader.links.origin() {
+        reader.pager.restore_history(&reader.doc, origin);
     }
     reader.flush(&mut state, notices);
     crate::stats::finish(state.as_ref(), opened, notices);

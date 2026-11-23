@@ -1,4 +1,4 @@
-use super::{PARAGRAPH_SPACING, Settings};
+use super::{PAGINATION_MODES, PARAGRAPH_SPACING, Settings, pagination_label};
 use crate::{
     AppTerminal, prompt,
     settings::{
@@ -26,6 +26,7 @@ enum Field {
     Compact,
     Theme,
     Layout,
+    Pagination,
     Alignment,
     Rules,
     Hyphens,
@@ -39,6 +40,7 @@ impl Field {
             Self::ComicTheme => "Comic background",
             Self::Theme => "Reading theme",
             Self::Layout => "Reading layout",
+            Self::Pagination => "Pagination",
             Self::Alignment => "Text alignment",
             Self::Rules => "Heading rules",
             Self::Hyphens => "Word hyphenation (EN/RU)",
@@ -75,12 +77,12 @@ fn cells(n: u16) -> String {
 pub(super) fn edit(term: &mut AppTerminal, store: &LocalState, kind: Kind) -> io::Result<()> {
     use Field::*;
     let fields: &[Field] = match kind {
-        Kind::Markdown => &[Width, Theme, Layout, Alignment, Rules],
+        Kind::Markdown => &[Width, Theme, Layout, Pagination, Alignment, Rules],
         Kind::Text => &[
-            Width, Indent, Spacing, Theme, Layout, Alignment, Rules, Hyphens,
+            Width, Indent, Spacing, Theme, Layout, Pagination, Alignment, Rules, Hyphens,
         ],
         Kind::Epub => &[
-            Width, Indent, Spacing, Compact, Theme, Layout, Alignment, Rules, Hyphens,
+            Width, Indent, Spacing, Compact, Theme, Layout, Pagination, Alignment, Rules, Hyphens,
         ],
         Kind::Comic => &[ComicTheme, Layout],
         Kind::Pdf => &[PdfTheme, PdfColors, Layout],
@@ -102,6 +104,12 @@ pub(super) fn edit(term: &mut AppTerminal, store: &LocalState, kind: Kind) -> io
                 Layout => scope(
                     local.reading_layout.clone(),
                     g.reading_layout.clone().unwrap_or_else(|| "spread".into()),
+                ),
+                Pagination => scope(
+                    local
+                        .pagination_mode
+                        .map(|mode| pagination_label(mode).into()),
+                    pagination_label(g.pagination_mode).into(),
                 ),
                 Alignment => scope(
                     local.alignment.map(|v| v.label().into()),
@@ -169,13 +177,20 @@ pub(super) fn edit(term: &mut AppTerminal, store: &LocalState, kind: Kind) -> io
             prompt::choose(term, field.label(), &choices, local.map_or(0, |v| v + 1))
         };
         match field {
-            Layout | Alignment | Rules | Hyphens | Indent | Compact | Spacing | PdfColors => {
+            Layout | Pagination | Alignment | Rules | Hyphens | Indent | Compact | Spacing
+            | PdfColors => {
                 let (current, choices) = match field {
                     Layout => (
                         local.reading_layout.as_ref().and_then(|v| {
                             ["single", "spread", "scroll"].iter().position(|s| s == v)
                         }),
                         ["Single", "Spread", "Scroll"].map(String::from).to_vec(),
+                    ),
+                    Pagination => (
+                        local.pagination_mode.map(|v| v as usize),
+                        PAGINATION_MODES
+                            .map(|v| pagination_label(v).into())
+                            .to_vec(),
                     ),
                     Alignment => (
                         local.alignment.map(|v| v as usize),
@@ -219,6 +234,7 @@ pub(super) fn edit(term: &mut AppTerminal, store: &LocalState, kind: Kind) -> io
                                 value.map(|i| ["single", "spread", "scroll"][i].into())
                         }
                         Alignment => p.alignment = value.map(|i| botui_core::TextAlignment::ALL[i]),
+                        Pagination => p.pagination_mode = value.map(|i| PAGINATION_MODES[i]),
                         Rules => p.heading_rules = value.map(|i| i == 1),
                         Hyphens => p.hyphenation = value.map(|i| i == 1),
                         Indent => p.paragraph_indent = value.map(|v| v as u8),

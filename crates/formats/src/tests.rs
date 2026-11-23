@@ -163,7 +163,7 @@ fn epub_spine_ordinals_and_semantic_chapters_have_independent_boundaries() {
         "Book",
     )
     .unwrap();
-    let mut pager = Pager::new(&doc, 90, 6, LayoutMode::Single);
+    let mut pager = Pager::new(&doc, 90, 6, LayoutMode::Scroll);
     for (block, ordinal, title, percent) in [
         (0, 2, None, 0),
         (1, 2, None, 50),
@@ -199,13 +199,19 @@ fn standalone_picture_spine_uses_its_own_ordinal_at_the_preceding_text_anchor() 
     ]), "Album with text").unwrap();
     let mut pager = Pager::new(&doc, 70, 9, LayoutMode::Single);
     let body = Anchor { block: 0, byte: 7 };
-    pager.restore_position(ViewPosition {
+    let picture = ViewPosition {
         anchor: body,
         illustration: Some(IllustrationPosition {
             reference: 0,
             row: 0,
         }),
-    });
+    };
+    pager.restore_position(picture);
+    assert_eq!(pager.position(), picture);
+    assert!(pager.lines(0).iter().any(|line| !line.figures.is_empty()));
+    assert_eq!(pager.chapter_progress().unwrap().ordinal, 1);
+    pager.set_pagination_mode(botui_core::PaginationMode::KeepWord);
+    pager.restore_position(picture);
     let progress = pager.chapter_progress().unwrap();
     assert_eq!(
         (progress.ordinal, progress.total, progress.percent),
@@ -326,7 +332,11 @@ fn web_progress_resumes_on_printed_text_across_wraps_and_normalized_whitespace()
         let at = book.reading_anchor(&cfi).unwrap();
         assert_eq!(at, Anchor { block, byte }, "{cfi}");
         pager.seek(at);
-        assert!(pager.lines(0)[0].text.contains(word), "{cfi}");
+        assert!(
+            pager.lines(0).iter().any(|line| line.text.contains(word)),
+            "{cfi}"
+        );
+        assert_eq!(pager.anchor(), at);
         assert_eq!(book.reading_anchor(&book.cfi(at).unwrap()), Some(at));
     }
     assert!(
@@ -507,10 +517,13 @@ fn reads_styled_epub_with_math_and_spanning_table_in_ordinary_pager() {
             pager.search_index(&doc).matches("END-MARK").is_empty(),
             width == 29
         );
-        pager.seek(doc.resolve_cfi(&cfi).unwrap());
-        let line = &pager.lines(0)[0];
+        pager.seek_chapter(doc.resolve_cfi(&cfi).unwrap());
+        let line = pager
+            .lines(0)
+            .iter()
+            .find(|line| index.visible_range(&hit, line).is_some())
+            .unwrap();
         assert!(line.text.contains("exact"), "{width}: {}", line.text);
-        assert!(index.visible_range(&hit, line).is_some(), "{}", line.text);
     }
 }
 
@@ -782,8 +795,8 @@ fn epub_table_dividers_respect_presentation_tables_and_publisher_borders() {
 }
 
 #[test]
-fn paging_back_from_a_citation_fills_prose_and_keeps_the_marker_whole() {
-    use botui_core::{Anchor, LayoutMode, Pager, ReflowOptions};
+fn citation_search_opens_its_chapter_page_and_keeps_the_marker_whole() {
+    use botui_core::{Anchor, LayoutMode, Pager, PaginationMode, ReflowOptions};
     let paragraphs = (0..60)
         .map(|n| format!("<p>Passage {n}.</p>"))
         .collect::<String>();
@@ -795,60 +808,64 @@ fn paging_back_from_a_citation_fills_prose_and_keeps_the_marker_whole() {
     );
     let marker = doc.references.iter().find(|r| r.label == "[21]").unwrap();
     let start = marker.bytes.as_ref().unwrap().start;
+    let options = ReflowOptions {
+        typography: Default::default(),
+        repair_printed: true,
+        inline_images: true,
+        paragraph_indent: 0,
+        compact_spacing: true,
+        paragraph_spacing: Some(0),
+    };
     for mode in [LayoutMode::Single, LayoutMode::Spread] {
-        for resume in [
-            None,
-            Some(Anchor {
-                block: marker.source,
-                byte: start + 1,
-            }),
-        ] {
-            let at = resume.unwrap_or(Anchor {
-                block: marker.source,
-                byte: start,
-            });
-            let mut pager = Pager::with_start(
-                &doc,
-                100,
-                9,
-                mode,
-                ReflowOptions {
-                    typography: Default::default(),
-                    repair_printed: true,
-                    inline_images: true,
-                    paragraph_indent: 0,
-                    compact_spacing: true,
-                    paragraph_spacing: Some(0),
-                },
-                resume,
-            );
-            pager.seek(at);
-            let hit = pager.lines(0)[0].text.clone();
-            assert!(
-                hit.contains("marker[21] inside"),
-                "{mode:?} {resume:?}: {hit:?}"
-            );
-            pager.previous();
-            for col in 0..pager.columns() {
-                assert_eq!(
-                    pager.lines(col).len(),
-                    9,
-                    "{mode:?} {resume:?}: column {col}"
-                );
+        let mut natural = Pager::with_start(&doc, 100, 9, mode, options, None);
+        while !(0..natural.columns()).any(|col| {
+            natural
+                .lines(col)
+                .iter()
+                .any(|line| line.text.contains("marker[21] inside"))
+        }) {
+            assert!(!natural.at_end(), "citation missing");
+            natural.next();
+        }
+        let hit_page = text_pages(&natural);
+        natural.previous();
+        let previous = text_pages(&natural);
+        assert!(previous.iter().all(|column| column.len() == 9));
+        for pagination in [PaginationMode::Chapter, PaginationMode::KeepWord] {
+            let mut pager = Pager::with_start(&doc, 100, 9, mode, options, None);
+            pager.set_pagination_mode(pagination);
+            for byte in [start, start + 1] {
+                let at = Anchor {
+                    block: marker.source,
+                    byte,
+                };
+                pager.seek_chapter(at);
+                assert_eq!(pager.anchor(), at);
+                assert_eq!(text_pages(&pager), hit_page);
+                pager.previous();
+                assert_eq!(text_pages(&pager), previous);
+                pager.next();
+                assert_eq!(text_pages(&pager), hit_page);
             }
-            assert_eq!(
-                pager.lines(pager.columns() - 1).last().unwrap().text,
-                "Passage 59."
-            );
-            pager.next();
-            assert_eq!(pager.lines(0)[0].text, hit);
         }
     }
 }
 
+fn text_pages(pager: &botui_core::Pager) -> Vec<Vec<String>> {
+    (0..pager.columns())
+        .map(|col| {
+            pager
+                .lines(col)
+                .iter()
+                .map(|line| line.text.clone())
+                .collect()
+        })
+        .collect()
+}
+
 #[test]
-fn paging_back_from_epub_text_preserves_picture_dimensions_and_the_saved_word() {
-    use botui_core::{Anchor, LayoutMode, Pager, ReflowOptions};
+fn both_pagination_modes_use_whole_chapter_pages_after_paging_back_from_epub_text() {
+    use botui_core::{Anchor, LayoutMode, Pager, PaginationMode, ReflowOptions};
     let passages = |label| {
         (0..32)
             .map(|n| format!("<p>{label} {n}.</p>"))
@@ -874,66 +891,86 @@ fn paging_back_from_epub_text_preserves_picture_dimensions_and_the_saved_word() 
     };
     for mode in [LayoutMode::Single, LayoutMode::Spread] {
         let mut forward = Pager::with_start(&doc, 90, 12, mode, options, None);
-        let natural_size = loop {
-            if let Some(figure) = (0..forward.columns())
+        let mut pages = Vec::new();
+        let mut size = None;
+        loop {
+            pages.push(text_pages(&forward));
+            if let Some(f) = (0..forward.columns())
                 .flat_map(|col| forward.lines(col))
                 .flat_map(|line| &line.figures)
                 .next()
             {
-                break (figure.width, figure.height);
+                size = Some((f.width, f.height));
             }
-            let old = forward.anchor();
+            if forward.at_end() {
+                break;
+            }
             forward.next();
-            assert_ne!(
-                forward.anchor(),
-                old,
-                "fixture must contain an illustration"
-            );
-        };
-        let mut saw_picture = [false; 2];
+        }
+        let size = size.expect("fixture must contain an illustration");
+        let mut saw_picture = false;
+        let mut saw_overlap = false;
         for label in ["Chapter line", "After picture"] {
             for n in 1..30 {
                 let query = format!("{label} {n}.");
                 let block = doc.blocks.iter().position(|b| b.text == query).unwrap();
                 let at = Anchor { block, byte: 0 };
-                let mut pager =
-                    Pager::with_start(&doc, 90, 12, LayoutMode::Scroll, options, Some(at));
-                pager.switch_mode(&doc, 90, 12, mode, 4);
-                assert_eq!(pager.lines(0)[0].text, query);
-                pager.previous();
-                // The chapter opening resumes the ordinary page sequence.
-                if pager
-                    .lines(0)
+                let page = pages
                     .iter()
-                    .any(|line| line.text.contains("Second chapter"))
-                {
-                    continue;
-                }
-                for (col, seen) in saw_picture.iter_mut().enumerate().take(pager.columns()) {
-                    let lines = pager.lines(col);
-                    if label == "Chapter line" {
-                        assert_eq!(lines.len(), 12, "{mode:?} {query} column {col}");
-                    }
-                    let parts: Vec<_> = lines.iter().flat_map(|line| &line.figures).collect();
-                    if let Some(first) = parts.first() {
-                        assert_eq!(parts.len(), usize::from(first.height));
-                        for (row, part) in parts.iter().enumerate() {
-                            assert_eq!(part.row as usize, row);
-                            assert_eq!(part.height, first.height);
+                    .position(|view| view.iter().flatten().any(|text| *text == query))
+                    .unwrap();
+                for pagination in [PaginationMode::Chapter, PaginationMode::KeepWord] {
+                    let mut pager =
+                        Pager::with_start(&doc, 90, 12, LayoutMode::Scroll, options, Some(at));
+                    pager.set_pagination_mode(pagination);
+                    pager.switch_mode(&doc, 90, 12, mode, 4);
+                    assert_eq!(pager.anchor(), at);
+                    let regular_top = pages[page]
+                        .iter()
+                        .flatten()
+                        .find(|line| !line.trim().is_empty());
+                    let expected = if pagination == PaginationMode::Chapter {
+                        assert_eq!(text_pages(&pager), pages[page]);
+                        page - 1
+                    } else {
+                        assert_eq!(pager.lines(0)[0].text, query);
+                        if regular_top == Some(&query) {
+                            page - 1
+                        } else {
+                            saw_overlap = true;
+                            page
                         }
-                        assert_eq!((first.width, first.height), natural_size);
-                        *seen = true;
+                    };
+                    pager.previous();
+                    assert_eq!(
+                        text_pages(&pager),
+                        pages[expected],
+                        "{mode:?} {pagination:?}: {query}"
+                    );
+                    for col in 0..pager.columns() {
+                        let parts: Vec<_> = pager
+                            .lines(col)
+                            .iter()
+                            .flat_map(|line| &line.figures)
+                            .collect();
+                        if !parts.is_empty() {
+                            saw_picture = true;
+                            assert_eq!(parts.len(), usize::from(size.1));
+                            for (row, part) in parts.iter().enumerate() {
+                                assert_eq!((part.width, part.height), size);
+                                assert_eq!(usize::from(part.row), row);
+                            }
+                        }
                     }
+                    pager.next();
+                    assert_eq!(
+                        text_pages(&pager),
+                        pages[(expected + 1).min(pages.len() - 1)]
+                    );
                 }
-                let last = pager.lines(pager.columns() - 1).last().unwrap();
-                assert_eq!(last.text, format!("{label} {}.", n - 1));
-                pager.next();
-                assert_eq!(pager.lines(0)[0].text, query);
-                assert_eq!(pager.anchor(), at);
             }
         }
-        let columns = if mode == LayoutMode::Spread { 2 } else { 1 };
-        assert!(saw_picture[..columns].iter().all(|&found| found));
+        assert!(saw_picture && saw_overlap, "{mode:?}");
     }
 }
 
@@ -1470,12 +1507,22 @@ fn prose_preserves_words_indentation_footnotes_and_spread_page_turns() {
     let at = doc.resolve_cfi(cfi).unwrap();
     assert!(doc.blocks[at.block].text[at.byte..].starts_with("Маяк"));
     let reopened = Pager::with_start(&doc, 100, 8, LayoutMode::Spread, options, Some(at));
-    assert!(
-        reopened.lines(0)[0].text.trim_start().starts_with("Маяк"),
-        "{:?}",
-        text(&reopened)
-    );
+    assert_eq!(text(&reopened), opening);
     assert_eq!(doc.cfi(reopened.anchor()).as_deref(), Some(cfi));
+    let exact = Pager::for_display_position_with_pagination(
+        &doc,
+        (100, 8),
+        LayoutMode::Spread,
+        4,
+        options,
+        Some(botui_core::ViewPosition {
+            anchor: at,
+            illustration: None,
+        }),
+        (1, 2),
+        botui_core::PaginationMode::KeepWord,
+    );
+    assert!(exact.lines(0)[0].text.trim_start().starts_with("Маяк"));
     let foot = &doc.references[0];
     assert!(matches!(foot.target, Target::Passage(_)));
     assert!(
@@ -1800,7 +1847,12 @@ fn reopening_an_illustrated_spread_distinguishes_the_picture_from_its_text_cfi()
     };
     let expected = rows(&reading);
     let text = open(doc.reading_anchor(&cfi));
-    assert!(text.lines(0)[0].text.contains("Line 12"));
+    assert!(
+        (0..text.columns())
+            .flat_map(|col| text.lines(col))
+            .any(|line| line.text.contains("Line 12"))
+    );
+    assert_ne!(rows(&text), expected);
     let mut reopened = Pager::for_display_position(
         &doc,
         (100, 8),
@@ -2087,8 +2139,15 @@ fn fb2_faces_survive_wrapping_and_resume_without_changing_source_offsets() {
         },
         Some(at),
     );
-    assert!(reopened.lines(0)[0].text.starts_with("жирный"));
-    assert!(reopened.lines(0)[0].spans[0].face.bold);
+    let line = reopened
+        .lines(0)
+        .iter()
+        .find(|l| l.text.contains("жирный"))
+        .unwrap();
+    assert!(line.spans.iter().any(|s| s.face.bold
+        && s.source == Some(at)
+        && line.text[s.bytes.clone()].contains("жирный")));
+    assert_eq!(reopened.anchor(), at);
 }
 
 #[test]
@@ -2525,7 +2584,7 @@ fn returning_before_a_scrolled_math_epub_restores_its_two_regular_pages() {
         assert!(pager.lines(0)[0].text.contains("Scroll target."));
         pager.relayout(&doc, width, height, mode);
         assert_eq!(pager.anchor(), anchor);
-        assert!(pager.lines(0)[0].text.contains("Scroll target."));
+        assert_eq!(snapshot(&pager), first);
         pager.previous();
         assert_eq!(
             snapshot(&pager),

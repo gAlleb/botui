@@ -25,6 +25,7 @@ pub struct BookSettings {
     pub page_width: Option<u16>,
     pub theme: Option<String>,
     pub reading_layout: Option<String>,
+    pub pagination_mode: Option<botui_core::PaginationMode>,
     pub alignment: Option<botui_core::TextAlignment>,
     pub heading_rules: Option<bool>,
     pub hyphenation: Option<bool>,
@@ -52,6 +53,9 @@ impl BookSettings {
         }
         if let Some(v) = &self.reading_layout {
             prefs.reading_layout = Some(v.clone());
+        }
+        if let Some(mode) = self.pagination_mode {
+            prefs.pagination_mode = mode;
         }
         if let Some(v) = self.alignment {
             prefs.text_alignment = v;
@@ -132,12 +136,14 @@ mod tests {
         let copy = LocalState::in_directory(&renamed, &dir, None)?;
         a.update_book_preferences(|s: &mut BookSettings| s.page_width = Some(44))?;
         copy.update_book_preferences(|s: &mut BookSettings| {
-            s.paragraph_spacing = Some(Spacing::FromBook)
+            s.paragraph_spacing = Some(Spacing::FromBook);
+            s.pagination_mode = Some(botui_core::PaginationMode::Chapter);
         })?;
         let global = || Settings {
             page_width: Some(70),
             paragraph_indent: 3,
             paragraph_spacing: Some(2),
+            pagination_mode: botui_core::PaginationMode::KeepWord,
             ..Settings::default()
         };
         let effective = |store: &LocalState| -> io::Result<Settings> {
@@ -146,6 +152,7 @@ mod tests {
             Ok(result)
         };
         let ours = effective(&copy)?;
+        assert_eq!(ours.pagination_mode, botui_core::PaginationMode::Chapter);
         assert_eq!(
             (
                 ours.page_width,
@@ -157,6 +164,7 @@ mod tests {
         fs::write(&path, b"edition B")?;
         let other = LocalState::in_directory(&path, &dir, None)?;
         let theirs = effective(&other)?;
+        assert_eq!(theirs.pagination_mode, botui_core::PaginationMode::KeepWord);
         assert_eq!(
             (theirs.page_width, theirs.paragraph_spacing),
             (Some(70), Some(2))
@@ -166,6 +174,10 @@ mod tests {
         assert_eq!(effective(&copy)?.paragraph_spacing, None);
         copy.update_book_preferences(|s: &mut BookSettings| *s = BookSettings::default())?;
         assert_eq!(effective(&copy)?.paragraph_spacing, Some(2));
+        assert_eq!(
+            effective(&copy)?.pagination_mode,
+            botui_core::PaginationMode::KeepWord
+        );
         Ok(())
     }
 

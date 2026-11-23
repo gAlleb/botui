@@ -1,4 +1,4 @@
-use crate::{Anchor, Block, Document, LayoutMode, Pager, Reference, Target};
+use crate::{Anchor, Block, Document, LayoutMode, Pager, PaginationMode, Reference, Target};
 
 // Record every visible spread in reading order, including an empty right page.
 fn forward_breaks(pager: &mut Pager) -> Vec<[usize; 3]> {
@@ -43,7 +43,7 @@ fn scrolling_into_a_single_page_does_not_add_a_page_after_returning_to_the_start
         assert_ne!(anchor, Anchor::default());
         pager.relayout(&doc, 50, 24, LayoutMode::Single);
         assert_eq!(pager.anchor(), anchor);
-        assert!(pager.first > pages[0][0] && pager.first < pages[1][0]);
+        assert_eq!(pager.complete_view().bounds, pages[0]);
 
         pager.previous();
         assert_eq!(pager.complete_view().bounds, pages[0]);
@@ -71,7 +71,7 @@ fn scrolling_into_one_spread_does_not_leave_an_extra_partial_spread() {
         assert_ne!(anchor, Anchor::default());
         pager.relayout(&doc, 104, 24, LayoutMode::Spread);
         assert_eq!(pager.anchor(), anchor);
-        assert!(pager.first > 0);
+        assert_eq!(pager.complete_view().bounds, spreads[0]);
 
         pager.previous();
         assert_eq!(pager.complete_view().bounds, spreads[0]);
@@ -102,6 +102,8 @@ fn chapter_percentage_uses_the_first_visible_source_line_across_reflow() {
         (LayoutMode::Scroll, 52, 7),
     ] {
         pager.relayout(&doc, width, height, mode);
+        // Exercise progress from arbitrary first lines, including a word inside one.
+        pager.set_pagination_mode(PaginationMode::KeepWord);
         pager.seek(Anchor::default());
         assert_eq!(
             pager.chapter_progress().and_then(|s| s.percent),
@@ -143,6 +145,7 @@ fn chapter_percentage_accepts_outline_destinations_within_one_source_block() {
         ..Default::default()
     };
     let mut pager = Pager::with_reflow(&doc, 5, 3, LayoutMode::Single, false);
+    pager.set_pagination_mode(PaginationMode::KeepWord);
     for (byte, expected) in [
         (0, None),
         (5, Some(0)),
@@ -232,7 +235,7 @@ fn check_direction_changes(pager: &mut Pager, spreads: &[[usize; 3]]) {
 }
 
 #[test]
-fn reversing_after_an_exact_jump_rejoins_regular_pages_without_skipping_rows() {
+fn jumps_and_direction_changes_always_use_the_same_chapter_pages() {
     let doc = Document {
         blocks: (0..72)
             .map(|i| Block {
@@ -259,60 +262,12 @@ fn reversing_after_an_exact_jump_rejoins_regular_pages_without_skipping_rows() {
             let breaks = forward_breaks(&mut pager);
             pager.seek(Anchor::default());
             check_direction_changes(&mut pager, &breaks);
-            let mut crossed_overlap = false;
             for block in 0..doc.blocks.len() {
-                pager.seek(Anchor { block, byte: 0 });
-                while pager.first > 0 {
-                    let original = pager.complete_view().bounds;
-                    pager.previous();
-                    let previous = pager.complete_view().bounds;
-                    assert!(pager.first < original[0]);
-                    let end = pager.complete_view().end();
-                    assert!(
-                        end >= original[0],
-                        "lost rows at {mode:?}/{height}, block {block}: {previous:?} before {original:?}"
-                    );
-                    crossed_overlap |= end > original[0];
-                    let chapter_opening =
-                        pager.first == 0 || pager.lines[pager.first].chapter_start;
-                    if end > original[0] {
-                        assert!(
-                            chapter_opening,
-                            "interior overlap at {previous:?} before {original:?}"
-                        );
-                        assert!(pager.positioned_spreads.is_empty());
-                        assert!(pager.regular_views().binary_search(&pager.first).is_ok());
-                    }
-                    let regular_opening =
-                        breaks.iter().find(|view| view[0] == pager.first).copied();
-                    pager.next();
-                    if chapter_opening {
-                        let opening = regular_opening.unwrap();
-                        let expected = opening[pager.columns()];
-                        if expected < pager.lines.len() {
-                            assert_eq!(pager.first, expected);
-                            pager.previous();
-                            assert_eq!(pager.complete_view().bounds, opening);
-                        }
-                        continue;
-                    }
-                    if end == original[0] {
-                        assert_eq!(pager.complete_view().bounds, original);
-                    } else if end < pager.lines.len() {
-                        assert_eq!(pager.first, end, "overlap must not create an extra page");
-                    } else {
-                        assert_eq!(pager.complete_view().bounds, previous);
-                    }
-                    if end < pager.lines.len() {
-                        pager.previous();
-                        assert_eq!(pager.complete_view().bounds, previous);
-                    }
-                }
+                let at = Anchor { block, byte: 0 };
+                pager.seek_chapter(at);
+                assert_eq!(pager.anchor(), at);
+                check_direction_changes(&mut pager, &breaks);
             }
-            assert!(
-                crossed_overlap,
-                "no interior transition exercised at {mode:?}/{height}"
-            );
         }
     }
 }
@@ -351,60 +306,23 @@ fn plain_alignment_keeps_source_words_and_justifies_only_wrapped_lines() {
 }
 
 #[test]
-fn switching_from_single_page_keeps_the_same_passage_on_the_left() {
-    for starts in [vec![], vec![0, 9]] {
-        let doc = Document {
-            blocks: (0..31)
-                .map(|i| Block {
-                    text: format!("Line {i}"),
-                    heading: false,
-                })
-                .collect(),
-            chapter_starts: starts.into_iter().collect(),
-            ..Default::default()
-        };
-        let mut pager = Pager::new(&doc, 50, 6, LayoutMode::Single);
-        for index in [1, 2, 5, 7] {
-            pager.relayout(&doc, 50, 6, LayoutMode::Single);
-            pager.seek(Anchor::default());
-            for _ in 0..index {
-                pager.next();
-            }
-            let anchor = pager.anchor();
-            let text = pager
-                .lines(0)
-                .iter()
-                .find(|row| !row.text.is_empty())
-                .unwrap()
-                .text
-                .clone();
-            for (mode, width) in [
-                (LayoutMode::Spread, 104),
-                (LayoutMode::Single, 50),
-                (LayoutMode::Spread, 104),
-                (LayoutMode::Scroll, 50),
-                (LayoutMode::Spread, 104),
-                (LayoutMode::Single, 50),
-            ] {
-                pager.relayout(&doc, width, 6, mode);
-                assert_eq!(pager.anchor(), anchor, "{mode:?}, page {index}");
-                assert_eq!(
-                    pager
-                        .lines(0)
-                        .iter()
-                        .find(|row| !row.text.is_empty())
-                        .unwrap()
-                        .text,
-                    text,
-                    "{mode:?}, page {index}"
-                );
-            }
-        }
-    }
+fn changing_modes_uses_the_containing_page_and_returns_to_its_visible_top_in_scroll() {
+    let doc = short_document(true);
+    let mut pager = Pager::new(&doc, 50, 6, LayoutMode::Single);
+    pager.next();
+    let at = pager.anchor();
+    pager.switch_mode(&doc, 104, 6, LayoutMode::Spread, 4);
+    let first = pager.lines(0)[0].anchor();
+    assert_ne!(at, first);
+    assert_eq!(pager.anchor(), at);
+    assert!(pager.lines(1).iter().any(|l| l.anchor() == at));
+    pager.switch_mode(&doc, 50, 6, LayoutMode::Scroll, 4);
+    assert_eq!(pager.anchor(), first);
+    assert_eq!(pager.lines(0)[0].anchor(), first);
 }
 
 #[test]
-fn different_width_switches_keep_the_word_and_reverse_until_the_chapter_opening() {
+fn keep_word_switches_and_forward_turns_rejoin_chapter_pages_on_the_first_backward_turn() {
     let body = (0..180)
         .map(|i| format!("w{i:03}"))
         .collect::<Vec<_>>()
@@ -418,6 +336,7 @@ fn different_width_switches_keep_the_word_and_reverse_until_the_chapter_opening(
         ..Default::default()
     };
     let mut pager = Pager::new(&doc, 49, 3, LayoutMode::Scroll);
+    pager.set_pagination_mode(PaginationMode::KeepWord);
     pager.scroll(11);
     let at = pager.lines(0)[0].anchor();
     for (mode, width) in [
@@ -433,41 +352,30 @@ fn different_width_switches_keep_the_word_and_reverse_until_the_chapter_opening(
             doc.blocks[0].text[at.byte..].split_whitespace().next()
         );
     }
-    let mut last = at;
-    loop {
-        pager.previous();
-        let first = pager.lines(0)[0].anchor();
-        if first.byte == 0 {
-            break;
+    let mut regular = Pager::new(&doc, 86, 3, LayoutMode::Spread);
+    for forwards in [0, 2] {
+        if forwards > 0 {
+            pager.seek_chapter(at);
+            pager.switch_mode(&doc, 49, 3, LayoutMode::Scroll, 4);
+            pager.scroll(11);
+            pager.switch_mode(&doc, 86, 3, LayoutMode::Spread, 4);
         }
-        let tail = pager.lines(1).last().unwrap();
-        assert_eq!(
-            tail.text.split_whitespace().count(),
-            8,
-            "short seam before {last:?}"
-        );
-        let expected = doc.blocks[0].text[..last.byte]
-            .split_whitespace()
-            .next_back()
-            .unwrap();
-        assert_eq!(tail.text.split_whitespace().next_back(), Some(expected));
-        pager.next();
-        assert_eq!(pager.lines(0)[0].anchor(), last);
+        for _ in 0..forwards {
+            pager.next();
+        }
+        let current = pager.lines(0)[0].anchor();
+        regular.seek_chapter(current);
+        if regular.visible_position().anchor == current {
+            regular.previous();
+        }
         pager.previous();
-        last = first;
+        assert_eq!(pager.complete_view().bounds, regular.complete_view().bounds);
+        assert!(pager.natural.is_none());
+        assert!(!pager.exact_view);
+        pager.next();
+        regular.next();
+        assert_eq!(pager.complete_view().bounds, regular.complete_view().bounds);
     }
-    pager.next();
-    let mut ordinary = Pager::with_start_and_gap(
-        &doc,
-        86,
-        3,
-        LayoutMode::Spread,
-        4,
-        pager.reflow_options(),
-        None,
-    );
-    ordinary.next();
-    assert_eq!(pager.lines(0)[0].anchor(), ordinary.lines(0)[0].anchor());
 }
 
 #[test]
@@ -540,9 +448,224 @@ fn an_exact_reading_position_does_not_shorten_prose_at_earlier_illustrations() {
                 }
             }
             assert!(
-                short_prose_columns <= 1,
+                short_prose_columns == 0,
                 "{mode:?} at {block}: {short_prose_columns}"
             );
         }
+    }
+}
+
+#[test]
+fn a_search_leaves_the_temporary_opening_even_when_the_address_did_not_change() {
+    let doc = Document {
+        blocks: vec![Block {
+            text: (0..170)
+                .map(|i| format!("word{i:03}"))
+                .collect::<Vec<_>>()
+                .join(" "),
+            heading: false,
+        }],
+        ..Default::default()
+    };
+    let at = Anchor {
+        block: 0,
+        byte: doc.blocks[0].text.find("word036").unwrap(),
+    };
+    for mode in [LayoutMode::Single, LayoutMode::Spread] {
+        let mut normal = Pager::new(&doc, 86, 4, mode);
+        normal.seek_chapter(at);
+        let mut pager = Pager::for_display_position_with_pagination(
+            &doc,
+            (86, 4),
+            mode,
+            4,
+            normal.reflow_options(),
+            Some(crate::ViewPosition {
+                anchor: at,
+                illustration: None,
+            }),
+            (1, 2),
+            PaginationMode::KeepWord,
+        );
+        assert_eq!(pager.visible_position().anchor, at);
+        pager.seek_chapter(at);
+        assert_eq!(pager.anchor(), at);
+        assert_eq!(pager.complete_view().bounds, normal.complete_view().bounds);
+        assert!(pager.natural.is_none());
+        assert!(!pager.exact_view);
+        pager.previous();
+        normal.previous();
+        assert_eq!(pager.complete_view().bounds, normal.complete_view().bounds);
+    }
+}
+
+#[test]
+fn chapter_resume_keeps_the_logical_word_when_the_view_begins_with_a_picture() {
+    let mut doc = short_document(true);
+    doc.references.push(Reference {
+        source: 2,
+        bytes: None,
+        backlink: false,
+        label: "Plate".into(),
+        target: Target::Image("plate.png".into()),
+    });
+    let mut pager = Pager::new(&doc, 80, 6, LayoutMode::Single);
+    let at = Anchor { block: 2, byte: 3 };
+    pager.seek_chapter(at);
+    assert!(pager.visible_position().illustration.is_some());
+    let position = pager.position();
+    assert_eq!(
+        position,
+        crate::ViewPosition {
+            anchor: at,
+            illustration: None
+        }
+    );
+    for height in [7, 8, 6] {
+        pager.relayout(&doc, 80, height, LayoutMode::Single);
+        assert_eq!(pager.position(), position);
+        let mut ordinary = Pager::new(&doc, 80, height, LayoutMode::Single);
+        ordinary.seek_chapter(at);
+        assert_eq!(
+            pager.complete_view().bounds,
+            ordinary.complete_view().bounds
+        );
+    }
+    let at_opening = Anchor { block: 0, byte: 4 };
+    pager.seek_chapter(at_opening);
+    pager.previous();
+    assert_eq!(pager.anchor(), at_opening);
+}
+
+#[test]
+fn repeated_resizes_keep_the_same_origin_until_the_reader_navigates() {
+    use std::sync::Arc;
+    let doc = Arc::new(Document {
+        blocks: vec![Block {
+            text: (0..180)
+                .map(|i| format!("w{i:03}"))
+                .collect::<Vec<_>>()
+                .join(" "),
+            heading: false,
+        }],
+        ..Default::default()
+    });
+    let at = Anchor {
+        block: 0,
+        byte: doc.blocks[0].text.find("w083").unwrap(),
+    };
+    for policy in [PaginationMode::Chapter, PaginationMode::KeepWord] {
+        let mut pager = Pager::new(&doc, 65, 7, LayoutMode::Single);
+        pager.set_pagination_mode(policy);
+        pager.seek_chapter(at);
+        let target = match policy {
+            PaginationMode::Chapter => at,
+            PaginationMode::KeepWord => pager.visible_position().anchor,
+        };
+        for (w, h) in [(70, 3), (150, 7), (92, 8), (70, 3)] {
+            assert!(pager.resize_for_display(&doc, w, h, LayoutMode::Spread, 4));
+            assert!(!pager.resize_for_display(&doc, w, h, LayoutMode::Spread, 4));
+            assert_eq!(pager.anchor(), target);
+            if policy == PaginationMode::KeepWord {
+                assert_eq!(pager.visible_position().anchor, target);
+            }
+        }
+    }
+}
+
+#[test]
+fn keep_word_backward_from_a_picture_at_a_regular_boundary_turns_the_page() {
+    let mut doc = short_document(true);
+    doc.references.push(Reference {
+        source: 2,
+        bytes: None,
+        backlink: false,
+        label: "Plate".into(),
+        target: Target::Image("plate.png".into()),
+    });
+    let mut normal = Pager::new(&doc, 80, 6, LayoutMode::Single);
+    let previous = normal.complete_view().bounds;
+    normal.next();
+    let picture = normal.position();
+    assert!(picture.illustration.is_some());
+    let mut pager = Pager::for_display_position_with_pagination(
+        &doc,
+        (80, 6),
+        LayoutMode::Single,
+        4,
+        normal.reflow_options(),
+        Some(picture),
+        (1, 2),
+        PaginationMode::KeepWord,
+    );
+    assert_eq!(pager.complete_view().bounds, normal.complete_view().bounds);
+    pager.previous();
+    assert_eq!(pager.complete_view().bounds, previous);
+}
+
+#[test]
+fn history_restores_both_exact_openings_and_canonical_search_results_in_keep_word() {
+    let text = (0..240)
+        .map(|n| format!("word{n:03}"))
+        .collect::<Vec<_>>()
+        .join(" ");
+    let want = Anchor {
+        block: 0,
+        byte: text.find("word036").unwrap(),
+    };
+    let away = Anchor {
+        block: 0,
+        byte: text.find("word102").unwrap(),
+    };
+    let doc = Document {
+        blocks: vec![Block {
+            text,
+            heading: false,
+        }],
+        ..Default::default()
+    };
+    for mode in [LayoutMode::Single, LayoutMode::Spread] {
+        let mut p = Pager::for_display_position_with_pagination(
+            &doc,
+            (86, 4),
+            mode,
+            4,
+            Pager::new(&doc, 86, 4, mode).reflow_options(),
+            Some(crate::ViewPosition {
+                anchor: want,
+                illustration: None,
+            }),
+            (1, 2),
+            PaginationMode::KeepWord,
+        );
+        for source in [want, away] {
+            let entry = p.history_position();
+            assert_eq!(entry.logical.anchor, source);
+            let frame = (p.complete_view().bounds, p.lines(0)[0].text.clone());
+            p.seek_chapter(want);
+            p.restore_history(&doc, entry);
+            assert_eq!(p.history_position(), entry);
+            assert_eq!(
+                (p.complete_view().bounds, p.lines(0)[0].text.clone()),
+                frame
+            );
+            p.seek_chapter(away);
+        }
+    }
+}
+
+#[test]
+fn page_turn_after_selection_drag_resumes_regular_pages_in_both_directions() {
+    let doc = short_document(true);
+    for mode in [LayoutMode::Single, LayoutMode::Spread] {
+        let mut pager = Pager::new(&doc, 86, 4, mode);
+        let regular = forward_breaks(&mut pager);
+        pager.seek_chapter(Anchor::default());
+        pager.scroll(1);
+        assert_eq!(pager.first, 1, "selection can advance by a single row");
+        pager.next();
+        assert_eq!(pager.complete_view().bounds, regular[1]);
+        pager.previous();
+        assert_eq!(pager.complete_view().bounds, regular[0]);
     }
 }

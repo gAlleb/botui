@@ -5,6 +5,7 @@ pub(crate) use book::Kind as BookKind;
 mod edit;
 mod help;
 use crate::{AppTerminal, appearance, settings::Settings, shell_theme};
+use botui_core::PaginationMode;
 use crossterm::event::{Event, KeyCode, KeyEventKind, MouseButton, MouseEventKind};
 use ratatui::{
     Frame,
@@ -88,6 +89,13 @@ const PARAGRAPH_SPACING: [&str; 4] = [
     "2 blank lines",
 ];
 const SYNCTEX_MODES: [&str; 2] = ["Custom command", "Neovim · reuse window"];
+const PAGINATION_MODES: [PaginationMode; 2] = [PaginationMode::Chapter, PaginationMode::KeepWord];
+fn pagination_label(mode: PaginationMode) -> &'static str {
+    match mode {
+        PaginationMode::Chapter => "From chapter start",
+        PaginationMode::KeepWord => "Keep first word",
+    }
+}
 fn spacing_index(prefs: &Settings) -> usize {
     prefs
         .paragraph_spacing
@@ -236,6 +244,11 @@ fn rows(tab: usize, s: &Settings) -> Vec<SettingRow> {
                         "In text"
                     },
                     "Display embedded illustrations on the page or open them from I when you need them.",
+                ),
+                pair(
+                    "Pagination",
+                    pagination_label(s.pagination_mode),
+                    "In Single and Spread, use pages from the start of the chapter or keep the current word at the top.",
                 ),
                 pair(
                     "PDF reading theme",

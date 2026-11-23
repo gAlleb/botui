@@ -100,8 +100,9 @@ def web_passage(tmp, server):
         frame = t.see("Внизу у воды")
         if "Space z Zen" in frame:
             t.keys('Space', 'z')
-        t.wait("Resume exactly on the bookmarked words",
-               lambda frame: frame.strip().startswith("Внизу у воды"))
+        t.wait("Resume on the chapter page containing the exact BookOrbit bookmark",
+               lambda frame: frame.strip().startswith("Верхнее окно")
+               and "Чайник зашумел. Внизу у воды" in frame)
         t.keys('Space', 'q')
         s.formats(t)
         assert server.saved == [302]

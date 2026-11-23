@@ -48,15 +48,17 @@ impl Pager {
             self.seek(at);
             return;
         }
-        let row = Self::line_at(at, &self.lines, &self.source_lines);
+        let mut row = Self::line_at(at, &self.lines, &self.source_lines);
         if row < self.first {
             self.previous();
+            row = Self::line_at(at, &self.lines, &self.source_lines);
         } else if row >= self.complete_view().end() {
             self.next();
         }
         // A counted motion or a jump can cross more than one spread.
         if !(self.first..self.complete_view().end()).contains(&row) {
-            self.show_regular_view(row);
+            self.seek_chapter(at);
+            self.move_to(self.first);
         }
     }
 

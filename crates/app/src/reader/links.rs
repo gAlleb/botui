@@ -1,5 +1,5 @@
 //! Hit regions follow the rendered byte span of each link through reflow.
-use botui_core::{Anchor, Document, PageLine, Reference, ViewPosition};
+use botui_core::{Anchor, Document, HistoryPosition, PageLine, Reference};
 use ratatui::{
     Frame,
     layout::{Position, Rect},
@@ -9,7 +9,7 @@ use ratatui::{
 use std::collections::BTreeMap;
 
 struct Return {
-    top: ViewPosition,
+    top: HistoryPosition,
     from: Anchor,
 }
 pub(super) struct Links {
@@ -100,16 +100,22 @@ impl Links {
     pub fn visiting(&self) -> bool {
         !self.returns.is_empty()
     }
-    pub fn origin(&self, current: ViewPosition) -> ViewPosition {
-        self.returns.first().map_or(current, |r| r.top)
+    pub fn origin(&self) -> Option<HistoryPosition> {
+        self.returns.first().map(|r| r.top)
     }
-    pub fn destination(&mut self, top: ViewPosition, link: &Reference, to: Anchor) -> ViewPosition {
+    /// A publisher backlink can return to the exact view that opened the note.
+    pub fn follow(
+        &mut self,
+        top: HistoryPosition,
+        link: &Reference,
+        to: Anchor,
+    ) -> Option<HistoryPosition> {
         if let Some(i) = self.returns.iter().rposition(|r| {
             r.from == to || (link.backlink && r.from.block == to.block && to.byte == 0)
         }) {
             let previous = self.returns[i].top;
             self.returns.truncate(i);
-            return previous;
+            return Some(previous);
         }
         self.returns.push(Return {
             top,
@@ -118,12 +124,9 @@ impl Links {
                 byte: link.bytes.as_ref().map_or(0, |r| r.start),
             },
         });
-        ViewPosition {
-            anchor: to,
-            illustration: None,
-        }
+        None
     }
-    pub fn back(&mut self) -> Option<ViewPosition> {
+    pub fn back(&mut self) -> Option<HistoryPosition> {
         self.returns.pop().map(|r| r.top)
     }
     pub fn keep(&mut self) {

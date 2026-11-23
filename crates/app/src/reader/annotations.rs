@@ -108,8 +108,7 @@ pub(super) fn run(
                 .get(&name)
                 .copied()
                 .ok_or_else(|| io::Error::other(format!("Mark {name} is not set")))?;
-            reader.history.push(reader.pager.position());
-            reader.pager.seek(at);
+            reader.jump_to(at);
             reader.study.cursor = Some(at);
             reader.study.selection = None;
             reader.dirty = true;
@@ -331,8 +330,7 @@ fn list(term: &mut AppTerminal, reader: &mut Reader, store: &LocalState) -> io::
                 if let Some(note) = notes.get(selected) {
                     match key {
                         KeyCode::Enter => {
-                            reader.history.push(reader.pager.position());
-                            reader.pager.seek(note.anchor());
+                            reader.jump_to(note.anchor());
                             reader.dirty = true;
                             reader.study.cursor = Some(note.anchor());
                             reader.study.selection = note.range();

@@ -51,6 +51,8 @@ preserve_compact_spacing = true
 paragraph_spacing = 0
 # Default layout for books without a saved mode: auto, single, spread, scroll.
 reading_layout = "auto"
+# Pagination for text books in Single and Spread: chapter or keep_word.
+pagination_mode = "chapter"
 opaque_background = false
 # Window frames, cover cards and jackets: "rounded", "square", or "none".
 borders = "rounded"

@@ -71,7 +71,17 @@ pub(super) fn setting(
         (1, 10) => {
             Settings::update(|s| s.heading_rules = !s.heading_rules)?;
         }
-        (1, 20) => {
+        (1, 17) => {
+            if let Some(index) = choose(
+                term,
+                "Pagination",
+                &super::PAGINATION_MODES.map(super::pagination_label),
+                p.pagination_mode as usize,
+            )? {
+                Settings::update(|s| s.pagination_mode = super::PAGINATION_MODES[index])?;
+            }
+        }
+        (1, 21) => {
             if let Some(i) = choose(
                 term,
                 "SyncTeX mode",
@@ -87,8 +97,8 @@ pub(super) fn setting(
                 })?;
             }
         }
-        (1, 21 | 22) if matches!(p.synctex_mode, crate::synctex::Mode::Neovim) => {
-            let neovim = i == 21;
+        (1, 22 | 23) if matches!(p.synctex_mode, crate::synctex::Mode::Neovim) => {
+            let neovim = i == 22;
             let (title, args) = if neovim {
                 (
                     "SyncTeX Neovim terminal · blank = Auto",
@@ -111,7 +121,7 @@ pub(super) fn setting(
                 })?;
             }
         }
-        (1, 21) => {
+        (1, 22) => {
             if let Some(command) = edit(
                 term,
                 "SyncTeX editor command · e.g. kitty nvim +{line} -- {file}",
@@ -121,7 +131,7 @@ pub(super) fn setting(
                 Settings::update(|s| s.synctex_editor = args)?;
             }
         }
-        (1, 18) => {
+        (1, 19) => {
             let modes = settings::PageColors::ALL;
             if let Some(i) = choose(
                 term,
@@ -184,11 +194,11 @@ pub(super) fn setting(
                 Settings::update(|s| s.opaque_color = (!v.is_empty()).then_some(v))?;
             }
         }
-        (1, 6) | (1, 17) | (1, 19) => {
-            let comic = i == 19;
+        (1, 6) | (1, 18) | (1, 20) => {
+            let comic = i == 20;
             let (initial, title) = if comic {
                 (p.comic_theme(), " Comic background ")
-            } else if i == 17 {
+            } else if i == 18 {
                 (p.page_theme(), " PDF reading theme ")
             } else {
                 (
@@ -200,7 +210,7 @@ pub(super) fn setting(
                 Settings::update(|s| {
                     if comic {
                         s.comic_background = Some(t.id());
-                    } else if i == 17 {
+                    } else if i == 18 {
                         s.scan_page_colors = Some(s.page_colors());
                         s.scan_theme = Some(t.id());
                     } else {

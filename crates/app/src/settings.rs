@@ -52,6 +52,7 @@ pub struct Settings {
     pub sidebar_width: Option<u16>,
     pub contents_width: Option<u16>,
     pub reading_layout: Option<String>,
+    pub pagination_mode: botui_core::PaginationMode,
     pub column_gap: Option<u16>,
     pub scroll_lines: Option<u8>,
     pub bookorbit: Connection,
@@ -598,6 +599,14 @@ mod dialog_tests {
         assert!(!settings.zen);
         assert_eq!(settings.paragraph_spacing, Some(0));
         assert_eq!(settings.text_alignment, botui_core::TextAlignment::Left);
+        assert_eq!(
+            settings.pagination_mode,
+            botui_core::PaginationMode::Chapter
+        );
+        assert_eq!(
+            decode("").unwrap().pagination_mode,
+            botui_core::PaginationMode::Chapter
+        );
         assert_eq!(
             decode("").unwrap().text_alignment,
             botui_core::TextAlignment::Left

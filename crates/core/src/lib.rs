@@ -139,6 +139,17 @@ pub struct ViewPosition {
     pub illustration: Option<IllustrationPosition>,
 }
 
+/// Session-only jump history remembers the view as well as the address used
+/// for progress sync. Only the logical position belongs in persistent storage.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct HistoryPosition {
+    pub logical: ViewPosition,
+    visible: ViewPosition,
+    chapter_page: bool,
+    split_word: Option<Anchor>,
+    leading_rows: usize,
+}
+
 /// An occurrence in this document, including the first visible row relative
 /// to its top. A negative row includes a leading layout spacer.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -195,6 +206,15 @@ pub enum LayoutMode {
     Scroll,
     Single,
     Spread,
+}
+
+/// Page boundaries used by the reflowable reader.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PaginationMode {
+    #[default]
+    Chapter,
+    KeepWord,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -387,6 +407,7 @@ pub struct ReflowOptions {
 }
 
 struct NaturalRows {
+    split_word: Anchor,
     replaced: std::ops::Range<usize>,
     rows: Vec<PageLine>,
     styled: bool,
@@ -394,7 +415,12 @@ struct NaturalRows {
 
 pub struct Pager {
     image_cell: (u16, u16),
-    opening: Option<Anchor>,
+    pagination_mode: PaginationMode,
+    /// An exact opening may rewrap a paragraph or start between regular pages.
+    exact_view: bool,
+    /// Keep the source address fixed throughout consecutive geometry changes.
+    resize_origin: Option<ViewPosition>,
+    focus_illustration: Option<IllustrationPosition>,
     book: Arc<BookLayout>,
     reflow_cache: reflow_cache::Cache,
     pending: Option<pagination::Pending>,
@@ -406,12 +432,6 @@ pub struct Pager {
     page_starts: Vec<usize>,
     /// Two-page views can end after the left page at a chapter boundary.
     spread_starts: Vec<usize>,
-    /// First laid-out row of each chapter, including in scroll mode.
-    chapter_rows: Vec<usize>,
-    /// Views around an exact search or resume position, until paging back rejoins
-    /// the regular layout at an overlapping boundary.
-    positioned_spreads: Vec<usize>,
-    backward_bounds: std::collections::BTreeMap<usize, [usize; 3]>,
     figure_starts: Vec<(usize, Figure)>,
     first: usize,
     focus: Anchor,
@@ -468,8 +488,7 @@ impl Pager {
         Self::with_start(doc, width, height, mode, options, None)
     }
 
-    /// Reflow the opening passage from the saved word. Earlier text remains
-    /// reachable by paging back, including the prefix of a split paragraph.
+    /// Open the chapter page containing the saved passage.
     pub fn with_start(
         doc: &Document,
         width: u16,
@@ -518,23 +537,46 @@ impl Pager {
 
     pub fn for_display_position(
         doc: &Document,
-        (width, height): (u16, u16),
+        size: (u16, u16),
         mode: LayoutMode,
         gap: u16,
         options: ReflowOptions,
         resume: Option<ViewPosition>,
         image_cell: (u16, u16),
     ) -> Self {
+        Self::for_display_position_with_pagination(
+            doc,
+            size,
+            mode,
+            gap,
+            options,
+            resume,
+            image_cell,
+            PaginationMode::default(),
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn for_display_position_with_pagination(
+        doc: &Document,
+        (width, height): (u16, u16),
+        mode: LayoutMode,
+        gap: u16,
+        options: ReflowOptions,
+        resume: Option<ViewPosition>,
+        image_cell: (u16, u16),
+        pagination_mode: PaginationMode,
+    ) -> Self {
         let layout = Layout {
             image_cell,
             ..Layout::new(width, height, mode, gap)
         };
-        let mut pager = Self::layout_document(doc, layout, options, None);
+        let mut pager = Self::layout_document(doc, layout, options, pagination_mode);
         pager.index_pages();
         if let Some(position) = resume {
-            pager.opening = position.illustration.is_none().then_some(position.anchor);
-            pager.restore_position(position);
-            pager.exact_top(doc, position);
+            pager.open_position(doc, position);
+        } else {
+            pager.move_to(0);
         }
         pager
     }
@@ -543,9 +585,9 @@ impl Pager {
         doc: &Document,
         layout: Layout,
         options: ReflowOptions,
-        split_at: Option<Anchor>,
+        pagination_mode: PaginationMode,
     ) -> Self {
-        let book = Arc::new(BookLayout::new(doc, options, split_at));
+        let book = Arc::new(BookLayout::new(doc, options, None));
         let lines = book.lines(doc, layout, 0..doc.blocks.len());
         Self {
             image_cell: layout.image_cell,
@@ -553,27 +595,40 @@ impl Pager {
             reflow_cache: reflow_cache::Cache::default(),
             pending: None,
             natural: None,
-            opening: None,
+            pagination_mode,
+            exact_view: false,
+            resize_origin: None,
+            focus_illustration: None,
             layout,
             source_lines: Self::source_index(!doc.styled.is_empty(), &lines),
             figure_starts: Self::index_figures(&lines),
             lines,
             page_starts: Vec::new(),
             spread_starts: Vec::new(),
-            chapter_rows: Vec::new(),
-            positioned_spreads: Vec::new(),
-            backward_bounds: Default::default(),
             first: 0,
             focus: Anchor::default(),
         }
     }
 
-    /// Reflow the same document. Keep the line containing the saved word at the top.
+    pub fn pagination_mode(&self) -> PaginationMode {
+        self.pagination_mode
+    }
+
+    pub fn set_pagination_mode(&mut self, mode: PaginationMode) {
+        if self.pagination_mode != mode {
+            self.finish_resize();
+            let position = self.position();
+            self.pagination_mode = mode;
+            self.restore_natural();
+            self.resize_origin = None;
+            self.locate(position, !self.layout.scrolling);
+        }
+    }
+
     pub fn relayout(&mut self, doc: &Document, width: u16, height: u16, mode: LayoutMode) {
         self.relayout_with_gap(doc, width, height, mode, SPREAD_GAP)
     }
-    /// Changing typography keeps the current passage. Only the original
-    /// resume address can introduce a break in the middle of a paragraph.
+
     pub fn reconfigure(
         &mut self,
         doc: &Document,
@@ -583,21 +638,30 @@ impl Pager {
         gap: u16,
         options: ReflowOptions,
     ) {
-        let position = self.position();
-        *self = Self::for_display(
+        let position = self.resize_position();
+        *self = Self::for_display_position_with_pagination(
             doc,
             (width, height),
             mode,
             gap,
             options,
-            self.opening,
+            Some(position),
             self.image_cell,
+            self.pagination_mode,
         );
-        self.restore_position(position);
+        self.resize_origin = Some(position);
     }
 
     pub fn set_image_cell(&mut self, width: u16, height: u16) {
         self.image_cell = (width.max(1), height.max(1));
+    }
+
+    fn resize_position(&self) -> ViewPosition {
+        self.resize_origin
+            .unwrap_or_else(|| match self.pagination_mode {
+                PaginationMode::Chapter => self.position(),
+                PaginationMode::KeepWord => self.visible_position(),
+            })
     }
 
     pub fn relayout_with_gap(
@@ -613,14 +677,16 @@ impl Pager {
             ..Layout::new(width, height, mode, gap)
         };
         self.pending = None;
-        if layout == self.layout {
-            return;
+        if layout != self.layout {
+            let position = self.resize_position();
+            self.change_layout(doc, layout);
+            self.open_position(doc, position);
+            self.resize_origin = Some(position);
         }
-        let position = self.position();
-        if self.natural.is_some() {
-            self.restore_natural();
-            self.restore_position(position);
-        }
+    }
+
+    fn change_layout(&mut self, doc: &Document, layout: Layout) {
+        self.restore_natural();
         if !self.use_cached_layout(layout) {
             let lines = self.book.lines(doc, layout, 0..doc.blocks.len());
             self.install(
@@ -632,19 +698,10 @@ impl Pager {
                 layout,
             );
         }
-        if let Some(anchor) = self.opening.filter(|a| a.byte > 0) {
-            let boundary = ViewPosition {
-                anchor,
-                illustration: None,
-            };
-            self.restore_position(boundary);
-            self.exact_top(doc, boundary);
-            self.restore_position(position);
-        }
     }
 
-    /// An explicit reading-mode change takes its anchor from the screen. A
-    /// terminal resize or a search still follows the logical cursor.
+    /// Explicit mode changes follow the first visible passage, including a
+    /// picture on screen. Previous searches and resize targets are independent.
     pub fn switch_mode(
         &mut self,
         doc: &Document,
@@ -654,19 +711,22 @@ impl Pager {
         gap: u16,
     ) {
         self.finish_resize();
-        let mut position = self.position();
-        if let Some(top) = self.lines[self.first..]
-            .iter()
-            .find_map(PageLine::reading_anchor)
-        {
-            position.anchor = top;
+        let position = self.visible_position();
+        let layout = Layout {
+            image_cell: self.image_cell,
+            ..Layout::new(width, height, mode, gap)
+        };
+        self.change_layout(doc, layout);
+        self.resize_origin = None;
+        self.open_position(doc, position);
+    }
+
+    fn open_position(&mut self, doc: &Document, position: ViewPosition) {
+        let chapter = !self.layout.scrolling && self.pagination_mode == PaginationMode::Chapter;
+        self.locate(position, chapter);
+        if !chapter {
+            self.exact_top(doc, position);
         }
-        self.opening = None;
-        self.restore_natural();
-        self.restore_position(position);
-        self.relayout_with_gap(doc, width, height, mode, gap);
-        self.opening = position.illustration.is_none().then_some(position.anchor);
-        self.exact_top(doc, position);
     }
 
     fn exact_top(&mut self, doc: &Document, position: ViewPosition) {
@@ -722,12 +782,13 @@ impl Pager {
         let replaced = range.start..range.start + rows.len();
         let original = self.lines.splice(range, rows).collect();
         self.natural = Some(NaturalRows {
+            split_word: anchor,
             rows: original,
             replaced,
             styled,
         });
         self.reindex_rows(styled);
-        self.restore_position(position);
+        self.locate(position, false);
     }
 
     fn restore_natural(&mut self) {
@@ -748,10 +809,8 @@ impl Pager {
         }
         let size = self.book.size(layout);
         if size == self.book.size(self.layout) {
-            let position = self.position();
             self.layout = layout;
             self.index_pages();
-            self.restore_position(position);
             return true;
         }
         let Some(snapshot) = self.reflow_cache.take(size) else {
@@ -762,7 +821,6 @@ impl Pager {
     }
 
     fn install(&mut self, snapshot: reflow_cache::Snapshot, layout: Layout) {
-        let position = self.position();
         let previous = reflow_cache::Snapshot {
             size: self.book.size(self.layout),
             lines: std::mem::replace(&mut self.lines, snapshot.lines),
@@ -772,21 +830,19 @@ impl Pager {
         self.reflow_cache.put(previous);
         self.layout = layout;
         self.index_pages();
-        self.restore_position(position);
     }
 
     /// Show the regular page or spread containing a rendered row.
-    fn show_regular_view(&mut self, row: usize) {
+    fn regular_first(&self, row: usize) -> usize {
         let starts = self.regular_views();
-        let first = if starts.is_empty() {
+        if starts.is_empty() {
             let step = self.viewport() * self.layout.columns;
             row / step * step
         } else {
-            starts[starts.partition_point(|&start| start <= row) - 1]
-        };
-        self.positioned_spreads.clear();
-        self.backward_bounds.clear();
-        self.move_to(first);
+            starts[starts
+                .partition_point(|&start| start <= row)
+                .saturating_sub(1)]
+        }
     }
 
     pub fn columns(&self) -> usize {
@@ -803,14 +859,84 @@ impl Pager {
     }
 
     pub fn position(&self) -> ViewPosition {
+        ViewPosition {
+            anchor: self.focus,
+            illustration: self.focus_illustration,
+        }
+    }
+
+    pub fn history_position(&mut self) -> HistoryPosition {
+        self.finish_resize();
+        let view = self.complete_view();
+        let rows = view.lines(0);
+        HistoryPosition {
+            logical: self.position(),
+            visible: self.visible_position(),
+            chapter_page: !self.layout.scrolling && !self.exact_view,
+            split_word: self.natural.as_ref().map(|n| n.split_word),
+            leading_rows: rows
+                .iter()
+                .take_while(|l| l.reading_anchor().is_none())
+                .count(),
+        }
+    }
+
+    pub fn restore_history(&mut self, doc: &Document, saved: HistoryPosition) {
+        self.finish_resize();
+        self.restore_natural();
+        self.resize_origin = None;
+        if !self.layout.scrolling
+            && (saved.chapter_page || self.pagination_mode == PaginationMode::Chapter)
+        {
+            self.locate(saved.logical, true);
+            return;
+        }
+
+        if let Some(anchor) = saved.split_word {
+            let split = ViewPosition {
+                anchor,
+                illustration: None,
+            };
+            self.locate(split, false);
+            self.exact_top(doc, split);
+        }
+        self.locate(saved.visible, false);
+        if saved.visible.illustration.is_none() {
+            if self.visible_position().anchor != saved.visible.anchor {
+                // The geometry changed since this entry. Establish the saved
+                // first word in the new geometry using the original prose.
+                self.restore_natural();
+                self.locate(saved.visible, false);
+                self.exact_top(doc, saved.visible);
+            }
+            let leading = self.lines[..self.first]
+                .iter()
+                .rev()
+                .take(saved.leading_rows)
+                .take_while(|l| l.reading_anchor().is_none())
+                .count();
+            self.first -= leading;
+        }
+        self.focus = saved.logical.anchor;
+        self.focus_illustration = saved
+            .logical
+            .illustration
+            .filter(|hint| hint.resolve(&self.lines, &self.figure_starts).is_some());
+    }
+
+    fn visible_position(&self) -> ViewPosition {
+        let rows = &self.lines[self.first..];
+        let anchor = rows
+            .iter()
+            .find_map(PageLine::reading_anchor)
+            .unwrap_or(self.focus);
         let illustration = if self.figure_starts.is_empty() {
             None
         } else {
-            let end = (self.first + self.layout.height).min(self.lines.len());
-            IllustrationPosition::at(&self.lines[self.first..end])
+            IllustrationPosition::at(&rows[..rows.len().min(self.layout.height)])
         };
         ViewPosition {
-            anchor: self.focus,
+            anchor,
             illustration,
         }
     }
@@ -840,12 +966,55 @@ impl Pager {
 
     pub fn restore_position(&mut self, position: ViewPosition) {
         self.finish_resize();
-        self.focus = position.anchor;
-        self.first = position
+        self.restore_natural();
+        self.resize_origin = None;
+        self.locate(position, self.pagination_mode == PaginationMode::Chapter);
+    }
+
+    /// Search always uses the normal chapter pagination, including in KeepWord.
+    pub fn seek_chapter(&mut self, anchor: Anchor) {
+        self.finish_resize();
+        self.restore_natural();
+        self.resize_origin = None;
+        self.locate(
+            ViewPosition {
+                anchor,
+                illustration: None,
+            },
+            true,
+        );
+    }
+
+    fn position_row(&self, position: ViewPosition) -> usize {
+        position
             .illustration
             .and_then(|hint| hint.resolve(&self.lines, &self.figure_starts))
-            .unwrap_or_else(|| Self::line_at(self.focus, &self.lines, &self.source_lines));
-        self.index_position();
+            .unwrap_or_else(|| Self::line_at(position.anchor, &self.lines, &self.source_lines))
+    }
+
+    fn locate(&mut self, position: ViewPosition, chapter: bool) {
+        let mut row = self.position_row(position);
+        self.exact_view = !self.layout.scrolling && !chapter;
+        if !self.layout.scrolling {
+            if chapter {
+                row = self.regular_first(row);
+            } else if let Some(line) = self.lines.get(row) {
+                // The scroll viewport can start inside a plate. A paged view
+                // must always start at or before its first image row.
+                if let Some(offset) = line.indivisible_blocks().map(|(offset, _)| offset).max() {
+                    row = row.saturating_sub(usize::from(offset));
+                }
+            }
+        }
+        self.first = row;
+        self.focus = position.anchor;
+        self.focus_illustration = if self.layout.scrolling || !chapter {
+            self.visible_position().illustration
+        } else {
+            position
+                .illustration
+                .filter(|hint| hint.resolve(&self.lines, &self.figure_starts).is_some())
+        };
     }
 
     fn line_at(anchor: Anchor, lines: &[PageLine], sources: &[(Anchor, usize)]) -> usize {
@@ -882,40 +1051,16 @@ impl Pager {
         }
     }
 
-    // An illustrated chapter opening may have been packed backwards to show
-    // every row up to the saved word. Leaving it resumes the book's regular pages.
-    fn resume_chapter_pages(&mut self, first: usize) {
-        let chapter = self.chapter_rows.binary_search(&first).ok();
-        self.opening = None;
-        self.restore_natural();
-        let row = chapter
-            .and_then(|i| self.chapter_rows.get(i))
-            .copied()
-            .unwrap_or(0);
-        self.show_regular_view(row);
-    }
-
-    fn at_backward_opening(&self) -> bool {
-        (self.first == 0 || self.lines.get(self.first).is_some_and(|l| l.chapter_start))
-            && self.backward_bounds.contains_key(&self.first)
-    }
-
     pub fn next(&mut self) {
         self.finish_resize();
-        if self.at_backward_opening() {
-            self.resume_chapter_pages(self.first);
-        }
-        let first = if self.positioned_spreads.is_empty() {
-            self.complete_view().end()
+        // Drag selection can scroll a paged view by a single row. A later
+        // page turn still advances to the next regular chapter view.
+        let start = if self.layout.scrolling || self.exact_view {
+            self.first
         } else {
-            let i = self
-                .positioned_spreads
-                .partition_point(|&row| row <= self.first);
-            let Some(&first) = self.positioned_spreads.get(i) else {
-                return;
-            };
-            first
+            self.regular_first(self.first)
         };
+        let first = self.view_at(start).end();
         if first > self.first && first < self.lines.len() {
             self.move_to(first);
         }
@@ -923,36 +1068,40 @@ impl Pager {
 
     pub fn previous(&mut self) {
         self.finish_resize();
-        if self.first > 0 && self.at_backward_opening() {
-            self.resume_chapter_pages(self.first);
+        if self.lines.is_empty() || self.layout.height == 0 {
+            return;
         }
-        let first = self.previous_start();
-        if first != self.first {
-            if (first == 0 || self.lines[first].chapter_start)
-                && !self.backward_bounds.contains_key(&first)
-                && (self.opening.is_some() || !self.positioned_spreads.is_empty())
-            {
-                self.resume_chapter_pages(first);
+        let exact = self.exact_view;
+        let first = if exact {
+            // The first backward turn leaves the temporary sequence. Locate
+            // the word in the original rows before choosing the regular view.
+            let position = self.visible_position();
+            self.restore_natural();
+            self.exact_view = false;
+            let row = self.position_row(position);
+            let start = self.regular_first(row);
+            let rows = &self.lines[start..self.view_at(start).end()];
+            let at_start = match position.illustration {
+                Some(_) => row == start || rows[..row - start].iter().all(PageLine::is_spacer),
+                None => rows.iter().find_map(PageLine::reading_anchor) == Some(position.anchor),
+            };
+            if at_start {
+                self.regular_previous(start)
             } else {
-                self.move_to(first);
+                start
             }
+        } else if self.layout.scrolling {
+            self.first.saturating_sub(self.viewport())
+        } else {
+            self.regular_previous(self.first)
+        };
+        if exact || first != self.first {
+            self.move_to(first);
         }
     }
 
-    fn previous_start(&self) -> usize {
-        if !self.positioned_spreads.is_empty() {
-            let before = self
-                .positioned_spreads
-                .partition_point(|&row| row < self.first);
-            self.positioned_spreads[before.saturating_sub(1)]
-        } else if self.page_starts.is_empty() {
-            self.first
-                .saturating_sub(self.layout.columns * self.layout.height)
-        } else {
-            let starts = self.regular_views();
-            let before = starts.partition_point(|&row| row < self.first);
-            starts[before.saturating_sub(1)]
-        }
+    fn regular_previous(&self, first: usize) -> usize {
+        self.regular_first(first.saturating_sub(1))
     }
 
     pub fn scroll(&mut self, lines: isize) {
@@ -961,7 +1110,6 @@ impl Pager {
         let first = self.first.saturating_add_signed(lines).min(max);
         if !self.lines.is_empty() && first != self.first {
             self.move_to(first);
-            self.index_position();
         }
     }
     pub fn viewport(&self) -> usize {
@@ -972,13 +1120,10 @@ impl Pager {
     }
     fn move_to(&mut self, first: usize) {
         self.first = first;
-        // The blank row between paragraphs belongs to the layout. Its source
-        // address is the end of the preceding paragraph, often on another page.
-        let line = &self.lines[first];
-        self.focus = self.lines[first..]
-            .iter()
-            .find_map(PageLine::reading_anchor)
-            .unwrap_or(line.start);
+        self.resize_origin = None;
+        let position = self.visible_position();
+        self.focus = position.anchor;
+        self.focus_illustration = position.illustration;
     }
 }
 
@@ -1118,7 +1263,7 @@ mod tests {
             byte: "зима ".len(),
         };
         pager.seek(anchor);
-        assert!(pager.lines(0)[0].text.starts_with("море"));
+        assert!(pager.lines(0).iter().any(|l| l.text.starts_with("море")));
         for (width, mode) in [(1, LayoutMode::Scroll), (90, LayoutMode::Spread)] {
             pager.relayout(&doc, width, 14, mode);
             assert_eq!(pager.anchor(), anchor);
@@ -1320,11 +1465,11 @@ mod tests {
             block: 0,
             byte: doc.blocks[0].text.find("удалось").unwrap(),
         };
-        let mut pager = Pager::with_start(
+        let mut pager = Pager::for_display_position_with_pagination(
             &doc,
-            44,
-            2,
+            (44, 2),
             LayoutMode::Single,
+            SPREAD_GAP,
             ReflowOptions {
                 typography: Default::default(),
                 repair_printed: true,
@@ -1333,7 +1478,12 @@ mod tests {
                 compact_spacing: true,
                 paragraph_spacing: None,
             },
-            Some(at),
+            Some(ViewPosition {
+                anchor: at,
+                illustration: None,
+            }),
+            (1, 2),
+            PaginationMode::KeepWord,
         );
         for width in [44, 24, 100] {
             pager.relayout(&doc, width, 2, LayoutMode::Spread);
@@ -1347,7 +1497,7 @@ mod tests {
     }
 
     #[test]
-    fn resize_and_layout_changes_keep_the_exact_word_visible_on_the_first_line() {
+    fn resize_and_layout_changes_keep_the_position_on_its_chapter_page() {
         let doc = document(&[
             "Первая глава",
             "Проехали через деревню, переправились через речку и увидели зелёный лес.",
@@ -1369,7 +1519,10 @@ mod tests {
             assert_eq!(pager.anchor(), anchor);
             assert_eq!(pager.columns(), columns);
             if width > 1 {
-                assert!(pager.lines(0)[0].text.contains("речку"));
+                assert!(
+                    (0..pager.columns())
+                        .any(|c| pager.lines(c).iter().any(|r| r.text.contains("речку")))
+                );
             }
         }
     }

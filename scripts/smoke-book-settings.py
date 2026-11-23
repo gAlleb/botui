@@ -60,6 +60,10 @@ def run(tmp):
         line_gap(t, 1)
         global_bytes = cfg.read_bytes()  # startup migrated the minimal config
         frame = open_settings(t)
+        t.click("Pagination", frame)
+        t.click("Keep first word", t.see("Keep first word"))
+        frame = t.see("Use global settings for this book")
+        assert json.loads(pref(text).read_text())["pagination_mode"] == "keep_word"
         t.click("Paragraph spacing", frame)
         t.click("2 blank lines", t.see("2 blank lines"))
         frame = t.see("Use global settings for this book")
@@ -108,6 +112,11 @@ def run(tmp):
             else:
                 assert json.loads(pref(path).read_text())["alignment"] == "center"
                 frame = open_settings(t)
+                assert any("Pagination" in row and "Keep first word" in row for row in frame.splitlines())
+                t.click("Pagination", frame)
+                t.click("Use global", t.see("Keep first word"))
+                frame = t.see("Use global settings for this book")
+                assert any("Pagination" in row and "Use global · From chapter start" in row for row in frame.splitlines())
                 t.click("Paragraph spacing", frame)
                 t.click("From book", t.see("From book"))
                 close_settings(t)
