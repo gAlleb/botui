@@ -59,7 +59,7 @@ fn q_returns_from_book_card_to_selected_shelf_before_home() {
     assert!(matches!(shelf.current().section, Section::Home));
     assert!(matches!(
         press(&mut shelf, KeyCode::Char('q')),
-        Some(Selection::Quit)
+        Some(Selection::Leave(crate::LibraryExit::Quit))
     ));
 }
 

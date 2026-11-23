@@ -23,11 +23,11 @@ use ratatui::{
     widgets::{Clear, List, ListItem, ListState, Paragraph},
 };
 
-use crate::{AppTerminal, BookExit};
+use crate::{AppTerminal, LibraryExit};
 
 pub(super) enum Choice {
     Open(PathBuf),
-    Leave(BookExit),
+    Leave(LibraryExit),
 }
 
 #[derive(Clone, PartialEq, Eq)]
@@ -420,8 +420,8 @@ impl Picker {
         let preferences = crate::preferences::Buttons::LABELS.join(" ");
         let actions = [
             Some("[ Q Back ]"),
-            self.back_to_filesystem_root.then_some("[M Main menu]"),
-            self.back_to_filesystem_root.then_some("[Ctrl+Q Quit]"),
+            Some("[M Main menu]"),
+            Some("[Ctrl+Q Quit]"),
             Some(preferences.as_str()),
             self.selected_scan().map(|_| "[I File info]"),
             (directory && self.dir.parent().is_some()).then_some("[↑ Up]"),
@@ -646,33 +646,28 @@ impl Picker {
             } else {
                 e = crate::keymap::Scope::Library.event(e);
             }
-            if self.back_to_filesystem_root {
-                let exit = match &e {
-                    Event::Key(k) if k.kind != KeyEventKind::Release => match (k.code, k.modifiers)
-                    {
-                        (KeyCode::Char('q'), KeyModifiers::CONTROL) => Some(BookExit::Close),
-                        (KeyCode::Char('m' | 'M'), mods)
-                            if (mods - KeyModifiers::SHIFT).is_empty() =>
-                        {
-                            Some(BookExit::Back)
-                        }
-                        _ => None,
-                    },
-                    Event::Mouse(m) if m.kind == MouseEventKind::Down(MouseButton::Left) => {
-                        let at = Position::new(m.column, m.row);
-                        if self.quit_button.contains(at) {
-                            Some(BookExit::Close)
-                        } else if self.home_button.contains(at) {
-                            Some(BookExit::Back)
-                        } else {
-                            None
-                        }
+            let exit = match &e {
+                Event::Key(k) if k.kind != KeyEventKind::Release => match (k.code, k.modifiers) {
+                    (KeyCode::Char('q'), KeyModifiers::CONTROL) => Some(LibraryExit::Quit),
+                    (KeyCode::Char('m' | 'M'), mods) if (mods - KeyModifiers::SHIFT).is_empty() => {
+                        Some(LibraryExit::Home)
                     }
                     _ => None,
-                };
-                if let Some(exit) = exit {
-                    return Ok(Choice::Leave(exit));
+                },
+                Event::Mouse(m) if m.kind == MouseEventKind::Down(MouseButton::Left) => {
+                    let at = Position::new(m.column, m.row);
+                    if self.quit_button.contains(at) {
+                        Some(LibraryExit::Quit)
+                    } else if self.home_button.contains(at) {
+                        Some(LibraryExit::Home)
+                    } else {
+                        None
+                    }
                 }
+                _ => None,
+            };
+            if let Some(exit) = exit {
+                return Ok(Choice::Leave(exit));
             }
             if let Some(result) = self.navigation.splitter.input(&e) {
                 if let Err(error) = result {
@@ -904,7 +899,7 @@ impl Picker {
                 || click.is_some_and(|p| self.exit.contains(p))
             {
                 match self.back() {
-                    Ok(true) => return Ok(Choice::Leave(BookExit::Back)),
+                    Ok(true) => return Ok(Choice::Leave(LibraryExit::Back)),
                     Ok(false) => (),
                     Err(e) => self.error = Some(e.to_string()),
                 }
@@ -931,7 +926,7 @@ impl Picker {
             let open = match e {
                 Event::Key(key) if key.kind != KeyEventKind::Release => match key.code {
                     KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                        return Ok(Choice::Leave(BookExit::Back));
+                        return Ok(Choice::Leave(LibraryExit::Back));
                     }
                     KeyCode::Right | KeyCode::Char('l') if self.grid.is_some() => {
                         self.move_selection(1);

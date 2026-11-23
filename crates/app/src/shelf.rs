@@ -56,7 +56,7 @@ pub(crate) enum Selection {
     Opds,
     Local,
     Book(EditionPath, Option<Progress>),
-    Quit,
+    Leave(crate::LibraryExit),
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -399,6 +399,7 @@ pub(crate) struct Shelf {
     list_area: Rect,
     back_button: Rect,
     home_button: Rect,
+    quit_button: Rect,
     file_button: Rect,
     keep_button: Rect,
     new_collection_button: Rect,
@@ -442,6 +443,7 @@ impl Shelf {
             list_area: Rect::default(),
             back_button: Rect::default(),
             home_button: Rect::default(),
+            quit_button: Rect::default(),
             file_button: Rect::default(),
             keep_button: Rect::default(),
             new_collection_button: Rect::default(),
@@ -929,6 +931,20 @@ impl Shelf {
             }
         }
     }
+    pub(super) fn library_exit(&mut self, exit: crate::LibraryExit) -> Option<Selection> {
+        match exit {
+            crate::LibraryExit::Quit => self.end_session(true),
+            crate::LibraryExit::Home
+                if !matches!(self.current().section, Section::Home)
+                    || self.login.is_some()
+                    || self.info.is_some()
+                    || self.pending.is_some() =>
+            {
+                self.source_home()
+            }
+            _ => None,
+        }
+    }
     fn source_home(&mut self) -> Option<Selection> {
         if self.pending.as_ref().is_some_and(|p| p.saving) {
             if self.after_save.is_none() {
@@ -937,7 +953,7 @@ impl Shelf {
             return None;
         }
         if self.is_opds {
-            return Some(Selection::Quit);
+            return Some(Selection::Leave(crate::LibraryExit::Home));
         }
         if matches!(self.current().section, Section::Home)
             && self.pending.is_none()
@@ -965,7 +981,7 @@ impl Shelf {
             return None;
         }
         if self.is_opds && (self.login.is_some() || self.stack.len() == 2 && self.info.is_none()) {
-            return Some(Selection::Quit);
+            return Some(Selection::Leave(crate::LibraryExit::Back));
         }
         if self.info.take().is_some() || self.login.take().is_some() {
             return None;
@@ -1018,7 +1034,7 @@ impl Shelf {
         self.dirty_shelves = [false; 2];
         let Some(session) = self.session.take() else {
             if quit {
-                return Some(Selection::Quit);
+                return Some(Selection::Leave(crate::LibraryExit::Quit));
             }
             self.login_screen();
             return None;
@@ -1324,7 +1340,7 @@ impl Shelf {
             Loaded::LoggedOut { quit, warning } => {
                 if quit {
                     self.exit_warning = warning;
-                    return Some(Selection::Quit);
+                    return Some(Selection::Leave(crate::LibraryExit::Quit));
                 }
                 self.notice = warning;
                 self.login_screen();
@@ -1614,7 +1630,7 @@ impl Shelf {
         };
         if let Event::Key(k) = &event
             && k.kind != KeyEventKind::Release
-            && k.code == KeyCode::Char('c')
+            && matches!(k.code, KeyCode::Char('c' | 'q'))
             && k.modifiers.contains(KeyModifiers::CONTROL)
         {
             return self.apply(Command::Quit);
@@ -1622,8 +1638,14 @@ impl Shelf {
         if self.pending.as_ref().is_some_and(|p| p.closing) {
             return None;
         }
-        if self.login.is_none() && click.is_some_and(|p| self.home_button.contains(p)) {
-            return self.source_home();
+        if click.is_some_and(|p| self.quit_button.contains(p)) {
+            return self.end_session(true);
+        }
+        if self.login.is_none()
+            && (matches!(&event, Event::Key(k) if k.kind != KeyEventKind::Release && matches!(k.code, KeyCode::Char('m' | 'M')) && (k.modifiers - KeyModifiers::SHIFT).is_empty())
+                || click.is_some_and(|p| self.home_button.contains(p)))
+        {
+            return self.library_exit(crate::LibraryExit::Home);
         }
         if self.login.is_none()
             && self.info.is_none()

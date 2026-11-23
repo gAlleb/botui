@@ -182,3 +182,37 @@ for kind in ("fb2", "pdf"):
     with tempfile.TemporaryDirectory(prefix="botui-direct-") as tmp:
         direct_file(Path(tmp), kind)
     print(f"PASS direct {kind}: selected file, parents to /, main menu and saved library", flush=True)
+
+
+def normal_launch_shortcuts(home):
+    library = home / "Library"
+    library.mkdir()
+    (library / "Book.fb2").write_bytes((s.ROOT / "examples/first-light.fb2").read_bytes())
+    config = home / "config/botui/config.toml"
+    config.parent.mkdir(parents=True)
+    config.write_text(f'library_root = "{library}"\nlocal_grid = false\n')
+    status = home / "exit-status"
+    term = s.Terminal(home, Path("/bin/sh"), args=[
+        "-c", '"$1"; echo "$?" > "$2"', "runner", str(BINARY), str(status)
+    ])
+    try:
+        for button in ("[M Main menu]", "[Ctrl+Q Quit]"):
+            term.see("Choose a library")
+            term.keys("l")
+            term.see("Book.fb2")
+            term.keys("Enter")
+            term.see(s.FB2_MARK)
+            term.keys("q")
+            term.click(button, term.see(button))
+        deadline = time.monotonic() + 5
+        while not status.exists():
+            assert time.monotonic() < deadline, "Quit returned to the source chooser"
+            time.sleep(.05)
+        assert status.read_text().strip() == "0"
+    finally:
+        term.run("kill-server", required=False)
+
+
+with tempfile.TemporaryDirectory(prefix="botui-main-library-") as tmp:
+    normal_launch_shortcuts(Path(tmp))
+print("PASS main menu and quit from the library after launching BOTUI without a filename")

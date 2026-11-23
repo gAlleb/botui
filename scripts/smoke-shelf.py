@@ -535,8 +535,8 @@ def source_home(term):
         frame = term.run("capture-pane", "-p", "-t", "shelf").stdout
         if "Choose a library" in frame:
             return
-        if "[Home]" in frame:
-            term.click("[Home]", frame)
+        if "[M Main menu]" in frame:
+            term.click("[M Main menu]", frame)
             term.see("Choose a library")
             return
         term.keys("q")

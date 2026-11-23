@@ -136,7 +136,7 @@ botui --resume                 # Continue your last unfinished local book or dow
 
 Press **Enter/L** for the local library, **B** for BookOrbit or **P** for OPDS. Use arrows and **Enter**, or click an item. **F1** shows controls for the current screen; **F2** opens settings. The interface labels are in English.
 
-When opening a file directly, **q** returns to its folder with the book selected. Press **q** again to move up one directory at a time to `/`, then to the source chooser. In that folder or any parent, **Ctrl+Q** quits BOTUI and **m** opens the source chooser. The configured library path is preserved.
+When opening a file directly, **q** returns to its folder with the book selected. Press **q** again to move up one directory at a time to `/`, then to the source chooser. In the library, **Ctrl+Q** quits BOTUI and **M** opens the main menu, whether you started with a file or from the source chooser. The configured library path is preserved.
 
 ### Creating desktop file and tweaking
 

@@ -114,6 +114,13 @@ enum BookExit {
     Back,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum LibraryExit {
+    Back,
+    Home,
+    Quit,
+}
+
 enum Start {
     Shelf(Option<String>),
     Opds(String),
@@ -253,7 +260,7 @@ fn direct_book(
 ) -> Result<()> {
     if open_local_doc(term, path, doc, notices, None)? == BookExit::Back && !resume {
         let mut picker = picker::Picker::at_file(path)?;
-        if browse_picker(term, notices, &mut picker)? == BookExit::Back {
+        if browse_picker(term, notices, &mut picker)? != LibraryExit::Quit {
             bookorbit_shelf(term, None, notices)?;
         }
     }
@@ -264,7 +271,7 @@ fn local_library(
     term: &mut AppTerminal,
     notices: &mut Vec<String>,
     root: Option<PathBuf>,
-) -> Result<()> {
+) -> Result<LibraryExit> {
     let saved = settings::Settings::load()?.library_root;
     let dir = if let Some(path) = root {
         let path = path.canonicalize()?;
@@ -285,7 +292,7 @@ fn local_library(
     browse(term, notices, dir)
 }
 
-fn browse(term: &mut AppTerminal, notices: &mut Vec<String>, dir: PathBuf) -> Result<()> {
+fn browse(term: &mut AppTerminal, notices: &mut Vec<String>, dir: PathBuf) -> Result<LibraryExit> {
     let mut picker = match picker::Picker::new(dir.clone()) {
         Ok(p) => p,
         Err(e) => {
@@ -294,25 +301,25 @@ fn browse(term: &mut AppTerminal, notices: &mut Vec<String>, dir: PathBuf) -> Re
             p
         }
     };
-    browse_picker(term, notices, &mut picker).map(|_| ())
+    browse_picker(term, notices, &mut picker)
 }
 
 fn browse_downloads(
     term: &mut AppTerminal,
     notices: &mut Vec<String>,
     source: cache::Source,
-) -> Result<()> {
+) -> Result<LibraryExit> {
     let dir = cache::downloads()?;
     std::fs::create_dir_all(&dir)?;
     let mut picker = picker::Picker::downloads(dir, source)?;
-    browse_picker(term, notices, &mut picker).map(|_| ())
+    browse_picker(term, notices, &mut picker)
 }
 
 fn browse_picker(
     term: &mut AppTerminal,
     notices: &mut Vec<String>,
     picker: &mut picker::Picker,
-) -> Result<BookExit> {
+) -> Result<LibraryExit> {
     loop {
         match picker.choose(term)? {
             picker::Choice::Leave(exit) => return Ok(exit),
@@ -325,13 +332,17 @@ fn browse_picker(
     }
 }
 
-fn opds_shelf(term: &mut AppTerminal, url: String, notices: &mut Vec<String>) -> Result<()> {
+fn opds_shelf(
+    term: &mut AppTerminal,
+    url: String,
+    notices: &mut Vec<String>,
+) -> Result<LibraryExit> {
     let catalogs = settings::Settings::load()?.opds;
     let configured = if url.is_empty() && !catalogs.is_empty() {
         let mut rows: Vec<_> = catalogs.iter().map(|c| c.name.clone()).collect();
         rows.push("Other catalog…".into());
         let Some(i) = prompt::choose(term, "Open OPDS catalog", &rows, 0)? else {
-            return Ok(());
+            return Ok(LibraryExit::Back);
         };
         catalogs.get(i).cloned()
     } else {
@@ -342,8 +353,8 @@ fn opds_shelf(term: &mut AppTerminal, url: String, notices: &mut Vec<String>) ->
         shelf.open_opds(c);
     }
     loop {
-        match shelf.choose(term)? {
-            shelf::Selection::Quit => return Ok(()),
+        let exit = match shelf.choose(term)? {
+            shelf::Selection::Leave(exit) => return Ok(exit),
             shelf::Selection::Book(f, _) => {
                 let read = (|| -> Result<()> {
                     match botui_formats::FileKind::from_path(&f) {
@@ -375,11 +386,18 @@ fn opds_shelf(term: &mut AppTerminal, url: String, notices: &mut Vec<String>) ->
                 if let Err(e) = read {
                     shelf.set_error(e.to_string());
                 }
+                continue;
             }
             shelf::Selection::Downloads(source) => browse_downloads(term, notices, source)?,
             shelf::Selection::Local => local_library(term, notices, None)?,
-            shelf::Selection::Annotations => shelf.browse_annotations(term, notices)?,
-            shelf::Selection::Opds => return Ok(()),
+            shelf::Selection::Annotations => {
+                shelf.browse_annotations(term, notices)?;
+                continue;
+            }
+            shelf::Selection::Opds => return Ok(LibraryExit::Back),
+        };
+        if exit != LibraryExit::Back {
+            return Ok(exit);
         }
     }
 }
@@ -404,9 +422,14 @@ fn bookorbit_shelf(
     }
     shelf.grid_view = !connection.list_view;
     shelf.credentials = Some(connection);
+    let mut pending = None;
     loop {
-        match shelf.choose(term)? {
-            shelf::Selection::Quit => {
+        let selection = match pending.take() {
+            Some(selection) => selection,
+            None => shelf.choose(term)?,
+        };
+        let exit = match selection {
+            shelf::Selection::Leave(_) => {
                 if let Some(message) = shelf.take_exit_warning() {
                     notices.push(message);
                 }
@@ -415,7 +438,10 @@ fn bookorbit_shelf(
             shelf::Selection::Opds => opds_shelf(term, String::new(), notices)?,
             shelf::Selection::Downloads(source) => browse_downloads(term, notices, source)?,
             shelf::Selection::Local => local_library(term, notices, None)?,
-            shelf::Selection::Annotations => shelf.browse_annotations(term, notices)?,
+            shelf::Selection::Annotations => {
+                shelf.browse_annotations(term, notices)?;
+                continue;
+            }
             shelf::Selection::Book(file, base) => {
                 if base.is_none() && offline::Copy::open(&file)?.is_some() {
                     if let Err(e) = open_book(term, &file, notices) {
@@ -488,8 +514,10 @@ fn bookorbit_shelf(
                     }
                     break;
                 }
+                continue;
             }
-        }
+        };
+        pending = shelf.library_exit(exit);
     }
 }
 
@@ -578,12 +606,14 @@ fn run() -> Result<()> {
             None => match start {
                 Start::Shelf(server) => bookorbit_shelf(&mut terminal, server, &mut notices)?,
                 Start::Opds(url) => {
-                    opds_shelf(&mut terminal, url, &mut notices)?;
-                    bookorbit_shelf(&mut terminal, None, &mut notices)?;
+                    if opds_shelf(&mut terminal, url, &mut notices)? != LibraryExit::Quit {
+                        bookorbit_shelf(&mut terminal, None, &mut notices)?;
+                    }
                 }
                 Start::Local(root) => {
-                    local_library(&mut terminal, &mut notices, root)?;
-                    bookorbit_shelf(&mut terminal, None, &mut notices)?;
+                    if local_library(&mut terminal, &mut notices, root)? != LibraryExit::Quit {
+                        bookorbit_shelf(&mut terminal, None, &mut notices)?;
+                    }
                 }
                 _ => unreachable!("file and help handled before entering terminal"),
             },

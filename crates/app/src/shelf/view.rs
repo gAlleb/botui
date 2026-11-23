@@ -135,6 +135,7 @@ impl Shelf {
         self.view_button = Rect::default();
         self.back_button = Rect::default();
         self.home_button = Rect::default();
+        self.quit_button = Rect::default();
         self.file_button = Rect::default();
         self.list_area = Rect::default();
         self.tab_buttons = [Rect::default(); Tab::ALL.len()];
@@ -504,13 +505,21 @@ impl Shelf {
                 );
                 x = self.delete_collection_button.right().saturating_add(1);
             }
-            let label = "[Home]";
+            let label = "[M Main menu]";
             if !matches!(self.current().section, Section::Home)
                 && inner.right().saturating_sub(x) >= label.len() as u16
             {
                 self.home_button = Rect::new(x, y, label.len() as u16, 1);
                 frame.render_widget(Paragraph::new(label).style(heading()), self.home_button);
                 x = self.home_button.right().saturating_add(1);
+            }
+            let quit = "[Ctrl+Q Quit]";
+            if !matches!(self.current().section, Section::Home)
+                && inner.right().saturating_sub(x) >= quit.len() as u16
+            {
+                self.quit_button = Rect::new(x, y, quit.len() as u16, 1);
+                frame.render_widget(Paragraph::new(quit).style(heading()), self.quit_button);
+                x = self.quit_button.right().saturating_add(1);
             }
             self.prefs_buttons
                 .draw(frame, Rect::new(x, y, inner.right().saturating_sub(x), 1));
