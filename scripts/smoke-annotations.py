@@ -240,7 +240,7 @@ with tempfile.TemporaryDirectory() as name:
             t.keys("Escape")
             t.wait("Cursor cleared", lambda s: "[Space a y Copy]" not in s)
             t.keys("Space", "l", "3")
-            frame=t.see("bravo")
+            frame=t.wait("Scroll layout is ready for mouse selection", lambda f: "bravo" in f and f.splitlines()[-1].lstrip().startswith("Scroll"))
             x,y=point(frame,"bravo")
             # Hold a drag below the text: extend beyond the viewport.
             mouse(t, f"\033[<0;{x};{y}M\033[<32;{x};30M")

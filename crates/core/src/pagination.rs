@@ -117,6 +117,13 @@ impl BookLayout {
     }
 
     fn format_rows(&self, lines: Vec<PageLine>, doc: &Document, layout: Layout) -> Vec<PageLine> {
+        let lines = crate::prose::rewrap(
+            lines,
+            doc,
+            layout.width,
+            self.options.typography,
+            self.resume,
+        );
         let lines = media::space_figures(lines, doc, layout.image_cell);
         if self.has_chapters {
             chapters::format(lines, doc, layout.scrolling)
@@ -463,38 +470,40 @@ impl Pager {
 
     pub(super) fn index_position(&mut self) {
         self.positioned_spreads.clear();
+        self.backward_bounds.clear();
         let columns = self.layout.columns;
-        if self.page_starts.is_empty() || self.regular_views().binary_search(&self.first).is_ok() {
+        if self.layout.scrolling
+            || self.layout.height == 0
+            || self.first == 0
+            || self.regular_views().binary_search(&self.first).is_ok()
+            || (self.page_starts.is_empty()
+                && self.first.is_multiple_of(columns * self.layout.height))
+        {
             return;
         }
 
-        // An exact word can start a view between two regular page starts.
-        // Walk back only while forward pagination gives exactly the same break.
-        let mut end = self.first;
-        let mut preceding = Vec::new();
-        while end > 0 && self.page_starts.binary_search(&end).is_err() {
-            let start = self.layout.page_start(&self.lines, end);
-            if self.layout.page_end(&self.lines, start) != end {
-                break;
-            }
-            preceding.push(start);
-            end = start;
-        }
-        // A preceding ordinary page may overlap the first exact page. PageUp
-        // rejoins the regular layout at that boundary instead of retaining the
-        // exact position as an extra page. Pair pages backwards only inside this
-        // chapter; earlier chapters already have their own complete spreads.
         let chapter = self.chapter_rows.partition_point(|&r| r <= self.first);
         let chapter_start = chapter.checked_sub(1).map_or(0, |i| self.chapter_rows[i]);
-        let begin = self.page_starts.partition_point(|&r| r < chapter_start);
-        let before = self.page_starts.partition_point(|&row| row < end);
-        let earlier_columns = preceding
-            .into_iter()
-            .chain(self.page_starts[begin..before].iter().rev().copied());
-        self.positioned_spreads
-            .extend(earlier_columns.skip(columns - 1).step_by(columns));
-        if self.positioned_spreads.last() != Some(&chapter_start) {
-            self.positioned_spreads.push(chapter_start);
+        let mut end = self.first;
+        while end > chapter_start {
+            let mut bounds = [end; 3];
+            for col in (0..columns).rev() {
+                bounds[col] = self
+                    .layout
+                    .page_start(&self.lines, bounds[col + 1])
+                    .max(chapter_start);
+            }
+            if columns == 1 {
+                bounds[2] = bounds[0];
+            }
+            let start = bounds[0];
+            self.positioned_spreads.push(start);
+            // A whole figure on the preceding page can leave unused rows. Keep
+            // both column ends so filling that space never repeats the next view.
+            if start != chapter_start && self.view_at(start).bounds != bounds {
+                self.backward_bounds.insert(start, bounds);
+            }
+            end = start;
         }
         let regular = if columns == 2 {
             &self.spread_starts
@@ -518,7 +527,15 @@ impl Pager {
     }
 
     pub(super) fn view_at(&self, first: usize) -> Viewport<'_> {
-        Viewport::new(self.layout, &self.lines, first)
+        if let Some(&bounds) = self.backward_bounds.get(&first) {
+            Viewport {
+                layout: self.layout,
+                rows: &self.lines,
+                bounds,
+            }
+        } else {
+            Viewport::new(self.layout, &self.lines, first)
+        }
     }
 
     /// Logical percentage of the chapter at the first visible content row.
@@ -648,6 +665,10 @@ impl Pager {
         if layout == self.layout {
             return;
         }
+        if self.opening.is_some_and(|anchor| anchor.byte > 0) {
+            self.relayout_with_gap(doc, width, height, mode, gap);
+            return;
+        }
         if self.use_cached_layout(layout) {
             return;
         }
@@ -678,7 +699,7 @@ impl Pager {
                 rows = self.book.format_rows(rows, doc, layout);
             }
             end = next;
-            let index = Self::source_index(doc, &rows);
+            let index = Self::source_index(!doc.styled.is_empty(), &rows);
             // A hidden chapter opening can resolve to the last visible word of its predecessor.
             if start > 0 && index.first().is_none_or(|(at, _)| *at > self.focus) {
                 return false;
@@ -732,7 +753,7 @@ impl Pager {
                 let lines = book.format_rows(lines, &doc, layout);
                 Some(Snapshot {
                     size: book.size(layout),
-                    sources: Self::source_index(&doc, &lines),
+                    sources: Self::source_index(!doc.styled.is_empty(), &lines),
                     lines,
                 })
             });

@@ -120,11 +120,15 @@ def publisher_progress(tmp, server):
         t.keys("Enter")
         t.click("EPUB", s.formats(t))
         t.see(marker)
-        t.keys('Space', 'z', 'Space', 'l', '3')
+        t.keys('Space', 'z')
+        before = t.wait("Merged cell in clean reading view", lambda f: "Sections:" not in f and marker in f)
+        top_word = re.search(r'marker\d+', before)[0]
+        t.keys('Space', 'l', '3')
         first = t.wait(
-            "BookOrbit position in a merged cell",
+            f"BookOrbit position in a merged cell ({top_word})",
             lambda frame: "Sections:" not in frame
-            and any(marker in line for line in frame.splitlines()[:2]),
+            and re.search(r"marker\d+", frame)
+            and re.search(r"marker\d+", frame)[0] == top_word,
         )
         for _ in range(4):
             t.keys("j")

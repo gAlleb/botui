@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Keep the first visible word when switching reading modes. Page back without repeats until the chapter opening, then resume regular pagination.
+
 ## 0.1.26 — 2026-11-21
 
 - Keep the reading position when switching from continuous scroll to a two-page spread.

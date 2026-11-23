@@ -152,6 +152,7 @@ struct Reader {
     pager: Pager,
     mode: LayoutMode,
     layout_panel: Option<layout::Panel>,
+    switch_mode: bool,
     page_width: u16,
     gap: u16,
     theme: Theme,
@@ -337,6 +338,7 @@ impl Reader {
             page_width,
             gap,
             layout_panel: None,
+            switch_mode: false,
             theme,
             palette: None,
             menu: None,
@@ -435,8 +437,13 @@ impl Reader {
             let cell = crate::cover::graphics().font_size();
             self.pager.set_image_cell(cell.width, cell.height);
         }
-        self.pager
-            .resize_for_display(&self.doc, text.width, text.height, actual, gap);
+        if std::mem::take(&mut self.switch_mode) {
+            self.pager
+                .switch_mode(&self.doc, text.width, text.height, actual, gap);
+        } else {
+            self.pager
+                .resize_for_display(&self.doc, text.width, text.height, actual, gap);
+        }
         self.search.update(&self.pager, &self.doc);
         let view = self.pager.viewport_rows();
         let pages = (!self.pager.is_paginating())
@@ -1307,6 +1314,7 @@ impl Reader {
                     _ => LayoutMode::Spread,
                 };
                 if self.mode != mode {
+                    self.switch_mode = true;
                     self.mode = mode;
                     self.dirty = true;
                 }
@@ -1924,6 +1932,7 @@ pub fn read_server(
                 reader.zen_progress = new.zen_progress;
                 reader.splitter.preferred = new.contents_width;
                 if new.reading_layout != old.reading_layout {
+                    reader.switch_mode = true;
                     reader.mode = match new.reading_layout.as_deref() {
                         Some("scroll") => LayoutMode::Scroll,
                         Some("single") => LayoutMode::Single,

@@ -197,7 +197,9 @@ pub(super) fn justify(line: &mut PageLine, extra: usize) {
             if a < b {
                 let mut part = (*span).clone();
                 part.bytes = visual + a - offset..visual + b - offset;
-                if let Some(anchor) = &mut part.source {
+                if let Some(anchor) = &mut part.source
+                    && (a != span.bytes.start || b != span.bytes.end)
+                {
                     anchor.byte += a - span.bytes.start;
                     part.source_end = anchor.byte + b - a;
                 }

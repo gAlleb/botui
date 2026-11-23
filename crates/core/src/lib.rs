@@ -6,6 +6,7 @@ mod media;
 pub use media::TableRow;
 mod pagination;
 mod printed;
+mod prose;
 pub mod publisher;
 mod reference;
 mod reflow_cache;
@@ -373,11 +374,19 @@ pub struct ReflowOptions {
     pub compact_spacing: bool,
 }
 
+struct NaturalRows {
+    replaced: std::ops::Range<usize>,
+    rows: Vec<PageLine>,
+    styled: bool,
+}
+
 pub struct Pager {
     image_cell: (u16, u16),
+    opening: Option<Anchor>,
     book: Arc<BookLayout>,
     reflow_cache: reflow_cache::Cache,
     pending: Option<pagination::Pending>,
+    natural: Option<NaturalRows>,
     layout: Layout,
     lines: Vec<PageLine>,
     source_lines: Vec<(Anchor, usize)>,
@@ -390,6 +399,7 @@ pub struct Pager {
     /// Views around an exact search or resume position, until paging back rejoins
     /// the regular layout at an overlapping boundary.
     positioned_spreads: Vec<usize>,
+    backward_bounds: std::collections::BTreeMap<usize, [usize; 3]>,
     figure_starts: Vec<(usize, Figure)>,
     first: usize,
     focus: Anchor,
@@ -507,36 +517,12 @@ impl Pager {
             image_cell,
             ..Layout::new(width, height, mode, gap)
         };
-        let anchor = resume.map(|pos| pos.anchor);
-        let picture = resume.and_then(|pos| pos.illustration).filter(|hint| {
-            options.inline_images
-                && doc
-                    .references
-                    .get(hint.reference)
-                    .is_some_and(|r| matches!(r.target, Target::Image(_)))
-        });
-        let mut pager = if let Some(hint) = picture {
-            // The address of a picture may point into the preceding paragraph.
-            // Keep that paragraph's natural wrapping when resuming at the picture.
-            let natural = Self::layout_document(doc, layout, options, None);
-            if natural
-                .figure_starts
-                .iter()
-                .any(|(_, f)| f.reference == hint.reference)
-            {
-                natural
-            } else {
-                // A stylesheet can hide the picture at this width. In that case
-                // restore the original word, with its usual opening line break.
-                drop(natural);
-                Self::layout_document(doc, layout, options, anchor)
-            }
-        } else {
-            Self::layout_document(doc, layout, options, anchor)
-        };
+        let mut pager = Self::layout_document(doc, layout, options, None);
         pager.index_pages();
         if let Some(position) = resume {
+            pager.opening = position.illustration.is_none().then_some(position.anchor);
             pager.restore_position(position);
+            pager.exact_top(doc, position);
         }
         pager
     }
@@ -554,14 +540,17 @@ impl Pager {
             book,
             reflow_cache: reflow_cache::Cache::default(),
             pending: None,
+            natural: None,
+            opening: None,
             layout,
-            source_lines: Self::source_index(doc, &lines),
+            source_lines: Self::source_index(!doc.styled.is_empty(), &lines),
             figure_starts: Self::index_figures(&lines),
             lines,
             page_starts: Vec::new(),
             spread_starts: Vec::new(),
             chapter_rows: Vec::new(),
             positioned_spreads: Vec::new(),
+            backward_bounds: Default::default(),
             first: 0,
             focus: Anchor::default(),
         }
@@ -589,7 +578,7 @@ impl Pager {
             mode,
             gap,
             options,
-            self.book.resume,
+            self.opening,
             self.image_cell,
         );
         self.restore_position(position);
@@ -612,17 +601,133 @@ impl Pager {
             ..Layout::new(width, height, mode, gap)
         };
         self.pending = None;
+        if layout == self.layout {
+            return;
+        }
+        let position = self.position();
+        if self.natural.is_some() {
+            self.restore_natural();
+            self.restore_position(position);
+        }
         if !self.use_cached_layout(layout) {
             let lines = self.book.lines(doc, layout, 0..doc.blocks.len());
             self.install(
                 reflow_cache::Snapshot {
                     size: self.book.size(layout),
-                    sources: Self::source_index(doc, &lines),
+                    sources: Self::source_index(!doc.styled.is_empty(), &lines),
                     lines,
                 },
                 layout,
             );
         }
+        if let Some(anchor) = self.opening.filter(|a| a.byte > 0) {
+            let boundary = ViewPosition {
+                anchor,
+                illustration: None,
+            };
+            self.restore_position(boundary);
+            self.exact_top(doc, boundary);
+            self.restore_position(position);
+        }
+    }
+
+    /// An explicit reading-mode change takes its anchor from the screen. A
+    /// terminal resize or a search still follows the logical cursor.
+    pub fn switch_mode(
+        &mut self,
+        doc: &Document,
+        width: u16,
+        height: u16,
+        mode: LayoutMode,
+        gap: u16,
+    ) {
+        self.finish_resize();
+        let mut position = self.position();
+        if let Some(top) = self.lines[self.first..]
+            .iter()
+            .find_map(PageLine::reading_anchor)
+        {
+            position.anchor = top;
+        }
+        self.opening = None;
+        self.restore_natural();
+        self.restore_position(position);
+        self.relayout_with_gap(doc, width, height, mode, gap);
+        self.opening = position.illustration.is_none().then_some(position.anchor);
+        self.exact_top(doc, position);
+    }
+
+    fn exact_top(&mut self, doc: &Document, position: ViewPosition) {
+        if self.layout.width == 0
+            || position
+                .illustration
+                .is_some_and(|hint| hint.resolve(&self.lines, &self.figure_starts).is_some())
+            || self
+                .lines
+                .get(self.first)
+                .and_then(PageLine::reading_anchor)
+                .is_none_or(|top| top == position.anchor)
+        {
+            return;
+        }
+        let anchor = position.anchor;
+        let Some(block) = doc.blocks.get(anchor.block) else {
+            return;
+        };
+        let prose_row = |l: &&PageLine| l.start.block == anchor.block && !l.text.trim().is_empty();
+        let start = self.first
+            - self.lines[..self.first]
+                .iter()
+                .rev()
+                .take_while(prose_row)
+                .count();
+        let end = self.first
+            + self.lines[self.first..]
+                .iter()
+                .take_while(prose_row)
+                .count();
+        let candidate = prose::layout(
+            &self.lines[start..end],
+            block,
+            self.layout.width,
+            self.book.options.typography,
+            Some(anchor),
+        );
+        let (range, rows) = if let Some(rows) =
+            candidate.filter(|rows| rows.iter().any(|row| row.reading_anchor() == Some(anchor)))
+        {
+            (start..end, rows)
+        } else {
+            // Joined print lines, nested markup and illustrations use their native renderer.
+            let book = BookLayout::new(doc, self.book.options, Some(anchor));
+            let rows = book.lines(doc, self.layout, 0..doc.blocks.len());
+            if !rows.iter().any(|row| row.reading_anchor() == Some(anchor)) {
+                return;
+            }
+            (0..self.lines.len(), rows)
+        };
+        let styled = !doc.styled.is_empty();
+        let replaced = range.start..range.start + rows.len();
+        let original = self.lines.splice(range, rows).collect();
+        self.natural = Some(NaturalRows {
+            rows: original,
+            replaced,
+            styled,
+        });
+        self.reindex_rows(styled);
+        self.restore_position(position);
+    }
+
+    fn restore_natural(&mut self) {
+        if let Some(natural) = self.natural.take() {
+            self.lines.splice(natural.replaced, natural.rows);
+            self.reindex_rows(natural.styled);
+        }
+    }
+    fn reindex_rows(&mut self, styled: bool) {
+        self.source_lines = Self::source_index(styled, &self.lines);
+        self.figure_starts = Self::index_figures(&self.lines);
+        self.index_pages();
     }
 
     fn use_cached_layout(&mut self, layout: Layout) -> bool {
@@ -668,6 +773,7 @@ impl Pager {
             starts[starts.partition_point(|&start| start <= row) - 1]
         };
         self.positioned_spreads.clear();
+        self.backward_bounds.clear();
         self.move_to(first);
     }
 
@@ -697,8 +803,8 @@ impl Pager {
         }
     }
 
-    fn source_index(doc: &Document, lines: &[PageLine]) -> Vec<(Anchor, usize)> {
-        if doc.styled.is_empty() {
+    fn source_index(styled: bool, lines: &[PageLine]) -> Vec<(Anchor, usize)> {
+        if !styled {
             return Vec::new();
         }
         let mut index = Vec::new();
@@ -786,11 +892,21 @@ impl Pager {
         self.finish_resize();
         let first = self.previous_start();
         if first != self.first {
-            if !self.positioned_spreads.is_empty() && self.view_at(first).end() > self.first {
-                // An exact landing position is not an extra page. Once going
-                // back would overlap it, rejoin the regular layout so the next
-                // turn advances past this page instead of reopening its suffix.
-                self.show_regular_view(self.first - 1);
+            if (first == 0 || self.lines[first].chapter_start) && self.opening.is_some() {
+                let chapter = self.chapter_rows.binary_search(&first).ok();
+                self.opening = None;
+                self.restore_natural();
+                let row = chapter
+                    .and_then(|i| self.chapter_rows.get(i))
+                    .copied()
+                    .unwrap_or(0);
+                self.show_regular_view(row);
+                return;
+            }
+            if !self.positioned_spreads.is_empty()
+                && (first == 0 || self.lines[first].chapter_start)
+            {
+                self.show_regular_view(first);
             } else {
                 self.move_to(first);
             }
@@ -1200,7 +1316,8 @@ mod tests {
             assert_eq!(pager.lines(0)[0].indent, 0);
         }
         pager.previous();
-        assert_eq!(pager.lines(0)[0].text, "друг другу. Частично это мне");
+        let regular = Pager::with_options(&doc, 100, 2, LayoutMode::Spread, pager.reflow_options());
+        assert_eq!(pager.lines(0)[0].text, regular.lines(0)[0].text);
     }
 
     #[test]

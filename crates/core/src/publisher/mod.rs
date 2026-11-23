@@ -428,7 +428,13 @@ impl Chapter {
         if std::iter::successors(Some(el), |n| n.parent.and_then(|p| doc.get_node(p)))
             .filter_map(|n| n.element_data())
             .any(|e| {
-                matches!(&*e.name.local, "table" | "math" | "pre" | "a")
+                matches!(&*e.name.local, "math" | "pre" | "a")
+                    || &*e.name.local == "table"
+                        && !blocks
+                            .get(at.block)
+                            .and_then(|b| b.text.get(..at.byte))
+                            .and_then(|prefix| prefix.chars().next_back())
+                            .is_some_and(crate::breaks_word)
                     || marker(e, "data-botui-equation").is_some()
             })
         {

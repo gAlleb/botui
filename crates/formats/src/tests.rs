@@ -884,7 +884,15 @@ fn exact_epub_positions_after_chapter_titles_and_pictures_do_not_clip_the_previo
                 assert!(pager.lines(0)[0].text.contains(&query));
                 pager.previous();
                 let final_column = pager.lines(pager.columns() - 1);
-                assert_eq!(final_column.len(), 12, "{mode:?} before {query}");
+                if final_column.len() < 12 {
+                    // An illustration that straddles the top of the preceding
+                    // column stays whole on the page before it.
+                    assert!(label == "After picture" && !final_column.is_empty());
+                    let last = final_column.last().unwrap().text.clone();
+                    assert_eq!(last, format!("{label} {}.", n - 1));
+                    pager.next();
+                    assert_eq!(pager.lines(0)[0].text, query);
+                }
             }
         }
     }
@@ -2492,5 +2500,34 @@ fn returning_before_a_scrolled_math_epub_restores_its_two_regular_pages() {
             "an exact landing is not an extra page in {mode:?}"
         );
         assert!(pager.at_end());
+    }
+}
+
+#[test]
+fn attached_footnote_moves_with_the_word_at_every_line_edge() {
+    use botui_core::{LayoutMode, Pager};
+    for marker in [
+        "<a href='#notes'>[21]</a>",
+        "<a role='doc-noteref' href='#notes'><sup>21</sup></a>",
+    ] {
+        let doc = styled_fixture(
+            &format!(
+                "<p>Все читают по правилам{marker} каждое утро.</p><p id='notes'>Примечание</p>"
+            ),
+            "p{margin:0}",
+        );
+        let expected = if marker.contains("[21]") {
+            "правилам[21]"
+        } else {
+            "правилам21"
+        };
+        for width in 14..38 {
+            let pager = Pager::new(&doc, width, 15, LayoutMode::Single);
+            assert!(
+                pager.lines(0).iter().any(|l| l.text.contains(expected)),
+                "{width}: {:?}",
+                pager.lines(0).iter().map(|l| &l.text).collect::<Vec<_>>()
+            );
+        }
     }
 }

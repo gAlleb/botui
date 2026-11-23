@@ -267,12 +267,18 @@ fn reversing_after_an_exact_jump_rejoins_regular_pages_without_skipping_rows() {
                     let end = pager.complete_view().end();
                     assert!(end >= original[0], "lost rows after {end}");
                     crossed_overlap |= end > original[0];
+                    let chapter_opening =
+                        pager.first == 0 || pager.lines[pager.first].chapter_start;
                     if end > original[0] {
+                        assert!(
+                            chapter_opening,
+                            "interior overlap at {previous:?} before {original:?}"
+                        );
                         assert!(pager.positioned_spreads.is_empty());
                         assert!(pager.regular_views().binary_search(&pager.first).is_ok());
                     }
                     pager.next();
-                    if end == original[0] {
+                    if end == original[0] && !chapter_opening {
                         assert_eq!(pager.complete_view().bounds, original);
                     } else if end < pager.lines.len() {
                         assert_eq!(pager.first, end, "overlap must not create an extra page");
@@ -377,4 +383,71 @@ fn switching_from_single_page_keeps_the_same_passage_on_the_left() {
             }
         }
     }
+}
+
+#[test]
+fn different_width_switches_keep_the_word_and_reverse_until_the_chapter_opening() {
+    let body = (0..180)
+        .map(|i| format!("w{i:03}"))
+        .collect::<Vec<_>>()
+        .join(" ");
+    let doc = Document {
+        blocks: vec![Block {
+            text: body,
+            heading: false,
+        }],
+        chapter_starts: [0].into(),
+        ..Default::default()
+    };
+    let mut pager = Pager::new(&doc, 49, 3, LayoutMode::Scroll);
+    pager.scroll(11);
+    let at = pager.lines(0)[0].anchor();
+    for (mode, width) in [
+        (LayoutMode::Single, 32),
+        (LayoutMode::Spread, 86),
+        (LayoutMode::Scroll, 49),
+        (LayoutMode::Spread, 86),
+    ] {
+        pager.switch_mode(&doc, width, 3, mode, 4);
+        assert_eq!(pager.lines(0)[0].anchor(), at);
+        assert_eq!(
+            pager.lines(0)[0].text.split_whitespace().next(),
+            doc.blocks[0].text[at.byte..].split_whitespace().next()
+        );
+    }
+    let mut last = at;
+    loop {
+        pager.previous();
+        let first = pager.lines(0)[0].anchor();
+        if first.byte == 0 {
+            break;
+        }
+        let tail = pager.lines(1).last().unwrap();
+        assert_eq!(
+            tail.text.split_whitespace().count(),
+            8,
+            "short seam before {last:?}"
+        );
+        let expected = doc.blocks[0].text[..last.byte]
+            .split_whitespace()
+            .next_back()
+            .unwrap();
+        assert_eq!(tail.text.split_whitespace().next_back(), Some(expected));
+        pager.next();
+        assert_eq!(pager.lines(0)[0].anchor(), last);
+        pager.previous();
+        last = first;
+    }
+    pager.next();
+    let mut ordinary = Pager::with_start_and_gap(
+        &doc,
+        86,
+        3,
+        LayoutMode::Spread,
+        4,
+        pager.reflow_options(),
+        None,
+    );
+    ordinary.next();
+    assert_eq!(pager.lines(0)[0].anchor(), ordinary.lines(0)[0].anchor());
 }
