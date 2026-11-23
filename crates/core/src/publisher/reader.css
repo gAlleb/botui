@@ -83,6 +83,11 @@ img, svg { max-width: 100%; }
 table[data-botui-scroll-table] { display: table !important; border-collapse: separate !important; border-spacing: 1ch 0 !important; }
 table[data-botui-scroll-table], table[data-botui-scroll-table] > :is(thead,tbody,tfoot),
 table[data-botui-scroll-table] > :is(thead,tbody,tfoot) > tr > :is(th,td) { border: 0 !important; }
+/* The terminal grid already reserves a cell for each divider and a row for
+   the header rule. Browser padding on a scrollable block table doubles both. */
+table[data-botui-scroll-table] > :is(thead,tbody,tfoot) { margin: 0 !important; }
+table[data-botui-scroll-table] > :is(thead,tbody,tfoot) > tr > :is(th,td),
+table[data-botui-scroll-table] > tr > :is(th,td) { padding: 0 !important; }
 blockquote:not([data-botui-surface]) { border-left: 1px solid !important; padding-left: 1ch !important; }
 *|math[display="block"] *|msup:not([data-botui-linear]) { margin-bottom: 1em; margin-right: 1ch; }
 /* Script linearization must not remove the gutter of a fraction operand. */
@@ -91,6 +96,8 @@ blockquote:not([data-botui-surface]) { border-left: 1px solid !important; paddin
     text-align: center;
     text-align-last: center;
 }
+/* The displayed text already contains its raised or lowered glyphs. */
+sup[data-botui-linear], sub[data-botui-linear] { vertical-align: baseline !important; }
 /* A compact script can use the trailing gutter. This keeps a lone digit
    over the base of n² (or beneath π²) in the middle cell of the bar. */
 *|math[display="block"] *|mfrac > :is(*|msup, *|msub)[data-botui-linear] {

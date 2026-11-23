@@ -1083,17 +1083,15 @@ fn compose_rows(
         });
         finish(&mut result, &mut line, &mut anchor);
         if let Some((rule, dividers)) = header_rule {
-            // The separator supplies its own empty row before the table body.
+            // The rule itself separates the header from the first content row.
             prev = None;
             let mut border = vec![rule];
-            border.extend_from_slice(&dividers);
-            for surfaces in [border, dividers] {
-                result.push(PageLine {
-                    start: anchor,
-                    surfaces,
-                    ..Default::default()
-                });
-            }
+            border.extend(dividers);
+            result.push(PageLine {
+                start: anchor,
+                surfaces: border,
+                ..Default::default()
+            });
         }
         if let Some(surfaces) = lower_edge {
             result.push(PageLine {

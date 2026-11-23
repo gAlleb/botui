@@ -2173,8 +2173,8 @@ fn epub_inline_math_and_code_share_the_prose_baseline() {
 fn scrollable_epub_table_keeps_rows_and_respects_hidden_media() {
     use botui_core::{LayoutMode, Pager};
     let doc = styled_fixture(
-        "<blockquote><p>Quoted</p></blockquote><table><thead><tr><th>Name</th><th>Formula</th></tr></thead><tbody><tr><td>Energy</td><td>First</td></tr><tr><td>Euler</td><td>Second</td></tr></tbody></table><p>End.</p>",
-        "table{display:block;overflow-x:auto;width:100%}@media(max-width:300px){table{display:none}}",
+        "<blockquote><p>Quoted</p></blockquote><table><thead><tr><th>Name</th><th>Formula</th></tr></thead><tbody><tr><td>Energy</td><td>First <span class='math inline'>mc<sup>2</sup></span></td></tr><tr><td>Euler</td><td>Second</td></tr></tbody></table><p>End.</p>",
+        "table{display:block;overflow-x:auto;width:100%}th,td{padding:0.25em 0.5em}tbody{margin-top:0.5em}sup{vertical-align:super}@media(max-width:300px){table{display:none}}",
     );
     let mut pager = Pager::new(&doc, 64, 40, LayoutMode::Single);
     for width in [64, 29, 48] {
@@ -2200,14 +2200,14 @@ fn scrollable_epub_table_keeps_rows_and_respects_hidden_media() {
                     .iter()
                     .any(|s| matches!(s, botui_core::Surface::TableHeaderRule { .. }))
             );
-            assert!(rows[header + 2].text.trim().is_empty());
-            assert_eq!(row("Energy", "First"), header + 3);
+            assert_eq!(row("Energy", "First"), header + 2);
+            assert!(rows[header + 2].text.contains("mc²"));
             assert!(rows[..header - 1].iter().all(|r| {
                 !r.surfaces
                     .iter()
                     .any(|s| matches!(s, botui_core::Surface::TableDivider { .. }))
             }));
-            assert!(row("Energy", "First") < row("Euler", "Second"));
+            assert_eq!(row("Euler", "Second"), header + 3);
         }
     }
 }

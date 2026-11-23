@@ -3,6 +3,7 @@
 ## Unreleased
 
 - Keep the first visible word when switching reading modes. Page back without repeats until the chapter opening, then resume regular pagination.
+- Keep EPUB table headers and data rows compact.
 - Optionally hyphenate English and Russian prose.
 - Copy inline MathML fraction bars and select individual digits in exponents.
 
