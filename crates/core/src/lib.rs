@@ -411,7 +411,7 @@ pub struct Pager {
     /// Views around an exact search or resume position, until paging back rejoins
     /// the regular layout at an overlapping boundary.
     positioned_spreads: Vec<usize>,
-    backward_bounds: std::collections::BTreeMap<usize, [usize; 3]>,
+    backward_bounds: std::collections::BTreeMap<usize, pagination::BackwardView>,
     figure_starts: Vec<(usize, Figure)>,
     first: usize,
     focus: Anchor,
@@ -882,8 +882,29 @@ impl Pager {
         }
     }
 
+    // An illustrated chapter opening may have been packed backwards to show
+    // every row up to the saved word. Leaving it resumes the book's regular pages.
+    fn resume_chapter_pages(&mut self, first: usize) {
+        let chapter = self.chapter_rows.binary_search(&first).ok();
+        self.opening = None;
+        self.restore_natural();
+        let row = chapter
+            .and_then(|i| self.chapter_rows.get(i))
+            .copied()
+            .unwrap_or(0);
+        self.show_regular_view(row);
+    }
+
+    fn at_backward_opening(&self) -> bool {
+        (self.first == 0 || self.lines.get(self.first).is_some_and(|l| l.chapter_start))
+            && self.backward_bounds.contains_key(&self.first)
+    }
+
     pub fn next(&mut self) {
         self.finish_resize();
+        if self.at_backward_opening() {
+            self.resume_chapter_pages(self.first);
+        }
         let first = if self.positioned_spreads.is_empty() {
             self.complete_view().end()
         } else {
@@ -902,23 +923,16 @@ impl Pager {
 
     pub fn previous(&mut self) {
         self.finish_resize();
+        if self.first > 0 && self.at_backward_opening() {
+            self.resume_chapter_pages(self.first);
+        }
         let first = self.previous_start();
         if first != self.first {
-            if (first == 0 || self.lines[first].chapter_start) && self.opening.is_some() {
-                let chapter = self.chapter_rows.binary_search(&first).ok();
-                self.opening = None;
-                self.restore_natural();
-                let row = chapter
-                    .and_then(|i| self.chapter_rows.get(i))
-                    .copied()
-                    .unwrap_or(0);
-                self.show_regular_view(row);
-                return;
-            }
-            if !self.positioned_spreads.is_empty()
-                && (first == 0 || self.lines[first].chapter_start)
+            if (first == 0 || self.lines[first].chapter_start)
+                && !self.backward_bounds.contains_key(&first)
+                && (self.opening.is_some() || !self.positioned_spreads.is_empty())
             {
-                self.show_regular_view(first);
+                self.resume_chapter_pages(first);
             } else {
                 self.move_to(first);
             }

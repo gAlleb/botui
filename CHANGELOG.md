@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Fit standalone illustrations above the text when paging back from a saved word, filling either column and keeping the picture whole.
 - Keep the first visible word when switching reading modes. Page back without repeats until the chapter opening, then resume regular pagination.
 - Start new reader profiles at full width with Zen off, left alignment and no extra blank lines between paragraphs. Group Reader settings by purpose and format. Keep EPUB table headers and data rows compact.
 - Remember each book’s reading theme, layout, alignment and heading rules. Preview alignment over the book and optionally hyphenate English and Russian prose.

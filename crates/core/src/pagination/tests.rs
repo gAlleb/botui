@@ -241,13 +241,16 @@ fn reversing_after_an_exact_jump_rejoins_regular_pages_without_skipping_rows() {
             })
             .collect(),
         chapter_starts: [0, 23, 50].into(),
-        references: vec![Reference {
-            source: 36,
-            bytes: None,
-            backlink: false,
-            label: "Illustration".into(),
-            target: Target::Image("plate.png".into()),
-        }],
+        references: [2, 26, 36, 53]
+            .into_iter()
+            .map(|source| Reference {
+                source,
+                bytes: None,
+                backlink: false,
+                label: "Illustration".into(),
+                target: Target::Image("plate.png".into()),
+            })
+            .collect(),
         ..Default::default()
     };
     for mode in [LayoutMode::Single, LayoutMode::Spread] {
@@ -265,7 +268,10 @@ fn reversing_after_an_exact_jump_rejoins_regular_pages_without_skipping_rows() {
                     let previous = pager.complete_view().bounds;
                     assert!(pager.first < original[0]);
                     let end = pager.complete_view().end();
-                    assert!(end >= original[0], "lost rows after {end}");
+                    assert!(
+                        end >= original[0],
+                        "lost rows at {mode:?}/{height}, block {block}: {previous:?} before {original:?}"
+                    );
                     crossed_overlap |= end > original[0];
                     let chapter_opening =
                         pager.first == 0 || pager.lines[pager.first].chapter_start;
@@ -277,8 +283,20 @@ fn reversing_after_an_exact_jump_rejoins_regular_pages_without_skipping_rows() {
                         assert!(pager.positioned_spreads.is_empty());
                         assert!(pager.regular_views().binary_search(&pager.first).is_ok());
                     }
+                    let regular_opening =
+                        breaks.iter().find(|view| view[0] == pager.first).copied();
                     pager.next();
-                    if end == original[0] && !chapter_opening {
+                    if chapter_opening {
+                        let opening = regular_opening.unwrap();
+                        let expected = opening[pager.columns()];
+                        if expected < pager.lines.len() {
+                            assert_eq!(pager.first, expected);
+                            pager.previous();
+                            assert_eq!(pager.complete_view().bounds, opening);
+                        }
+                        continue;
+                    }
+                    if end == original[0] {
                         assert_eq!(pager.complete_view().bounds, original);
                     } else if end < pager.lines.len() {
                         assert_eq!(pager.first, end, "overlap must not create an extra page");

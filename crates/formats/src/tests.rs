@@ -847,7 +847,7 @@ fn paging_back_from_a_citation_fills_prose_and_keeps_the_marker_whole() {
 }
 
 #[test]
-fn exact_epub_positions_after_chapter_titles_and_pictures_do_not_clip_the_previous_view() {
+fn paging_back_from_epub_text_fills_columns_and_keeps_standalone_pictures_whole() {
     use botui_core::{Anchor, LayoutMode, Pager, ReflowOptions};
     let passages = |label| {
         (0..32)
@@ -873,28 +873,47 @@ fn exact_epub_positions_after_chapter_titles_and_pictures_do_not_clip_the_previo
         paragraph_spacing: Some(0),
     };
     for mode in [LayoutMode::Single, LayoutMode::Spread] {
+        let mut fitted_columns = [false; 2];
         for label in ["Chapter line", "After picture"] {
-            for n in 1..8 {
+            for n in 1..30 {
                 let query = format!("{label} {n}.");
                 let block = doc.blocks.iter().position(|b| b.text == query).unwrap();
                 let at = Anchor { block, byte: 0 };
-                let cfi = doc.cfi(at).unwrap();
-                let mut pager = Pager::with_start(&doc, 90, 12, mode, options, Some(at));
-                assert_eq!(doc.cfi(pager.anchor()), Some(cfi));
-                assert!(pager.lines(0)[0].text.contains(&query));
+                let mut pager =
+                    Pager::with_start(&doc, 90, 12, LayoutMode::Scroll, options, Some(at));
+                pager.switch_mode(&doc, 90, 12, mode, 4);
+                assert_eq!(pager.lines(0)[0].text, query);
                 pager.previous();
-                let final_column = pager.lines(pager.columns() - 1);
-                if final_column.len() < 12 {
-                    // An illustration that straddles the top of the preceding
-                    // column stays whole on the page before it.
-                    assert!(label == "After picture" && !final_column.is_empty());
-                    let last = final_column.last().unwrap().text.clone();
-                    assert_eq!(last, format!("{label} {}.", n - 1));
-                    pager.next();
-                    assert_eq!(pager.lines(0)[0].text, query);
+                // The chapter opening resumes the ordinary page sequence.
+                if pager
+                    .lines(0)
+                    .iter()
+                    .any(|line| line.text.contains("Second chapter"))
+                {
+                    continue;
                 }
+                for (col, fitted) in fitted_columns.iter_mut().enumerate().take(pager.columns()) {
+                    let lines = pager.lines(col);
+                    assert_eq!(lines.len(), 12, "{mode:?} {query} column {col}");
+                    let parts: Vec<_> = lines.iter().flat_map(|line| &line.figures).collect();
+                    if let Some(first) = parts.first() {
+                        assert_eq!(parts.len(), usize::from(first.height));
+                        for (row, part) in parts.iter().enumerate() {
+                            assert_eq!(part.row as usize, row);
+                            assert_eq!(part.height, first.height);
+                        }
+                        *fitted |= first.height < 6;
+                    }
+                }
+                let last = pager.lines(pager.columns() - 1).last().unwrap();
+                assert_eq!(last.text, format!("{label} {}.", n - 1));
+                pager.next();
+                assert_eq!(pager.lines(0)[0].text, query);
+                assert_eq!(pager.anchor(), at);
             }
         }
+        let columns = if mode == LayoutMode::Spread { 2 } else { 1 };
+        assert!(fitted_columns[..columns].iter().all(|&found| found));
     }
 }
 
