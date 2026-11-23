@@ -48,9 +48,25 @@ fn format_script(
         if let Some(owner) = el
             .attr("data-botui-text")
             .and_then(|s| s.parse::<usize>().ok())
-            && let Some(span) = sources.get_mut(owner).and_then(|v| v.first_mut())
+            && let Some(spans) = sources.get_mut(owner)
+            && let [span] = spans.as_slice()
+            && span.end - span.start.byte == t.len()
         {
-            span.display = Some(value.clone());
+            let start = span.start;
+            let child = span.child;
+            *spans = t
+                .char_indices()
+                .zip(value.chars())
+                .map(|((offset, c), glyph)| SourceText {
+                    start: botui_core::Anchor {
+                        byte: start.byte + offset,
+                        ..start
+                    },
+                    end: start.byte + offset + c.len_utf8(),
+                    display: Some(glyph.to_string()),
+                    child,
+                })
+                .collect();
         }
         *dom.tree.get_mut(child).unwrap().value() = text(&value);
     } else {
@@ -111,7 +127,11 @@ fn matrix_fences(dom: &mut Html, table: ego_tree::NodeId) {
     }
 }
 
-pub(super) fn prepare(dom: &mut Html, sources: &mut [Vec<SourceText>]) {
+pub(super) fn prepare(
+    dom: &mut Html,
+    sources: &mut [Vec<SourceText>],
+    replacements: &mut botui_core::publisher::ClipboardReplacements,
+) {
     let roots: Vec<_> = dom
         .tree
         .nodes()
@@ -173,6 +193,18 @@ pub(super) fn prepare(dom: &mut Html, sources: &mut [Vec<SourceText>]) {
                     decorate(dom, *args.last().unwrap(), "", ")");
                 }
                 ("mfrac", [a, b]) if !display && e.attr("linethickness") != Some("0") => {
+                    let denominator = dom.tree.get(*b).unwrap();
+                    if let Some(at) = denominator
+                        .descendants()
+                        .filter_map(ElementRef::wrap)
+                        .filter_map(|el| el.attr("data-botui-text")?.parse::<usize>().ok())
+                        .find_map(|owner| sources.get(owner)?.first().map(|s| s.start))
+                    {
+                        replacements
+                            .entry(at.block)
+                            .or_default()
+                            .push((at.byte..at.byte, "/".into()));
+                    }
                     for (arg, prefix) in [(*a, ""), (*b, "/")] {
                         let complex = ElementRef::wrap(dom.tree.get(arg).unwrap())
                             .unwrap()

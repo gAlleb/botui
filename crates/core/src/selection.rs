@@ -176,6 +176,21 @@ impl Document {
                     let mut part = String::new();
                     let mut cursor = start;
                     for (span, replacement) in replacements {
+                        // A synthetic fraction bar belongs between its operands.
+                        if span.is_empty()
+                            && replacement == "/"
+                            && !(range.start
+                                < (Anchor {
+                                    block,
+                                    byte: span.start,
+                                })
+                                && (Anchor {
+                                    block,
+                                    byte: span.start,
+                                }) < range.end)
+                        {
+                            continue;
+                        }
                         if span.start >= cursor && span.end <= end {
                             part.push_str(&text[cursor..span.start]);
                             part.push_str(replacement);

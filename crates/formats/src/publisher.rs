@@ -232,7 +232,7 @@ pub(super) fn chapter(
             || compact_structure(e.value())
     });
     super::tex::convert(dom);
-    super::math_text::prepare(dom, &mut sources);
+    super::math_text::prepare(dom, &mut sources, &mut replacements);
     // scraper serializes HTML void elements such as <img> and <br> without
     // XML closing tags. Select the HTML parser even when the root declares XHTML.
     for span in sources.iter().flatten() {

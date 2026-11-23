@@ -2504,6 +2504,34 @@ fn returning_before_a_scrolled_math_epub_restores_its_two_regular_pages() {
 }
 
 #[test]
+fn linear_math_copies_operators_and_hits_each_raised_digit() {
+    use botui_core::{LayoutMode, Pager, TextRange};
+    let doc = styled_fixture(
+        "<p><math><mfrac><mi>a</mi><mi>b</mi></mfrac></math></p><p><math><msup><mi>x</mi><mn>12</mn></msup></math></p>",
+        "",
+    );
+    let pager = Pager::new(&doc, 60, 20, LayoutMode::Single);
+    for expected in ["a/b", "x¹²"] {
+        let row = pager
+            .lines(0)
+            .iter()
+            .find(|row| row.text.contains(expected))
+            .expect(expected);
+        let cells = row.text_cells(&doc);
+        let range = TextRange::new(
+            cells.first().unwrap().source.start,
+            cells.last().unwrap().source.end,
+        );
+        assert_eq!(doc.clipboard_text(range), expected);
+        let last = cells.last().unwrap();
+        assert_eq!(
+            doc.clipboard_text(last.source),
+            if expected == "a/b" { "b" } else { "²" }
+        );
+    }
+}
+
+#[test]
 fn attached_footnote_moves_with_the_word_at_every_line_edge() {
     use botui_core::{LayoutMode, Pager};
     for marker in [
