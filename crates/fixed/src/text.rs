@@ -35,11 +35,22 @@ impl PageText {
             .take_while(move |pair| pair[0].bytes.end < bytes.end)
             .filter_map(|pair| {
                 let (left, right) = (&pair[0], &pair[1]);
-                (left.line == right.line
-                    && left.block == right.block
-                    && self.text.get(left.bytes.end..right.bytes.start) == Some(" "))
-                .then(|| interaction::whitespace_box(left.bounds, right.bounds))
-                .flatten()
+                if left.line == right.line && left.block == right.block {
+                    return interaction::whitespace_box(left.bounds, right.bounds);
+                }
+                // Poppler sometimes puts each word of a justified scan in its
+                // own block. Bridge a word-sized gap on the same physical row.
+                let a = left.bounds;
+                let b = right.bounds;
+                let height = (a[3] - a[1]).min(b[3] - b[1]);
+                let overlap = a[3].min(b[3]) - a[1].max(b[1]);
+                let gap = a[0].max(b[0]) - a[2].min(b[2]);
+                (height > 0.
+                    && overlap >= 0.8 * height
+                    && gap > 0.
+                    && gap * self.size[0] <= 1.5 * height * self.size[1])
+                    .then(|| interaction::whitespace_box(a, b))
+                    .flatten()
             })
     }
 
@@ -251,6 +262,27 @@ fn parse_page(page: roxmltree::Node<'_, '_>, rotation: i32) -> io::Result<PageTe
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn split_ocr_blocks_share_a_highlight_only_across_a_selected_word_gap() {
+        let xml = r#"<page width="340" height="500">
+          <block><line><word xMin="17" xMax="58" yMin="270" yMax="281">сидский,</word></line></block>
+          <block><line><word xMin="69" xMax="100" yMin="270" yMax="281">пушту</word></line></block>
+          <block><line><word xMin="112" xMax="173" yMin="270" yMax="281">(афганский),</word></line></block>
+          <block><line><word xMin="235" xMax="270" yMin="270" yMax="281">column</word></line></block>
+          <block><line><word xMin="240" xMax="275" yMin="282" yMax="293">below</word></line></block>
+        </page>"#;
+        let page = parse(xml).unwrap();
+        let gaps: Vec<_> = page.selected_spaces(0..page.text.len()).collect();
+        assert_eq!(
+            gaps,
+            [
+                [58. / 340., 270. / 500., 69. / 340., 281. / 500.],
+                [100. / 340., 270. / 500., 112. / 340., 281. / 500.]
+            ]
+        );
+        assert_eq!(page.selected_spaces(page.words[1].bytes.clone()).count(), 0);
+    }
+
     #[test]
     fn unicode_offsets_and_paragraphs_follow_pdf_reading_order() {
         let p = parse(r#"<doc><page width="200" height="400"><flow><block><line>

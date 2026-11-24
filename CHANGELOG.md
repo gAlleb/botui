@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Fill inter-word gaps in PDF selections when OCR splits a printed line into separate text blocks.
+
 ## 0.1.32 — 2026-11-24
 
 - Toggle full-height Zen with Space Z in text books, PDFs and comics. Selection controls overlay the last row.
