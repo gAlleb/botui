@@ -23,6 +23,12 @@ impl Spacing {
 #[serde(default)]
 pub struct BookSettings {
     pub page_width: Option<u16>,
+    pub zen: Option<bool>,
+    pub zen_progress: Option<bool>,
+    pub scroll_lines: Option<u8>,
+    pub column_gap: Option<u16>,
+    pub preserve_printed_lines: Option<bool>,
+    pub hide_inline_images: Option<bool>,
     pub theme: Option<String>,
     pub reading_layout: Option<String>,
     pub pagination_mode: Option<botui_core::PaginationMode>,
@@ -45,6 +51,24 @@ impl BookSettings {
             .unwrap_or_default())
     }
     pub fn apply(&self, prefs: &mut Settings) {
+        if let Some(v) = self.zen {
+            prefs.zen = v;
+        }
+        if let Some(v) = self.zen_progress {
+            prefs.zen_progress = v;
+        }
+        if let Some(v) = self.scroll_lines {
+            prefs.scroll_lines = Some(v.clamp(1, 12));
+        }
+        if let Some(gap) = self.column_gap {
+            prefs.column_gap = Some(gap.min(32));
+        }
+        if let Some(value) = self.preserve_printed_lines {
+            prefs.preserve_printed_lines = value;
+        }
+        if let Some(value) = self.hide_inline_images {
+            prefs.hide_inline_images = value;
+        }
         if let Some(v) = &self.comic_background {
             prefs.comic_background = Some(v.clone());
         }

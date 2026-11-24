@@ -203,11 +203,12 @@ def check(tmp):
         footer = re.compile(r'\d+ / \d+  ·  \d+%')
         t.wait('Zen footer in text reader', lambda f: footer.search(f.splitlines()[-1]))
         t.keys('Space','p')
-        t.wait('Zen footer hidden', lambda f: not footer.search(f) and not cfg()['zen_progress'])
+        t.wait('Zen footer hidden', lambda f: not footer.search(f) and cfg()['zen_progress'])
         t.keys('F2');t.see('Nord')
         t.keys('Tab')
         t.wait('Independent paragraph settings survive restart',
-               lambda f: compact_row(f, True) and re.search(r'Paragraph spacing\s+2 blank lines', f) and spacing_saved(True, 2))
+               lambda f: re.search(r'Paragraph spacing\s+Use global · 2 blank lines', f)
+                         and 'Compact blocks' not in f and spacing_saved(True, 2))
         t.keys('Escape');t.wait('Returned to reading', lambda f:'Interface theme' not in f and 'Почта на пристани' in f);t.keys('F1');t.see('Keyboard shortcuts');t.see('EPUB, FB2 & Markdown');t.keys('Escape','Space','q')
     finally:t.run('kill-server',required=False)
 if __name__=='__main__':

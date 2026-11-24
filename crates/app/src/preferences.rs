@@ -101,6 +101,10 @@ fn spacing_index(prefs: &Settings) -> usize {
         .paragraph_spacing
         .map_or(0, |n| 1 + usize::from(n.min(2)))
 }
+enum Item {
+    Global(usize),
+    Book(book::Field),
+}
 struct SettingRow {
     section: Option<&'static str>,
     label: String,
@@ -416,8 +420,23 @@ pub fn show_book(
     let mut guide_view = help::Guide::default();
     let mut about_offset = 0usize;
     let mut prefs = Settings::load()?;
+    let book_open = matches!(ctx, Context::Text | Context::Scan);
+    let mut local = crate::settings::book::BookSettings::load(edition.map(|(store, _)| store))?;
     loop {
-        let labels = rows(tab, &prefs);
+        let global = rows(tab, &prefs);
+        let (items, labels): (Vec<_>, Vec<_>) = if tab == 1
+            && let Some((_, kind)) = edition
+        {
+            book::rows(kind, &local, &prefs, global).into_iter().unzip()
+        } else if tab == 1 && book_open {
+            (Vec::new(), Vec::new())
+        } else {
+            global
+                .into_iter()
+                .enumerate()
+                .map(|(i, row)| (Item::Global(i), row))
+                .unzip()
+        };
         let guide = if tab == 4 {
             help::entries(ctx, &prefs)
         } else {
@@ -426,7 +445,6 @@ pub fn show_book(
         let mut tabs = [Rect::default(); TABS.len()];
         let mut about_max = 0;
         let mut back = Rect::default();
-        let mut book_button = Rect::default();
         let mut body = Rect::default();
         term.draw(|f| {
             let area = crate::centered(f.area(), 106, 34);
@@ -436,7 +454,9 @@ pub fn show_book(
                 " About BOTUI "
             } else if tab == 6 {
                 " Legal notices "
-            } else if tab == 1 && edition.is_some() {
+            } else if tab == 1 && book_open && edition.is_none() {
+                " Book settings unavailable · cannot access local reading state "
+            } else if tab == 1 && !book_open {
                 " Settings · defaults for all books "
             } else {
                 " Settings "
@@ -560,16 +580,7 @@ pub fn show_book(
                 1,
             );
             f.render_widget(Paragraph::new(back_label).cyan(), back);
-            let mut footer_x = back.right();
-            let book_label = "[S This book]";
-            if tab == 1
-                && edition.is_some()
-                && inner.right().saturating_sub(footer_x) > book_label.len() as u16
-            {
-                book_button = Rect::new(footer_x + 1, back.y, book_label.len() as u16, 1);
-                f.render_widget(Paragraph::new(book_label).cyan(), book_button);
-                footer_x = book_button.right();
-            }
+            let footer_x = back.right();
             f.render_widget(
                 Paragraph::new(if matches!(tab, 5 | 6) {
                     "  Tab Sections   ↑↓ Scroll"
@@ -594,17 +605,6 @@ pub fn show_book(
         } else {
             crate::settings::read_dialog()?
         };
-        if tab == 1
-            && let Some((store, kind)) = edition
-            && (matches!(&event, Event::Key(k) if k.kind != KeyEventKind::Release && k.code == KeyCode::Char('s'))
-                || matches!(&event, Event::Mouse(m) if m.kind == MouseEventKind::Down(MouseButton::Left) && book_button.contains((m.column,m.row).into())))
-        {
-            status = book::edit(term, store, kind)
-                .err()
-                .map(|e| e.to_string())
-                .unwrap_or_default();
-            continue;
-        }
         if tab == 4 && guide_view.filter_input(&event) {
             continue;
         }
@@ -696,17 +696,20 @@ pub fn show_book(
         }
         if let Some(i) = opened.filter(|&i| i < labels.len() && tab != 4) {
             state.select(Some(i));
-            status = match if tab == 7 {
-                crate::lookup::settings::open(term, i)
-            } else if tab == 2 && i == 5 {
-                crate::opds_settings::configure(term)
-            } else {
-                edit::setting(term, tab, i, &prefs)
-            } {
-                Ok(_) => String::new(),
-                Err(e) => e.to_string(),
+            let result = match items[i] {
+                Item::Book(field) => match edition {
+                    Some((store, _)) => book::edit(term, store, field, &prefs),
+                    None => Err(io::Error::other("Book settings are unavailable")),
+                },
+                Item::Global(index) => match (tab, index) {
+                    (7, _) => crate::lookup::settings::open(term, index),
+                    (2, 5) => crate::opds_settings::configure(term),
+                    _ => edit::setting(term, tab, index, &prefs),
+                },
             };
+            status = result.err().map(|err| err.to_string()).unwrap_or_default();
             prefs = Settings::load()?;
+            local = crate::settings::book::BookSettings::load(edition.map(|(store, _)| store))?;
         } else {
             state.select(Some(
                 state

@@ -63,7 +63,7 @@ with tempfile.TemporaryDirectory() as name:
         col = start_column(t.see("At lighthouse 055"))
         t.keys("F2"); t.see("Interface theme"); t.keys("Tab")
         t.click("First-line indent", t.see("First-line indent"))
-        t.see("0–8 cells"); t.keys("C-u"); t.type("4"); t.keys("Enter")
+        t.click("4 cells", t.see("4 cells"))
         t.see("4 cells")
         t.click("Paragraph spacing", t.see("Paragraph spacing"))
         t.click("2 blank lines", t.see("2 blank lines"))

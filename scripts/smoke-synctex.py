@@ -122,7 +122,7 @@ pending.replace(dest)
         term.keys("C-u")
         term.type(shlex.join(args))
         term.keys("Enter")
-        term.see("[S This book]")
+        term.see("SyncTeX editor command")
         assert tomllib.loads(config.read_text())["synctex_editor"] == args
         term.keys("Escape")
         term.see("[F1 Help]")

@@ -375,64 +375,34 @@ impl Reader {
         store: Option<&LocalState>,
         notices: &mut Vec<String>,
     ) {
+        use crate::settings::book::BookSettings;
         if let Some(store) = store
-            && matches!(
-                action,
-                Action::Pick(theme_picker::Edit::Accept(_))
-                    | Action::Single
-                    | Action::Spread
-                    | Action::Scroll
-            )
+            && action != Action::Background
         {
-            if let Err(e) =
-                store.update_book_preferences(|p: &mut crate::settings::book::BookSettings| {
-                    match action {
-                        Action::Pick(_) => p.theme = Some(self.theme.id()),
-                        _ => {
-                            p.reading_layout = Some(
-                                match self.mode {
-                                    LayoutMode::Single => "single",
-                                    LayoutMode::Spread => "spread",
-                                    LayoutMode::Scroll => "scroll",
-                                }
-                                .into(),
-                            )
+            if let Err(e) = store.update_book_preferences(|p: &mut BookSettings| match action {
+                Action::Gap(_) => p.column_gap = Some(self.gap),
+                Action::Margin(_) | Action::FullWidth => p.page_width = Some(self.page_width),
+                Action::Zen => p.zen = Some(self.zen),
+                Action::ZenProgress => p.zen_progress = Some(self.zen_progress),
+                Action::Pick(theme_picker::Edit::Accept(_)) => p.theme = Some(self.theme.id()),
+                Action::Single | Action::Spread | Action::Scroll => {
+                    p.reading_layout = Some(
+                        match self.mode {
+                            LayoutMode::Single => "single",
+                            LayoutMode::Spread => "spread",
+                            LayoutMode::Scroll => "scroll",
                         }
-                    }
-                })
-            {
+                        .into(),
+                    )
+                }
+                _ => (),
+            }) {
                 notices.push(e.to_string());
             }
             return;
         }
         if matches!(action, Action::Single | Action::Spread | Action::Scroll) {
             return;
-        }
-        if matches!(action, Action::Margin(_) | Action::FullWidth)
-            && let Some(store) = store
-        {
-            let local = (|| -> io::Result<bool> {
-                if crate::settings::book::BookSettings::load(Some(store))?
-                    .page_width
-                    .is_some()
-                {
-                    store.update_book_preferences(
-                        |p: &mut crate::settings::book::BookSettings| {
-                            p.page_width = Some(self.page_width)
-                        },
-                    )?;
-                    return Ok(true);
-                }
-                Ok(false)
-            })();
-            match local {
-                Ok(true) => return,
-                Err(e) => {
-                    notices.push(e.to_string());
-                    return;
-                }
-                Ok(false) => (),
-            }
         }
         let result = crate::settings::Settings::update(|s| match action {
             Action::Gap(_) => s.column_gap = Some(self.gap),
@@ -1776,8 +1746,10 @@ pub fn read_server(
             notices.push("BookOrbit has no exact text location. Using the local position.".into());
         }
     }
-    if let Some(mode) = crate::settings::book::BookSettings::load(state.as_ref())?.reading_layout
+    let prefs = crate::settings::book::BookSettings::effective(state.as_ref())?;
+    if let Some(mode) = prefs.reading_layout.as_deref()
         && let Some(s) = &mut saved
+        && mode != "auto"
     {
         s.spread = mode == "spread";
         s.scrolling = mode == "scroll";
@@ -1788,7 +1760,7 @@ pub fn read_server(
         saved,
         path,
         resume_anchor,
-        &crate::settings::book::BookSettings::effective(state.as_ref())?,
+        &prefs,
     );
     let mut annotation_sync = live
         .as_ref()
@@ -2155,9 +2127,7 @@ pub fn read_server(
                         reader.dirty = true;
                     }
                 }
-                if let Some(g) = new.column_gap {
-                    reader.gap = g.min(32);
-                }
+                reader.gap = new.column_gap.unwrap_or(4).min(32);
                 if old.preserve_printed_lines != new.preserve_printed_lines
                     || old.text_alignment != new.text_alignment
                     || old.hyphenation != new.hyphenation

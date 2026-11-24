@@ -152,7 +152,7 @@ pub(super) fn read_pages(
         .map_or(prefs.reading_layout.as_deref() == Some("scroll"), |s| {
             s.scrolling
         });
-    if let Some(mode) = crate::settings::book::BookSettings::load(store.as_ref())?.reading_layout {
+    if let Some(mode) = prefs.reading_layout.as_deref().filter(|m| *m != "auto") {
         spread = mode == "spread";
         scrolling = mode == "scroll";
     }
@@ -1669,11 +1669,25 @@ pub(super) fn read_pages(
             }
             45 => {
                 zen_progress = !zen_progress;
-                crate::settings::Settings::update(|s| s.zen_progress = zen_progress)?;
+                if let Some(store) = &store {
+                    store.update_book_preferences(
+                        |p: &mut crate::settings::book::BookSettings| {
+                            p.zen_progress = Some(zen_progress)
+                        },
+                    )?;
+                } else {
+                    crate::settings::Settings::update(|s| s.zen_progress = zen_progress)?;
+                }
             }
             14 => {
                 zen = !zen;
-                crate::settings::Settings::update(|s| s.zen = zen)?;
+                if let Some(store) = &store {
+                    store.update_book_preferences(
+                        |p: &mut crate::settings::book::BookSettings| p.zen = Some(zen),
+                    )?;
+                } else {
+                    crate::settings::Settings::update(|s| s.zen = zen)?;
+                }
             }
             15 => {
                 crate::settings::Settings::update(|s| s.opaque_background = !s.opaque_background)?;

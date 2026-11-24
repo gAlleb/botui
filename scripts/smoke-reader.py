@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Exercise the built botui binary on the example FB2 using a private tmux terminal."""
 
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -126,7 +127,9 @@ def check(tmp):
         row,line = next((i,line) for i,line in enumerate(panel.splitlines(),1) if "Page width" in line)
         mouse(0,line.index("[-]")+2,row)
         config = tmp/"config/botui/config.toml"
-        wait_for("Width saved separately",lambda f: "cells" in f and tomllib.loads(config.read_text()).get("page_width",0)>0)
+        edition = tmp / "botui/positions" / (hashlib.sha256(BOOK.read_bytes()).hexdigest() + ".preferences")
+        wait_for("Width saved for the book", lambda f: "cells" in f and (json.loads(edition.read_text()).get("page_width") or 0) > 0)
+        assert tomllib.loads(config.read_text()).get("page_width", 0) == 0
         keys("Escape")
         wait_for("Close live layout",lambda f:"[ Done ]" not in f)
         keys('Space', 'm')

@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- F2 Reader edits the open edition directly. From the library it edits defaults, which each book follows for settings it has not customized. Quick text width and column gap changes also stay with the edition.
+
 ## 0.1.30 — 2026-11-24
 
 - Ship the reader improvements listed under 0.1.29. The terminal smoke test now verifies that returning from Spread and reopening Scroll preserve the original reading passage.

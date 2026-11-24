@@ -18,13 +18,10 @@ def open_settings(t):
     t.keys("F2")
     t.see("Appearance")
     t.keys("Right")
-    t.click("[S This book]", t.see("[S This book]"))
     return t.see("Use global settings for this book")
 
 
 def close_settings(t):
-    t.keys("Escape")
-    t.see("[S This book]")
     t.keys("Escape")
 
 
@@ -55,6 +52,11 @@ def run(tmp):
         return shelf.Terminal(tmp, binary, args=[str(path)])
     def close(t):
         t.run("kill-server", required=False)
+    t = terminal(second)
+    try:
+        line_gap(t, 1)
+    finally:
+        close(t)
     t = terminal(text)
     try:
         line_gap(t, 1)
@@ -86,6 +88,15 @@ def run(tmp):
         t.see("[H Hyphenation: Off]")
         assert json.loads(pref(text).read_text())["hyphenation"] is False
         assert cfg.read_bytes() == global_bytes
+        t.keys("h", "Enter")
+        frame = open_settings(t)
+        assert any("Word hyphenation" in row and "On" in row and "Use global" not in row
+                   for row in frame.splitlines())
+        t.click("Word hyphenation", frame)
+        t.click("Use global", t.see("Use global · Off"))
+        close_settings(t)
+        t.keys("Space", "l", "w")
+        t.see("[H Hyphenation: Off]")
         t.keys("a")
         before = t.see("Text alignment")
         origin = next(line.index("First paragraph") for line in before.splitlines() if "First paragraph" in line)
@@ -98,15 +109,17 @@ def run(tmp):
         t.keys("Space", "l", "w", "a", "Down", "Enter")
         t.wait("Center saved for first book", lambda _: json.loads(pref(text).read_text()).get("alignment") == "center")
         assert cfg.read_bytes() == global_bytes
-        # A deliberate edit in the all-books scope reaches the second book immediately.
+        close(t)
+        t = shelf.Terminal(tmp, binary, args=[])
+        t.see("Choose a library")
+        # The library edits defaults even for books that have already been opened.
         t.keys("F2")
         t.see("Appearance")
         t.keys("Right")
         t.click("Paragraph spacing", t.see("Paragraph spacing"))
         t.click("0 blank lines", t.see("0 blank lines"))
-        t.see("[S This book]")
+        t.see("defaults for all books")
         t.keys("Escape")
-        line_gap(t, 2)
         previous = tomllib.loads(global_bytes.decode())
         global_bytes = cfg.read_bytes()
         assert tomllib.loads(global_bytes.decode()) == {**previous, "paragraph_spacing": 0}
@@ -139,6 +152,27 @@ def run(tmp):
             assert cfg.read_bytes() == global_bytes
         finally:
             close(t)
+
+    epub = tmp / "Atlas.epub"
+    epub.write_bytes(shelf.epub())
+    t = terminal(epub)
+    try:
+        t.see(shelf.EPUB_MARK)
+        t.keys("Space", "l", "w")
+        t.click("[H Hyphenation: Off]", t.see("[H Hyphenation: Off]"))
+        t.see("[H Hyphenation: On]")
+        t.keys("Escape")
+        frame = open_settings(t)
+        assert any("Word hyphenation" in row and "On" in row and "Use global" not in row
+                   for row in frame.splitlines())
+        t.click("Word hyphenation", frame)
+        t.click("Use global", t.see("Use global · Off"))
+        close_settings(t)
+        t.keys("Space", "l", "w")
+        t.see("[H Hyphenation: Off]")
+        assert cfg.read_bytes() == global_bytes
+    finally:
+        close(t)
 
     pdf = tmp / "Atlas.pdf"
     other = tmp / "Other.pdf"
