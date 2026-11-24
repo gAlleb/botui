@@ -1,21 +1,14 @@
 # Changelog
 
-## Unreleased
+## 0.1.32 — 2026-11-24
 
 - Toggle full-height Zen with Space Z in text books, PDFs and comics. Selection controls overlay the last row.
-
 - Include selected spaces between PDF words in the visible selection and saved highlights.
-
 - Prepare the visible PDF text layer in the background so the first selection can start with measured letter positions.
-
 - Show the dotted page divider in both margins when scrolling flush PDF and comic pages.
-
 - Process queued wheel ticks together during continuous fixed-page scrolling while preserving the configured scroll distance.
-
 - Preserve letter-by-letter selection on PDF pages with zero-width combining accents and copy each accent with its base letter.
-
 - Update PDF text selection once per batch of mouse motion and use the release position for the final selection.
-
 - Center the PDF and comic reading menu in the terminal window when the contents sidebar is open.
 
 ## 0.1.31 — 2026-11-24
