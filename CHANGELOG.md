@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Skip superseded text layouts when another terminal font or window resize arrives during reflow.
+
 ## 0.1.28 — 2026-11-24
 
 - Clear and redraw the terminal in one synchronized frame when changing the font or window size.

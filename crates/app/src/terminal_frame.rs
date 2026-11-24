@@ -16,7 +16,7 @@ struct SixelFrame {
     phase: bool,
 }
 
-struct Update;
+pub(crate) struct Update;
 impl Drop for Update {
     fn drop(&mut self) {
         let _ = execute!(io::stdout(), EndSynchronizedUpdate);
@@ -38,6 +38,17 @@ impl AppTerminal {
 
     pub fn draw(&mut self, render: impl FnOnce(&mut Frame)) -> io::Result<()> {
         self.draw_frame(render).map(|_| ())
+    }
+
+    pub(crate) fn begin_resize(
+        &mut self,
+        size: ratatui::layout::Size,
+    ) -> io::Result<Option<Update>> {
+        if self.0.current_buffer_mut().area.as_size() == size {
+            return Ok(None);
+        }
+        execute!(io::stdout(), BeginSynchronizedUpdate)?;
+        Ok(Some(Update))
     }
 
     pub fn draw_frame(
@@ -70,7 +81,7 @@ impl AppTerminal {
         Ok(())
     }
 
-    fn publish(
+    pub(crate) fn publish(
         &mut self,
         render: impl FnOnce(&mut Frame),
         update: &mut Option<Update>,

@@ -506,11 +506,7 @@ impl Reader {
         (sidebar, frame, controls)
     }
 
-    fn draw(&mut self, frame: &mut Frame, notice: Option<&str>) {
-        let screen = frame.area();
-        self.links.clear();
-        let show_progress =
-            self.zen && self.zen_progress && screen.height > 1 && !self.links.visiting();
+    fn prepare_page(&mut self, screen: Rect) -> (crate::appearance::ReadingFrame, Rect) {
         let (sidebar, reading_frame, controls) = self.reading_panes(screen);
         self.sidebar_rect = sidebar;
         if self.sidebar_rect.is_empty() {
@@ -525,7 +521,6 @@ impl Reader {
         );
         let text = controls::above_status(text, screen);
         self.text_rect = text;
-        self.study.begin_frame();
         if !self.doc.image_sizes.is_empty() {
             let cell = crate::cover::graphics().font_size();
             self.pager.set_image_cell(cell.width, cell.height);
@@ -540,6 +535,58 @@ impl Reader {
         {
             self.flash_chapter_position();
         }
+        (reading_frame, controls)
+    }
+
+    fn draw_latest(&mut self, term: &mut AppTerminal, notice: Option<&str>) -> io::Result<()> {
+        let mut size = term.size()?;
+        let mut update = term.begin_resize(size)?;
+        // A second resize can arrive while laying out a chapter. Finish the
+        // layout for the new grid before Ratatui clears and redraws the screen.
+        let (reading_frame, controls) = loop {
+            let page = self.prepare_page(size.into());
+            let current = term.size()?;
+            if current == size {
+                break page;
+            }
+            crate::cover::resized();
+            size = current;
+        };
+        term.publish(
+            |frame| {
+                if frame.area().as_size() == size {
+                    self.draw_page(frame, notice, reading_frame, controls);
+                } else {
+                    self.draw(frame, notice);
+                }
+                crate::settings::paint_book(
+                    frame,
+                    self.palette.as_ref().map_or(self.theme, |p| p.preview()),
+                );
+            },
+            &mut update,
+        )?;
+        Ok(())
+    }
+
+    fn draw(&mut self, frame: &mut Frame, notice: Option<&str>) {
+        let (reading_frame, controls) = self.prepare_page(frame.area());
+        self.draw_page(frame, notice, reading_frame, controls);
+    }
+
+    fn draw_page(
+        &mut self,
+        frame: &mut Frame,
+        notice: Option<&str>,
+        reading_frame: crate::appearance::ReadingFrame,
+        controls: Rect,
+    ) {
+        let screen = frame.area();
+        let text = self.text_rect;
+        self.links.clear();
+        self.study.begin_frame();
+        let show_progress =
+            self.zen && self.zen_progress && screen.height > 1 && !self.links.visiting();
         self.search.update(&self.pager, &self.doc);
         let view = self.pager.viewport_rows();
         let pages = (!self.pager.is_paginating())
@@ -1784,16 +1831,8 @@ pub fn read_server(
             if let Some(message) = viewer.collect() {
                 crate::prompt::message(term, "View cover", &message)?;
             }
-            let frame_result = term.draw(|frame| {
-                reader.draw(frame, notices[before..].last().map(String::as_str));
-                crate::settings::paint_book(
-                    frame,
-                    reader
-                        .palette
-                        .as_ref()
-                        .map_or(reader.theme, |p| p.preview()),
-                )
-            });
+            let frame_result =
+                reader.draw_latest(term, notices[before..].last().map(String::as_str));
             reader.pager.start_pagination();
             // Publish the new geometry before syncing its settings file to disk.
             if let Some(action) = save_after_draw.take() {

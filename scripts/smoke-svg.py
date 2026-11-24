@@ -49,14 +49,19 @@ def check(binary, folder, album=False, page_turn=False):
         fcntl.ioctl(0,termios.TIOCSWINSZ,struct.pack('HHHH',45,120,1200,900))
         os.execve(str(binary),[str(binary),str(source)],env)
     images=[]; pending=bytearray(); active=None; stream=bytearray()
+    resize_on_query = None
     def collect(seconds=1):
-        nonlocal active
+        nonlocal active, resize_on_query
         start=time.monotonic()
         while time.monotonic()-start<seconds:
             if not select.select([fd],[],[],.01)[0]:continue
             data=os.read(fd,262144);stream.extend(data);pending.extend(data)
             if b'\x1b]11;?' in data:os.write(fd,b'\x1b]11;rgb:2020/2020/2020\x07\x1b[?1;2c')
-            if b'\x1b[5n' in data:os.write(fd,b'\x1b_Gi=31;OK\x1b\\\x1b[6;20;10t\x1b[0n')
+            if b'\x1b[5n' in data:
+                if resize_on_query:
+                    fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack('HHHH', *resize_on_query))
+                    resize_on_query = None
+                os.write(fd,b'\x1b_Gi=31;OK\x1b\\\x1b[6;20;10t\x1b[0n')
             consumed=0
             for match in re.finditer(rb'\x1b_G([^;]*);(.*?)\x1b\\',pending,re.S):
                 consumed=match.end();params=dict(p.split(b'=',1) for p in match[1].split(b',') if b'=' in p)
@@ -116,6 +121,15 @@ def check(binary, folder, album=False, page_turn=False):
                 clear = b'\x1b[2J'
                 assert any(clear in frame and b'SVGSTART' in frame for frame in frames), 'Incomplete resize frame'
                 assert stream.count(clear) == sum(frame.count(clear) for frame in frames), 'Unprotected resize clear'
+            # Deliver a second font resize while the first is preparing its
+            # graphics metrics. No book frame should be sent at the superseded height.
+            stream.clear()
+            resize_on_query = (31, 90, 1200, 900)
+            fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack('HHHH', 40, 100, 1200, 900))
+            collect(1)
+            assert resize_on_query is None and b'SVGSTART' in stream
+            painted_rows = re.findall(rb'\x1b\[(\d+);\d+H', stream)
+            assert max(map(int, painted_rows)) == 31, 'Published a page for the previous font size'
         else:
             os.write(fd,b'\x1b[C');collect(1)
             assert b'unavailable' not in stream.lower(),'SVG album page failed to decode'
