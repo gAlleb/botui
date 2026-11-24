@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Follow printed lines when selecting or copying from PDFs whose text extractor interleaves fragments of different rows.
 
 - Keep the PDF selection anchored when a drag starts in whitespace between letters or words.
 

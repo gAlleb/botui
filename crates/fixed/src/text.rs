@@ -2,6 +2,7 @@
 //! Extract only requested pages; neither rasterization nor OCR is involved.
 use std::{io, ops::Range, path::Path, process::Command, sync::atomic::AtomicBool};
 mod interaction;
+mod reading_order;
 pub use interaction::{Link, LinkTarget};
 
 #[derive(Clone, Debug)]
@@ -65,13 +66,19 @@ impl PageText {
 
 /// Load interaction geometry only for visited pages, not for a whole-book search.
 pub fn interactive_page(path: &Path, page: u32, cancel: &AtomicBool) -> io::Result<PageText> {
-    let mut result = page_text(path, page, cancel)?;
-    interaction::enrich(path, page, cancel, &mut result);
-    result.interactive = true;
-    Ok(result)
+    load_page(path, page, cancel, true)
 }
 
 pub fn page_text(path: &Path, page: u32, cancel: &AtomicBool) -> io::Result<PageText> {
+    load_page(path, page, cancel, false)
+}
+
+fn load_page(
+    path: &Path,
+    page: u32,
+    cancel: &AtomicBool,
+    interactive: bool,
+) -> io::Result<PageText> {
     if page == 0 {
         return Err(io::ErrorKind::InvalidInput.into());
     }
@@ -102,14 +109,22 @@ pub fn page_text(path: &Path, page: u32, cancel: &AtomicBool) -> io::Result<Page
         result => result?,
     };
     let xml = String::from_utf8_lossy(&output);
-    if glib {
-        parse(&xml)
+    let mut result = if glib {
+        parse(&xml)?
     } else {
-        parse_document_pages(&xml, path, page, cancel)?
+        parse_rotated_pages(&xml, Some((path, page, cancel)))?
             .into_iter()
             .next()
-            .ok_or_else(|| io::Error::other("PDF text page is missing"))
+            .ok_or_else(|| io::Error::other("PDF text page is missing"))?
+    };
+    if interactive {
+        interaction::enrich(path, page, cancel, &mut result);
+        result.interactive = true;
     }
+    if !glib {
+        reading_order::restore(std::slice::from_mut(&mut result), path, page, cancel)?;
+    }
+    Ok(result)
 }
 
 fn parse(xml: &str) -> io::Result<PageText> {
@@ -129,7 +144,9 @@ pub(crate) fn parse_document_pages(
     first: u32,
     cancel: &AtomicBool,
 ) -> io::Result<Vec<PageText>> {
-    parse_rotated_pages(xml, Some((path, first, cancel)))
+    let mut pages = parse_rotated_pages(xml, Some((path, first, cancel)))?;
+    reading_order::restore(&mut pages, path, first, cancel)?;
+    Ok(pages)
 }
 
 fn parse_rotated_pages(
