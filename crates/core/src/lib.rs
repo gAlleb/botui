@@ -1159,13 +1159,14 @@ impl Pager {
         }
     }
 
-    pub fn previous(&mut self) {
+    /// When a Keep first word page overlaps the page we return to, report the
+    /// old opening word so the reader can mark where the overlap begins.
+    pub fn previous(&mut self) -> Option<Anchor> {
         self.finish_resize();
         if self.lines.is_empty() || self.layout.height == 0 {
-            return;
+            return None;
         }
-        let exact = self.exact_view;
-        let first = if exact {
+        if self.exact_view {
             // The first backward turn leaves the temporary sequence. Locate
             // the word in the original rows before choosing the regular view.
             let position = self.visible_position();
@@ -1179,18 +1180,21 @@ impl Pager {
                 None => rows.iter().find_map(PageLine::reading_anchor) == Some(position.anchor),
             };
             if at_start {
-                self.regular_previous(start)
-            } else {
-                start
+                self.move_to(self.regular_previous(start));
+                return None;
             }
-        } else if self.layout.scrolling {
+            self.move_to(start);
+            return position.illustration.is_none().then_some(position.anchor);
+        }
+        let first = if self.layout.scrolling {
             self.first.saturating_sub(self.viewport())
         } else {
             self.regular_previous(self.first)
         };
-        if exact || first != self.first {
+        if first != self.first {
             self.move_to(first);
         }
+        None
     }
 
     fn regular_previous(&self, first: usize) -> usize {

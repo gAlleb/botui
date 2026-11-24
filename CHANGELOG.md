@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- In Keep first word, briefly highlight the former top word when the first backward turn brings the overlapping text back into view in Single or Spread.
 - Reuse ordinary page geometry after an exact-word resize, and recompute only the affected EPUB spine item when its surrounding rows still match.
 - Reuse the displayed EPUB chapter's parsed layout when zooming, and apply paragraph settings before laying out its text.
 - Reuse uploaded EPUB illustrations when the Kitty font size changes, including when a menu covers the picture.

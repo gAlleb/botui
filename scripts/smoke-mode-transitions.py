@@ -59,20 +59,27 @@ def first_passage(frame):
     return passages(frame)[:1]
 
 
-def scrolled_middle(terminal):
+def flashed_passages(terminal):
+    frame = terminal.run("capture-pane", "-p", "-e", "-t", "shelf").stdout
+    # WordFlash reverses and bolds the word itself. The following number
+    # identifies its source occurrence even though every paragraph starts alike.
+    return re.findall(r"\x1b\[1;7mPassage\x1b\[0m (\d{3})\.", frame)
+
+
+def scrolled_middle(terminal, lines=9, expected="Passage 004"):
     terminal.keys("Space", "l", "3")
     terminal.see("Passage 000")
-    terminal.keys(*(["Down"] * 9))
+    terminal.keys(*(["Down"] * lines))
     return terminal.wait(
         "Scroll reaches a position between ordinary page boundaries",
-        lambda frame: first_passage(frame) == ["Passage 004"],
+        lambda frame: first_passage(frame) == [expected],
     )
 
 
 def mode_cycle(directory):
     terminal = start(directory, paragraph_body(100), pagination_mode="keep_word")
     try:
-        frame = scrolled_middle(terminal)
+        frame = scrolled_middle(terminal, lines=34, expected="Passage 016")
         anchor = first_passage(frame)
         # The final Single -> Spread used to replace this restored source
         # anchor with the beginning of a previously calculated page pair.
@@ -85,6 +92,14 @@ def mode_cycle(directory):
                     first_passage(frame) == anchor
                     and bool(passages(frame, right=True)) == spread,
             )
+        terminal.keys("Right")
+        forward = terminal.wait("Advance from the temporary spread",
+                                lambda f: first_passage(f) and first_passage(f) != anchor)
+        outgoing = first_passage(forward)[0]
+        terminal.keys("Left")
+        terminal.wait("The former opening is now in the right column",
+                      lambda f: outgoing in passages(f, right=True))
+        assert flashed_passages(terminal) == [outgoing.split()[1]]
     finally:
         terminal.run("kill-server", required=False)
 
@@ -148,6 +163,9 @@ def single_after_back(directory):
         terminal.keys("Up")
         terminal.wait("PageUp reaches the beginning",
                       lambda frame: first_passage(frame) == ["Passage 000"])
+        assert flashed_passages(terminal) == [anchor[0].split()[1]]
+        terminal.wait("Single clears the word highlight without input",
+                      lambda _: not flashed_passages(terminal))
         terminal.keys("Down")
         terminal.wait(
             "PageDown uses the ordinary second page, not the old scroll anchor",
@@ -156,6 +174,7 @@ def single_after_back(directory):
         terminal.keys("Up")
         terminal.wait("Ordinary reverse page turn returns to the beginning",
                       lambda frame: first_passage(frame) == ["Passage 000"])
+        assert not flashed_passages(terminal)
         terminal.keys("Down")
         terminal.wait("The obsolete scroll anchor does not return on another turn",
                       lambda frame: passages(frame) == expected)
@@ -178,6 +197,7 @@ def spread_after_back(directory):
             lambda frame: passages(frame) + passages(frame, right=True)
                 == [f"Passage {number:03}" for number in range(18)],
         )
+        assert flashed_passages(terminal) == [anchor[0].split()[1]]
         terminal.keys("Down")
         terminal.wait(
             "The last spread does not advance back to the obsolete partial view",
@@ -188,6 +208,7 @@ def spread_after_back(directory):
             lambda frame: "100%" in frame.splitlines()[-1]
                 and frame.splitlines()[1:-1] == full.splitlines()[1:-1],
         )
+        assert not flashed_passages(terminal)
     finally:
         terminal.run("kill-server", required=False)
 

@@ -394,7 +394,7 @@ fn keep_word_switches_and_forward_turns_rejoin_chapter_pages_on_the_first_backwa
     };
     let mut pager = Pager::new(&doc, 49, 3, LayoutMode::Scroll);
     pager.set_pagination_mode(PaginationMode::KeepWord);
-    pager.scroll(11);
+    pager.scroll(4);
     let at = pager.lines(0)[0].anchor();
     for (mode, width) in [
         (LayoutMode::Single, 32),
@@ -409,28 +409,38 @@ fn keep_word_switches_and_forward_turns_rejoin_chapter_pages_on_the_first_backwa
             doc.blocks[0].text[at.byte..].split_whitespace().next()
         );
     }
-    let mut regular = Pager::new(&doc, 86, 3, LayoutMode::Spread);
-    for forwards in [0, 2] {
-        if forwards > 0 {
-            pager.seek_chapter(at);
+    for (mode, width) in [(LayoutMode::Single, 32), (LayoutMode::Spread, 86)] {
+        let mut regular = Pager::new(&doc, width, 3, mode);
+        for forwards in [0, 2] {
             pager.switch_mode(&doc, 49, 3, LayoutMode::Scroll, 4);
-            pager.scroll(11);
-            pager.switch_mode(&doc, 86, 3, LayoutMode::Spread, 4);
-        }
-        for _ in 0..forwards {
+            pager.seek(at);
+            pager.switch_mode(&doc, width, 3, mode, 4);
+            for _ in 0..forwards {
+                pager.next();
+            }
+            let current = pager.lines(0)[0].anchor();
+            regular.seek_chapter(current);
+            assert_ne!(regular.visible_position().anchor, current);
+            let column = usize::from(mode == LayoutMode::Spread);
+            assert!(regular.lines(column).iter().any(|line| {
+                line.text_cells(&doc)
+                    .iter()
+                    .any(|cell| cell.source.contains(current))
+            }));
+            assert_eq!(pager.previous(), Some(current));
+            assert_eq!(pager.complete_view().bounds, regular.complete_view().bounds);
+            assert!(pager.natural.is_none());
+            assert!(!pager.exact_view);
             pager.next();
+            regular.next();
+            assert_eq!(pager.complete_view().bounds, regular.complete_view().bounds);
+            assert_eq!(pager.previous(), None);
         }
-        let current = pager.lines(0)[0].anchor();
-        regular.seek_chapter(current);
-        if regular.visible_position().anchor == current {
-            regular.previous();
-        }
-        pager.previous();
-        assert_eq!(pager.complete_view().bounds, regular.complete_view().bounds);
-        assert!(pager.natural.is_none());
-        assert!(!pager.exact_view);
-        pager.next();
+        // Already at a regular page boundary: a backward turn shows earlier text.
         regular.next();
+        pager.seek(regular.visible_position().anchor);
+        regular.previous();
+        assert_eq!(pager.previous(), None);
         assert_eq!(pager.complete_view().bounds, regular.complete_view().bounds);
     }
 }
@@ -765,7 +775,7 @@ fn keep_word_backward_from_a_picture_at_a_regular_boundary_turns_the_page() {
         PaginationMode::KeepWord,
     );
     assert_eq!(pager.complete_view().bounds, normal.complete_view().bounds);
-    pager.previous();
+    assert_eq!(pager.previous(), None);
     assert_eq!(pager.complete_view().bounds, previous);
 }
 

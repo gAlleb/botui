@@ -1465,8 +1465,8 @@ impl Reader {
                     _ => {
                         if self.mode == LayoutMode::Scroll {
                             self.pager.scroll(-(self.pager.viewport() as isize));
-                        } else {
-                            self.pager.previous();
+                        } else if let Some(word) = self.pager.previous() {
+                            self.word_flash.show(&self.doc, word);
                         }
                         false
                     }
