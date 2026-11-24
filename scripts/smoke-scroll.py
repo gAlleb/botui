@@ -123,7 +123,7 @@ def scan_scroll(d,file):
         t.keys('Space', 'l', '2');t.wait('Spread leaves the scroll view',lambda a:'Scroll' not in a and '########' in a);stop(t)
     finally:t.run('kill-server',required=False)
 def damaged_sheet_and_search(d):
-    # Force a real renderer subprocess failure on page 2, and count text extractions.
+    # Page 2 fails to render. Search should still index the document only once.
     d.mkdir()
     path=d/'mixed.pdf'
     path.write_bytes(s.pdf())
@@ -141,9 +141,13 @@ sys.stdout.buffer.write(b'P6\\n20 30\\n255\\n'+bytes([76])*1800)
     program.write_text("""#!/usr/bin/env python3
 import sys
 from pathlib import Path
-with (Path(__file__).parent / 'reads').open('a') as log: log.write('x')
+pages = ['Lighthouse on the north shore', '', 'Lighthouse by the southern bay']
+first = int(sys.argv[sys.argv.index('-f') + 1]) if '-f' in sys.argv else 1
+last = int(sys.argv[sys.argv.index('-l') + 1]) if '-l' in sys.argv else len(pages)
+with (Path(__file__).parent / 'reads').open('a') as log:
+    print(f'{first}-{last}', file=log)
 print('<doc>')
-for text in ['Lighthouse on the north shore', '', 'Lighthouse by the southern bay']:
+for text in pages[first - 1:last]:
     print('<page width="120" height="175"><flow><block><line>')
     for i, word in enumerate(text.split()):
         print(f'<word xMin="{i*20}" yMin="20" xMax="{i*20+18}" yMax="30">{word}</word>')
@@ -162,7 +166,9 @@ print('</doc>')
         t.keys('F4'); t.see('1 / 3'); t.keys('F3'); t.see('3 / 3')
         t.keys('Space', 'f'); t.see('Find in text layer'); t.keys('C-u'); t.type('north shore')
         t.keys('Enter'); t.see('Match 1 / 1'); t.see('1 / 3')
-        assert (bin_dir/'reads').read_text()=='x', 'A second query re-ran the document extractor'
+        # Visible-page selection also calls pdftotext, scoped to a single page.
+        reads = (bin_dir/'reads').read_text().splitlines()
+        assert reads.count('1-3') == 1, f'Expected one document extraction across both queries: {reads}'
         t.keys('Space', 'r', 'p');t.see('Go to page');t.keys('2','Enter');t.see('Page 2 unavailable')
         t.keys('Right');t.see('3 / 3');stop(t)
         assert saved(d)['block']==2, 'The damaged page prevented saving the next readable page'
