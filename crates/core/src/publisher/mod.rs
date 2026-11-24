@@ -14,7 +14,7 @@ use blitz_traits::{
 use std::{
     collections::{BTreeMap, HashMap},
     ops::Range,
-    sync::{Arc, LazyLock},
+    sync::{Arc, LazyLock, Mutex},
 };
 pub use table::{DataTable, TableView};
 
@@ -27,6 +27,7 @@ const ROW: f32 = 16.0;
 /// still render normally without growing this cache without bound.
 pub(super) struct Reflow {
     pool: Option<rayon::ThreadPool>,
+    pool_in_use: Mutex<()>,
     owners: BTreeMap<usize, usize>,
 }
 
@@ -63,7 +64,11 @@ impl Reflow {
             owners.insert(start, owner);
             *load += size;
         }
-        Self { pool, owners }
+        Self {
+            pool,
+            pool_in_use: Mutex::new(()),
+            owners,
+        }
     }
 
     pub fn layout(
@@ -71,6 +76,7 @@ impl Reflow {
         doc: &super::Document,
         layout: super::Layout,
         text: &super::BookLayout,
+        single_visible_chapter: bool,
         include: impl Fn(usize) -> bool + Sync,
     ) -> BTreeMap<usize, Vec<PageLine>> {
         let render = |worker: &mut Worker, owner: Option<usize>| {
@@ -96,6 +102,18 @@ impl Reflow {
         };
         let Some(pool) = &self.pool else {
             return render(&mut Worker::default(), None).into_iter().collect();
+        };
+        // The owner workers retain the parsed DOM. If a superseded index
+        // still occupies them, render the visible chapter on the caller.
+        let _lease = if single_visible_chapter {
+            let Ok(lease) = self.pool_in_use.try_lock() else {
+                return render(&mut Worker::default(), None).into_iter().collect();
+            };
+            lease
+        } else {
+            self.pool_in_use
+                .lock()
+                .expect("EPUB layout worker panicked")
         };
         thread_local! {
             static CACHE: std::cell::RefCell<Worker> = std::cell::RefCell::new(Worker::default());

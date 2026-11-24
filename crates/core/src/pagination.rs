@@ -108,9 +108,13 @@ impl BookLayout {
         layout: Layout,
         range: Range<usize>,
     ) -> Vec<PageLine> {
+        let single_visible_chapter =
+            range != (0..doc.blocks.len()) && doc.styled.range(range.clone()).nth(1).is_none();
         let mut styled = self
             .reflow
-            .layout(doc, layout, self, |start| range.contains(&start));
+            .layout(doc, layout, self, single_visible_chapter, |start| {
+                range.contains(&start)
+            });
         let mut lines = Vec::new();
         self.append(&mut lines, doc, layout, range, &mut styled);
         self.format_rows(lines, doc, layout)
@@ -722,7 +726,7 @@ impl Pager {
                     snapshot.lines
                 } else {
                     let (start, end) = (range.start, range.end);
-                    let mut styled = book.reflow.layout(&doc, layout, &book, |i| {
+                    let mut styled = book.reflow.layout(&doc, layout, &book, false, |i| {
                         !stop.load(Ordering::Relaxed) && !range.contains(&i)
                     });
                     if stop.load(Ordering::Relaxed) {

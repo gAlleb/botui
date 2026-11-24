@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Lay out the visible EPUB chapter immediately when an earlier background pagination job is still running.
 - Rewrap just the current paragraph when keeping the first word in hyphenated EPUB prose.
 - Reuse the confirmed graphics protocol when the terminal reports the exact new cell size. Recheck ambiguous sizes and multiplexer clients.
 - Buffer the screen clear until the resized frame is ready, so changing the terminal font does not flash an empty reader.
