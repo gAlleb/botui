@@ -22,7 +22,19 @@ def open_settings(t):
 
 
 def close_settings(t):
+    t.see("Use global settings for this book")
     t.keys("Escape")
+    t.see("[F2 Settings]")
+
+
+def select_book_option(t, frame, field, option):
+    t.click(field, frame)
+    # Both the Reader tab and the picker can already contain the option text.
+    picker = t.wait(f"{field} picker", lambda f:
+                    field in f and option in f and "[ Back ]" in f
+                    and "Use global settings for this book" not in f)
+    t.click(option, picker)
+    return t.see("Use global settings for this book")
 
 
 def line_gap(t, expected):
@@ -62,13 +74,9 @@ def run(tmp):
         line_gap(t, 1)
         global_bytes = cfg.read_bytes()  # startup migrated the minimal config
         frame = open_settings(t)
-        t.click("Pagination", frame)
-        t.click("Keep first word", t.see("Keep first word"))
-        frame = t.see("Use global settings for this book")
+        frame = select_book_option(t, frame, "Pagination", "Keep first word")
         assert json.loads(pref(text).read_text())["pagination_mode"] == "keep_word"
-        t.click("Paragraph spacing", frame)
-        t.click("2 blank lines", t.see("2 blank lines"))
-        frame = t.see("Use global settings for this book")
+        frame = select_book_option(t, frame, "Paragraph spacing", "2 blank lines")
         t.click("Page width", frame)
         t.see("blank to use global")
         t.type("44")
@@ -92,8 +100,8 @@ def run(tmp):
         frame = open_settings(t)
         assert any("Word hyphenation" in row and "On" in row and "Use global" not in row
                    for row in frame.splitlines())
-        t.click("Word hyphenation", frame)
-        t.click("Use global", t.see("Use global · Off"))
+        frame = select_book_option(t, frame, "Word hyphenation", "Use global · Off")
+        assert any("Word hyphenation" in row and "Use global · Off" in row for row in frame.splitlines())
         close_settings(t)
         t.keys("Space", "l", "w")
         t.see("[H Hyphenation: Off]")
@@ -135,12 +143,9 @@ def run(tmp):
                 assert json.loads(pref(path).read_text())["alignment"] == "center"
                 frame = open_settings(t)
                 assert any("Pagination" in row and "Keep first word" in row for row in frame.splitlines())
-                t.click("Pagination", frame)
-                t.click("Use global", t.see("Keep first word"))
-                frame = t.see("Use global settings for this book")
+                frame = select_book_option(t, frame, "Pagination", "Use global · From chapter start")
                 assert any("Pagination" in row and "Use global · From chapter start" in row for row in frame.splitlines())
-                t.click("Paragraph spacing", frame)
-                t.click("From book", t.see("From book"))
+                select_book_option(t, frame, "Paragraph spacing", "From book")
                 close_settings(t)
                 line_gap(t, 1)
                 assert json.loads(pref(path).read_text())["paragraph_spacing"] == "from_book"
@@ -165,8 +170,8 @@ def run(tmp):
         frame = open_settings(t)
         assert any("Word hyphenation" in row and "On" in row and "Use global" not in row
                    for row in frame.splitlines())
-        t.click("Word hyphenation", frame)
-        t.click("Use global", t.see("Use global · Off"))
+        frame = select_book_option(t, frame, "Word hyphenation", "Use global · Off")
+        assert any("Word hyphenation" in row and "Use global · Off" in row for row in frame.splitlines())
         close_settings(t)
         t.keys("Space", "l", "w")
         t.see("[H Hyphenation: Off]")
@@ -183,8 +188,7 @@ def run(tmp):
         t.wait("PDF first page", lambda f: "1 / " in f and "Loading" not in f)
         pdf_global = cfg.read_bytes()
         frame = open_settings(t)
-        t.click("PDF page colors", frame)
-        t.click("Invert original", t.see("Invert original"))
+        select_book_option(t, frame, "PDF page colors", "Invert original")
         close_settings(t)
         t.keys("Space", "t")
         t.see("● Invert original")
