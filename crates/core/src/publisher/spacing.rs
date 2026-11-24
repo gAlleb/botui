@@ -3,10 +3,43 @@ use crate::ReflowOptions;
 use blitz_dom::{BaseDocument, ElementData, Node, qual_name};
 use style::computed_values::{text_align::T as TextAlign, white_space_collapse::T as WhiteSpace};
 
-/// Reading settings follow inherited styles and viewport-dependent media queries.
-/// Only the private layout DOM changes, never the source/CFI nodes.
+/// A fresh justified layout classifies paragraph indents and spacing using the
+/// publisher's alignment before the reader's paragraph override takes effect.
+pub(super) fn restore_prose_alignment(doc: &mut BaseDocument) {
+    let ids: Vec<_> = doc
+        .tree()
+        .iter()
+        .filter_map(|(id, node)| {
+            node.element_data()?
+                .attrs()
+                .iter()
+                .any(|a| &*a.name.local == "data-botui-prose-align")
+                .then_some(id)
+        })
+        .collect();
+    let mut dom = doc.mutate();
+    let mut name = qual_name!("class");
+    name.local = "data-botui-prose-align".into();
+    for id in ids {
+        dom.clear_attribute(id, name.clone());
+    }
+}
+
+/// Classify paragraphs using the cascade for the new viewport before shaping
+/// text. Reader spacing and indentation then take a single geometry pass.
 pub(super) fn resolve(doc: &mut BaseDocument, options: ReflowOptions) {
+    doc.handle_messages();
+    if doc.try_root_element().is_some() && !doc.has_pending_critical_resources() {
+        // set_viewport queues its device change. This accessor applies it so
+        // media queries are evaluated at the new size in the style-only pass.
+        doc.stylist_device();
+        doc.resolve_stylist(0.0);
+        mark_paragraphs(doc, options);
+    }
     doc.resolve(0.0);
+}
+
+fn mark_paragraphs(doc: &mut BaseDocument, options: ReflowOptions) {
     let mut changes = Vec::new();
     for (id, node) in doc.tree().iter() {
         let Some(element) = node.element_data() else {
@@ -62,7 +95,6 @@ pub(super) fn resolve(doc: &mut BaseDocument, options: ReflowOptions) {
             }
         }
     }
-    doc.resolve(0.0);
 }
 
 fn uses_reader_spacing(doc: &BaseDocument, node: &Node, compact: bool) -> bool {

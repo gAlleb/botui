@@ -108,13 +108,19 @@ impl BookLayout {
         layout: Layout,
         range: Range<usize>,
     ) -> Vec<PageLine> {
-        let single_visible_chapter =
-            range != (0..doc.blocks.len()) && doc.styled.range(range.clone()).nth(1).is_none();
+        self.layout_range(doc, layout, range, false)
+    }
+
+    fn layout_range(
+        &self,
+        doc: &Document,
+        layout: Layout,
+        range: Range<usize>,
+        visible: bool,
+    ) -> Vec<PageLine> {
         let mut styled = self
             .reflow
-            .layout(doc, layout, self, single_visible_chapter, |start| {
-                range.contains(&start)
-            });
+            .layout(doc, layout, self, visible, |start| range.contains(&start));
         let mut lines = Vec::new();
         self.append(&mut lines, doc, layout, range, &mut styled);
         self.format_rows(lines, doc, layout)
@@ -639,7 +645,7 @@ impl Pager {
         let chapter_page = !layout.scrolling && self.pagination_mode == PaginationMode::Chapter;
         let mut visible = Vec::new();
         for next in boundaries {
-            rows.extend(self.book.lines(doc, layout, end..next));
+            rows.extend(self.book.layout_range(doc, layout, end..next, true));
             if end != start {
                 rows = self.book.format_rows(rows, doc, layout);
             }

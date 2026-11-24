@@ -1226,6 +1226,43 @@ fn centered_paragraphs_keep_the_book_indent_across_settings_and_resizes() {
 }
 
 #[test]
+fn reader_alignment_on_resize_matches_opening_at_the_new_width() {
+    use botui_core::{LayoutMode, Pager, ReflowOptions, TextAlignment, Typography};
+    let doc = styled_fixture(
+        "<p>Ordinary words that wrap onto a second line.</p>\
+         <section><p>Styled paragraph with <em>emphasis</em> and an indent.</p>\
+         <p>Following paragraph</p></section><blockquote><p>Quoted verse</p></blockquote>",
+        "section {text-align:center} section p {text-indent:5ch; margin:2em 0} \
+         @media(min-width:400px) {section {text-align:right}}",
+    );
+    for alignment in TextAlignment::ALL {
+        let options = ReflowOptions {
+            typography: Typography {
+                alignment,
+                ..Default::default()
+            },
+            repair_printed: true,
+            inline_images: true,
+            paragraph_indent: 2,
+            paragraph_spacing: Some(1),
+            compact_spacing: true,
+        };
+        let mut reader = Pager::with_options(&doc, 36, 40, LayoutMode::Single, options);
+        for width in [60, 32, 50] {
+            reader.relayout(&doc, width, 40, LayoutMode::Single);
+            let fresh = Pager::with_options(&doc, width, 40, LayoutMode::Single, options);
+            let rows = |p: &Pager| {
+                p.lines(0)
+                    .iter()
+                    .map(|line| format!("{line:?}"))
+                    .collect::<Vec<_>>()
+            };
+            assert_eq!(rows(&reader), rows(&fresh), "{alignment:?} width {width}");
+        }
+    }
+}
+
+#[test]
 fn compact_blocks_and_paragraph_spacing_are_independent() {
     use botui_core::{LayoutMode, Pager, ReflowOptions};
     let doc = styled_fixture(

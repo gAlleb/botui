@@ -14,12 +14,16 @@ use blitz_traits::{
 use std::{
     collections::{BTreeMap, HashMap},
     ops::Range,
-    sync::{Arc, LazyLock, Mutex},
+    sync::{Arc, LazyLock, Mutex, OnceLock},
 };
 pub use table::{DataTable, TableView};
 
 const CELL: f32 = 8.0;
 const ROW: f32 = 16.0;
+const CACHE_MARKUP: usize = 512 * 1024;
+const CACHE_TAGS: usize = 4000;
+const VISIBLE_MARKUP: usize = CACHE_MARKUP / 4;
+const VISIBLE_TAGS: usize = CACHE_TAGS / 4;
 
 /// Parsed CSS/DOM belongs to an open pager, not to the portable source document.
 /// Resizing reuses the engine's incremental layout instead of parsing the book
@@ -28,6 +32,7 @@ const ROW: f32 = 16.0;
 pub(super) struct Reflow {
     pool: Option<rayon::ThreadPool>,
     pool_in_use: Mutex<()>,
+    visible: OnceLock<Option<rayon::ThreadPool>>,
     owners: BTreeMap<usize, usize>,
 }
 
@@ -67,6 +72,7 @@ impl Reflow {
         Self {
             pool,
             pool_in_use: Mutex::new(()),
+            visible: OnceLock::new(),
             owners,
         }
     }
@@ -103,25 +109,45 @@ impl Reflow {
         let Some(pool) = &self.pool else {
             return render(&mut Worker::default(), None).into_iter().collect();
         };
-        // The owner workers retain the parsed DOM. If a superseded index
-        // still occupies them, render the visible chapter on the caller.
-        let _lease = if single_visible_chapter {
-            let Ok(lease) = self.pool_in_use.try_lock() else {
-                return render(&mut Worker::default(), None).into_iter().collect();
-            };
-            lease
-        } else {
-            self.pool_in_use
-                .lock()
-                .expect("EPUB layout worker panicked")
-        };
         thread_local! {
             static CACHE: std::cell::RefCell<Worker> = std::cell::RefCell::new(Worker::default());
         }
+        if single_visible_chapter && self.owners.len() > 1 {
+            // A Blitz document belongs to its thread. Give the displayed
+            // chapter one cache slot independent of obsolete background jobs.
+            let visible = self.visible.get_or_init(|| {
+                rayon::ThreadPoolBuilder::new()
+                    .num_threads(1)
+                    .thread_name(|_| "epub-visible".into())
+                    .build()
+                    .ok()
+            });
+            if let Some(visible) = visible {
+                return visible.install(|| {
+                    CACHE.with_borrow_mut(|worker| {
+                        if !worker.documents.keys().all(|&start| include(start)) {
+                            *worker = Worker::default();
+                        }
+                        worker.markup_limit = VISIBLE_MARKUP;
+                        worker.tag_limit = VISIBLE_TAGS;
+                        render(worker, None).into_iter().collect()
+                    })
+                });
+            }
+            return render(&mut Worker::default(), None).into_iter().collect();
+        }
+        let _lease = self
+            .pool_in_use
+            .lock()
+            .expect("EPUB layout worker panicked");
         pool.broadcast(|context| {
             CACHE.with(|cache| {
                 let mut worker = cache.borrow_mut();
-                worker.partitions = pool.current_num_threads();
+                let partitions = pool.current_num_threads();
+                if self.owners.len() > 1 {
+                    worker.markup_limit = (CACHE_MARKUP - VISIBLE_MARKUP) / partitions;
+                    worker.tag_limit = (CACHE_TAGS - VISIBLE_TAGS) / partitions;
+                }
                 render(&mut worker, Some(context.index()))
             })
         })
@@ -135,7 +161,8 @@ struct Worker {
     documents: HashMap<usize, HtmlDocument>,
     markup: usize,
     tags: usize,
-    partitions: usize,
+    markup_limit: usize,
+    tag_limit: usize,
 }
 impl Default for Worker {
     fn default() -> Self {
@@ -143,7 +170,8 @@ impl Default for Worker {
             documents: HashMap::new(),
             markup: 0,
             tags: 0,
-            partitions: 1,
+            markup_limit: CACHE_MARKUP,
+            tag_limit: CACHE_TAGS,
         }
     }
 }
@@ -164,11 +192,12 @@ impl Worker {
             ColorScheme::Light,
         );
         if let Some(doc) = self.documents.get_mut(&start)
-            && ((chapter.tables.is_empty()
-                && options.typography.alignment == crate::TextAlignment::Book)
-                || doc.viewport().window_size == viewport.window_size)
+            && (chapter.tables.is_empty() || doc.viewport().window_size == viewport.window_size)
         {
             if doc.viewport().window_size != viewport.window_size {
+                if options.typography.alignment == crate::TextAlignment::Justify {
+                    spacing::restore_prose_alignment(doc);
+                }
                 doc.set_viewport(viewport);
                 spacing::resolve(doc, options);
             }
@@ -181,8 +210,8 @@ impl Worker {
             return lines;
         }
         let tags = chapter.html.bytes().filter(|b| *b == b'<').count();
-        if self.markup + chapter.html.len() <= 512 * 1024 / self.partitions
-            && self.tags + tags <= 4_000 / self.partitions
+        if self.markup + chapter.html.len() <= self.markup_limit
+            && self.tags + tags <= self.tag_limit
         {
             self.markup += chapter.html.len();
             self.tags += tags;
@@ -266,7 +295,7 @@ pub struct Face {
     pub underline: bool,
     pub strike: bool,
 }
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TextSpan {
     pub bytes: Range<usize>,
     pub source: Option<Anchor>,
