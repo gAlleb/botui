@@ -119,18 +119,6 @@ pub(super) fn layout(
     {
         return None;
     }
-    // A list marker, explicit line break, table cell, or generated material must
-    // not disappear merely because its text shares a source paragraph.
-    let plain = |c: &char| !breaks_word(*c);
-    if lines
-        .iter()
-        .flat_map(|l| l.text.chars())
-        .filter(plain)
-        .ne(block.text.chars().filter(plain))
-    {
-        return None;
-    }
-    let mut rows = Vec::new();
     let cut = anchor
         .filter(|a| {
             a.block == index
@@ -146,6 +134,25 @@ pub(super) fn layout(
     if cut.is_none() && !style.hyphenation {
         return None;
     }
+    // A list marker, explicit line break, table cell, or generated material must
+    // not disappear merely because its text shares a source paragraph.
+    let plain = |c: &char| !breaks_word(*c);
+    if lines
+        .iter()
+        .flat_map(|line| {
+            let text = if cut.is_some() && line.discretionary_hyphen {
+                line.text.strip_suffix('-').unwrap_or(&line.text)
+            } else {
+                &line.text
+            };
+            text.chars()
+        })
+        .filter(plain)
+        .ne(block.text.chars().filter(plain))
+    {
+        return None;
+    }
+    let mut rows = Vec::new();
     let (prefix, suffix) = block.text.split_at_checked(cut.unwrap_or(0))?;
     let width = usize::from(width);
     let indent = if matches!(
@@ -216,6 +223,7 @@ pub(super) fn layout(
                 byte: row.words.first()?.start,
             },
             indent: row.indent,
+            discretionary_hyphen: row.hyphen,
             chapter_start: i == 0 && first.chapter_start,
             ..Default::default()
         };

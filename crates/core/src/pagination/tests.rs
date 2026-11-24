@@ -407,6 +407,39 @@ fn optional_prose_hyphenation_preserves_source_text_and_clicks() {
 }
 
 #[test]
+fn an_exact_word_in_hyphenated_prose_only_rewraps_its_paragraph() {
+    let text = "One extraordinary opportunity after another";
+    let doc = Document {
+        blocks: ["Opening", text, "Closing"]
+            .into_iter()
+            .map(|text| Block {
+                text: text.into(),
+                heading: false,
+            })
+            .collect(),
+        ..Default::default()
+    };
+    let mut pager = Pager::new(&doc, 12, 10, LayoutMode::Single);
+    let mut options = pager.reflow_options();
+    options.typography.hyphenation = true;
+    pager.reconfigure(&doc, 12, 10, LayoutMode::Single, 4, options);
+    assert!(pager.lines.iter().any(|line| line.discretionary_hyphen));
+    let at = Anchor {
+        block: 1,
+        byte: text.find("extraordinary").unwrap(),
+    };
+    let position = crate::ViewPosition {
+        anchor: at,
+        illustration: None,
+    };
+    pager.set_pagination_mode(PaginationMode::KeepWord);
+    pager.open_position(&doc, position);
+    assert_eq!(pager.visible_position().anchor, at);
+    let saved = pager.natural.as_ref().unwrap();
+    assert!(saved.rows.iter().all(|line| line.start.block == 1));
+}
+
+#[test]
 fn an_exact_reading_position_does_not_shorten_prose_at_earlier_illustrations() {
     let doc = Document {
         blocks: (0..280)

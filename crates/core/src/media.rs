@@ -81,6 +81,7 @@ pub(super) fn table(lines: &mut Vec<PageLine>, start: usize, row: &TableRow, wid
             surfaces: Vec::new(),
             table_header: row.header,
             chapter_start: false,
+            discretionary_hyphen: false,
             equation: (0, 0),
         });
     }

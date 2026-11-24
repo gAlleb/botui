@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Rewrap just the current paragraph when keeping the first word in hyphenated EPUB prose.
 - Reuse the confirmed graphics protocol when the terminal reports the exact new cell size. Recheck ambiguous sizes and multiplexer clients.
 - Buffer the screen clear until the resized frame is ready, so changing the terminal font does not flash an empty reader.
 - Show the current passage first at a new font size and reuse recently displayed pages while the full book index updates in the background.

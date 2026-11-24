@@ -247,6 +247,8 @@ pub struct PageLine {
     /// Row within a display equation and its total rendered height.
     equation: (u16, u16),
     chapter_start: bool,
+    /// A terminal-cell hyphen inserted by the prose wrapper.
+    discretionary_hyphen: bool,
     pub text: String,
     pub heading: bool,
     start: Anchor,
@@ -1172,6 +1174,7 @@ fn wrap_block(lines: &mut Vec<PageLine>, block: &Block, index: usize, width: usi
             surfaces: Vec::new(),
             table_header: false,
             chapter_start: false,
+            discretionary_hyphen: false,
             equation: (0, 0),
             text: std::mem::take(row),
             heading: block.heading,
