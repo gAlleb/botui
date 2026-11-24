@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Reuse ordinary page geometry after an exact-word resize, and recompute only the affected EPUB spine item when its surrounding rows still match.
 - Reuse the displayed EPUB chapter's parsed layout when zooming, and apply paragraph settings before laying out its text.
 - Reuse uploaded EPUB illustrations when the Kitty font size changes, including when a menu covers the picture.
 - Keep the same reading word highlighted across repeated Single, Spread and Scroll switches in chapter pagination. Keep first word follows the visible top when switching away from a search result.

@@ -548,14 +548,17 @@ impl Pager {
                 .expect("active EPUB layout was cancelled");
             std::mem::swap(&mut ready.recent_views, &mut self.recent_views);
             std::mem::swap(&mut ready.reflow_cache, &mut self.reflow_cache);
-            let previous = std::mem::replace(self, ready);
-            if previous.natural.is_none() {
-                self.reflow_cache.put(Snapshot {
-                    size: previous.book.size(previous.layout),
-                    sources: previous.source_lines,
-                    lines: previous.lines,
-                });
+            let mut previous = std::mem::replace(self, ready);
+            if let Some(natural) = previous.natural.take() {
+                // Cache ordinary geometry, independent of the former target.
+                previous.lines.splice(natural.replaced, natural.rows);
+                previous.source_lines = natural.sources;
             }
+            self.reflow_cache.put(Snapshot {
+                size: previous.book.size(previous.layout),
+                sources: previous.source_lines,
+                lines: previous.lines,
+            });
         }
     }
 

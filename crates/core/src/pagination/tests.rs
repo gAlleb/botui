@@ -664,6 +664,82 @@ fn repeated_resizes_keep_the_same_origin_until_the_reader_navigates() {
 }
 
 #[test]
+fn native_break_inside_an_epub_spine_matches_full_publisher_layout() {
+    use crate::publisher::{Chapter, SourceText, Stylesheets};
+    use std::sync::Arc;
+    let mut doc = Document::default();
+    let sheets = Arc::new(Stylesheets::default());
+    for spine in 0..3 {
+        let start = doc.blocks.len();
+        let mut html = String::from("<html><body>");
+        let mut sources = Vec::new();
+        for text in [
+            "Opening",
+            "– Several words before the target and several more after it.",
+            "Closing",
+        ] {
+            let block = doc.blocks.len();
+            html.push_str(&format!(
+                "<p data-botui-text='{}'>{}</p>",
+                sources.len(),
+                text.replace("– ", "–&#160;")
+            ));
+            sources.push(vec![SourceText {
+                start: Anchor { block, byte: 0 },
+                end: text.len(),
+                child: 0,
+                display: None,
+            }]);
+            doc.blocks.push(Block {
+                text: text.into(),
+                heading: false,
+            });
+        }
+        html.push_str("</body></html>");
+        doc.styled.insert(
+            start,
+            Chapter::new(
+                doc.blocks.len(),
+                html,
+                &format!("chapter{spine}.xhtml"),
+                sheets.clone(),
+                sources,
+            ),
+        );
+        doc.chapter_starts.insert(start);
+    }
+    let doc = Arc::new(doc);
+    let anchor = Anchor {
+        block: 4,
+        byte: doc.blocks[4].text.find("target").unwrap(),
+    };
+    for mode in [LayoutMode::Scroll, LayoutMode::Single, LayoutMode::Spread] {
+        let mut pager = Pager::new(&doc, 57, 7, mode);
+        pager.set_pagination_mode(PaginationMode::KeepWord);
+        let ordinary = pager.lines.clone();
+        let sources = pager.source_lines.clone();
+        let size = pager.book.size(pager.layout);
+        let native = super::BookLayout::new(&doc, pager.reflow_options(), Some(anchor));
+        let reference = native.lines(&doc, pager.layout, 0..doc.blocks.len());
+        pager.open_position(
+            &doc,
+            crate::ViewPosition {
+                anchor,
+                illustration: None,
+            },
+        );
+        assert_eq!(pager.lines, reference, "{mode:?}");
+        assert_eq!(pager.visible_position().anchor, anchor);
+        assert!(pager.natural.as_ref().unwrap().rows.len() < ordinary.len());
+        pager.resize_for_display(&doc, 61, 5, mode, 4);
+        pager.finish_resize();
+        let saved = pager.reflow_cache.take(size).expect("previous geometry");
+        assert_eq!(saved.lines, ordinary);
+        assert_eq!(saved.sources, sources);
+    }
+}
+
+#[test]
 fn keep_word_backward_from_a_picture_at_a_regular_boundary_turns_the_page() {
     let mut doc = short_document(true);
     doc.references.push(Reference {

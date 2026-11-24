@@ -217,7 +217,7 @@ pub enum PaginationMode {
     KeepWord,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Figure {
     pub reference: usize,
     pub x: u16,
@@ -228,7 +228,7 @@ pub struct Figure {
 }
 
 /// Visual elements drawn over a row without changing its text or source positions.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Surface {
     HeadingRule { double: bool },
     Background { x: u16, width: u16, role: u8 },
@@ -237,7 +237,7 @@ pub enum Surface {
     TableEdge { x: u16, width: u16, top: bool },
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct PageLine {
     /// Leading cells on the first visual line of a prose paragraph.
     pub indent: u16,
@@ -412,7 +412,7 @@ struct NaturalRows {
     split_word: Anchor,
     replaced: std::ops::Range<usize>,
     rows: Vec<PageLine>,
-    styled: bool,
+    sources: Vec<(Anchor, usize)>,
 }
 
 pub struct Pager {
@@ -801,33 +801,93 @@ impl Pager {
         } else {
             // Joined print lines, nested markup and illustrations use their native renderer.
             let book = BookLayout::new(doc, self.book.options, Some(anchor));
-            let rows = book.lines(doc, self.layout, blocks);
+            let (range, rows) = self
+                .native_spine_edit(doc, &book, anchor, &blocks)
+                .unwrap_or_else(|| (0..self.lines.len(), book.lines(doc, self.layout, blocks)));
             if !rows.iter().any(|row| row.reading_anchor() == Some(anchor)) {
                 return;
             }
-            (0..self.lines.len(), rows)
+            (range, rows)
         };
-        let styled = !doc.styled.is_empty();
         let replaced = range.start..range.start + rows.len();
         let original = self.lines.splice(range, rows).collect();
         self.natural = Some(NaturalRows {
             split_word: anchor,
             rows: original,
             replaced,
-            styled,
+            sources: std::mem::take(&mut self.source_lines),
         });
-        self.reindex_rows(styled);
+        self.source_lines = Self::source_index(!doc.styled.is_empty(), &self.lines);
+        self.index_figures_and_pages();
         self.locate(position, false);
+    }
+
+    /// An inserted break in one EPUB spine item cannot reflow another item's DOM.
+    /// Apply just its changed rows when the surrounding source and layout agree
+    /// with the complete book, including its inter-chapter spacing.
+    fn native_spine_edit(
+        &self,
+        doc: &Document,
+        anchored: &BookLayout,
+        anchor: Anchor,
+        blocks: &std::ops::Range<usize>,
+    ) -> Option<(std::ops::Range<usize>, Vec<PageLine>)> {
+        let (&start, chapter) = doc.styled.range(..=anchor.block).next_back()?;
+        let spine = start..chapter.end;
+        if !spine.contains(&anchor.block)
+            || spine == *blocks
+            || start < blocks.start
+            || chapter.end > blocks.end
+        {
+            return None;
+        }
+        let normal = self.book.lines(doc, self.layout, spine.clone());
+        let mut edited = anchored.lines(doc, self.layout, spine);
+        let prefix = normal
+            .iter()
+            .zip(&edited)
+            .take_while(|(a, b)| a == b)
+            .count();
+        let suffix = normal[prefix..]
+            .iter()
+            .rev()
+            .zip(edited[prefix..].iter().rev())
+            .take_while(|(a, b)| a == b)
+            .count();
+        let changed = prefix..edited.len() - suffix;
+        if prefix == 0
+            || suffix == 0
+            || !edited[changed.clone()]
+                .iter()
+                .any(|line| line.reading_anchor() == Some(anchor))
+        {
+            return None;
+        }
+        let row = Self::line_at(anchor, &normal, &Self::source_index(true, &normal));
+        let offset = self.first.checked_sub(row)?;
+        let end = normal.len() - suffix;
+        let context = prefix - 1..end + 1;
+        if self
+            .lines
+            .get(offset + context.start..offset + context.end)?
+            != &normal[context]
+        {
+            return None;
+        }
+        Some((
+            offset + prefix..offset + end,
+            edited.drain(changed).collect(),
+        ))
     }
 
     fn restore_natural(&mut self) {
         if let Some(natural) = self.natural.take() {
             self.lines.splice(natural.replaced, natural.rows);
-            self.reindex_rows(natural.styled);
+            self.source_lines = natural.sources;
+            self.index_figures_and_pages();
         }
     }
-    fn reindex_rows(&mut self, styled: bool) {
-        self.source_lines = Self::source_index(styled, &self.lines);
+    fn index_figures_and_pages(&mut self) {
         self.figure_starts = Self::index_figures(&self.lines);
         self.index_pages();
     }
