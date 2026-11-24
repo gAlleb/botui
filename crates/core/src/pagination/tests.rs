@@ -357,6 +357,28 @@ fn switching_chapter_layouts_keeps_the_reading_passage_until_navigation() {
 }
 
 #[test]
+fn switching_after_search_follows_the_match_only_in_chapter_mode() {
+    let doc = short_document(true);
+    let hit = Anchor { block: 8, byte: 0 };
+    for mode in [PaginationMode::Chapter, PaginationMode::KeepWord] {
+        let mut pager = Pager::new(&doc, 104, 6, LayoutMode::Spread);
+        pager.set_pagination_mode(mode);
+        pager.seek_chapter(hit);
+        let top = pager.visible_position().anchor;
+        assert_ne!(hit, top);
+        pager.switch_mode(&doc, 50, 6, LayoutMode::Scroll, 4);
+        let expected = if mode == PaginationMode::Chapter {
+            hit
+        } else {
+            top
+        };
+        assert_eq!(pager.visible_position().anchor, expected);
+        pager.switch_mode(&doc, 50, 6, LayoutMode::Single, 4);
+        assert_eq!(pager.anchor(), expected);
+    }
+}
+
+#[test]
 fn keep_word_switches_and_forward_turns_rejoin_chapter_pages_on_the_first_backward_turn() {
     let body = (0..180)
         .map(|i| format!("w{i:03}"))

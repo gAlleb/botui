@@ -715,7 +715,8 @@ impl Pager {
         }
     }
 
-    /// Mode and size changes share the reading position until the reader navigates.
+    /// Chapter pages share one reading position across layout switches. An
+    /// exact-word switch always starts from what is currently visible.
     pub fn switch_mode(
         &mut self,
         doc: &Document,
@@ -725,14 +726,19 @@ impl Pager {
         gap: u16,
     ) {
         self.finish_resize();
-        let position = self.resize_position();
+        let chapter = self.pagination_mode == PaginationMode::Chapter;
+        let position = if chapter {
+            self.resize_position()
+        } else {
+            self.visible_position()
+        };
         let layout = Layout {
             image_cell: self.image_cell,
             ..Layout::new(width, height, mode, gap)
         };
         self.change_layout(doc, layout);
         self.open_position(doc, position);
-        self.resize_origin = Some(position);
+        self.resize_origin = chapter.then_some(position);
     }
 
     fn open_position(&mut self, doc: &Document, position: ViewPosition) {
