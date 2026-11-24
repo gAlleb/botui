@@ -77,7 +77,16 @@ def run(tmp):
         t.keys("Space", "l", "w", "]", "Enter")
         t.wait("Quick width saved only for this edition", lambda f: json.loads(pref(text).read_text())["page_width"] != 44)
         assert cfg.read_bytes() == global_bytes
-        t.keys("Space", "l", "w", "a")
+        t.keys("Space", "l", "w")
+        t.see("[H Hyphenation: Off]")
+        t.keys("h")
+        frame = t.see("[H Hyphenation: On]")
+        assert json.loads(pref(text).read_text())["hyphenation"] is True
+        t.click("[H Hyphenation: On]", frame)
+        t.see("[H Hyphenation: Off]")
+        assert json.loads(pref(text).read_text())["hyphenation"] is False
+        assert cfg.read_bytes() == global_bytes
+        t.keys("a")
         before = t.see("Text alignment")
         origin = next(line.index("First paragraph") for line in before.splitlines() if "First paragraph" in line)
         t.keys("Down")

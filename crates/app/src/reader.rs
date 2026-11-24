@@ -80,6 +80,7 @@ enum Action {
     Bookmarks,
     FullWidth,
     Alignment,
+    Hyphenation,
     Margin(i8),
     Gap(i8),
     Layout,
@@ -799,7 +800,7 @@ impl Reader {
                 frame,
                 style,
                 (view.width(), self.page_width),
-                self.pager.reflow_options().typography.alignment,
+                self.pager.reflow_options().typography,
                 self.gap,
                 (view.columns() == 2).then(|| view.gutter()),
             );
@@ -1353,7 +1354,7 @@ impl Reader {
                 self.layout_panel = if self.layout_panel.is_some() {
                     None
                 } else {
-                    Some(layout::Panel::default())
+                    Some(layout::Panel::new(self.doc.markdown.is_none()))
                 };
             }
             Action::Gap(d) => {
@@ -1464,6 +1465,7 @@ impl Reader {
             | Action::Bookmarks
             | Action::Mark
             | Action::Alignment
+            | Action::Hyphenation
             | Action::Settings
             | Action::Help
             | Action::Statistics
@@ -2033,6 +2035,20 @@ pub fn read_server(
                 if let Some(kind) = botui_formats::FileKind::from_path(path) {
                     viewer.document(path, kind);
                 }
+                continue;
+            }
+            if action == Action::Hyphenation {
+                use crate::settings::book::BookSettings;
+                let mut prefs = BookSettings::effective(state.as_ref())?;
+                prefs.hyphenation = !prefs.hyphenation;
+                if let Some(store) = state.as_ref() {
+                    store.update_book_preferences(|p: &mut BookSettings| {
+                        p.hyphenation = Some(prefs.hyphenation)
+                    })?;
+                } else {
+                    crate::settings::Settings::update(|s| s.hyphenation = prefs.hyphenation)?;
+                }
+                reader.apply_typography(term, &prefs)?;
                 continue;
             }
             if matches!(action, Action::Settings | Action::Help | Action::Alignment) {

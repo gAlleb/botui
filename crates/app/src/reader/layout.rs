@@ -65,22 +65,28 @@ pub(super) fn geometry(
     )
 }
 
-#[derive(Default)]
 pub(super) struct Panel {
+    supports_hyphens: bool,
     hits: Vec<(Rect, Action)>,
 }
 impl Panel {
+    pub fn new(supports_hyphens: bool) -> Self {
+        Self {
+            supports_hyphens,
+            hits: Vec::new(),
+        }
+    }
     pub fn draw(
         &mut self,
         f: &mut Frame,
         style: Style,
         (effective, width): (u16, u16),
-        alignment: botui_core::TextAlignment,
+        typography: botui_core::Typography,
         gap: u16,
         actual_gap: Option<u16>,
     ) {
         let screen = f.area();
-        let mut panel = crate::centered(screen, 52, 6);
+        let mut panel = crate::centered(screen, 52, 6 + u16::from(self.supports_hyphens));
         panel.y = screen.bottom().saturating_sub(panel.height);
         crate::overlay::backdrop(f, panel);
         let block = crate::appearance::block()
@@ -143,14 +149,27 @@ impl Panel {
             let align = Rect::new(full.right(), row.y, row.width - width, 1);
             f.render_widget(Paragraph::new("[F Full width]"), full);
             f.render_widget(
-                Paragraph::new(format!("[A Alignment: {}]", alignment.label())),
+                Paragraph::new(format!("[A Alignment: {}]", typography.alignment.label())),
                 align,
             );
             self.hits
                 .extend([(full, Action::FullWidth), (align, Action::Alignment)]);
         }
-        if inside.height >= 4 {
-            let row = Rect::new(inside.x, inside.y + 3, inside.width, 1);
+        if self.supports_hyphens && inside.height >= 4 {
+            let value = if typography.hyphenation { "On" } else { "Off" };
+            let label = format!("[H Hyphenation: {value}]");
+            let hit = Rect::new(
+                inside.x,
+                inside.y + 3,
+                inside.width.min(label.len() as u16),
+                1,
+            );
+            f.render_widget(Paragraph::new(label), hit);
+            self.hits.push((hit, Action::Hyphenation));
+        }
+        let footer = 3 + u16::from(self.supports_hyphens);
+        if inside.height > footer {
+            let row = Rect::new(inside.x, inside.y + footer, inside.width, 1);
             let done = Rect::new(row.right() - row.width.min(8), row.y, row.width.min(8), 1);
             f.render_widget(
                 Paragraph::new("[ ] width   { } gap").dim(),
@@ -164,6 +183,7 @@ impl Panel {
         match event {
             Event::Key(k) if k.kind != KeyEventKind::Release => match k.code {
                 KeyCode::Char('f' | 'F') => Some(Action::FullWidth),
+                KeyCode::Char('h' | 'H') if self.supports_hyphens => Some(Action::Hyphenation),
                 KeyCode::Char('a' | 'A') => Some(Action::Alignment),
                 KeyCode::Char('[') => Some(Action::Margin(-1)),
                 KeyCode::Char(']') => Some(Action::Margin(1)),

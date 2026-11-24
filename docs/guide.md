@@ -182,7 +182,7 @@ In zen mode, **Space p** shows or hides the reading frame and progress. Hiding t
 | `Space l 1` | Single page |
 | `Space l 2` | Two-page spread |
 | `Space l 3` | Continuous scroll |
-| `Space l w` | Text width / column gap; fixed-page zoom / spread gap |
+| `Space l w` | Text width, column gap and alignment. In EPUB and FB2, `H` toggles hyphenation for the book. Fixed pages offer zoom and gap controls. |
 | `Space l f` | Opaque/transparent background |
 | `Space l u` | Border style |
 | `Space t` | Preview reading theme and fixed-page colors |
