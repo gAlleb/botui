@@ -1,12 +1,16 @@
 //! Retire only uploads whose last cached rendition has gone away.
 use image::DynamicImage;
-use ratatui::layout::Size;
+use ratatui::{
+    Frame,
+    layout::{Rect, Size},
+    style::Color,
+};
 use ratatui_image::{
     Resize,
     errors::Errors,
     picker::{Capability, Picker, ProtocolType, cap_parser::Parser},
     protocol::{Protocol, kitty::Kitty},
-    sliced::SlicedProtocol,
+    sliced::{SlicedImage, SlicedProtocol},
 };
 use std::{
     collections::HashMap,
@@ -214,6 +218,83 @@ pub(super) fn new_sliced(
     })
 }
 
+/// Reflowable figures keep their decoded source resolution across font sizes.
+/// Kitty scales that one upload into named virtual placements on the terminal.
+pub(super) struct InlineImage {
+    pixels: Managed<SlicedProtocol>,
+    frame: Option<usize>,
+    next_slot: usize,
+    sizes: Vec<Size>,
+}
+
+impl InlineImage {
+    pub(super) fn new(picker: &Picker, source: DynamicImage) -> Result<Self, Errors> {
+        // SlicedImage can paint any visible subrectangle of this placeholder grid.
+        // The actual placement and clipping bounds come from the reader's layout.
+        let limit = super::MAX_INLINE_CELLS;
+        let upload = kitty(picker, source, Size::new(limit, limit))?;
+        Ok(Self {
+            pixels: Managed {
+                protocol: SlicedProtocol::Kitty(upload.protocol),
+                upload: upload.upload,
+            },
+            frame: None,
+            next_slot: 0,
+            sizes: Vec::new(),
+        })
+    }
+
+    pub(super) fn tmux(&self) -> bool {
+        self.pixels.upload.as_ref().unwrap().delete.tmux
+    }
+
+    pub(super) fn draw(&mut self, frame: &mut Frame, visible: Rect, size: Size, skip: u16) {
+        // The same illustration can appear twice in one frame at different sizes.
+        // Reuse one placement per visible occurrence, including after a resize.
+        if self.frame.replace(frame.count()) != Some(frame.count()) {
+            self.next_slot = 0;
+        }
+        let slot = self.next_slot;
+        self.next_slot += 1;
+        let placement = u32::try_from(slot + 1).expect("more image placements than screen cells");
+        let [_, red, green, blue] = placement.to_be_bytes();
+        frame.render_widget(
+            SlicedImage::new(&self.pixels, (0, -(skip as i16)).into()),
+            visible,
+        );
+        let buffer = frame.buffer_mut();
+        for cell in visible.positions() {
+            buffer[cell].underline_color = Color::Rgb(red, green, blue);
+        }
+        if self.sizes.get(slot) == Some(&size) {
+            return;
+        }
+        if slot == self.sizes.len() {
+            self.sizes.push(size);
+        } else {
+            self.sizes[slot] = size;
+        }
+        let upload = self.pixels.upload.as_ref().unwrap().delete;
+        let (start, escape, end) = Parser::tmux_start_escape_end(upload.tmux);
+        let command = format!(
+            "{start}{escape}_Ga=p,U=1,i={},p={placement},c={},r={},q=2{escape}\\{end}",
+            upload.id, size.width, size.height,
+        );
+        let first = &mut buffer[(visible.x, visible.y)];
+        // The first draw contains the library's one-time transfer before the
+        // placeholder. Publish the placement between that transfer and the glyph.
+        let symbol = first.symbol();
+        let offset = symbol
+            .rfind('\u{10eeee}')
+            .expect("missing Kitty placeholder");
+        let mut placed = String::with_capacity(symbol.len() + command.len());
+        placed.push_str(&symbol[..offset]);
+        placed.push_str(&command);
+        placed.push_str(&symbol[offset..]);
+        first.set_symbol(&placed);
+    }
+}
+
 pub(crate) struct Retired(Vec<Delete>);
 
 /// Take before rendering: a rendition dropped during this frame must survive
@@ -260,6 +341,63 @@ fn close_queue(queue: &mut Queue) -> Retired {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn repeated_inline_figure_has_independent_sizes_and_one_pixel_transfer() {
+        let mut picker = Picker::halfblocks();
+        picker.set_protocol_type(ProtocolType::Kitty);
+        let mut image = InlineImage::new(&picker, DynamicImage::new_rgb8(24, 16)).unwrap();
+        let mut term = ratatui::Terminal::new(ratatui::backend::TestBackend::new(24, 8)).unwrap();
+        for (frame_index, width) in [8, 7, 7].into_iter().enumerate() {
+            term.draw(|frame| {
+                image.draw(frame, Rect::new(0, 0, width, 3), Size::new(width, 6), 3);
+                image.draw(frame, Rect::new(10, 0, 8, 4), Size::new(8, 4), 0);
+                let buffer = frame.buffer_mut();
+                let left = buffer[(0, 0)].symbol();
+                let right = buffer[(10, 0)].symbol();
+                assert_eq!(left.contains("a=T"), frame_index == 0);
+                assert_eq!(left.contains("p=1,c="), frame_index < 2);
+                assert_eq!(right.contains("p=2,c=8,r=4"), frame_index == 0);
+                assert!(!right.contains("a=T"));
+                assert!(left.contains("\u{10eeee}\u{310}")); // Starts at image row three.
+                assert_eq!(buffer[(1, 1)].underline_color, Color::Rgb(0, 0, 1));
+                assert_eq!(buffer[(11, 1)].underline_color, Color::Rgb(0, 0, 2));
+            })
+            .unwrap();
+        }
+    }
+
+    #[test]
+    fn covered_first_cell_publishes_the_upload_and_resized_placement() {
+        let mut picker = Picker::halfblocks();
+        picker.set_protocol_type(ProtocolType::Kitty);
+        let mut image = InlineImage::new(&picker, DynamicImage::new_rgb8(24, 16)).unwrap();
+        let mut term = ratatui::Terminal::new(ratatui::backend::TestBackend::new(12, 6)).unwrap();
+        for (index, (width, covered)) in [(8, true), (6, true), (6, false)].into_iter().enumerate()
+        {
+            term.draw(|frame| {
+                image.draw(frame, Rect::new(2, 1, width, 3), Size::new(width, 3), 0);
+                if covered {
+                    let popup = Rect::new(1, 0, 5, 4);
+                    let finish_panel = crate::overlay::backdrop(frame, popup);
+                    frame.render_widget(ratatui::widgets::Clear, popup);
+                    frame.buffer_mut()[(2, 1)].set_symbol("X");
+                    finish_panel(frame);
+                }
+            })
+            .unwrap();
+            let buffer = term.backend().buffer();
+            let first = buffer[(2, 1)].symbol();
+            assert_eq!(first.contains("a=T"), index == 0);
+            assert_eq!(first.contains(&format!("p=1,c={width},r=3")), covered);
+            if covered {
+                assert!(first.ends_with('X'));
+            } else {
+                assert!(first.starts_with('\u{10eeee}'));
+                assert_eq!(buffer[(2, 1)].underline_color, Color::Rgb(0, 0, 1));
+            }
+        }
+    }
 
     #[test]
     fn only_last_holder_retires_upload_even_when_worker_drops_it() {

@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Reuse uploaded EPUB illustrations when the Kitty font size changes, including when a menu covers the picture.
 - Keep the same reading word highlighted across repeated Single, Spread and Scroll switches in chapter pagination. Keep first word follows the visible top when switching away from a search result.
 - Keep the selected search match visible during a resize and refresh responsive EPUB search results after the new page appears.
 - Lay out the visible EPUB chapter immediately when an earlier background pagination job is still running.

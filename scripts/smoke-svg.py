@@ -63,11 +63,11 @@ def check(binary, folder, album=False, page_turn=False):
                     resize_on_query = None
                 os.write(fd,b'\x1b_Gi=31;OK\x1b\\\x1b[6;20;10t\x1b[0n')
             consumed=0
-            for match in re.finditer(rb'\x1b_G([^;]*);(.*?)\x1b\\',pending,re.S):
+            for match in re.finditer(rb'\x1b_G([^;\x1b]*)(?:;([^\x1b]*))?\x1b\\',pending):
                 consumed=match.end();params=dict(p.split(b'=',1) for p in match[1].split(b',') if b'=' in p)
                 if params.get(b'a') in (b'T',b't') and b's' in params:active=[params,bytearray()]
                 if active:
-                    active[1].extend(match[2])
+                    active[1].extend(match[2] or b'')
                     if params.get(b'm',b'0')==b'0':
                         p,payload=active;active=None
                         pixels=base64.b64decode(payload)
@@ -122,6 +122,9 @@ def check(binary, folder, album=False, page_turn=False):
                 clear = b'\x1b[2J'
                 assert any(clear in frame and b'SVGSTART' in frame for frame in frames), 'Incomplete resize frame'
                 assert stream.count(clear) == sum(frame.count(clear) for frame in frames), 'Unprotected resize clear'
+                assert len(images) == before, 'Font zoom uploaded the same illustration again'
+                placements = re.findall(rb'\x1b_Ga=p,U=1,i=(\d+),p=\d+,c=(\d+),r=(\d+)', stream)
+                assert placements and all(any(p[b'i'] == i for p, _ in images) for i, _, _ in placements), 'Missing resized image placement'
             # A 900px window with 40 rows needs an explicit cell-size reply.
             # Resize again during that probe; only the final grid should be painted.
             stream.clear()

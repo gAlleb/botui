@@ -866,7 +866,7 @@ impl Reader {
             54,
             COMMANDS.len() as u16 + 3 + u16::from(notice.is_some()),
         );
-        crate::overlay::backdrop(frame, popup);
+        let finish_menu = crate::overlay::backdrop(frame, popup);
         frame.render_widget(Clear, popup);
         let block = crate::appearance::block().title(" Reading ").style(style);
         let inner = block.inner(popup);
@@ -1007,6 +1007,7 @@ impl Reader {
                 Rect::new(inner.x, inner.bottom() - 1, inner.width, 1),
             );
         }
+        finish_menu(frame);
     }
 
     fn input(&self, event: Event) -> Option<Action> {

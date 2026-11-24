@@ -88,7 +88,7 @@ impl Panel {
         let screen = f.area();
         let mut panel = crate::centered(screen, 52, 6 + u16::from(self.supports_hyphens));
         panel.y = screen.bottom().saturating_sub(panel.height);
-        crate::overlay::backdrop(f, panel);
+        let finish_panel = crate::overlay::backdrop(f, panel);
         let block = crate::appearance::block()
             .title(" Page layout ")
             .style(style);
@@ -178,6 +178,7 @@ impl Panel {
             f.render_widget(Paragraph::new("[ Done ]"), done);
             self.hits.push((done, Action::Layout));
         }
+        finish_panel(f);
     }
     pub fn input(&self, event: Event) -> Option<Action> {
         match event {

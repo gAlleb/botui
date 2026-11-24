@@ -48,15 +48,18 @@ const MARKS: &[char] = &[
 /// Reader dialogs share the book's palette. Resolve that palette before
 /// softening surrounding cells so the dialog itself keeps its normal contrast.
 pub(crate) fn modal(f: &mut Frame, panel: Rect, draw: impl FnOnce(&mut Frame)) {
-    backdrop(f, panel);
-    paint(f, panel, draw);
+    let finish = backdrop(f, panel);
+    draw(f);
+    finish(f);
 }
 
-pub(crate) fn backdrop(f: &mut Frame, panel: Rect) {
+#[must_use = "finish the panel so covered image commands reach the terminal"]
+pub(crate) fn backdrop(f: &mut Frame, panel: Rect) -> impl FnOnce(&mut Frame) + use<> {
     if panel != f.area() {
         crate::settings::paint_dialog(f);
         dim_outside(f.buffer_mut(), panel);
     }
+    preserve_graphics(f, panel)
 }
 
 fn dim_outside(buffer: &mut ratatui::buffer::Buffer, panel: Rect) {
@@ -96,6 +99,12 @@ fn dim_outside(buffer: &mut ratatui::buffer::Buffer, panel: Rect) {
 }
 
 pub(crate) fn paint(f: &mut Frame, panel: Rect, draw: impl FnOnce(&mut Frame)) {
+    let finish = preserve_graphics(f, panel);
+    draw(f);
+    finish(f);
+}
+
+fn preserve_graphics(f: &mut Frame, panel: Rect) -> impl FnOnce(&mut Frame) + use<> {
     let buf = f.buffer_mut();
     let mut transmissions = vec![];
     for y in panel.y..panel.bottom() {
@@ -133,16 +142,17 @@ pub(crate) fn paint(f: &mut Frame, panel: Rect, draw: impl FnOnce(&mut Frame)) {
             }
         }
     }
-    draw(f);
-    if crate::cover::sixel_active() {
-        // Sixel repaints pixels across unchanged terminal cells. Redraw the
-        // complete dialog after that transfer, not only its changed selection.
-        repaint_sixel_text(f.buffer_mut(), panel);
-    }
-    for (pos, mut prefix, width) in transmissions {
-        let cell = &mut f.buffer_mut()[pos];
-        prefix.push_str(cell.symbol());
-        cell.set_symbol(&prefix).set_diff_option(width);
+    move |f| {
+        if crate::cover::sixel_active() {
+            // Sixel repaints pixels across unchanged terminal cells. Redraw the
+            // complete dialog after that transfer, not only its changed selection.
+            repaint_sixel_text(f.buffer_mut(), panel);
+        }
+        for (pos, mut prefix, width) in transmissions {
+            let cell = &mut f.buffer_mut()[pos];
+            prefix.push_str(cell.symbol());
+            cell.set_symbol(&prefix).set_diff_option(width);
+        }
     }
 }
 

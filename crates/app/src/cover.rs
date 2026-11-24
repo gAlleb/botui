@@ -219,11 +219,15 @@ struct Rendition {
 
 type PageWindow = (Size, [f32; 4], Box<Picture>);
 
+// Row and column offsets must fit in the Kitty placeholder diacritic table.
+const MAX_INLINE_CELLS: u16 = 280;
+
 pub(crate) struct Picture {
     pub(crate) identity: u64,
     epoch: Cell<u64>,
     cell_pixels: Cell<Size>,
     sliced: RefCell<Option<(CellStrip, kitty_lifetime::Managed<SlicedProtocol>)>>,
+    inline_kitty: RefCell<Option<kitty_lifetime::InlineImage>>,
     source: DynamicImage,
     is_cover: bool,
     strip: RefCell<Option<(StripKey, Box<Picture>)>>,
@@ -240,6 +244,7 @@ impl Picture {
             epoch: Cell::default(),
             cell_pixels: Cell::default(),
             sliced: Default::default(),
+            inline_kitty: Default::default(),
             source,
             is_cover: false,
             strip: Default::default(),
@@ -265,7 +270,11 @@ impl Picture {
         if !monochrome() {
             picture.refresh_resolution(picker);
             if let (_, Some(key)) = picture.inline_geometry(picker, bounds) {
-                picture.prepare_sliced(picker, key);
+                if picker.protocol_type() == ProtocolType::Kitty {
+                    picture.prepare_inline_kitty(picker);
+                } else {
+                    picture.prepare_sliced(picker, key);
+                }
             }
         }
         Some(picture)
@@ -322,6 +331,13 @@ impl Picture {
         self.refresh_resolution(picker);
         let (size, key) = self.inline_geometry(picker, Size::new(area.width, height));
         let (visible, skip) = visible_figure(area, first, height, size)?;
+        if key.is_some() && picker.protocol_type() == ProtocolType::Kitty {
+            self.prepare_inline_kitty(picker);
+            if let Some(image) = self.inline_kitty.borrow_mut().as_mut() {
+                image.draw(frame, visible, size, skip);
+                return Some(visible);
+            }
+        }
         if let Some(key) = key
             && self.draw_sliced(frame, visible, picker, key, skip)
         {
@@ -338,6 +354,16 @@ impl Picture {
         Some(visible)
     }
 
+    fn prepare_inline_kitty(&self, picker: &Picker) {
+        let mut cache = self.inline_kitty.borrow_mut();
+        if cache
+            .as_ref()
+            .is_none_or(|image| image.tmux() != picker.tmux_detected())
+        {
+            *cache = kitty_lifetime::InlineImage::new(picker, self.source.clone()).ok();
+        }
+    }
+
     fn inline_geometry(&self, picker: &Picker, bounds: Size) -> (Size, Option<CellStrip>) {
         let font = picker.font_size();
         let size = Resize::Scale(None).size_for(&self.source, font, bounds);
@@ -346,9 +372,9 @@ impl Picture {
             * u64::from(font.width)
             * u64::from(size.height)
             * u64::from(font.height);
-        let key = (size.width <= 280
-            && size.height <= 280
-            && pixels <= 4_000_000
+        let key = (size.width <= MAX_INLINE_CELLS
+            && size.height <= MAX_INLINE_CELLS
+            && (picker.protocol_type() == ProtocolType::Kitty || pixels <= 4_000_000)
             && picker.protocol_type() != ProtocolType::Iterm2)
             .then_some(CellStrip {
                 scan: false,

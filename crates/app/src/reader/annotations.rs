@@ -190,13 +190,14 @@ fn list(term: &mut AppTerminal, reader: &mut Reader, store: &LocalState) -> io::
         term.draw(|f| {
             reader.draw(f, None);
             let area = centered(f.area(), 90, 28);
-            crate::overlay::backdrop(f, area);
+            let finish_panel = crate::overlay::backdrop(f, area);
             let border =
                 crate::appearance::block().title(format!(" Highlights & notes · {} ", notes.len()));
             let inner = border.inner(area);
             f.render_widget(Clear, area);
             f.render_widget(border, area);
             if inner.height < 4 {
+                finish_panel(f);
                 return;
             }
             let actions = [
@@ -276,6 +277,7 @@ fn list(term: &mut AppTerminal, reader: &mut Reader, store: &LocalState) -> io::
                 );
             }
             crate::settings::paint_dialog(f);
+            finish_panel(f);
         })?;
         let event = if filtering {
             crate::settings::read_event()?
