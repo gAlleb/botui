@@ -207,7 +207,9 @@ with tempfile.TemporaryDirectory(prefix='botui-pdf-text-') as tmp:
         t.keys('g','v','Space','a','h');t.see('Highlight');t.keys('2','Enter')
         t.see('Annotation saved')
         data=notes(d);assert len(data)==1 and data[0]['color']=='green',data
-        assert data[0]['quote']=='bravo charlie' and len(data[0]['pdf_regions'])==2,data
+        assert data[0]['quote']=='bravo charlie',data
+        left, space, right = sorted(r['bounds'] for r in data[0]['pdf_regions'])
+        assert left[2] == space[0] and space[2] == right[0], data
         assert data[0]['pdf_regions'][0]['page']==1
         time.sleep(.5)
         mouse(*xy('bravo'));mouse(*xy('bravo'),end='m')

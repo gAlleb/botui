@@ -27,6 +27,22 @@ pub struct PageText {
 }
 
 impl PageText {
+    /// The visible gap belongs to the selection only if its space is selected.
+    pub fn selected_spaces(&self, bytes: Range<usize>) -> impl Iterator<Item = [f32; 4]> + '_ {
+        let first = self.words.partition_point(|w| w.bytes.end < bytes.start);
+        self.words[first..]
+            .windows(2)
+            .take_while(move |pair| pair[0].bytes.end < bytes.end)
+            .filter_map(|pair| {
+                let (left, right) = (&pair[0], &pair[1]);
+                (left.line == right.line
+                    && left.block == right.block
+                    && self.text.get(left.bytes.end..right.bytes.start) == Some(" "))
+                .then(|| interaction::whitespace_box(left.bounds, right.bounds))
+                .flatten()
+            })
+    }
+
     pub fn units(&self) -> &[Word] {
         if self.characters.is_empty() {
             &self.words

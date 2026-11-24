@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Include selected spaces between PDF words in the visible selection and saved highlights.
+
 - Prepare the visible PDF text layer in the background so the first selection can start with measured letter positions.
 
 - Show the dotted page divider in both margins when scrolling flush PDF and comic pages.

@@ -372,7 +372,10 @@ mod tests {
             }))
             .unwrap(),
         );
-        assert_eq!(t.selection().unwrap().1, " ");
+        let (_, quote, regions) = t.selection().unwrap();
+        assert_eq!(quote, " ");
+        assert_eq!(regions.len(), 1);
+        assert_eq!(regions[0].bounds, [0.05, 0.1, 0.06, 0.2]);
         assert!(t.active_note().is_none());
     }
     #[test]

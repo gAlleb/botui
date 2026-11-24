@@ -191,7 +191,7 @@ fn apply(xml: &str, result: &mut PageText) {
 // GLib whitespace boxes can be reversed after intrinsic rotation. Whitespace
 // has no ink: use the measured gap between its adjacent glyphs, never estimate
 // character widths inside a word.
-fn whitespace_box(a: [f32; 4], b: [f32; 4]) -> Option<[f32; 4]> {
+pub(super) fn whitespace_box(a: [f32; 4], b: [f32; 4]) -> Option<[f32; 4]> {
     let r = if a[2] <= b[0] {
         [a[2], a[1].max(b[1]), b[0], a[3].min(b[3])]
     } else if b[2] <= a[0] {

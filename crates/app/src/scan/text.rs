@@ -558,6 +558,12 @@ impl Text {
         Some((a.min(b), a.max(b)))
     }
     pub fn selection(&self) -> Option<(TextRange, String, Vec<PdfRegion>)> {
+        self.selection_regions(true)
+    }
+    fn selection_regions(
+        &self,
+        include_spaces: bool,
+    ) -> Option<(TextRange, String, Vec<PdfRegion>)> {
         let (a, b) = self.ends()?;
         let mut quote = String::new();
         let mut regions = Vec::new();
@@ -604,6 +610,12 @@ impl Text {
                         Some(PdfRegion { page, bounds })
                     }),
             );
+            if include_spaces {
+                regions.extend(
+                    text.selected_spaces(bytes)
+                        .map(|bounds| PdfRegion { page, bounds }),
+                );
+            }
         }
         let range = TextRange::new(
             Anchor {
@@ -618,9 +630,16 @@ impl Text {
         Some((range, quote, regions))
     }
     pub fn active_note(&self) -> Option<&Note> {
-        let (_, _, regions) = self.selection()?;
-        if regions.is_empty() {
+        if self.notes.is_empty() {
             return None;
+        }
+        // Keep notes saved before inter-word gaps had rectangles clickable.
+        let (_, _, mut regions) = self.selection_regions(false)?;
+        if regions.is_empty() {
+            regions = self.selection()?.2;
+            if regions.is_empty() {
+                return None;
+            }
         }
         self.notes
             .iter()
@@ -1545,7 +1564,8 @@ mod tests {
                 byte: "Another page".len()
             }
         );
-        assert_eq!(regions.len(), 4);
+        assert_eq!(regions.len(), 6);
+        assert_eq!(regions[2].bounds, [0.45, 0.2, 0.5, 0.25]);
         assert_eq!(regions[0].page, 8);
         assert_eq!(regions[3].page, 9);
         text.views.push(View {
