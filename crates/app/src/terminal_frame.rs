@@ -4,12 +4,37 @@ use crossterm::{
     terminal::{BeginSynchronizedUpdate, EndSynchronizedUpdate},
 };
 use ratatui::{Frame, Terminal, backend::CrosstermBackend};
-use std::io;
+use std::{
+    cell::Cell,
+    io::{self, Write},
+    rc::Rc,
+};
 
-pub(crate) struct AppTerminal(
-    Terminal<CrosstermBackend<io::BufWriter<io::Stdout>>>,
-    SixelFrame,
-);
+pub(crate) struct AppTerminal {
+    terminal: Terminal<CrosstermBackend<FrameWriter<io::Stdout>>>,
+    sixel: SixelFrame,
+    preparing: Rc<Cell<bool>>,
+}
+
+/// Crossterm flushes each resize clear. Hold those few control bytes in the
+/// regular output buffer until Ratatui has the replacement cells to send.
+struct FrameWriter<W: Write> {
+    output: io::BufWriter<W>,
+    preparing: Rc<Cell<bool>>,
+}
+
+impl<W: Write> Write for FrameWriter<W> {
+    fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+        self.output.write(bytes)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        if self.preparing.get() {
+            return Ok(());
+        }
+        self.output.flush()
+    }
+}
 #[derive(Default)]
 struct SixelFrame {
     skipped: Vec<bool>,
@@ -25,15 +50,23 @@ impl Drop for Update {
 
 impl AppTerminal {
     pub fn new() -> io::Result<Self> {
-        let output = io::BufWriter::with_capacity(64 * 1024, io::stdout());
+        let preparing = Rc::new(Cell::new(false));
+        let output = FrameWriter {
+            output: io::BufWriter::with_capacity(64 * 1024, io::stdout()),
+            preparing: preparing.clone(),
+        };
         Terminal::new(CrosstermBackend::new(output)).map(|terminal| {
             crate::cover::kitty_lifetime::open();
-            Self(terminal, SixelFrame::default())
+            Self {
+                terminal,
+                sixel: SixelFrame::default(),
+                preparing,
+            }
         })
     }
 
     pub fn size(&self) -> io::Result<ratatui::layout::Size> {
-        self.0.size()
+        self.terminal.size()
     }
 
     pub fn draw(&mut self, render: impl FnOnce(&mut Frame)) -> io::Result<()> {
@@ -44,7 +77,7 @@ impl AppTerminal {
         &mut self,
         size: ratatui::layout::Size,
     ) -> io::Result<Option<Update>> {
-        if self.0.current_buffer_mut().area.as_size() == size {
+        if self.terminal.current_buffer_mut().area.as_size() == size {
             return Ok(None);
         }
         execute!(io::stdout(), BeginSynchronizedUpdate)?;
@@ -91,17 +124,23 @@ impl AppTerminal {
         // is part of the frame. Ordinary frames can still prepare images and
         // query the terminal before the first backend flush.
         if update.is_none() {
-            queue!(self.0.backend_mut(), BeginSynchronizedUpdate)?;
+            queue!(self.terminal.backend_mut(), BeginSynchronizedUpdate)?;
             *update = Some(Update);
         }
-        crate::cover::kitty_lifetime::take_retired().write(self.0.backend_mut())?;
-        let sixel = &mut self.1;
-        self.0.draw(|frame| {
+        crate::cover::kitty_lifetime::take_retired().write(self.terminal.backend_mut())?;
+        let sixel = &mut self.sixel;
+        let preparing = &self.preparing;
+        preparing.set(true);
+        let result = self.terminal.draw(|frame| {
             render(frame);
             if crate::cover::sixel_active() {
                 stabilize_sixel(frame.buffer_mut(), sixel);
             }
-        })
+            preparing.set(false);
+        });
+        // autoresize can also fail before the render callback is reached.
+        preparing.set(false);
+        result
     }
 }
 
@@ -156,6 +195,28 @@ mod tests {
         layout::Rect,
         style::Color,
     };
+    #[test]
+    fn resize_clear_is_buffered_until_replacement_cells_are_ready() {
+        use ratatui::backend::Backend;
+        use ratatui::buffer::Cell as ScreenCell;
+
+        let preparing = Rc::new(Cell::new(true));
+        let mut output = FrameWriter {
+            output: io::BufWriter::new(Vec::new()),
+            preparing: preparing.clone(),
+        };
+        CrosstermBackend::new(&mut output).clear().unwrap();
+        assert!(output.output.get_ref().is_empty());
+        preparing.set(false);
+        let mut backend = CrosstermBackend::new(&mut output);
+        backend
+            .draw([(0, 0, &ScreenCell::new("X"))].into_iter())
+            .unwrap();
+        Backend::flush(&mut backend).unwrap();
+        let bytes = output.output.get_ref();
+        assert!(bytes.starts_with(b"\x1b[2J"));
+        assert!(bytes.contains(&b'X'));
+    }
     #[test]
     fn closing_a_popup_reissues_pixels_once_without_reencoding() {
         let mut image = Buffer::empty(Rect::new(0, 0, 3, 1));
