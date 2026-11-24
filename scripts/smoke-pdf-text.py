@@ -182,14 +182,23 @@ with tempfile.TemporaryDirectory(prefix='botui-pdf-text-') as tmp:
         t.wait('Mouse text ready',lambda f:'SELECT' in f and 'Loading text' not in f)
         t.keys('Space','a','y');copied(d,'bravo')
         # Reverse drag, with a UTF-8-safe source range (covered separately in unit tests).
-        mouse(*xy('charlie'));mouse(*xy('Alpha'),code=32);mouse(*xy('Alpha'),end='m')
+        mouse(*xy('charlie'))
+        # Queue several sweeps before releasing at a different word. The copy
+        # command following the release must see the release endpoint.
+        x, y = xy('bravo')
+        right, _ = xy('charlie')
+        sweep = list(range(x, right + 1)) + list(range(right, x - 1, -1))
+        burst = ''.join(f'\033[<32;{col};{y}M' for col in sweep * 8)
+        left, row = xy('Alpha')
+        burst += f'\033[<0;{left};{row}m'
+        t.run('send-keys','-t','shelf','-l',burst)
         (d/'copied').unlink(missing_ok=True)
         t.keys('Space','a','y')
         for _ in range(100):
             quote=(d/'copied').read_text() if (d/'copied').exists() else ''
             if 'bravo' in quote: break
             time.sleep(.03)
-        assert quote in 'Alpha bravo charlie' and 'bravo' in quote, quote
+        assert quote in 'Alpha bravo charlie' and 'bravo' in quote and quote[0] in 'Alpha', quote
         t.keys('Space','c');t.see('Copy]')
         # Wait for lazy text extraction without assuming a wall-clock duration.
         t.wait('Text layer ready',lambda f:'NORMAL' in f and 'Loading text' not in f)

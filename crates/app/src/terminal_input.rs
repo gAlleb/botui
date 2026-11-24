@@ -85,6 +85,20 @@ fn settle_mouse_coordinates() {
     });
 }
 
+/// Apply already-decoded motion before painting the selection. Leave release,
+/// resize, and other input in order for the reader's normal dispatch.
+pub(crate) fn drain_selection_drags(mut apply: impl FnMut(Event)) -> io::Result<()> {
+    with_input(|input| {
+        use crossterm::event::{MouseButton, MouseEventKind};
+        while matches!(input.keyboard.queued.front(), Some(Event::Mouse(m))
+            if m.kind == MouseEventKind::Drag(MouseButton::Left))
+        {
+            apply(input.pop_event().unwrap());
+        }
+        Ok(())
+    })
+}
+
 impl Input {
     fn new() -> io::Result<Self> {
         let tty = if io::stdin().is_terminal() {
@@ -109,6 +123,17 @@ impl Input {
         })
     }
 
+    fn pop_event(&mut self) -> Option<Event> {
+        let mut event = self.keyboard.queued.pop_front()?;
+        if self.cell_events > 0 {
+            self.cell_events -= 1;
+            pixel_mouse::clear_last();
+        } else {
+            pixel_mouse::normalize(&mut event);
+        }
+        Some(event)
+    }
+
     fn read(
         &mut self,
         paper: &'static LocalKey<Cell<TerminalPaper>>,
@@ -129,13 +154,7 @@ impl Input {
                     self.queue_resize()?;
                 }
             }
-            if let Some(mut event) = self.keyboard.queued.pop_front() {
-                if self.cell_events > 0 {
-                    self.cell_events -= 1;
-                    pixel_mouse::clear_last();
-                } else {
-                    pixel_mouse::normalize(&mut event);
-                }
+            if let Some(event) = self.pop_event() {
                 return Ok(Some(event));
             }
             let now = Instant::now();

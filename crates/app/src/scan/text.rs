@@ -513,24 +513,38 @@ impl Text {
         let view = self.views.iter().find(|v| v.screen.contains(p))?;
         let (x, y) = view.pointer(pointer)?;
         let text = self.cache.get(&view.page)?.as_ref().ok()?;
-        text.units()
-            .iter()
-            .enumerate()
-            .filter(|(_, w)| view.rect(w.bounds).is_some())
-            .filter_map(|(index, w)| {
-                let r = view.rect(w.bounds)?;
-                if !nearest && !r.contains(p) {
-                    return None;
+        let mut closest = None;
+        let mut distance = f32::INFINITY;
+        for (index, word) in text.units().iter().enumerate() {
+            let [left, top, right, bottom] = word.bounds;
+            let dx = (left - x).max(0.).max(x - right);
+            let dy = (top - y).max(0.).max(y - bottom);
+            let score = dy * 10. + dx;
+            if score >= distance {
+                continue;
+            }
+            if let Some(rect) = view.rect(word.bounds)
+                && (nearest || rect.contains(p))
+            {
+                closest = Some(WordAt {
+                    page: view.page,
+                    index,
+                });
+                distance = score;
+                if score == 0. {
+                    break;
                 }
-                let dx = (w.bounds[0] - x).max(0.).max(x - w.bounds[2]);
-                let dy = (w.bounds[1] - y).max(0.).max(y - w.bounds[3]);
-                Some((index, dy * 10. + dx))
-            })
-            .min_by(|a, b| a.1.total_cmp(&b.1))
-            .map(|(index, _)| WordAt {
-                page: view.page,
-                index,
-            })
+            }
+        }
+        closest
+    }
+    fn drag_to(&mut self, pointer: Pointer) {
+        if self.pending.is_some() {
+            self.pending_end = Some(pointer);
+        }
+        if let Some(at) = self.hit(pointer, true) {
+            self.cursor = Some(at);
+        }
     }
     fn ends(&self) -> Option<(WordAt, WordAt)> {
         let b = self.cursor?;
@@ -739,16 +753,14 @@ impl Text {
                     }
                     MouseEventKind::Drag(MouseButton::Left) if self.drag => {
                         self.dragged = true;
-                        if self.pending.is_some() {
-                            self.pending_end = Some(p.into());
-                        }
-                        if let Some(at) = self.hit(p.into(), true) {
-                            self.cursor = Some(at);
-                        }
+                        self.drag_to(p.into());
                         Some(Action::None)
                     }
                     MouseEventKind::Up(MouseButton::Left) if self.drag => {
                         self.drag = false;
+                        if self.dragged {
+                            self.drag_to(p.into());
+                        }
                         if !self.dragged
                             && self.clicks.is_some_and(|(_, _, count)| count < 3)
                             && self.active_note().is_none()

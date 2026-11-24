@@ -1253,6 +1253,12 @@ pub(super) fn read_pages(
             if let text::Action::Key(code) = action {
                 e = Event::Key(crossterm::event::KeyEvent::new(code, KeyModifiers::NONE));
             } else {
+                if matches!(e, Event::Mouse(m) if m.kind == MouseEventKind::Drag(MouseButton::Left))
+                {
+                    crate::terminal_input::drain_selection_drags(|drag| {
+                        text.input(&drag);
+                    })?;
+                }
                 let background = if matches!(
                     action,
                     text::Action::Comment | text::Action::Highlight | text::Action::Lookup(_)

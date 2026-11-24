@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Update PDF text selection once per batch of mouse motion and use the release position for the final selection.
+
 - Center the PDF and comic reading menu in the terminal window when the contents sidebar is open.
 
 ## 0.1.31 — 2026-11-24
