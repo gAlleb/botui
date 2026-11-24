@@ -133,6 +133,17 @@ def check_frame_hit(d, mode):
                               and 'SELECT' not in f and ('▀' in f or '▄' in f))
             click_word(frame)
             copy_word()
+        if mode == 'scroll':
+            term.wait('Ordinary Zen restored after copy', lambda f: f == frame)
+            term.keys('Space', 'Z')
+            full = term.wait('Full-height PDF reaches the last row',
+                             lambda f: not framed(f) and '▀' in f.splitlines()[-1])
+            click_word(full)
+            selected = term.see('SELECT')
+            assert 'Copy' in selected.splitlines()[-1], selected
+            assert full.splitlines()[:-1] == selected.splitlines()[:-1], 'Selection shifted the page'
+            copy_word()
+            term.wait('Closing overlay restores the bottom of the PDF', lambda f: f == full)
         term.keys('Space', 'q')
     finally:
         term.run('kill-server', required=False)

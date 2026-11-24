@@ -73,8 +73,10 @@ def check(tmp):
         t.wait('Square borders applied',lambda f:'Solid terminal color' in f and cfg()['borders']=='square')
         t.keys('Tab', 'Home')
         frame = t.see("Reading controls")
-        for group in ("Text books", "PDF & DjVu", "Comics", "SyncTeX"):
+        for group in ("Text books", "PDF & DjVu", "Comics"):
             assert group in frame, group
+        t.keys("End"); t.see("SyncTeX editor command")
+        t.keys("Home"); t.see("Reader view")
         def styled_row(label):
             return next(line for line in t.run('capture-pane', '-e', '-p', '-t', 'shelf').stdout.splitlines() if label in line)
         heading = styled_row("Reading controls")
@@ -89,6 +91,7 @@ def check(tmp):
             'Choose one page, a spread',
             'divider between the contents sidebar',
             'Show the reading frame, page and percentage',
+            'Use every terminal row in Zen',
             'Lines per wheel tick',
             'Delay before command hints appear',
             'Preview light and dark book paper',

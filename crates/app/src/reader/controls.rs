@@ -17,6 +17,14 @@ pub(crate) fn last_row(screen: Rect) -> Rect {
     )
 }
 
+pub(crate) fn reading_area(book: Rect, screen: Rect, full_height: bool) -> Rect {
+    if full_height {
+        Rect::new(book.x, screen.y, book.width, screen.height)
+    } else {
+        above_status(book, screen)
+    }
+}
+
 pub(crate) fn above_status(mut book: Rect, screen: Rect) -> Rect {
     if screen.height > 1 {
         book.height = book.height.min(last_row(screen).y.saturating_sub(book.y));

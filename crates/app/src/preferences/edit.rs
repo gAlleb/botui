@@ -65,16 +65,16 @@ pub(super) fn setting(
     p: &Settings,
 ) -> io::Result<()> {
     match (tab, i) {
-        (1, 14) => {
+        (1, 15) => {
             Settings::update(|s| s.hyphenation = !s.hyphenation)?;
         }
-        (1, 9) => {
+        (1, 10) => {
             alignment(term, p)?;
         }
-        (1, 10) => {
+        (1, 11) => {
             Settings::update(|s| s.heading_rules = !s.heading_rules)?;
         }
-        (1, 17) => {
+        (1, 18) => {
             if let Some(index) = choose(
                 term,
                 "Pagination",
@@ -84,7 +84,7 @@ pub(super) fn setting(
                 Settings::update(|s| s.pagination_mode = super::PAGINATION_MODES[index])?;
             }
         }
-        (1, 21) => {
+        (1, 22) => {
             if let Some(i) = choose(
                 term,
                 "SyncTeX mode",
@@ -100,8 +100,8 @@ pub(super) fn setting(
                 })?;
             }
         }
-        (1, 22 | 23) if matches!(p.synctex_mode, crate::synctex::Mode::Neovim) => {
-            let neovim = i == 22;
+        (1, 23 | 24) if matches!(p.synctex_mode, crate::synctex::Mode::Neovim) => {
+            let neovim = i == 23;
             let (title, args) = if neovim {
                 (
                     "SyncTeX Neovim terminal · blank = Auto",
@@ -124,7 +124,7 @@ pub(super) fn setting(
                 })?;
             }
         }
-        (1, 22) => {
+        (1, 23) => {
             if let Some(command) = edit(
                 term,
                 "SyncTeX editor command · e.g. kitty nvim +{line} -- {file}",
@@ -134,7 +134,7 @@ pub(super) fn setting(
                 Settings::update(|s| s.synctex_editor = args)?;
             }
         }
-        (1, 19) => {
+        (1, 20) => {
             let modes = settings::PageColors::ALL;
             if let Some(i) = choose(
                 term,
@@ -145,7 +145,7 @@ pub(super) fn setting(
                 Settings::update(|s| s.scan_page_colors = Some(modes[i]))?;
             }
         }
-        (1, 5) => {
+        (1, 6) => {
             if let Some(value) = edit(
                 term,
                 "Space menu delay · milliseconds (0–1000)",
@@ -197,11 +197,11 @@ pub(super) fn setting(
                 Settings::update(|s| s.opaque_color = (!v.is_empty()).then_some(v))?;
             }
         }
-        (1, 6) | (1, 18) | (1, 20) => {
-            let comic = i == 20;
+        (1, 7) | (1, 19) | (1, 21) => {
+            let comic = i == 21;
             let (initial, title) = if comic {
                 (p.comic_theme(), " Comic background ")
-            } else if i == 18 {
+            } else if i == 19 {
                 (p.page_theme(), " PDF reading theme ")
             } else {
                 (
@@ -213,7 +213,7 @@ pub(super) fn setting(
                 Settings::update(|s| {
                     if comic {
                         s.comic_background = Some(t.id());
-                    } else if i == 18 {
+                    } else if i == 19 {
                         s.scan_page_colors = Some(s.page_colors());
                         s.scan_theme = Some(t.id());
                     } else {
@@ -222,28 +222,31 @@ pub(super) fn setting(
                 })?;
             }
         }
+        (1, 4) => {
+            Settings::update(|s| s.zen_full_height = !s.zen_full_height)?;
+        }
         (1, 3) => {
             Settings::update(|s| s.zen_progress = !s.zen_progress)?;
         }
         (1, 0) => {
             Settings::update(|s| s.zen = !s.zen)?;
         }
-        (1, 7) | (1, 8) | (1, 11) | (1, 4) => {
-            let (val, lo, hi, title) = if i == 4 {
+        (1, 8) | (1, 9) | (1, 12) | (1, 5) => {
+            let (val, lo, hi, title) = if i == 5 {
                 (
                     u16::from(p.scroll_lines.unwrap_or(1).clamp(1, 12)),
                     1,
                     12,
                     "Mouse wheel step · 1–12 lines",
                 )
-            } else if i == 7 {
+            } else if i == 8 {
                 (
                     p.page_width.unwrap_or_default(),
                     32,
                     240,
                     "Page width · 0 = full, 32–240 cells",
                 )
-            } else if i == 11 {
+            } else if i == 12 {
                 (
                     u16::from(p.paragraph_indent.min(8)),
                     0,
@@ -257,18 +260,18 @@ pub(super) fn setting(
                 let Some(n) = v
                     .parse::<u16>()
                     .ok()
-                    .filter(|v| (i == 7 && *v == 0) || (lo..=hi).contains(v))
+                    .filter(|v| (i == 8 && *v == 0) || (lo..=hi).contains(v))
                 else {
                     return Err(io::Error::other(format!(
                         "Enter a number from {lo} to {hi}."
                     )));
                 };
                 Settings::update(|s| {
-                    if i == 4 {
+                    if i == 5 {
                         s.scroll_lines = Some(n as u8)
-                    } else if i == 7 {
+                    } else if i == 8 {
                         s.page_width = Some(n)
-                    } else if i == 11 {
+                    } else if i == 12 {
                         s.paragraph_indent = n as u8;
                     } else {
                         s.column_gap = Some(n)
@@ -276,10 +279,10 @@ pub(super) fn setting(
                 })?;
             }
         }
-        (1, 15) => {
+        (1, 16) => {
             Settings::update(|s| s.preserve_printed_lines = !s.preserve_printed_lines)?;
         }
-        (1, 16) => {
+        (1, 17) => {
             Settings::update(|s| s.hide_inline_images = !s.hide_inline_images)?;
         }
         (1, 1) => {
@@ -292,10 +295,10 @@ pub(super) fn setting(
                 Settings::update(|s| s.reading_layout = Some(modes[i].into()))?;
             }
         }
-        (1, 12) => {
+        (1, 13) => {
             Settings::update(|s| s.preserve_compact_spacing = Some(!s.compact_spacing()))?;
         }
-        (1, 13) => {
+        (1, 14) => {
             if let Some(choice) = choose(
                 term,
                 "Paragraph spacing",

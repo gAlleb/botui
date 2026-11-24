@@ -158,6 +158,33 @@ def run(tmp):
         finally:
             close(t)
 
+    t = terminal(text)
+    try:
+        line_gap(t, 0)
+        frame = open_settings(t)
+        select_book_option(t, frame, "Full-height Zen", "On")
+        close_settings(t)
+        t.keys("Space", "z")
+        t.wait("Book opens in its own Zen view", lambda f: "First paragraph" in f and "[F2 Settings]" not in f)
+    finally:
+        close(t)
+    for path in (text, second):
+        t = terminal(path)
+        try:
+            frame = line_gap(t, 0)
+            assert ("[F2 Settings]" in frame) == (path == second)
+            frame = open_settings(t)
+            setting = next(line for line in frame.splitlines() if "Full-height Zen" in line)
+            if path == text:
+                assert "On" in setting and "Use global" not in setting, setting
+                select_book_option(t, frame, "Full-height Zen", "Use global · Off")
+                assert json.loads(pref(text).read_text()).get("zen_full_height") is None
+            else:
+                assert "Use global · Off" in setting and not pref(second).exists(), setting
+            assert cfg.read_bytes() == global_bytes
+        finally:
+            close(t)
+
     epub = tmp / "Atlas.epub"
     epub.write_bytes(shelf.epub())
     t = terminal(epub)

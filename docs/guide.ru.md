@@ -167,6 +167,7 @@ Kitty показывает обложки и страницы картинкам
 | `Space m` | Меню чтения |
 | `Space o` | Оглавление |
 | `Space z` | Дзен-режим |
+| `Space Z` | Включить или выключить Zen на всю высоту (панель выделения поверх нижней строки) |
 | `Space p` | Показать/скрыть рамку и прогресс в дзене |
 | `Space P` / `Ctrl+P` | Печать всего PDF |
 | `Space f` | Поиск в книге |
@@ -400,6 +401,8 @@ interface_theme = "catppuccin-mocha"
 zen = false
 # Show frame and progress in zen; hiding them frees space for reading. Toggle with Space p.
 zen_progress = false
+# Space Z: full-height Zen, with controls over the bottom row.
+zen_full_height = false
 # PDF/DjVu zoom in percent. In scroll mode 100 fits the reading pane.
 scan_zoom = 100
 # Custom uses synctex_editor; Neovim opens missing windows and reuses them for jumps both ways.

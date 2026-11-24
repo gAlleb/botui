@@ -177,6 +177,15 @@ def check(root, mode):
         term.click("[Space z Zen]", normal)
         term.wait("Return from normal reader restores clean Zen", lambda f: f == clean)
         check_selection_row(term, clean)
+        term.keys("Space", "Z")
+        full = term.wait("Book uses the last row of full-height Zen",
+                         lambda f: not framed(f) and 'word' in f.splitlines()[-1])
+        check_selection_row(term, full)
+        close(term)
+        term = start()
+        term.wait("Reopen in full-height Zen", lambda f: f == full)
+        term.keys("Space", "Z")
+        term.wait("Switch back to ordinary Zen", lambda f: f == clean)
 
         # V selects the source paragraph, including text outside this viewport.
         # Changing the frame must not copy padding, omit text or change the range.

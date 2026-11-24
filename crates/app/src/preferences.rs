@@ -177,6 +177,11 @@ fn rows(tab: usize, s: &Settings) -> Vec<SettingRow> {
                     "Show the reading frame, page and percentage in zen mode. Toggle with Space p.",
                 ),
                 pair(
+                    "Full-height Zen",
+                    if s.zen_full_height { "On" } else { "Off" },
+                    "Use every terminal row in Zen. Selection controls overlay the bottom row. Toggle with Space Z.",
+                ),
+                pair(
                     "Mouse wheel step",
                     &format!("{} line(s)", s.scroll_lines.unwrap_or(1).clamp(1, 12)),
                     "Lines per wheel tick in continuous scroll, for text and PDF/DjVu. Arrow keys always move one line.",

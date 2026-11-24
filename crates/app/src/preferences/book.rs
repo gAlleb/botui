@@ -23,6 +23,7 @@ pub(super) enum Field {
     Reset,
     Zen,
     ZenProgress,
+    FullHeightZen,
     Wheel,
     Gap,
     Printed,
@@ -46,6 +47,10 @@ impl Field {
         use Field::*;
         match self {
             Zen => scope(local.zen.map(|v| view(v).into()), view(g.zen).into()),
+            FullHeightZen => scope(
+                local.zen_full_height.map(|v| toggle(v).into()),
+                toggle(g.zen_full_height).into(),
+            ),
             ZenProgress => scope(
                 local.zen_progress.map(|v| toggle(v).into()),
                 toggle(g.zen_progress).into(),
@@ -137,6 +142,7 @@ impl Field {
     fn label(self) -> &'static str {
         match self {
             Self::Zen => "Reader view",
+            Self::FullHeightZen => "Full-height Zen",
             Self::ZenProgress => "Zen frame & progress",
             Self::Wheel => "Mouse wheel step",
             Self::Reset => "Use global settings for this book",
@@ -203,7 +209,10 @@ pub(super) fn rows(
         Kind::Pdf => &[Layout, PdfTheme, PdfColors],
     };
     let mut rows = Vec::new();
-    for &field in fields.iter().chain([&Zen, &ZenProgress, &Wheel, &Reset]) {
+    for &field in fields
+        .iter()
+        .chain([&Zen, &ZenProgress, &FullHeightZen, &Wheel, &Reset])
+    {
         let value = field.value(local, g);
         rows.push((
             super::Item::Book(field),
@@ -220,7 +229,7 @@ pub(super) fn rows(
     }
     // SyncTeX edits the external editor configuration shared by all PDFs.
     for (index, row) in global.into_iter().enumerate() {
-        if matches!(kind, Kind::Pdf) && index >= 21 {
+        if matches!(kind, Kind::Pdf) && index >= 22 {
             rows.push((super::Item::Global(index), row));
         }
     }
@@ -253,12 +262,16 @@ pub(super) fn edit(
         Reset => {
             store.update_book_preferences(|p: &mut BookSettings| *p = BookSettings::default())?
         }
-        Zen | ZenProgress | Gap | Printed | Images | Layout | Pagination | Alignment | Rules
-        | Hyphens | Indent | Compact | Spacing | PdfColors => {
+        Zen | ZenProgress | FullHeightZen | Gap | Printed | Images | Layout | Pagination
+        | Alignment | Rules | Hyphens | Indent | Compact | Spacing | PdfColors => {
             let (current, choices) = match field {
                 Zen => (
                     local.zen.map(usize::from),
                     [view(false), view(true)].map(String::from).to_vec(),
+                ),
+                FullHeightZen => (
+                    local.zen_full_height.map(usize::from),
+                    ["Off", "On"].map(String::from).to_vec(),
                 ),
                 ZenProgress => (
                     local.zen_progress.map(usize::from),
@@ -327,6 +340,7 @@ pub(super) fn edit(
                 let value = index.checked_sub(1);
                 store.update_book_preferences(|p: &mut BookSettings| match field {
                     Zen => p.zen = value.map(|i| i == 1),
+                    FullHeightZen => p.zen_full_height = value.map(|i| i == 1),
                     ZenProgress => p.zen_progress = value.map(|i| i == 1),
                     Gap => p.column_gap = value.map(|i| i as u16),
                     Printed => p.preserve_printed_lines = value.map(|i| i == 1),

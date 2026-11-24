@@ -28,6 +28,7 @@ pub struct Settings {
     pub max_download_mib: u32,
     pub zen: bool,
     pub zen_progress: bool,
+    pub zen_full_height: bool,
     pub local_grid: bool,
     pub preserve_printed_lines: bool,
     pub hide_inline_images: bool,

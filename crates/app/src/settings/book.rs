@@ -25,6 +25,7 @@ pub struct BookSettings {
     pub page_width: Option<u16>,
     pub zen: Option<bool>,
     pub zen_progress: Option<bool>,
+    pub zen_full_height: Option<bool>,
     pub scroll_lines: Option<u8>,
     pub column_gap: Option<u16>,
     pub preserve_printed_lines: Option<bool>,
@@ -53,6 +54,9 @@ impl BookSettings {
     pub fn apply(&self, prefs: &mut Settings) {
         if let Some(v) = self.zen {
             prefs.zen = v;
+        }
+        if let Some(v) = self.zen_full_height {
+            prefs.zen_full_height = v;
         }
         if let Some(v) = self.zen_progress {
             prefs.zen_progress = v;

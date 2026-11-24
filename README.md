@@ -337,6 +337,7 @@ Commands depend on the document: text actions need selectable text; page zoom, r
 | `Space m` | Reading menu |
 | `Space o` | Contents |
 | `Space z` | Zen mode |
+| `Space Z` | Toggle full-height Zen (selection controls overlay the last row) |
 | `Space p` | Show/hide frame and progress in zen |
 | `Space P` / `Ctrl+P` | Print the whole PDF |
 | `Space f` | Find in book |
@@ -535,6 +536,8 @@ interface_theme = "catppuccin-mocha"
 zen = false
 # Show frame and progress in zen; hiding them frees space for reading. Toggle with Space p.
 zen_progress = false
+# Space Z: full-height Zen, with controls over the bottom row.
+zen_full_height = false
 # PDF/DjVu zoom in percent. In scroll mode 100 fits the reading pane.
 scan_zoom = 100
 # Custom uses synctex_editor; Neovim opens missing windows and reuses them for jumps both ways.

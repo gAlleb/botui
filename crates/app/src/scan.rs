@@ -80,6 +80,7 @@ pub(super) fn read_pages(
     let mut page_colors = prefs.page_colors();
     let mut zen = prefs.zen;
     let mut zen_progress = prefs.zen_progress;
+    let mut zen_full_height = prefs.zen_full_height;
     let mut sidebar = contents::Contents::default();
     let mut splitter =
         crate::splitter::Splitter::new(crate::splitter::Pane::Contents, prefs.contents_width);
@@ -330,7 +331,7 @@ pub(super) fn read_pages(
             text.message.clone_from(&message);
         }
         let screen = term.size()?;
-        let show_progress = zen && zen_progress && screen.height > 1;
+        let show_progress = zen && zen_progress && !zen_full_height && screen.height > 1;
         let (sidebar_area, content) = splitter.layout(
             Rect::new(
                 0,
@@ -340,11 +341,13 @@ pub(super) fn read_pages(
             ),
             !zen && screen.width >= 78,
         );
-        let reading_frame = crate::appearance::ReadingFrame::new(content, zen, zen_progress)
-            .with_focus(!sidebar_area.is_empty() && !sidebar.focused());
-        let area = crate::reader::controls::above_status(
+        let reading_frame =
+            crate::appearance::ReadingFrame::new(content, zen, zen_progress && !zen_full_height)
+                .with_focus(!sidebar_area.is_empty() && !sidebar.focused());
+        let area = crate::reader::controls::reading_area(
             reading_frame.inner,
             Rect::new(0, 0, screen.width, screen.height),
+            zen && zen_full_height,
         );
         let available = area.width;
         let cols = if !scrolling && spread && total != Some(1) && available >= 68 {
@@ -1333,6 +1336,7 @@ pub(super) fn read_pages(
                 KeyCode::Char(',') => 35,
                 KeyCode::Char('.') => 36,
                 KeyCode::Char('%') => 45,
+                KeyCode::F(18) => 48,
                 KeyCode::Char('z' | 'Z') => 14,
                 KeyCode::Char('f' | 'F') => 15,
                 KeyCode::Char('q' | 'Q') => {
@@ -1625,6 +1629,7 @@ pub(super) fn read_pages(
                 scroll_lines = i32::from(updated.scroll_lines.unwrap_or(1).clamp(1, 12));
                 zen = updated.zen;
                 zen_progress = updated.zen_progress;
+                zen_full_height = updated.zen_full_height;
                 splitter.preferred = updated.contents_width;
                 if before != updated.reading_layout {
                     scrolling = updated.reading_layout.as_deref() == Some("scroll");
@@ -1685,16 +1690,44 @@ pub(super) fn read_pages(
                     .into();
                 }
             }
-            45 => {
-                zen_progress = !zen_progress;
+            48 => {
+                zen_full_height = !(zen && zen_full_height);
+                zen = true;
                 if let Some(store) = &store {
                     store.update_book_preferences(
                         |p: &mut crate::settings::book::BookSettings| {
-                            p.zen_progress = Some(zen_progress)
+                            p.zen = Some(zen);
+                            p.zen_full_height = Some(zen_full_height);
                         },
                     )?;
                 } else {
-                    crate::settings::Settings::update(|s| s.zen_progress = zen_progress)?;
+                    crate::settings::Settings::update(|s| {
+                        s.zen = zen;
+                        s.zen_full_height = zen_full_height;
+                    })?;
+                }
+            }
+            45 => {
+                zen_progress = (zen && zen_full_height) || !zen_progress;
+                if zen {
+                    zen_full_height = false;
+                }
+                if let Some(store) = &store {
+                    store.update_book_preferences(
+                        |p: &mut crate::settings::book::BookSettings| {
+                            p.zen_progress = Some(zen_progress);
+                            if zen && zen_progress {
+                                p.zen_full_height = Some(false);
+                            }
+                        },
+                    )?;
+                } else {
+                    crate::settings::Settings::update(|s| {
+                        s.zen_progress = zen_progress;
+                        if zen && zen_progress {
+                            s.zen_full_height = false;
+                        }
+                    })?;
                 }
             }
             14 => {

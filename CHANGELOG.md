@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Toggle full-height Zen with Space Z in text books, PDFs and comics. Selection controls overlay the last row.
+
 - Include selected spaces between PDF words in the visible selection and saved highlights.
 
 - Prepare the visible PDF text layer in the background so the first selection can start with measured letter positions.

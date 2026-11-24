@@ -189,6 +189,7 @@ fn entries(context: Context, path: &str) -> Vec<Entry> {
                 },
             ),
             key('z', "Zen mode", Char('Z')),
+            key('Z', "Full-height Zen", F(18)),
             key('p', "Zen frame & progress", Char('%')),
             key('f', "Find in book", Char('/')),
             group('r', "Reading tools", "reading"),

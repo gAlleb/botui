@@ -48,6 +48,14 @@ with tempfile.TemporaryDirectory(prefix="botui-width-") as tmp:
         term.keys("1", "2", "3")
         frame = term.wait("Paper fits pane", lambda f: "Fit width" in f and ":" * 60 in f)
         left, right = paper(frame)
+        term.keys("Space", "Z")
+        term.wait("PDF paints the bottom row in full-height Zen",
+                  lambda f: ":" * 40 in f.splitlines()[-1])
+        term.keys("Space", "p")
+        term.wait("Switch directly from full-height to framed Zen",
+                  lambda f: "╰" in f.splitlines()[-1])
+        term.keys("Space", "z")
+        term.see("[Space l w 100%]")
         term.keys("-")
         frame = term.wait("Paper shrinks", lambda f: "90%" in f and ":" * 35 in f and paper(f)[0] > left)
         a, b = paper(frame)

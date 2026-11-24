@@ -43,6 +43,7 @@ enum Action {
     Menu,
     Zen,
     ZenProgress,
+    FullHeightZen,
     Background,
     Borders,
     Sidebar(Edit),
@@ -90,7 +91,7 @@ enum Action {
     Resize,
 }
 
-const COMMANDS: [Action; 33] = [
+const COMMANDS: [Action; 34] = [
     Action::Resume,
     Action::Previous,
     Action::Next,
@@ -108,6 +109,7 @@ const COMMANDS: [Action; 33] = [
     Action::Layout,
     Action::Zen,
     Action::ZenProgress,
+    Action::FullHeightZen,
     Action::Background,
     Action::Borders,
     Action::Study(study::Command::Normal),
@@ -140,6 +142,7 @@ struct Reader {
     scroll_lines: i8,
     zen: bool,
     zen_progress: bool,
+    zen_full_height: bool,
     opaque: bool,
     sidebar: navigation::Navigation,
     sidebar_rect: Rect,
@@ -276,11 +279,14 @@ impl Reader {
             settings.contents_width,
         );
         let (_, page) = layout::panes(area, &mut splitter, settings.zen);
-        let reading_frame =
-            crate::appearance::ReadingFrame::new(page, settings.zen, settings.zen_progress);
+        let reading_frame = crate::appearance::ReadingFrame::new(
+            page,
+            settings.zen,
+            settings.zen_progress && !settings.zen_full_height,
+        );
         let (text, mode_for_size, actual_gap) =
             layout::geometry(&reading_frame, mode, page_width, gap, settings.zen);
-        let text = controls::above_status(text, area);
+        let text = controls::reading_area(text, area, settings.zen && settings.zen_full_height);
         let image_cell = if doc.image_sizes.is_empty() {
             (1, 2)
         } else {
@@ -335,6 +341,7 @@ impl Reader {
             scroll_lines: settings.scroll_lines.unwrap_or(1).clamp(1, 12) as i8,
             zen: settings.zen,
             zen_progress: settings.zen_progress,
+            zen_full_height: settings.zen_full_height,
             opaque: settings.opaque_background,
             sidebar,
             sidebar_rect: Rect::default(),
@@ -383,7 +390,16 @@ impl Reader {
                 Action::Gap(_) => p.column_gap = Some(self.gap),
                 Action::Margin(_) | Action::FullWidth => p.page_width = Some(self.page_width),
                 Action::Zen => p.zen = Some(self.zen),
-                Action::ZenProgress => p.zen_progress = Some(self.zen_progress),
+                Action::FullHeightZen => {
+                    p.zen = Some(self.zen);
+                    p.zen_full_height = Some(self.zen_full_height);
+                }
+                Action::ZenProgress => {
+                    p.zen_progress = Some(self.zen_progress);
+                    if self.zen && self.zen_progress {
+                        p.zen_full_height = Some(false);
+                    }
+                }
                 Action::Pick(theme_picker::Edit::Accept(_)) => p.theme = Some(self.theme.id()),
                 Action::Single | Action::Spread | Action::Scroll => {
                     p.reading_layout = Some(
@@ -408,7 +424,16 @@ impl Reader {
             Action::Gap(_) => s.column_gap = Some(self.gap),
             Action::Margin(_) | Action::FullWidth => s.page_width = Some(self.page_width),
             Action::Zen => s.zen = self.zen,
-            Action::ZenProgress => s.zen_progress = self.zen_progress,
+            Action::FullHeightZen => {
+                s.zen = self.zen;
+                s.zen_full_height = self.zen_full_height;
+            }
+            Action::ZenProgress => {
+                s.zen_progress = self.zen_progress;
+                if self.zen && self.zen_progress {
+                    s.zen_full_height = false;
+                }
+            }
             Action::Background => s.opaque_background = self.opaque,
             Action::Pick(theme_picker::Edit::Accept(_)) => s.theme = Some(self.theme.id()),
             _ => (),
@@ -433,7 +458,7 @@ impl Reader {
             self.gap,
             self.zen,
         );
-        let text = controls::above_status(text, screen);
+        let text = controls::reading_area(text, screen, self.zen && self.zen_full_height);
         self.pager.reconfigure(
             &self.doc,
             text.width,
@@ -471,8 +496,12 @@ impl Reader {
     fn reading_panes(&mut self, screen: Rect) -> (Rect, crate::appearance::ReadingFrame, Rect) {
         let controls = controls::last_row(screen);
         let (sidebar, page) = layout::panes(screen, &mut self.splitter, self.zen);
-        let frame = crate::appearance::ReadingFrame::new(page, self.zen, self.zen_progress)
-            .with_focus(!sidebar.is_empty() && !self.sidebar_focus);
+        let frame = crate::appearance::ReadingFrame::new(
+            page,
+            self.zen,
+            self.zen_progress && !self.zen_full_height,
+        )
+        .with_focus(!sidebar.is_empty() && !self.sidebar_focus);
         (sidebar, frame, controls)
     }
 
@@ -489,7 +518,7 @@ impl Reader {
             self.gap,
             self.zen,
         );
-        let text = controls::above_status(text, screen);
+        let text = controls::reading_area(text, screen, self.zen && self.zen_full_height);
         self.text_rect = text;
         if !self.doc.image_sizes.is_empty() {
             let cell = crate::cover::graphics().font_size();
@@ -555,8 +584,11 @@ impl Reader {
         let text = self.text_rect;
         self.links.clear();
         self.study.begin_frame();
-        let show_progress =
-            self.zen && self.zen_progress && screen.height > 1 && !self.links.visiting();
+        let show_progress = self.zen
+            && self.zen_progress
+            && !self.zen_full_height
+            && screen.height > 1
+            && !self.links.visiting();
         let view = self.pager.viewport_rows();
         let pages = (!self.pager.is_paginating())
             .then(|| (self.pager.page_number(), self.pager.page_count()));
@@ -895,6 +927,7 @@ impl Reader {
                 ),
                 Action::Bookmarks => ("Bookmarks".into(), "Space b l"),
                 Action::Layout => ("Page width & column gap".into(), "Space l w"),
+                Action::FullHeightZen => ("Full-height Zen".into(), "Space Z"),
                 Action::ZenProgress => (
                     format!(
                         "Zen frame & progress · {}",
@@ -1092,6 +1125,7 @@ impl Reader {
                 KeyCode::Char(',') => Some(Action::JumpBack),
                 KeyCode::Char('.') => Some(Action::JumpForward),
                 KeyCode::Char('u' | 'U') => Some(Action::Borders),
+                KeyCode::F(18) => Some(Action::FullHeightZen),
                 KeyCode::Char('%') => Some(Action::ZenProgress),
                 KeyCode::Char('z' | 'Z') => Some(Action::Zen),
                 KeyCode::Char('f' | 'F') => Some(Action::Background),
@@ -1297,8 +1331,17 @@ impl Reader {
                     self.sidebar_focus = false;
                 }
             }
+            Action::FullHeightZen => {
+                self.zen_full_height = !(self.zen && self.zen_full_height);
+                self.zen = true;
+                self.sidebar_focus = false;
+                self.menu = None;
+            }
             Action::ZenProgress => {
-                self.zen_progress = !self.zen_progress;
+                self.zen_progress = (self.zen && self.zen_full_height) || !self.zen_progress;
+                if self.zen {
+                    self.zen_full_height = false;
+                }
                 self.menu = None;
             }
             Action::Zen => {
@@ -1640,6 +1683,7 @@ fn bindings() -> io::Result<std::collections::HashMap<char, Action>> {
                 "menu" => Action::Menu,
                 "zen" => Action::Zen,
                 "zen-progress" => Action::ZenProgress,
+                "zen-full-height" => Action::FullHeightZen,
                 "background" => Action::Background,
                 "borders" => Action::Borders,
                 "cover" => Action::Cover,
@@ -2103,6 +2147,7 @@ pub fn read_server(
                 reader.zen = new.zen;
                 reader.scroll_lines = new.scroll_lines.unwrap_or(1).clamp(1, 12) as i8;
                 reader.zen_progress = new.zen_progress;
+                reader.zen_full_height = new.zen_full_height;
                 reader.splitter.preferred = new.contents_width;
                 if new.reading_layout != old.reading_layout {
                     reader.switch_mode = true;
@@ -2235,6 +2280,7 @@ pub fn read_server(
                 | Action::Spread
                 | Action::Scroll
                 | Action::Zen
+                | Action::FullHeightZen
                 | Action::ZenProgress
                 | Action::Gap(_)
                 | Action::Margin(_)
