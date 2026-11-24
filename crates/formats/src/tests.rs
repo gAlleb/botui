@@ -2072,6 +2072,57 @@ fn visible_chapters_match_complete_pagination_across_resizes_and_page_turns() {
         assert_eq!(reader.anchor(), full.anchor());
         assert_eq!(reader.at_end(), full.at_end());
     }
+    // An opening in the middle of a paragraph must match a complete reflow
+    // on the first painted frame, even if another resize cancels the worker.
+    for mode in [LayoutMode::Scroll, LayoutMode::Single, LayoutMode::Spread] {
+        let mut at = location("Opening chapter");
+        at.byte = doc.blocks[at.block].text.find("some").unwrap();
+        let mut exact = Pager::for_display_position_with_pagination(
+            &doc,
+            (39, 5),
+            mode,
+            4,
+            reader.reflow_options(),
+            Some(botui_core::ViewPosition {
+                anchor: at,
+                illustration: None,
+            }),
+            (1, 2),
+            botui_core::PaginationMode::KeepWord,
+        );
+        for (width, height) in [(81, 3), (73, 6), (81, 3), (39, 5), (92, 5)] {
+            exact.resize_for_display(&doc, width, height, mode, 4);
+            let full = Pager::for_display_position_with_pagination(
+                &doc,
+                (width, height),
+                mode,
+                4,
+                reader.reflow_options(),
+                Some(botui_core::ViewPosition {
+                    anchor: at,
+                    illustration: None,
+                }),
+                (1, 2),
+                botui_core::PaginationMode::KeepWord,
+            );
+            assert_eq!(
+                snapshot(&exact),
+                snapshot(&full),
+                "{mode:?} {width}x{height}"
+            );
+            if width == 92 {
+                assert!(exact.is_paginating());
+                exact.finish_resize();
+                assert_eq!(snapshot(&exact), snapshot(&full));
+                exact.previous();
+                let mut full = full;
+                full.previous();
+                assert_eq!(snapshot(&exact), snapshot(&full));
+            } else {
+                exact.start_pagination();
+            }
+        }
+    }
 }
 
 #[test]

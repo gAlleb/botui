@@ -424,6 +424,7 @@ pub struct Pager {
     book: Arc<BookLayout>,
     reflow_cache: reflow_cache::Cache,
     pending: Option<pagination::Pending>,
+    recent_views: std::collections::VecDeque<(Layout, ViewPosition, Arc<[PageLine]>)>,
     natural: Option<NaturalRows>,
     layout: Layout,
     lines: Vec<PageLine>,
@@ -589,11 +590,22 @@ impl Pager {
     ) -> Self {
         let book = Arc::new(BookLayout::new(doc, options, None));
         let lines = book.lines(doc, layout, 0..doc.blocks.len());
+        Self::from_lines(doc, layout, book, pagination_mode, lines)
+    }
+
+    fn from_lines(
+        doc: &Document,
+        layout: Layout,
+        book: Arc<BookLayout>,
+        pagination_mode: PaginationMode,
+        lines: Vec<PageLine>,
+    ) -> Self {
         Self {
             image_cell: layout.image_cell,
             book,
             reflow_cache: reflow_cache::Cache::default(),
             pending: None,
+            recent_views: Default::default(),
             natural: None,
             pagination_mode,
             exact_view: false,
@@ -619,6 +631,7 @@ impl Pager {
             self.finish_resize();
             let position = self.position();
             self.pagination_mode = mode;
+            self.recent_views.clear();
             self.restore_natural();
             self.resize_origin = None;
             self.locate(position, !self.layout.scrolling);
@@ -730,6 +743,15 @@ impl Pager {
     }
 
     fn exact_top(&mut self, doc: &Document, position: ViewPosition) {
+        self.exact_top_in(doc, position, 0..doc.blocks.len());
+    }
+
+    fn exact_top_in(
+        &mut self,
+        doc: &Document,
+        position: ViewPosition,
+        blocks: std::ops::Range<usize>,
+    ) {
         if self.layout.width == 0
             || position
                 .illustration
@@ -772,7 +794,7 @@ impl Pager {
         } else {
             // Joined print lines, nested markup and illustrations use their native renderer.
             let book = BookLayout::new(doc, self.book.options, Some(anchor));
-            let rows = book.lines(doc, self.layout, 0..doc.blocks.len());
+            let rows = book.lines(doc, self.layout, blocks);
             if !rows.iter().any(|row| row.reading_anchor() == Some(anchor)) {
                 return;
             }

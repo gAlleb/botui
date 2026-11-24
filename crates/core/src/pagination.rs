@@ -389,10 +389,10 @@ impl<'a> Viewport<'a> {
 
 pub(super) struct Pending {
     layout: Layout,
-    visible: Vec<PageLine>,
+    visible: Arc<[PageLine]>,
     cancel: Arc<AtomicBool>,
     start: Option<mpsc::Sender<()>>,
-    task: Option<thread::JoinHandle<Option<Snapshot>>>,
+    task: Option<thread::JoinHandle<Option<Pager>>>,
 }
 impl Drop for Pending {
     fn drop(&mut self) {
@@ -529,17 +529,23 @@ impl Pager {
     pub fn finish_resize(&mut self) {
         self.start_pagination();
         if let Some(mut pending) = self.pending.take() {
-            let snapshot = pending
+            let mut ready = pending
                 .task
                 .take()
                 .unwrap()
                 .join()
                 .expect("EPUB layout worker panicked")
                 .expect("active EPUB layout was cancelled");
-            let target = self.resize_position();
-            self.install(snapshot, pending.layout);
-            self.locate(target, true);
-            self.resize_origin = Some(target);
+            std::mem::swap(&mut ready.recent_views, &mut self.recent_views);
+            std::mem::swap(&mut ready.reflow_cache, &mut self.reflow_cache);
+            let previous = std::mem::replace(self, ready);
+            if previous.natural.is_none() {
+                self.reflow_cache.put(Snapshot {
+                    size: previous.book.size(previous.layout),
+                    sources: previous.source_lines,
+                    lines: previous.lines,
+                });
+            }
         }
     }
 
@@ -568,17 +574,26 @@ impl Pager {
             self.pending = None;
         }
         if layout == self.layout {
+            if replaced {
+                self.open_position(doc, self.resize_position());
+            }
             return replaced;
         }
         let position = self.resize_position();
         self.resize_origin = Some(position);
-        if self.pagination_mode == PaginationMode::KeepWord
-            || self.natural.is_some()
-            || (layout.scrolling && position.anchor.byte > 0)
+        let cached_view = self
+            .recent_views
+            .iter()
+            .find(|(size, at, _)| *size == layout && *at == position)
+            .map(|(_, _, rows)| rows.clone());
+        if let Some(visible) = cached_view
+            && self.prepare_index(doc, layout, visible, 0..0, Vec::new())
         {
-            self.relayout_with_gap(doc, width, height, mode, gap);
-        } else if self.use_cached_layout(layout) {
-            self.locate(position, true);
+            return true;
+        }
+        let chapter_page = !layout.scrolling && self.pagination_mode == PaginationMode::Chapter;
+        if self.natural.is_none() && chapter_page && self.use_cached_layout(layout) {
+            self.open_position(doc, position);
         } else if !(doc.styled.len() > 1
             && width > 0
             && height > 0
@@ -590,13 +605,14 @@ impl Pager {
     }
 
     fn prepare_viewport(&mut self, doc: &Arc<Document>, layout: Layout) -> bool {
-        // Paged previews must start at a real chapter boundary or the book
-        // opening; starting the preview at the target would flash a false page.
-        let from = if layout.scrolling {
-            self.focus.block
+        // Chapter pagination needs the preceding page breaks. Exact-word views
+        // can start layout in the spine item containing the target.
+        let anchor = self.resize_position().anchor;
+        let from = if layout.scrolling || self.pagination_mode == PaginationMode::KeepWord {
+            anchor.block
         } else {
             doc.chapter_starts
-                .range(..=self.focus.block)
+                .range(..=anchor.block)
                 .next_back()
                 .copied()
                 .unwrap_or(0)
@@ -615,8 +631,9 @@ impl Pager {
         let mut end = start;
         let mut rows = Vec::new();
         let count = layout.height * layout.columns;
-        let mut first = 0;
-        let position = self.position();
+        let position = self.resize_position();
+        let chapter_page = !layout.scrolling && self.pagination_mode == PaginationMode::Chapter;
+        let mut visible = Vec::new();
         for next in boundaries {
             rows.extend(self.book.lines(doc, layout, end..next));
             if end != start {
@@ -626,45 +643,73 @@ impl Pager {
             if end <= position.anchor.block {
                 continue;
             }
-            let index = Self::source_index(!doc.styled.is_empty(), &rows);
-            // A hidden chapter opening can resolve to the last visible word of its predecessor.
-            if start > 0 && index.first().is_none_or(|(at, _)| *at > self.focus) {
+            let mut preview =
+                Self::from_lines(doc, layout, self.book.clone(), self.pagination_mode, rows);
+            // Hidden chapter openings and figures may resolve outside this range.
+            if (start > 0
+                && preview
+                    .source_lines
+                    .first()
+                    .is_none_or(|(at, _)| *at > position.anchor))
+                || position.illustration.is_some_and(|hint| {
+                    hint.resolve(&preview.lines, &preview.figure_starts)
+                        .is_none()
+                })
+            {
                 return false;
             }
-            first = match position.illustration {
-                Some(hint) => {
-                    let Some(row) = hint.resolve(&rows, &Self::index_figures(&rows)) else {
-                        // The partial chapter layout cannot resolve this picture.
-                        // Use the full layout, including the text fallback if it is hidden.
-                        return false;
-                    };
-                    row
+            if chapter_page {
+                let row = preview.position_row(position);
+                if start > 0
+                    && !preview
+                        .lines
+                        .iter()
+                        .take(row + 1)
+                        .any(|line| line.chapter_start)
+                {
+                    return self.prepare_from(doc, layout, 0);
                 }
-                None => Self::line_at(self.focus, &rows, &index),
-            };
-            if !layout.scrolling {
-                let preceding = &rows[..(first + 1).min(rows.len())];
-                let mut page = match preceding.iter().rposition(|l| l.chapter_start) {
-                    Some(r) => r,
-                    None if start == 0 => 0,
-                    // A media query can hide the nominal chapter boundary.
-                    None => return self.prepare_from(doc, layout, 0),
-                };
-                while page < first {
-                    let end = Viewport::new(layout, &rows, page).end();
-                    if end > first {
-                        break;
-                    }
-                    page = end;
-                }
-                first = page;
+                preview.index_pages();
             }
-            if end == doc.blocks.len() || first + count <= rows.len() {
+            preview.locate(position, chapter_page);
+            if !chapter_page {
+                preview.exact_top_in(doc, position, start..end);
+            }
+            let available = &preview.lines[preview.first..];
+            let ready = available.len() >= count || end == doc.blocks.len();
+            if ready {
+                visible.extend_from_slice(&available[..count.min(available.len())]);
+            }
+            // The index worker needs the original rows even when the visible
+            // paragraph was rewrapped to put the saved word at the top.
+            preview.restore_natural();
+            rows = preview.lines;
+            if ready {
                 break;
             }
         }
-        let visible = rows[first..(first + count).min(rows.len())].to_vec();
+        let visible: Arc<[PageLine]> = visible.into();
+        let prepared = self.prepare_index(doc, layout, visible.clone(), start..end, rows);
+        if prepared {
+            // Keep only the last few displayed windows, never whole chapters here.
+            self.recent_views.truncate(3);
+            self.recent_views.push_front((layout, position, visible));
+        }
+        prepared
+    }
+
+    fn prepare_index(
+        &mut self,
+        doc: &Arc<Document>,
+        layout: Layout,
+        visible: Arc<[PageLine]>,
+        range: Range<usize>,
+        rows: Vec<PageLine>,
+    ) -> bool {
         let book = self.book.clone();
+        let position = self.resize_position();
+        let mode = self.pagination_mode;
+        let cached = self.reflow_cache.take(book.size(layout));
         let doc = doc.clone();
         let cancel = Arc::new(AtomicBool::new(false));
         let stop = cancel.clone();
@@ -673,35 +718,44 @@ impl Pager {
             .name("epub-pagination".into())
             .spawn(move || {
                 frame_presented.recv().ok()?;
-                let range = start..end;
-                let mut styled = book.reflow.layout(&doc, layout, &book, |i| {
-                    !stop.load(Ordering::Relaxed) && !range.contains(&i)
-                });
-                if stop.load(Ordering::Relaxed) {
-                    return None;
-                }
-                let mut lines = if start == 0 {
-                    rows
+                let lines = if let Some(snapshot) = cached {
+                    snapshot.lines
                 } else {
-                    let mut prefix = Vec::new();
-                    book.append(&mut prefix, &doc, layout, 0..start, &mut styled);
-                    prefix.extend(rows);
-                    prefix
+                    let (start, end) = (range.start, range.end);
+                    let mut styled = book.reflow.layout(&doc, layout, &book, |i| {
+                        !stop.load(Ordering::Relaxed) && !range.contains(&i)
+                    });
+                    if stop.load(Ordering::Relaxed) {
+                        return None;
+                    }
+                    let mut lines = if start == 0 {
+                        rows
+                    } else {
+                        let mut prefix = Vec::new();
+                        book.append(&mut prefix, &doc, layout, 0..start, &mut styled);
+                        prefix.extend(rows);
+                        prefix
+                    };
+                    if end < doc.blocks.len() {
+                        book.append(&mut lines, &doc, layout, end..doc.blocks.len(), &mut styled);
+                    }
+                    if stop.load(Ordering::Relaxed) {
+                        return None;
+                    }
+                    book.format_rows(lines, &doc, layout)
                 };
-                if end < doc.blocks.len() {
-                    book.append(&mut lines, &doc, layout, end..doc.blocks.len(), &mut styled);
-                }
                 if stop.load(Ordering::Relaxed) {
                     return None;
                 }
-                let lines = book.format_rows(lines, &doc, layout);
-                Some(Snapshot {
-                    size: book.size(layout),
-                    sources: Self::source_index(!doc.styled.is_empty(), &lines),
-                    lines,
-                })
+                let mut ready = Self::from_lines(&doc, layout, book, mode, lines);
+                ready.index_pages();
+                ready.open_position(&doc, position);
+                ready.resize_origin = Some(position);
+                Some(ready)
             });
         let Ok(task) = task else { return false };
+        self.focus = position.anchor;
+        self.focus_illustration = position.illustration;
         self.pending = Some(Pending {
             layout,
             visible,
