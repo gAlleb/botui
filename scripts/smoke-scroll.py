@@ -41,14 +41,14 @@ def text_scroll(d, keep_word=False):
                at in f and re.findall(r'Passage \d+', f)[:1] == [spread_top]
                and any('Passage ' in row[len(row)//2:] for row in f.splitlines()))
         t.keys('Space', 'l', '3')
-        t.wait('Scroll starts at the visible top of the spread', lambda f:
-               re.findall(r'Passage \d+', f)[:1] == [spread_top]
+        t.wait('Scroll returns to the passage selected before opening the spread', lambda f:
+               re.findall(r'Passage \d+', f)[:1] == [at]
                and f.rstrip().splitlines()[-1].lstrip().startswith('Scroll '))
         stop(t)
         assert saved(d)['scrolling']
         t=start(d,file)
         t.wait('Reopened scroll view retains its first passage', lambda f:
-               re.findall(r'Passage \d+', f)[:1] == [spread_top])
+               re.findall(r'Passage \d+', f)[:1] == [at])
         for _ in range(18):t.keys('PageDown')
         t.see('Passage 099');stop(t);assert saved(d)['finished']
     finally:t.run('kill-server',required=False)
