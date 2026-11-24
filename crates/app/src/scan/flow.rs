@@ -110,7 +110,22 @@ impl Strip<'_> {
         mut sixel: Option<&mut super::sixel::Cache>,
         text: &super::text::Text,
     ) {
+        let left = r.x + (r.width - self.width) / 2;
+        let right = left + self.width;
+        let divider = |f: &mut Frame, x, y, width: u16| {
+            if width > 0 {
+                f.render_widget(
+                    Paragraph::new("·".repeat(usize::from(width))).dim(),
+                    Rect::new(x, y, width, 1),
+                );
+            }
+        };
         for (n, skip, rows, y, take) in self.parts(n, offset) {
+            if self.gap == 0 && n > 1 && skip == 0 {
+                // At a flush seam only the margins expose the divider behind the pages.
+                divider(f, r.x, r.y + y, left - r.x);
+                divider(f, right, r.y + y, r.right() - right);
+            }
             // Locate the middle on the full strip before clipping it to the viewport.
             let middle = rows + u32::from(self.gap / 2);
             if self.gap > 0
@@ -118,15 +133,12 @@ impl Strip<'_> {
                 && let Some(dy) = middle.checked_sub(skip)
                 && dy < u32::from(self.height - y)
             {
-                f.render_widget(
-                    Paragraph::new("·".repeat(r.width as usize)).dim(),
-                    Rect::new(r.x, r.y + y + dy as u16, r.width, 1),
-                );
+                divider(f, r.x, r.y + y + dy as u16, r.width);
             }
             if take == 0 {
                 continue;
             }
-            let area = Rect::new(r.x + (r.width - self.width) / 2, r.y + y, self.width, take);
+            let area = Rect::new(left, r.y + y, self.width, take);
             if let Some(p) = self.pages.get(n) {
                 let p = text.decorated(p);
                 if let Some(cache) = &mut sixel {

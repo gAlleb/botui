@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Show the dotted page divider in both margins when scrolling flush PDF and comic pages.
+
 - Process queued wheel ticks together during continuous fixed-page scrolling while preserving the configured scroll distance.
 
 - Preserve letter-by-letter selection on PDF pages with zero-width combining accents and copy each accent with its base letter.

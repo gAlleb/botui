@@ -138,6 +138,13 @@ with tempfile.TemporaryDirectory(prefix="botui-small-sheets-") as tmp:
         term.see("1 / 6")
         term.keys("Space", "l", "3", *[key for _ in range(7) for key in ["Space", "r", "-"]])
         term.wait("Sixth sheet is rendered without scrolling",lambda f:"25%" in f and "%" * 12 in f and ":"*12 in f)
+        # At zero gap the next sheet touches the previous one. Only the
+        # margins show the divider, on the first row of the following sheet.
+        def flush_seam(frame):
+            lines = frame.splitlines()
+            return any("#" * 12 in above and re.search(r"·{5,}:{12,}·{5,}", below)
+                       for above, below in zip(lines, lines[1:]))
+        term.wait("Flush sheets with a divider in both margins", flush_seam)
         term.keys("Space", "l", "w", *(["]"] * 9), "Enter")
         for zoom in (25, 50):
             if zoom == 50:
