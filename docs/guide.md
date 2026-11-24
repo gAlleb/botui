@@ -203,7 +203,7 @@ In zen mode, **Space p** shows or hides the reading frame and progress. Hiding t
 | `Space r r` | Rotate clockwise (PDF/DjVu/comics) |
 | `Space r R` | Rotate counterclockwise (PDF/DjVu/comics) |
 
-In **F2 → Reader → Pagination**, **From chapter start** opens the regular page or spread containing your place. After switching from Scroll, resizing the reading area or resuming from BookOrbit, the target word is briefly highlighted. Switching back to Scroll starts at the visible top of the page.
+In **F2 → Reader → Pagination**, **From chapter start** opens the regular page or spread containing your place. After switching from Scroll, resizing the reading area or resuming from BookOrbit, the target word is briefly highlighted. Switching layouts keeps that word until you navigate again. In Scroll it appears at the top.
 
 Choose **Keep first word** to keep the first word at the top when switching modes or changing the page size. You can read forward from that word. The first backward turn returns to the chapter’s regular pages, so part of the text can appear again at that turn. Search always opens the regular page containing the match.
 

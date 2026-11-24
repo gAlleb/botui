@@ -715,8 +715,7 @@ impl Pager {
         }
     }
 
-    /// Explicit mode changes follow the first visible passage, including a
-    /// picture on screen. Previous searches and resize targets are independent.
+    /// Mode and size changes share the reading position until the reader navigates.
     pub fn switch_mode(
         &mut self,
         doc: &Document,
@@ -726,14 +725,14 @@ impl Pager {
         gap: u16,
     ) {
         self.finish_resize();
-        let position = self.visible_position();
+        let position = self.resize_position();
         let layout = Layout {
             image_cell: self.image_cell,
             ..Layout::new(width, height, mode, gap)
         };
         self.change_layout(doc, layout);
-        self.resize_origin = None;
         self.open_position(doc, position);
+        self.resize_origin = Some(position);
     }
 
     fn open_position(&mut self, doc: &Document, position: ViewPosition) {

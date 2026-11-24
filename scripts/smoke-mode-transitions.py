@@ -208,12 +208,12 @@ def chapter_pages(directory, mode):
                                       visible(f) and visible(f)[0] not in opening))
         terminal.keys("Left")
         terminal.wait("Previous ordinary view", lambda f: visible(f) == opening)
-        scrolled_middle(terminal)
+        anchor = first_passage(scrolled_middle(terminal))
         terminal.keys("Space", "l", mode)
         terminal.wait("Return from Scroll to the whole chapter page", lambda f: visible(f) == opening)
         terminal.keys("Space", "l", "3")
-        terminal.wait("Scroll uses the page now on screen", lambda f:
-                      first_passage(f) == ["Passage 000"] and not passages(f, right=True))
+        terminal.wait("Scroll restores the word originally selected", lambda f:
+                      first_passage(f) == anchor and not passages(f, right=True))
         terminal.keys("Space", "l", mode)
         terminal.wait("Reopen the ordinary chapter page", lambda f: visible(f) == opening)
         terminal.keys("Right")

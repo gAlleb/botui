@@ -306,19 +306,54 @@ fn plain_alignment_keeps_source_words_and_justifies_only_wrapped_lines() {
 }
 
 #[test]
-fn changing_modes_uses_the_containing_page_and_returns_to_its_visible_top_in_scroll() {
-    let doc = short_document(true);
-    let mut pager = Pager::new(&doc, 50, 6, LayoutMode::Single);
-    pager.next();
-    let at = pager.anchor();
-    pager.switch_mode(&doc, 104, 6, LayoutMode::Spread, 4);
-    let first = pager.lines(0)[0].anchor();
-    assert_ne!(at, first);
-    assert_eq!(pager.anchor(), at);
-    assert!(pager.lines(1).iter().any(|l| l.anchor() == at));
-    pager.switch_mode(&doc, 50, 6, LayoutMode::Scroll, 4);
-    assert_eq!(pager.anchor(), first);
-    assert_eq!(pager.lines(0)[0].anchor(), first);
+fn switching_chapter_layouts_keeps_the_reading_passage_until_navigation() {
+    let doc = Document {
+        blocks: vec![Block {
+            text: (0..1000)
+                .map(|i| format!("w{i:03}"))
+                .collect::<Vec<_>>()
+                .join(" "),
+            heading: false,
+        }],
+        chapter_starts: [0].into(),
+        ..Default::default()
+    };
+    let mut pager = Pager::new(&doc, 100, 8, LayoutMode::Single);
+    let mut target = Anchor {
+        block: 0,
+        byte: doc.blocks[0].text.find("w587").unwrap(),
+    };
+    pager.seek_chapter(target);
+    assert_ne!(pager.visible_position().anchor, target);
+    for _ in 0..2 {
+        for (mode, width, height) in [
+            (LayoutMode::Spread, 106, 8),
+            (LayoutMode::Single, 100, 8),
+            (LayoutMode::Spread, 106, 8),
+            (LayoutMode::Single, 80, 12),
+            (LayoutMode::Scroll, 80, 12),
+            (LayoutMode::Single, 100, 8),
+            (LayoutMode::Spread, 106, 8),
+        ] {
+            pager.switch_mode(&doc, width, height, mode, 4);
+            assert_eq!(pager.anchor(), target);
+            let word = doc.blocks[0].text[target.byte..]
+                .split_whitespace()
+                .next()
+                .unwrap();
+            let view = pager.viewport_rows();
+            assert!(
+                (0..view.columns())
+                    .any(|c| view.lines(c).iter().any(|line| line.text.contains(word)))
+            );
+            if mode == LayoutMode::Scroll {
+                assert_eq!(pager.visible_position().anchor, target);
+            }
+        }
+        pager.next();
+        assert_ne!(pager.anchor(), target);
+        target = pager.anchor();
+    }
 }
 
 #[test]
