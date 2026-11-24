@@ -341,7 +341,7 @@ impl Text {
                         Err(e) => e.clone(),
                         _ => String::new(),
                     };
-                    self.cursor = self.hit(p, false);
+                    self.cursor = self.hit(p, self.pending_end.is_some());
                     self.start = self.cursor;
                     if self.cursor.is_some()
                         && let Some(end) = self.pending_end.take()
@@ -548,7 +548,14 @@ impl Text {
         if self.pending.is_some() {
             self.pending_end = Some(pointer);
         }
-        if let Some(at) = self.hit(pointer, true) {
+        if self.start.is_none()
+            && let Some((press, _, _)) = self.clicks
+        {
+            self.start = self.hit(press, true);
+        }
+        if self.start.is_some()
+            && let Some(at) = self.hit(pointer, true)
+        {
             self.cursor = Some(at);
         }
     }
@@ -1297,6 +1304,37 @@ impl Text {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn dragging_from_whitespace_keeps_the_press_anchor() {
+        for delayed in [false, true] {
+            let mut text = Text::new(None);
+            text.page(1, Rect::new(0, 0, 100, 100), [0., 0., 1., 1.], 0);
+            let mouse = |kind, column| {
+                Event::Mouse(crossterm::event::MouseEvent {
+                    kind,
+                    column,
+                    row: 22,
+                    modifiers: KeyModifiers::NONE,
+                })
+            };
+            let layer = || page("A B C");
+            if !delayed {
+                text.cache.insert(1, Ok(layer()));
+            }
+            text.input(&mouse(MouseEventKind::Down(MouseButton::Left), 26));
+            if !delayed {
+                text.poll(Path::new("/unused.pdf"));
+            }
+            text.input(&mouse(MouseEventKind::Drag(MouseButton::Left), 35));
+            text.input(&mouse(MouseEventKind::Up(MouseButton::Left), 55));
+            if delayed {
+                text.cache.insert(1, Ok(layer()));
+                text.poll(Path::new("/unused.pdf"));
+            }
+            assert_eq!(text.selection().unwrap().1, "A B C");
+        }
+    }
 
     #[test]
     fn source_jump_ends_selection_without_losing_the_target_or_future_selection() {

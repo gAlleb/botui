@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Keep the PDF selection anchored when a drag starts in whitespace between letters or words.
+
 - Fill inter-word gaps in PDF selections when OCR splits a printed line into separate text blocks.
 
 ## 0.1.32 — 2026-11-24
