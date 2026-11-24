@@ -53,7 +53,11 @@ fn restore_page(page: &mut PageText, raw: &str) {
             .total_cmp(&b.bounds[1])
             .then(a.bounds[0].total_cmp(&b.bounds[0]))
     });
-    let mut lines = raw.lines().filter(|line| !line.trim().is_empty());
+    let mut lines = raw
+        .lines()
+        .enumerate()
+        .filter(|(_, line)| !line.trim().is_empty());
+    let mut source_rows = Vec::new();
     // Every physical row must also be a complete source line, with exactly
     // the same words. Separate columns or an ambiguous baseline fail closed.
     for row in ordered.chunk_by(|a, b| a.bounds[1] == b.bounds[1]) {
@@ -66,7 +70,10 @@ fn restore_page(page: &mut PageText, raw: &str) {
         }) {
             return;
         }
-        let Some(line) = lines.next() else { return };
+        let Some((number, line)) = lines.next() else {
+            return;
+        };
+        source_rows.push(number);
         if !line
             .split_whitespace()
             .eq(row.iter().map(|w| &page.text[w.bytes.clone()]))
@@ -100,10 +107,10 @@ fn restore_page(page: &mut PageText, raw: &str) {
             } else {
                 line += 1;
                 text.push('\n');
-                // Retain existing paragraph boundaries between intact blocks.
-                if prev.block != word.block && prev.bytes.end + 2 == word.bytes.start {
+                let blank_lines = source_rows[line] - source_rows[line - 1] - 1;
+                if blank_lines > 0 {
                     block += 1;
-                    text.push('\n');
+                    text.extend(std::iter::repeat_n('\n', blank_lines));
                 }
             }
         }
@@ -149,10 +156,21 @@ mod tests {
         page.characters = page.words.clone();
         restore_page(&mut page, "А\nБ\nВ\nГ");
         assert_eq!(page.text, "А\nБ\n\nВ\nГ");
+        let mut adjacent_blocks = page.clone();
+        let expected = adjacent_blocks.text.replace("\n\n", "\n");
+        adjacent_blocks.words[2].bounds[1] = 0.4;
+        adjacent_blocks.words[2].bounds[3] = 0.47;
+        adjacent_blocks.words[3].bounds[1] = 0.5;
+        adjacent_blocks.words[3].bounds[3] = 0.57;
+        restore_page(&mut adjacent_blocks, &expected);
+        assert_eq!(adjacent_blocks.text, expected);
         let mut columns = page.clone();
         columns.words[2].bounds[0] = 0.49;
         restore_page(&mut columns, "А В\nБ Г");
         assert_eq!(columns.text, page.text);
+        let mut paragraphs = page.clone();
+        restore_page(&mut paragraphs, "А В\n\nБ Г");
+        assert_eq!(paragraphs.text, "А В\n\nБ Г");
         restore_page(&mut page, "А В\nБ Г");
         assert_eq!(page.text, "А В\nБ Г");
         assert_eq!(

@@ -1,6 +1,8 @@
 # Changelog
 
 ## Unreleased
+
+- Preserve source line breaks when copying reconstructed PDF rows, including genuine blank lines.
 - Follow printed lines when selecting or copying from PDFs whose text extractor interleaves fragments of different rows.
 
 - Keep the PDF selection anchored when a drag starts in whitespace between letters or words.
