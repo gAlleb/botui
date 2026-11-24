@@ -39,7 +39,7 @@ def check(binary, directory):
         fcntl.ioctl(0, termios.TIOCSWINSZ, struct.pack('HHHH', 45, 180, 2160, 1080))
         os.execve(str(binary), [str(binary), str(book)], env)
 
-    def collect(timeout=3):
+    def collect(timeout=3, *, wait_for_page=False):
         data = bytearray()
         start = last = time.monotonic()
         while time.monotonic() - start < timeout:
@@ -52,25 +52,26 @@ def check(binary, directory):
                 if b'\x1b[5n' in chunk:
                     os.write(terminal, b'\x1b_Gi=31;OK\x1b\\\x1b[6;24;12t\x1b[0n')
             elif data.endswith(b'\x1b[?2026l') and time.monotonic() - last > .025:
+                uploads = len(re.findall(rb'a=[Tt][^;]*s=\d+', data))
+                if wait_for_page and not uploads:
+                    continue
                 for header in re.findall(rb'\x1b_G([^;]*a=T[^;]*);', data):
                     fields = dict(p.split(b'=', 1) for p in header.split(b',') if b'=' in p)
                     if fields.get(b'U') == b'1':
                         w, h, cols, rows = (int(fields[k]) for k in (b's', b'v', b'c', b'r'))
                         assert w * rows * 24 == h * cols * 12, 'Kitty would letterbox the page'
-                uploads = len(re.findall(rb'a=[Tt][^;]*s=\d+', data))
                 # Count source-image payload separately from repeated viewport traffic.
                 # The portrait test page is now rasterized for the terminal's pixel width.
                 payload = sum(m.end(1) - m.start(1) for m in re.finditer(
                     rb'\x1b_G[^;]*;([A-Za-z0-9+/=]+)\x1b\\', data))
                 return round((last - start) * 1000, 1), len(data), uploads, payload
-        if timeout >= 3:
-            raise AssertionError('No completed frame while scrolling')
-        return 0, len(data), 0, 0
+        raise AssertionError('Timed out waiting for the first PDF page' if wait_for_page
+                             else 'No completed frame while scrolling')
 
     try:
-        collect(10)
-        time.sleep(1)
-        collect(.2)
+        # Start measuring at a frame boundary after the first page upload.
+        # A timed drain can discard its header but leave chunks for the first scroll.
+        collect(30, wait_for_page=True)
         forward = []
         for step in range(180):
             os.write(terminal, b'\x1b[B')
