@@ -2,9 +2,11 @@
 """Follow successive in-book results in the actual reader, including the highlighted term."""
 from pathlib import Path
 import importlib.util
+import io
 import re
 import tempfile
 import time
+import zipfile
 
 spec = importlib.util.spec_from_file_location("shelf", Path(__file__).with_name("smoke-shelf.py"))
 shelf = importlib.util.module_from_spec(spec)
@@ -98,3 +100,47 @@ with tempfile.TemporaryDirectory() as name:
     finally:
         t.run("kill-server", required=False)
 print("Passed search navigation, highlighting, live paragraph indent and spacing, and bookmark deletion.")
+
+with tempfile.TemporaryDirectory() as name:
+    tmp = Path(name)
+    path = tmp / "responsive.epub"
+    chapter = """<html xmlns="http://www.w3.org/1999/xhtml"><head>
+      <style>@media (max-width: 400px) { .wide { display: none } }</style></head>
+      <body><p>Departure</p><p class="wide">Wide lighthouse</p><p>Coastal lighthouse</p></body></html>"""
+    with zipfile.ZipFile(io.BytesIO(shelf.epub())) as template, zipfile.ZipFile(path, "w") as book:
+        for member in template.namelist():
+            book.writestr(member, chapter if member == "c.xhtml" else template.read(member))
+    t = shelf.Terminal(tmp, shelf.ROOT / "target/debug/botui", args=[str(path)])
+    try:
+        def selected(label):
+            def has_highlight(frame):
+                if "Find:" in frame or label + " lighthouse" not in frame:
+                    return False
+                ansi = t.run("capture-pane", "-p", "-e", "-t", "shelf").stdout
+                return re.search(label + r" \x1b\[[0-9;]*7mlighthouse\x1b", ansi)
+            t.wait("highlight on " + label, has_highlight)
+
+        def width(columns):
+            t.run("resize-window", "-t", "shelf", "-x", str(columns), "-y", "30")
+            t.wait("responsive chapter after resize", lambda f:
+                   "Coastal lighthouse" in f and ("Wide lighthouse" in f) == (columns == 115))
+
+        t.see("Departure"); t.keys("Space", "l", "1"); t.see("Wide lighthouse")
+        t.keys("Space", "f"); t.see("Find:")
+        t.type("lighthouse"); t.see("2 matches"); t.keys("Enter")
+        selected("Wide")
+        width(44)
+        selected("Coastal")
+        t.keys("F5"); t.see("1 match"); t.keys("Escape")
+        t.keys("Escape")  # Hide the highlight, leaving index refresh to the next search action.
+        width(115)
+        t.keys("F5"); t.see("2 matches"); t.keys("Home", "Enter")
+        selected("Wide")
+        t.keys("Escape")
+        width(44)
+        for _ in range(2):
+            t.keys("F3")
+            selected("Coastal")
+    finally:
+        t.run("kill-server", required=False)
+print("Passed responsive EPUB search after resizing, including highlight, F3 and F5.")

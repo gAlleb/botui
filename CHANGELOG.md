@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Keep the selected search match visible during a resize and refresh responsive EPUB search results after the new page appears.
 - Lay out the visible EPUB chapter immediately when an earlier background pagination job is still running.
 - Rewrap just the current paragraph when keeping the first word in hyphenated EPUB prose.
 - Reuse the confirmed graphics protocol when the terminal reports the exact new cell size. Recheck ambiguous sizes and multiplexer clients.

@@ -44,6 +44,16 @@ impl Search {
     pub fn hide(&mut self) {
         self.hidden = true;
     }
+    /// Painted rows carry source addresses, so the current match can be drawn
+    /// before checking which matches the new CSS viewport exposes elsewhere.
+    pub fn refresh_highlight(&mut self, pager: &Pager, doc: &Document) -> bool {
+        if self.hidden || self.query.is_empty() || pager.is_paginating() {
+            return false;
+        }
+        let previous = self.hits.get(self.selected).map(|hit| hit.anchor);
+        self.update(pager, doc);
+        previous != self.hits.get(self.selected).map(|hit| hit.anchor)
+    }
     pub fn update(&mut self, pager: &Pager, doc: &Document) {
         if !doc.styled.is_empty() && self.geometry != (pager.column_width(), pager.viewport()) {
             self.reflow(pager, doc);

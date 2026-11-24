@@ -587,7 +587,6 @@ impl Reader {
         self.study.begin_frame();
         let show_progress =
             self.zen && self.zen_progress && screen.height > 1 && !self.links.visiting();
-        self.search.update(&self.pager, &self.doc);
         let view = self.pager.viewport_rows();
         let pages = (!self.pager.is_paginating())
             .then(|| (self.pager.page_number(), self.pager.page_count()));
@@ -1362,6 +1361,8 @@ impl Reader {
             }
             Action::FindAgain(forward) => {
                 self.menu = None;
+                self.pager.finish_resize();
+                self.search.update(&self.pager, &self.doc);
                 let origin = self
                     .study
                     .cursor
@@ -1839,6 +1840,9 @@ pub fn read_server(
                 reader.save_appearance(action, state.as_ref(), notices);
             }
             frame_result?;
+            if reader.search.refresh_highlight(&reader.pager, &reader.doc) {
+                continue;
+            }
             if can_sync && let Some(sync) = live.as_deref_mut() {
                 let anchor = reader.saved_position().anchor;
                 if observed != (anchor, reader.finished) {
