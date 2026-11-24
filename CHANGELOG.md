@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Preserve letter-by-letter selection on PDF pages with zero-width combining accents and copy each accent with its base letter.
+
 - Update PDF text selection once per batch of mouse motion and use the release position for the final selection.
 
 - Center the PDF and comic reading menu in the terminal window when the contents sidebar is open.

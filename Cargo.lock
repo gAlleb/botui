@@ -306,6 +306,7 @@ dependencies = [
  "resvg",
  "roxmltree 0.21.2",
  "tempfile",
+ "unicode-segmentation",
 ]
 
 [[package]]

@@ -11,3 +11,4 @@ image = { version = "0.25", default-features = false, features = ["jpeg", "png",
 tempfile = "3"
 roxmltree = "0.21"
 resvg = { version = "0.45", default-features = false, features = ["text", "system-fonts", "raster-images"] }
+unicode-segmentation = "1.13"

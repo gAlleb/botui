@@ -1,4 +1,5 @@
 use super::*;
+use unicode_segmentation::UnicodeSegmentation;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum LinkTarget {
@@ -155,15 +156,26 @@ fn apply(xml: &str, result: &mut PageText) {
         else {
             return;
         };
-        if geometry[0] >= geometry[2] || geometry[1] >= geometry[3] {
-            return;
-        }
         // Verify the glyph belongs to the same rendered word, including rotation.
         if geometry[0] < word.bounds[0] - 0.01
             || geometry[2] > word.bounds[2] + 0.01
             || geometry[1] < word.bounds[1] - 0.01
             || geometry[3] > word.bounds[3] + 0.01
         {
+            return;
+        }
+        if geometry[0] == geometry[2] || geometry[1] == geometry[3] {
+            // A combining accent can have no advance of its own. Keep its
+            // source bytes with its measured base letter for selection/copy.
+            let end = byte + ch.len_utf8();
+            if let Some(base) = characters.last_mut()
+                && base.bytes.start >= word.bytes.start
+                && base.bytes.end == byte
+                && result.text[base.bytes.start..end].graphemes(true).count() == 1
+            {
+                base.bytes.end = end;
+                continue;
+            }
             return;
         }
         characters.push(Word {
@@ -248,6 +260,23 @@ mod tests {
                 point: [0., 0.4]
             }
         );
+    }
+
+    #[test]
+    fn zero_width_accent_is_copied_with_the_base_letter() {
+        let mut p = page();
+        p.text.insert(4, '\u{301}');
+        p.words[0].bytes.end += 2;
+        p.words[1].bytes = 7..9;
+        let xml = GEOMETRY.replace(
+            ">и</char>",
+            ">и</char><char x0=\"0.3\" x1=\"0.3\" y0=\"0.2\" y1=\"0.3\">\u{301}</char>",
+        );
+        apply(&xml, &mut p);
+        assert_eq!(p.characters.len(), 5);
+        assert_eq!(&p.text[p.characters[1].bytes.clone()], "и\u{301}");
+        assert_eq!(p.characters[1].bounds, [0.22, 0.2, 0.3, 0.3]);
+        assert_eq!(p.characters[3].bytes, 7..8);
     }
 
     #[test]
