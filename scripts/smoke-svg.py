@@ -117,19 +117,27 @@ def check(binary, folder, album=False, page_turn=False):
                 stream.clear()
                 fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack('HHHH', 45, columns, 1200, 900))
                 collect(.8)
+                assert b'\x1b[5n' not in stream, 'Repeated graphics probe for an exact font size'
                 frames = re.findall(rb'\x1b\[\?2026h(.*?)\x1b\[\?2026l', stream, re.S)
                 clear = b'\x1b[2J'
                 assert any(clear in frame and b'SVGSTART' in frame for frame in frames), 'Incomplete resize frame'
                 assert stream.count(clear) == sum(frame.count(clear) for frame in frames), 'Unprotected resize clear'
-            # Deliver a second font resize while the first is preparing its
-            # graphics metrics. No book frame should be sent at the superseded height.
+            # A 900px window with 40 rows needs an explicit cell-size reply.
+            # Resize again during that probe; only the final grid should be painted.
             stream.clear()
             resize_on_query = (31, 90, 1200, 900)
             fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack('HHHH', 40, 100, 1200, 900))
             collect(1)
             assert resize_on_query is None and b'SVGSTART' in stream
+            assert stream.count(b'\x1b[5n') == 2, 'Reused cell metrics from a superseded grid'
             painted_rows = re.findall(rb'\x1b\[(\d+);\d+H', stream)
             assert max(map(int, painted_rows)) == 31, 'Published a page for the previous font size'
+            # Some PTYs report only character dimensions, even for graphics terminals.
+            for columns in (100, 105):
+                stream.clear()
+                fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack('HHHH', 35, columns, 0, 0))
+                collect(.6)
+                assert b'\x1b[5n' in stream and b'SVGSTART' in stream, 'Stale unknown cell size'
         else:
             os.write(fd,b'\x1b[C');collect(1)
             assert b'unavailable' not in stream.lower(),'SVG album page failed to decode'

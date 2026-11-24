@@ -9,8 +9,8 @@ use ratatui::{
 };
 use ratatui_image::sliced::{SlicedImage, SlicedProtocol};
 use ratatui_image::{
-    Image, Resize,
-    picker::{Picker, ProtocolType, cap_parser::QueryStdioOptions},
+    FontSize, Image, Resize,
+    picker::{Capability, Picker, ProtocolType},
     protocol::Protocol,
 };
 use std::{
@@ -18,19 +18,38 @@ use std::{
     io::Cursor,
 };
 
-thread_local! { static GRAPHICS: RefCell<Option<(Picker, Option<Size>)>> = const { RefCell::new(None) }; }
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum CellMetrics {
+    Pixels { size: Size, exact: bool },
+    GridOnly(Size),
+}
 
-fn cell_pixels() -> Option<Size> {
+thread_local! { static GRAPHICS: RefCell<Option<(Picker, Option<CellMetrics>)>> = const { RefCell::new(None) }; }
+
+/// TIOCGWINSZ can include extra padding beyond the terminal grid.
+fn cell_metrics() -> Option<CellMetrics> {
     let w = crossterm::terminal::window_size().ok()?;
     let width = w.width.checked_div(w.columns)?;
     let height = w.height.checked_div(w.rows)?;
-    (width > 0 && height > 0).then_some(Size::new(width, height))
+    Some(if width == 0 || height == 0 {
+        CellMetrics::GridOnly(Size::new(w.columns, w.rows))
+    } else {
+        CellMetrics::Pixels {
+            size: Size::new(width, height),
+            exact: w.width % w.columns == 0 && w.height % w.rows == 0,
+        }
+    })
 }
 
 pub(crate) fn graphics() -> Picker {
     GRAPHICS.with_borrow_mut(|cache| {
         cache
-            .get_or_insert_with(|| (detect(), cell_pixels()))
+            .get_or_insert_with(|| {
+                // Associate the reply with the grid that initiated the query.
+                // A further resize can arrive while the terminal is answering.
+                let previous = cell_metrics();
+                (detect(), previous)
+            })
             .0
             .clone()
     })
@@ -48,12 +67,29 @@ pub(crate) fn resized() {
     GRAPHICS.with_borrow_mut(|cache| {
         if let Some((picker, previous)) = cache
             && picker.protocol_type() != ProtocolType::Halfblocks
-            && let Some(current) = cell_pixels()
+            && let Some(current) = cell_metrics()
             && *previous != Some(current)
         {
-            // A font or DPI change invalidates the capabilities query's cell size.
-            // A plain window resize can keep using the existing picker.
-            *cache = None;
+            let font = picker.font_size();
+            let measured = Size::new(font.width, font.height);
+            if let CellMetrics::Pixels { size, exact: true } = current
+                && matches!(previous, Some(CellMetrics::Pixels { size, .. }) if *size == measured)
+                && !picker.tmux_detected()
+                && !picker
+                    .capabilities()
+                    .contains(&Capability::KittyCompression)
+            {
+                // This tty already confirmed its pixel metrics and image protocol.
+                // A full device query on each zoom blocks the next text frame.
+                let protocol = picker.protocol_type();
+                #[allow(deprecated)] // Keep the negotiated protocol, not the environment guess.
+                let mut resized = Picker::from_fontsize(FontSize::new(size.width, size.height));
+                resized.set_protocol_type(protocol);
+                *cache = Some((resized, Some(current)));
+            } else {
+                // A multiplexer can change clients, and rounded metrics are ambiguous.
+                *cache = None;
+            }
         }
     });
 }
@@ -70,28 +106,12 @@ fn detect() -> Picker {
     if !monochrome()
         && std::env::var_os("STY").is_none()
         && candidate
-        && let Some(p) = crate::terminal_input::graphics(graphics_options())
+        && let Some(p) = crate::terminal_input::graphics(Default::default())
         && p.protocol_type() != ProtocolType::Halfblocks
     {
         return p;
     }
     Picker::halfblocks()
-}
-
-fn graphics_options() -> QueryStdioOptions {
-    QueryStdioOptions {
-        // Enable the fast path only when the emulator can open a probe on the
-        // same host. Its successful reply selects SHM for subsequent images.
-        #[cfg(unix)]
-        kitty_shared_memory_object: if std::env::var_os("SSH_CONNECTION").is_none()
-            && std::env::var_os("SSH_TTY").is_none()
-        {
-            QueryStdioOptions::probe_kitty_smo()
-        } else {
-            None
-        },
-        ..Default::default()
-    }
 }
 
 fn monochrome() -> bool {
