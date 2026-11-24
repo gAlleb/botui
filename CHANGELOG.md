@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.29 — 2026-11-24
 
 - In Keep first word, briefly highlight the former top word when the first backward turn brings the overlapping text back into view in Single or Spread.
 - Reuse ordinary page geometry after an exact-word resize, and recompute only the affected EPUB spine item when its surrounding rows still match.
