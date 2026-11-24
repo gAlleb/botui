@@ -268,6 +268,9 @@ impl Text {
     pub fn normal(&self) -> bool {
         self.normal
     }
+    pub fn dragging(&self) -> bool {
+        self.drag
+    }
     pub fn busy(&self) -> bool {
         self.job.is_some()
     }
@@ -390,6 +393,9 @@ impl Text {
             self.start = self.cursor;
             self.pending_visual = false;
         }
+        self.prepare_visible(path);
+    }
+    pub fn prepare_visible(&mut self, path: &Path) {
         if self
             .job
             .as_ref()

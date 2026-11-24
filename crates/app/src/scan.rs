@@ -782,6 +782,11 @@ pub(super) fn read_pages(
                 );
             }
         })?;
+        // The first drag should use the glyph map already prepared while the
+        // page was on screen. Give visible page rendering priority.
+        if selectable && !pages.busy() {
+            text.prepare_visible(path);
+        }
         // Prepare adjacent fitted spreads. At high zoom, keep the raster budget
         // for visible pages instead of evicting them with speculative canvases.
         if !scrolling
@@ -1253,7 +1258,9 @@ pub(super) fn read_pages(
             if let text::Action::Key(code) = action {
                 e = Event::Key(crossterm::event::KeyEvent::new(code, KeyModifiers::NONE));
             } else {
-                if matches!(e, Event::Mouse(m) if m.kind == MouseEventKind::Drag(MouseButton::Left))
+                if text.dragging()
+                    && matches!(e, Event::Mouse(m) if matches!(m.kind,
+                    MouseEventKind::Down(MouseButton::Left) | MouseEventKind::Drag(MouseButton::Left)))
                 {
                     crate::terminal_input::drain_selection_drags(|drag| {
                         text.input(&drag);

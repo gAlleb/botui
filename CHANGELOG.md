@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Prepare the visible PDF text layer in the background so the first selection can start with measured letter positions.
+
 - Show the dotted page divider in both margins when scrolling flush PDF and comic pages.
 
 - Process queued wheel ticks together during continuous fixed-page scrolling while preserving the configured scroll distance.
