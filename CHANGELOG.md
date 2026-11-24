@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Center the PDF and comic reading menu in the terminal window when the contents sidebar is open.
+
 ## 0.1.31 — 2026-11-24
 
 - F2 Reader edits the open edition directly. From the library it edits defaults, which each book follows for settings it has not customized. Quick text width and column gap changes also stay with the edition.

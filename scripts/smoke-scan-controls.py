@@ -32,8 +32,12 @@ with tempfile.TemporaryDirectory(prefix="botui-width-") as tmp:
     try:
         term.see("1 / 3")
         term.click("[Space m Menu]", term.see("[Space m Menu]"))
-        term.see("Previous page")
-        term.keys("Escape")
+        frame = term.see("Previous page")
+        width, height = map(int, term.run("display-message", "-p", "-t", "shelf",
+                                          "#{pane_width} #{pane_height}").stdout.split())
+        row, line = next((y, line) for y, line in enumerate(frame.splitlines()) if "Resume" in line)
+        assert (line.index("Resume") - 1, row - 1) == ((width - 48) // 2, (height - 20) // 2)
+        term.click("Resume", frame)
         term.click("[Space z Zen]", term.see("[Space z Zen]"))
         term.keys("Space", "p")
         term.see("1 / 3  ·  33%")

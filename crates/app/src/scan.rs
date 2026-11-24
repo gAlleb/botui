@@ -707,7 +707,7 @@ pub(super) fn read_pages(
                 footer.fill(Rect::default());
             }
             if menu {
-                let panel = centered(area, 48, 20);
+                let panel = centered(screen, 48, 20);
                 crate::overlay::modal(f, panel, |f| {
                     let block = crate::appearance::block().title(format!(
                         " {} · {} / {} ",
