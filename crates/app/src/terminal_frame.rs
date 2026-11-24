@@ -1,6 +1,6 @@
 //! Publish each completed frame atomically when the emulator supports DEC 2026.
 use crossterm::{
-    execute,
+    execute, queue,
     terminal::{BeginSynchronizedUpdate, EndSynchronizedUpdate},
 };
 use ratatui::{Frame, Terminal, backend::CrosstermBackend};
@@ -75,21 +75,21 @@ impl AppTerminal {
         render: impl FnOnce(&mut Frame),
         update: &mut Option<Update>,
     ) -> io::Result<ratatui::CompletedFrame<'_>> {
+        // Ratatui flushes a screen clear before calling render on a resize.
+        // Queue the opening marker on the same buffered writer so that clear
+        // is part of the frame. Ordinary frames can still prepare images and
+        // query the terminal before the first backend flush.
+        if update.is_none() {
+            queue!(self.0.backend_mut(), BeginSynchronizedUpdate)?;
+            *update = Some(Update);
+        }
+        crate::cover::kitty_lifetime::take_retired().write(self.0.backend_mut())?;
         let sixel = &mut self.1;
-        let retired = crate::cover::kitty_lifetime::take_retired();
-        self.0.try_draw(|frame| -> io::Result<()> {
-            // Capability queries and image preparation happen before holding
-            // the display. Only publishing the finished frame is synchronized.
+        self.0.draw(|frame| {
             render(frame);
             if crate::cover::sixel_active() {
                 stabilize_sixel(frame.buffer_mut(), sixel);
             }
-            if update.is_none() {
-                *update = Some(Update);
-                execute!(io::stdout(), BeginSynchronizedUpdate)?;
-            }
-            retired.write(&mut io::stdout().lock())?;
-            Ok(())
         })
     }
 }

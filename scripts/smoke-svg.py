@@ -106,6 +106,16 @@ def check(binary, folder, album=False, page_turn=False):
             for _ in range(3):os.write(fd,b'\x1b[B');collect(.12)
             for _ in range(3):os.write(fd,b'\x1b[A');collect(.12)
             assert len(images)==before,(before,len(images))
+            # Changing the font changes the terminal grid. A clear published
+            # outside the redraw exposes a blank screen while prose reflows.
+            for columns in (100, 120):
+                stream.clear()
+                fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack('HHHH', 45, columns, 1200, 900))
+                collect(.8)
+                frames = re.findall(rb'\x1b\[\?2026h(.*?)\x1b\[\?2026l', stream, re.S)
+                clear = b'\x1b[2J'
+                assert any(clear in frame and b'SVGSTART' in frame for frame in frames), 'Incomplete resize frame'
+                assert stream.count(clear) == sum(frame.count(clear) for frame in frames), 'Unprotected resize clear'
         else:
             os.write(fd,b'\x1b[C');collect(1)
             assert b'unavailable' not in stream.lower(),'SVG album page failed to decode'
