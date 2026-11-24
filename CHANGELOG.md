@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.1.27 — 2026-11-24
+
 - Highlight only the selected setting in F2 Reader.
 - Show Main menu (M) and Quit (Ctrl+Q) in the library for direct files, normal launches and catalog shelves.
 - Paginate Single and Spread from the chapter start by default. Briefly mark the target word after a mode switch, resize, search or BookOrbit resume. The optional Keep first word setting keeps the visible word at the top across mode and size changes, then returns to whole chapter pages on the first backward turn.
