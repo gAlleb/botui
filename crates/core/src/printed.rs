@@ -187,10 +187,7 @@ pub(super) fn justify(line: &mut PageLine, extra: usize) {
     let mut expanded = String::new();
     let mut spans = Vec::new();
     let mut original = line.spans.iter().peekable();
-    let base = extra / gaps;
-    let remainder = extra % gaps;
-    let mut carry = (gaps - 1) / 2;
-    for word in line.text.split_inclusive(' ') {
+    for (i, word) in line.text.split_inclusive(' ').enumerate() {
         let end = offset + word.len();
         let visual = expanded.len();
         expanded.push_str(word);
@@ -214,31 +211,13 @@ pub(super) fn justify(line: &mut PageLine, extra: usize) {
             original.next();
         }
         if word.ends_with(' ') {
-            // Round the cumulative spacing, keeping the wider gaps spread across the line.
-            carry += remainder;
-            let wider = carry >= gaps;
-            if wider {
-                carry -= gaps;
-            }
-            expanded.extend(std::iter::repeat_n(' ', base + usize::from(wider)));
+            expanded.extend(std::iter::repeat_n(
+                ' ',
+                extra / gaps + usize::from(i < extra % gaps),
+            ));
         }
         offset = end;
     }
     line.text = expanded;
     line.spans = spans;
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn wider_gaps_are_distributed_across_the_line() {
-        let mut line = PageLine {
-            text: "я и ты и он и мы".into(),
-            ..PageLine::default()
-        };
-        justify(&mut line, 9);
-        assert_eq!(line.text, "я  и   ты  и   он  и   мы");
-    }
 }

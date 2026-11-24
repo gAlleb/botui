@@ -4,8 +4,6 @@
 
 - Clear and redraw the terminal in one synchronized frame when changing the font or window size.
 
-- Spread the extra spaces more evenly across lines of justified prose.
-
 - Toggle word hyphenation for the current EPUB or FB2 with H in the Space l w layout panel.
 
 - Keep the settings background stable while choosing a reading, PDF or comic theme in F2.
