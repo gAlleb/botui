@@ -136,6 +136,7 @@ def check(tmp):
         t.wait('Compact blocks on without changing the gap', lambda f: compact_row(f, True) and spacing_saved(True, 2))
         # Each following row still opens its own editor after inserting the toggle.
         for label, title in (
+            ('Reading theme', 'Reading theme'),
             ('Contents width', 'Contents width · 12–100 cells'),
             ('Mouse wheel step', 'Mouse wheel step · 1–12 lines'),
             ('Space menu delay', 'Space menu delay · milliseconds'),
@@ -145,6 +146,15 @@ def check(tmp):
         ):
             t.click(label, t.see(label))
             t.wait(title, lambda f: title in f and 'First-line indent' not in f)
+            if label in ('Reading theme', 'PDF reading theme', 'Comic background'):
+                # The opaque Nord interface must still fill the corner outside the preview.
+                def corner_has_paper():
+                    corner = t.run('capture-pane', '-e', '-p', '-t', 'shelf').stdout.splitlines()[0]
+                    return '48;2;46;52;64m' in corner
+                assert corner_has_paper(), label
+                t.keys('Down')
+                t.see('↑↓ Palette')
+                assert corner_has_paper(), label
             t.keys('Escape')
             t.see('First-line indent')
         t.click('Zen frame & progress',t.see('Zen frame & progress'))

@@ -32,7 +32,10 @@ pub(super) fn choose_theme(
     use crate::reader::theme_picker::{Edit, Picker};
     let mut picker = Picker::new(initial);
     loop {
-        term.draw(|f| picker.draw_named(f, title))?;
+        term.draw(|f| {
+            picker.draw_named(f, title);
+            settings::paint_interface(f);
+        })?;
         if let Some(e) = picker.input(crate::settings::read_dialog()?) {
             match e {
                 Edit::Cancel => return Ok(None),

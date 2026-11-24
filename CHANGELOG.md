@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Keep the settings background stable while choosing a reading, PDF or comic theme in F2.
+
 ## 0.1.27 — 2026-11-24
 
 - Highlight only the selected setting in F2 Reader.
