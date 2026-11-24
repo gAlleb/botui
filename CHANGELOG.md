@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.30 — 2026-11-24
+
+- Ship the reader improvements listed under 0.1.29. The terminal smoke test now verifies that returning from Spread and reopening Scroll preserve the original reading passage.
+
 ## 0.1.29 — 2026-11-24
 
 - In Keep first word, briefly highlight the former top word when the first backward turn brings the overlapping text back into view in Single or Spread.
