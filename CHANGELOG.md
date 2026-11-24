@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Process queued wheel ticks together during continuous fixed-page scrolling while preserving the configured scroll distance.
+
 - Preserve letter-by-letter selection on PDF pages with zero-width combining accents and copy each accent with its base letter.
 
 - Update PDF text selection once per batch of mouse motion and use the release position for the final selection.

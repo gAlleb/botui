@@ -151,7 +151,11 @@ with tempfile.TemporaryDirectory(prefix="botui-small-sheets-") as tmp:
             assert (seam - last - 1, first - seam - 1) == (4, 4), frame
         # Start the viewport inside the gap, exactly on the separator.
         top = next(i for i, line in enumerate(lines) if "#" * 12 in line)
-        term.keys(*(["Down"] * (seam - top)))
+        # Reverse direction within one burst. The net travel must still put
+        # the divider at precisely the same row as individual Down keys.
+        down = "\x1b[<65;70;8M"
+        up = "\x1b[<64;70;8M"
+        term.type(down * (seam - top + 2) + up * 2)
         term.wait("Centered divider at top of viewport",
                   lambda f: "·" * 12 in f.splitlines()[top] and ":" * 12 in f.splitlines()[top + 5])
         term.keys("Down")

@@ -6,7 +6,7 @@ mod keyboard;
 pub(crate) mod pixel_mouse;
 
 use crate::shell_theme::TerminalPaper;
-use crossterm::event::Event;
+use crossterm::event::{Event, MouseEvent, MouseEventKind};
 use graphics_replies::GraphicsReplies;
 use keyboard::Keyboard;
 use nix::{
@@ -36,6 +36,7 @@ struct Input {
     replies: GraphicsReplies,
     keyboard: Keyboard,
     cell_events: usize,
+    last_wheel: Option<(MouseEvent, bool)>,
     graphics_requested: bool,
     escape_deadline: Option<Instant>,
     next_color_query: Option<Instant>,
@@ -99,6 +100,25 @@ pub(crate) fn drain_selection_drags(mut apply: impl FnMut(Event)) -> io::Result<
     })
 }
 
+/// Count consecutive wheel ticks at the same raw pointer position. Never
+/// cross a change of direction, input target, or coordinate system.
+pub(crate) fn wheel_steps(limit: i32) -> io::Result<i32> {
+    with_input(|input| {
+        let mut steps = 1;
+        if let Some((wheel, cells)) = input.last_wheel {
+            while steps < limit
+                && (input.cell_events > 0) == cells
+                && input.keyboard.queued.front() == Some(&Event::Mouse(wheel))
+            {
+                input.keyboard.queued.pop_front();
+                input.cell_events = input.cell_events.saturating_sub(1);
+                steps += 1;
+            }
+        }
+        Ok(steps)
+    })
+}
+
 impl Input {
     fn new() -> io::Result<Self> {
         let tty = if io::stdin().is_terminal() {
@@ -116,6 +136,7 @@ impl Input {
             replies: Default::default(),
             keyboard: Default::default(),
             cell_events: 0,
+            last_wheel: None,
             graphics_requested: false,
             escape_deadline: None,
             next_color_query: None,
@@ -125,6 +146,17 @@ impl Input {
 
     fn pop_event(&mut self) -> Option<Event> {
         let mut event = self.keyboard.queued.pop_front()?;
+        self.last_wheel = match event {
+            Event::Mouse(m)
+                if matches!(
+                    m.kind,
+                    MouseEventKind::ScrollUp | MouseEventKind::ScrollDown
+                ) =>
+            {
+                Some((m, self.cell_events > 0))
+            }
+            _ => None,
+        };
         if self.cell_events > 0 {
             self.cell_events -= 1;
             pixel_mouse::clear_last();

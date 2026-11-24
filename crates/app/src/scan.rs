@@ -1467,8 +1467,13 @@ pub(super) fn read_pages(
                     30 => 1,
                     31 => -i32::from(strip.height.max(1)),
                     32 => i32::from(strip.height.max(1)),
-                    33 => -scroll_lines,
-                    _ => scroll_lines,
+                    _ => {
+                        // Keep isolated ticks immediate. During a burst, paint at
+                        // least twice per viewport and retain every row of travel.
+                        let limit = (i32::from(strip.height) / 2 / scroll_lines).max(1);
+                        let rows = scroll_lines * crate::terminal_input::wheel_steps(limit)?;
+                        if action == 33 { -rows } else { rows }
+                    }
                 };
                 if sixel.is_some() && matches!(action, 33 | 34) {
                     motion.push(d);
